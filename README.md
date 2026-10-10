@@ -1,6 +1,6 @@
 # Recipe Hub
 
-A private site for browsing and searching our family's recipes. Recipes come in three ways, all normalized to one recipe shape: photos of a written or printed recipe, a pasted recipe URL, or manual entry. Access is limited to family members through Facebook login and an allowlist.
+A recipe catalog for our family's recipes. Anyone can browse and search it; approved members add recipes in three ways, all normalized to one recipe shape: photos of a written or printed recipe, a pasted recipe URL, or manual entry. Members request access, are invited by the admin, and sign in with a passkey or an emailed code.
 
 ## Stack
 
@@ -8,7 +8,8 @@ A private site for browsing and searching our family's recipes. Recipes come in 
 - [Neon](https://neon.com/docs) Postgres via the Vercel Marketplace, which also powers search
 - [Vercel Blob](https://vercel.com/docs/vercel-blob) (private store) for recipe images
 - [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) for parsing scans and URLs into recipes
-- Planned as features land: [Better Auth](https://www.better-auth.com/docs) with Facebook, [Drizzle ORM](https://orm.drizzle.team/docs/overview), the [AI SDK](https://ai-sdk.dev/docs)
+- [shadcn/ui](https://ui.shadcn.com/docs) on [Base UI](https://base-ui.com) primitives, with Tailwind CSS v4 tokens
+- Planned as features land: [Better Auth](https://www.better-auth.com/docs) with passkeys, [Drizzle ORM](https://orm.drizzle.team/docs/overview), the [AI SDK](https://ai-sdk.dev/docs), [Resend](https://resend.com/docs) for email
 
 ## Development
 
@@ -20,6 +21,8 @@ vercel link       # once, connects this checkout to the Vercel project
 vercel env pull   # writes .env.local; rerun when the AI Gateway OIDC token expires (12h)
 pnpm dev
 ```
+
+The design reference at [localhost:3000/design](http://localhost:3000/design) shows every design token, UI primitive, and composition. It exists in development and on preview deployments only. Add primitives with `pnpm shadcn add <name>`, then run `pnpm format` and `pnpm exec eslint . --fix`.
 
 | Script             | Purpose                              |
 | ------------------ | ------------------------------------ |
