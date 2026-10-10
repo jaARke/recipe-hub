@@ -1,3 +1,7 @@
+# Recipe Hub
+
+Read `ROADMAP.md` in full before starting any work. It carries the owner's guiding principles, the layered architecture, the design language, the decision log, and the session plan. Update it before finishing a session.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know
