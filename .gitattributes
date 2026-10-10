@@ -1,0 +1,2 @@
+# Checkouts keep LF on every platform, so Prettier's `endOfLine: lf` check passes on Windows clones too.
+* text=auto eol=lf

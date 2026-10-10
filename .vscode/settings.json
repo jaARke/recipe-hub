@@ -1,0 +1,27 @@
+{
+	// Editor
+	"editor.formatOnSave": true,
+	"editor.codeActionsOnSave": {
+		"source.fixAll.eslint": "explicit",
+		// ESLint orders imports, so TypeScript's organizer stays off even where a user's settings turn it on
+		"source.organizeImports": "never"
+	},
+	"[typescript][typescriptreact][javascript][json][jsonc][css][markdown][yaml][github-actions-workflow]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	// Indent with tabs and leave their width to each reader's own settings. Prettier writes spaces only
+	// for YAML (the spec forbids tabs) and Markdown lists (aligned to the marker)
+	"editor.insertSpaces": false,
+	"[markdown][yaml][github-actions-workflow]": {
+		"editor.insertSpaces": true,
+		"editor.tabSize": 2
+	},
+	// TypeScript: use the workspace's compiler, so the editor reports what `pnpm typecheck` does
+	"js/ts.tsdk.path": "node_modules/typescript/lib",
+	"js/ts.tsdk.promptToUseWorkspaceVersion": true,
+	"js/ts.updateImportsOnFileMove.enabled": "always",
+	// Files
+	"files.eol": "\n",
+	"files.insertFinalNewline": true,
+	"files.trimTrailingWhitespace": true
+}
