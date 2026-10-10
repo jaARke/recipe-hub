@@ -1,26 +1,144 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
 
-:root {
-	--background: #ffffff;
-	--foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
 	--color-background: var(--background);
 	--color-foreground: var(--foreground);
-	--font-sans: var(--font-geist-sans);
-	--font-mono: var(--font-geist-mono);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+
+	--font-sans: var(--font-hanken-grotesk);
+	--font-heading: var(--font-fraunces);
+	--font-heading--font-variation-settings: 'SOFT' 100;
+	--font-mono: var(--font-jetbrains-mono);
+
+	--radius-sm: calc(var(--radius) * 0.6);
+	--radius-md: calc(var(--radius) * 0.8);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) * 1.4);
+	--radius-2xl: calc(var(--radius) * 1.8);
+	--radius-3xl: calc(var(--radius) * 2.2);
+	--radius-4xl: calc(var(--radius) * 2.6);
+
+	/* Shadows take their color from the theme: faint on light, deep on dark. */
+	--shadow-*: initial;
+	--shadow-xs: 0 1px 2px 0 var(--shadow-color);
+	--shadow-sm: 0 1px 3px 0 var(--shadow-color), 0 1px 2px -1px var(--shadow-color);
+	--shadow-md: 0 4px 6px -1px var(--shadow-color), 0 2px 4px -2px var(--shadow-color);
+	--shadow-lg: 0 10px 15px -3px var(--shadow-color), 0 4px 6px -4px var(--shadow-color);
 }
 
-@media (prefers-color-scheme: dark) {
-	:root {
-		--background: #0a0a0a;
-		--foreground: #ededed;
+@theme {
+	/* The one type scale; large steps tighten their tracking. */
+	--text-*: initial;
+	--text-xs: 0.75rem;
+	--text-xs--line-height: 1rem;
+	--text-sm: 0.875rem;
+	--text-sm--line-height: 1.25rem;
+	--text-base: 1rem;
+	--text-base--line-height: 1.5rem;
+	--text-lg: 1.125rem;
+	--text-lg--line-height: 1.75rem;
+	--text-xl: 1.25rem;
+	--text-xl--line-height: 1.75rem;
+	--text-2xl: 1.5rem;
+	--text-2xl--line-height: 2rem;
+	--text-2xl--letter-spacing: -0.01em;
+	--text-3xl: 1.875rem;
+	--text-3xl--line-height: 2.25rem;
+	--text-3xl--letter-spacing: -0.015em;
+	--text-4xl: 2.25rem;
+	--text-4xl--line-height: 2.5rem;
+	--text-4xl--letter-spacing: -0.02em;
+	--text-5xl: 3rem;
+	--text-5xl--line-height: 1.1;
+	--text-5xl--letter-spacing: -0.02em;
+}
+
+:root {
+	--radius: 0.625rem;
+	--background: oklch(0.99 0.001 90);
+	--foreground: oklch(0.21 0.004 90);
+	--card: oklch(0.99 0.001 90);
+	--card-foreground: oklch(0.21 0.004 90);
+	--popover: oklch(0.995 0.001 90);
+	--popover-foreground: oklch(0.21 0.004 90);
+	--primary: oklch(0.46 0.07 210);
+	--primary-foreground: oklch(0.99 0.001 90);
+	--secondary: oklch(0.955 0.002 90);
+	--secondary-foreground: oklch(0.21 0.004 90);
+	--muted: oklch(0.955 0.002 90);
+	--muted-foreground: oklch(0.49 0.004 90);
+	--accent: oklch(0.955 0.02 210);
+	--accent-foreground: oklch(0.21 0.004 90);
+	--destructive: oklch(0.5 0.19 20);
+	--border: oklch(0.9 0.003 90);
+	--input: oklch(0.66 0.004 90);
+	--ring: oklch(0.46 0.07 210);
+	--shadow-color: oklch(0.21 0.004 90 / 0.08);
+}
+
+.dark {
+	--background: oklch(0.18 0.002 90);
+	--foreground: oklch(0.94 0.002 90);
+	--card: oklch(0.215 0.002 90);
+	--card-foreground: oklch(0.94 0.002 90);
+	--popover: oklch(0.235 0.002 90);
+	--popover-foreground: oklch(0.94 0.002 90);
+	--primary: oklch(0.78 0.08 205);
+	--primary-foreground: oklch(0.18 0.002 90);
+	--secondary: oklch(0.27 0.002 90);
+	--secondary-foreground: oklch(0.94 0.002 90);
+	--muted: oklch(0.25 0.002 90);
+	--muted-foreground: oklch(0.72 0.003 90);
+	--accent: oklch(0.29 0.025 205);
+	--accent-foreground: oklch(0.94 0.002 90);
+	--destructive: oklch(0.76 0.15 22);
+	--border: oklch(0.32 0.003 90);
+	--input: oklch(0.52 0.003 90);
+	--ring: oklch(0.78 0.08 205);
+	--shadow-color: oklch(0 0 0 / 0.5);
+}
+
+@layer base {
+	* {
+		@apply border-border outline-ring;
 	}
-}
-
-body {
-	background: var(--background);
-	color: var(--foreground);
-	font-family: Arial, Helvetica, sans-serif;
+	/* Links share the controls' focus treatment: a full-strength edge inside a half-strength halo. */
+	a:focus-visible {
+		@apply ring-3 ring-ring/50 outline-1;
+	}
+	html {
+		@apply font-sans;
+	}
+	body {
+		@apply bg-background text-foreground;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		*,
+		::before,
+		::after {
+			animation-duration: 0.01ms !important;
+			animation-iteration-count: 1 !important;
+			transition-duration: 0.01ms !important;
+			scroll-behavior: auto !important;
+		}
+	}
 }
