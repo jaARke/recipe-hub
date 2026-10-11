@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { durationMinutesSchema, formatDuration, totalMinutes } from '@/domain/recipe/duration';
+import {
+	durationMinutesSchema,
+	formatDuration,
+	toIsoDuration,
+	totalMinutes,
+} from '@/domain/recipe/duration';
 
 describe('formatDuration', () => {
 	it.each([
@@ -13,6 +18,19 @@ describe('formatDuration', () => {
 		[270, '4 hr 30 min'],
 	])('writes %s minutes as %s', (minutes, expected) => {
 		expect(formatDuration(minutes)).toBe(expected);
+	});
+});
+
+describe('toIsoDuration', () => {
+	it.each([
+		[0, 'PT0M'],
+		[45, 'PT45M'],
+		[60, 'PT1H'],
+		[90, 'PT1H30M'],
+		[225, 'PT3H45M'],
+		[240, 'PT4H'],
+	])('writes %s minutes as %s', (minutes, expected) => {
+		expect(toIsoDuration(minutes)).toBe(expected);
 	});
 });
 

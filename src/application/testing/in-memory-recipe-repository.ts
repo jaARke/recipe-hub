@@ -31,6 +31,10 @@ export class InMemoryRecipeRepository implements RecipeRepository {
 			.slice(page.offset, page.offset + page.limit);
 	}
 
+	async count(): Promise<number> {
+		return this.recipes.size;
+	}
+
 	async create(recipe: NewRecipe): Promise<Recipe> {
 		const now = new Date();
 		const created: Recipe = {

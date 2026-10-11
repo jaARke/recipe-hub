@@ -10,7 +10,7 @@ import {
 	toRecipeSummaryDto,
 	type PublicRecipeDto,
 	type RecipeRef,
-	type RecipeSummaryDto,
+	type RecipeSummaryPage,
 } from '@/application/recipes/recipe-dtos';
 import { assertCanModifyRecipe } from '@/application/recipes/recipe-policy';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
@@ -77,14 +77,17 @@ export class RecipeService {
 		return recipe === null ? null : toPublicRecipeDto(recipe);
 	}
 
-	async listRecipes(page: RecipePage): Promise<RecipeSummaryDto[]> {
+	async listRecipes(page: RecipePage): Promise<RecipeSummaryPage> {
 		const result = recipePageSchema.safeParse(page);
 		if (!result.success) {
 			throw new InvalidRecipePageError();
 		}
 
-		const recipes = await this.recipes.list(result.data);
-		return recipes.map(toRecipeSummaryDto);
+		const [recipes, total] = await Promise.all([
+			this.recipes.list(result.data),
+			this.recipes.count(),
+		]);
+		return { recipes: recipes.map(toRecipeSummaryDto), total };
 	}
 
 	// Writes resolve the actor first, so an anonymous caller learns nothing about which recipes exist.

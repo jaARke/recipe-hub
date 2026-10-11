@@ -27,6 +27,12 @@ export type RecipeSummaryDto = {
 	createdAt: Date;
 };
 
+// One page of the list, with the count of every recipe so the list can number its pages.
+export type RecipeSummaryPage = {
+	recipes: RecipeSummaryDto[];
+	total: number;
+};
+
 // Returned by writes, so callers can redirect to the recipe and invalidate its cache tags.
 export type RecipeRef = {
 	id: RecipeId;

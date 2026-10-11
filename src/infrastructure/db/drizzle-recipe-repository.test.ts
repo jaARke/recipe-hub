@@ -10,15 +10,15 @@ import {
 	type RecipeContentInput,
 	type RecipeId,
 } from '@/domain/recipe/recipe';
-import { slugCandidate, slugify } from '@/domain/recipe/slug';
-import { tagKey } from '@/domain/recipe/tag';
 import {
 	sampleButtermilkBiscuits,
 	sampleChickenSoup,
 	sampleLemonIceboxPie,
 	sampleRecipeContents,
 	sampleTomatoSalad,
-} from '@/domain/recipe/testing/sample-recipes';
+} from '@/domain/recipe/samples/sample-recipes';
+import { slugCandidate, slugify } from '@/domain/recipe/slug';
+import { tagKey } from '@/domain/recipe/tag';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { recipes } from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
@@ -89,8 +89,8 @@ describe('create', () => {
 			{
 				...sampleChickenSoup,
 				images: [
-					{ role: 'dish', pathname: 'recipes/soup.jpg', alt: 'A bowl of chicken soup' },
-					{ role: 'scan', pathname: 'scans/soup-card.jpg' },
+					{ role: 'dish', pathname: 'dish/soup.jpg', alt: 'A bowl of chicken soup' },
+					{ role: 'scan', pathname: 'scan/soup-card.jpg' },
 				],
 			},
 			{ provenance }
@@ -174,6 +174,18 @@ describe('list', () => {
 		const listed = await repository.list({ limit: 10, offset: 0 });
 
 		expect(listed.map(({ id }) => id)).toEqual([second.id, first.id]);
+	});
+});
+
+describe('count', () => {
+	it('counts every recipe', async () => {
+		expect(await repository.count()).toBe(0);
+
+		for (const content of sampleRecipeContents.slice(0, 3)) {
+			await repository.create(newRecipe(content));
+		}
+
+		expect(await repository.count()).toBe(3);
 	});
 });
 

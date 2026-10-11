@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { recipeContentSchema } from '@/domain/recipe/recipe';
 import { recipeDraftContentSchema, recipeDraftSchema } from '@/domain/recipe/recipe-draft';
 import { recipeProblemsFromZodError } from '@/domain/recipe/recipe-problem';
-import { sampleLemonIceboxPie } from '@/domain/recipe/testing/sample-recipes';
+import { sampleLemonIceboxPie } from '@/domain/recipe/samples/sample-recipes';
 
 describe('recipeDraftContentSchema', () => {
 	it('accepts empty content', () => {

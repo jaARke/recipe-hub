@@ -6,7 +6,7 @@ import {
 	sampleButtermilkBiscuits,
 	sampleChickenSoup,
 	sampleRecipeContents,
-} from '@/domain/recipe/testing/sample-recipes';
+} from '@/domain/recipe/samples/sample-recipes';
 
 function problemPaths(input: unknown): string[] {
 	const result = recipeContentSchema.safeParse(input);
@@ -66,9 +66,9 @@ describe('recipeContentSchema', () => {
 
 	it('rejects an image attached twice', () => {
 		const images = [
-			{ role: 'dish', pathname: 'soup.jpg' },
-			{ role: 'scan', pathname: 'card.jpg' },
-			{ role: 'dish', pathname: 'soup.jpg', alt: 'A bowl of soup' },
+			{ role: 'dish', pathname: 'dish/soup.jpg' },
+			{ role: 'scan', pathname: 'scan/card.jpg' },
+			{ role: 'dish', pathname: 'dish/soup.jpg', alt: 'A bowl of soup' },
 		];
 		expect(problemPaths({ ...sampleChickenSoup, images })).toEqual(['images.2.pathname']);
 	});

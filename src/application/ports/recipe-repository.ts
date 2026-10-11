@@ -21,6 +21,7 @@ export interface RecipeRepository {
 	findBySlug(slug: string): Promise<Recipe | null>;
 	// Newest first.
 	list(page: RecipePage): Promise<Recipe[]>;
+	count(): Promise<number>;
 	create(recipe: NewRecipe): Promise<Recipe>;
 	// Replaces the content and returns null when no recipe has this id.
 	update(id: RecipeId, content: RecipeContent): Promise<Recipe | null>;

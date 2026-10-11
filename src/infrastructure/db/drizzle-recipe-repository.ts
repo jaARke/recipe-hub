@@ -39,6 +39,10 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 		return rows.map(toRecipe);
 	}
 
+	async count(): Promise<number> {
+		return this.db.$count(recipes);
+	}
+
 	async create(recipe: NewRecipe): Promise<Recipe> {
 		const taken = await this.findTakenSlugs(recipe.slugBase);
 
