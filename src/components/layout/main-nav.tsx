@@ -7,10 +7,8 @@ type NavItem = { href: string; label: string };
 
 const navItems: readonly NavItem[] = [{ href: '/', label: 'Recipes' }];
 
-function MainNav() {
-	// Under Cache Components this suspends below unknown dynamic params; wrap MainNav in Suspense once a route has one.
-	const pathname = usePathname();
-
+// Without a pathname, as while MainNav waits for one, no link is marked as the current page.
+function MainNavLinks({ pathname }: { pathname?: string }) {
 	return (
 		<nav aria-label="Main">
 			<ul className="flex items-center gap-1">
@@ -30,4 +28,9 @@ function MainNav() {
 	);
 }
 
-export { MainNav };
+// Under Cache Components this suspends below unknown dynamic params, so it renders inside Suspense.
+function MainNav() {
+	return <MainNavLinks pathname={usePathname()} />;
+}
+
+export { MainNav, MainNavLinks };

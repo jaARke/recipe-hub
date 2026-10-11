@@ -2,7 +2,14 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 
-@custom-variant dark (&:is(.dark *));
+/* Paper is light, so the dark theme applies on screen only and printouts use the light tokens. */
+@custom-variant dark {
+	@media screen {
+		&:is(.dark *) {
+			@slot;
+		}
+	}
+}
 
 @theme inline {
 	--color-background: var(--background);
@@ -95,26 +102,28 @@
 	--shadow-color: oklch(0.21 0.004 90 / 0.08);
 }
 
-.dark {
-	--background: oklch(0.18 0.002 90);
-	--foreground: oklch(0.94 0.002 90);
-	--card: oklch(0.215 0.002 90);
-	--card-foreground: oklch(0.94 0.002 90);
-	--popover: oklch(0.235 0.002 90);
-	--popover-foreground: oklch(0.94 0.002 90);
-	--primary: oklch(0.78 0.08 205);
-	--primary-foreground: oklch(0.18 0.002 90);
-	--secondary: oklch(0.27 0.002 90);
-	--secondary-foreground: oklch(0.94 0.002 90);
-	--muted: oklch(0.25 0.002 90);
-	--muted-foreground: oklch(0.72 0.003 90);
-	--accent: oklch(0.29 0.025 205);
-	--accent-foreground: oklch(0.94 0.002 90);
-	--destructive: oklch(0.76 0.15 22);
-	--border: oklch(0.32 0.003 90);
-	--input: oklch(0.52 0.003 90);
-	--ring: oklch(0.78 0.08 205);
-	--shadow-color: oklch(0 0 0 / 0.5);
+@media screen {
+	.dark {
+		--background: oklch(0.18 0.002 90);
+		--foreground: oklch(0.94 0.002 90);
+		--card: oklch(0.215 0.002 90);
+		--card-foreground: oklch(0.94 0.002 90);
+		--popover: oklch(0.235 0.002 90);
+		--popover-foreground: oklch(0.94 0.002 90);
+		--primary: oklch(0.78 0.08 205);
+		--primary-foreground: oklch(0.18 0.002 90);
+		--secondary: oklch(0.27 0.002 90);
+		--secondary-foreground: oklch(0.94 0.002 90);
+		--muted: oklch(0.25 0.002 90);
+		--muted-foreground: oklch(0.72 0.003 90);
+		--accent: oklch(0.29 0.025 205);
+		--accent-foreground: oklch(0.94 0.002 90);
+		--destructive: oklch(0.76 0.15 22);
+		--border: oklch(0.32 0.003 90);
+		--input: oklch(0.52 0.003 90);
+		--ring: oklch(0.78 0.08 205);
+		--shadow-color: oklch(0 0 0 / 0.5);
+	}
 }
 
 @layer base {

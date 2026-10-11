@@ -2,9 +2,11 @@ import { cn } from 'cn';
 import type { Metadata } from 'next';
 import { Fraunces, Hanken_Grotesk, JetBrains_Mono } from 'next/font/google';
 import { SiteHeader } from '@/components/layout/site-header';
+import { siteName } from '@/components/layout/site-name';
 import { ThemeProvider } from '@/components/layout/theme-provider';
 import { Toaster } from '@/components/ui/toast';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { siteUrl } from '@/lib/env';
 import './globals.css';
 
 const fraunces = Fraunces({
@@ -24,8 +26,11 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-	title: { default: 'Recipe Hub', template: '%s | Recipe Hub' },
+	metadataBase: siteUrl,
+	title: { default: siteName, template: `%s | ${siteName}` },
 	description: 'Browse, search, and cook from a shared recipe collection.',
+	// Kept out of search results until launch; links are still followed so crawlers see each noindex.
+	robots: { index: false, follow: true },
 };
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {

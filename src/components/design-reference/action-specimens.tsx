@@ -2,6 +2,15 @@ import { ArrowRightIcon, ClockIcon, PlusIcon } from 'lucide-react';
 import { Specimen, SpecimenLabel } from '@/components/design-reference/reference-section';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+	Pagination,
+	PaginationContent,
+	PaginationEllipsis,
+	PaginationItem,
+	PaginationLink,
+	PaginationNext,
+	PaginationPrevious,
+} from '@/components/ui/pagination';
 import { Spinner } from '@/components/ui/spinner';
 
 const buttonVariantNames = [
@@ -104,4 +113,63 @@ function BadgeSpecimen() {
 	);
 }
 
-export { BadgeSpecimen, ButtonSpecimen };
+// Every link stays on this page; the recipe list builds its own from the page count.
+function SamplePageLinks({
+	pages,
+	currentPage,
+}: {
+	pages: readonly number[];
+	currentPage: number;
+}) {
+	return pages.map((page) => (
+		<PaginationItem key={page}>
+			<PaginationLink
+				href="#pagination"
+				isActive={page === currentPage}
+				aria-label={`Page ${page}`}
+			>
+				{page}
+			</PaginationLink>
+		</PaginationItem>
+	));
+}
+
+function PaginationSpecimen() {
+	return (
+		<div className="grid gap-6 md:grid-cols-2">
+			<Specimen label="A middle page, with gaps on both sides">
+				<Pagination>
+					<PaginationContent>
+						<PaginationItem>
+							<PaginationPrevious href="#pagination" />
+						</PaginationItem>
+						<SamplePageLinks pages={[1]} currentPage={5} />
+						<PaginationItem>
+							<PaginationEllipsis />
+						</PaginationItem>
+						<SamplePageLinks pages={[4, 5, 6]} currentPage={5} />
+						<PaginationItem>
+							<PaginationEllipsis />
+						</PaginationItem>
+						<SamplePageLinks pages={[10]} currentPage={5} />
+						<PaginationItem>
+							<PaginationNext href="#pagination" />
+						</PaginationItem>
+					</PaginationContent>
+				</Pagination>
+			</Specimen>
+			<Specimen label="The first page, which has no previous link">
+				<Pagination>
+					<PaginationContent>
+						<SamplePageLinks pages={[1, 2, 3]} currentPage={1} />
+						<PaginationItem>
+							<PaginationNext href="#pagination" />
+						</PaginationItem>
+					</PaginationContent>
+				</Pagination>
+			</Specimen>
+		</div>
+	);
+}
+
+export { BadgeSpecimen, ButtonSpecimen, PaginationSpecimen };
