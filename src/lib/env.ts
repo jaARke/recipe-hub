@@ -5,6 +5,8 @@ const envSchema = z.object({
 	NODE_ENV: z.enum(['development', 'production', 'test']),
 	// Set by Vercel on deployments; absent when running Next.js directly.
 	VERCEL_ENV: z.enum(['development', 'preview', 'production']).optional(),
+	// Pooled connection for the app; migrations use the unpooled URL through drizzle.config.ts.
+	DATABASE_URL: z.url(),
 });
 
 export const env = envSchema.parse(process.env);

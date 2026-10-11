@@ -26,6 +26,57 @@ const eslintConfig = defineConfig([
 			],
 		},
 	},
+	{
+		files: ['**/*.{js,mjs,cjs,ts,tsx}'],
+		rules: {
+			'no-restricted-properties': [
+				'error',
+				{
+					object: 'process',
+					property: 'env',
+					message: 'Read configuration from src/lib/env.ts instead of process.env.',
+				},
+				{
+					object: 'globalThis',
+					property: 'process',
+					message: 'Read configuration from src/lib/env.ts instead of process.env.',
+				},
+			],
+			'no-restricted-imports': [
+				'error',
+				{
+					paths: [
+						{
+							name: 'process',
+							message: 'Read configuration from src/lib/env.ts instead of process.env.',
+						},
+						{
+							name: 'node:process',
+							message: 'Read configuration from src/lib/env.ts instead of process.env.',
+						},
+					],
+				},
+			],
+		},
+	},
+	{
+		files: ['src/**/*.{ts,tsx}'],
+		rules: {
+			'no-restricted-syntax': [
+				'error',
+				{
+					selector:
+						"CallExpression[callee.object.name='logger'][callee.property.name=/^(info|warn|error)$/][arguments.0.type!='Literal']",
+					message: 'Log a constant message and put values in the fields argument.',
+				},
+			],
+		},
+	},
+	{
+		// drizzle-kit loads drizzle.config.ts outside Next, where env.ts cannot import server-only.
+		files: ['src/lib/env.ts', 'drizzle.config.ts'],
+		rules: { 'no-restricted-properties': 'off', 'no-restricted-imports': 'off' },
+	},
 	// Override default ignores of eslint-config-next.
 	globalIgnores([
 		// Default ignores of eslint-config-next:
