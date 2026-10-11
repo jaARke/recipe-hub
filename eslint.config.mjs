@@ -60,7 +60,7 @@ const eslintConfig = defineConfig([
 		},
 	},
 	{
-		files: ['src/**/*.{ts,tsx}'],
+		files: ['src/**/*.{ts,tsx}', 'scripts/**/*.ts'],
 		rules: {
 			'no-restricted-syntax': [
 				'error',
@@ -73,8 +73,8 @@ const eslintConfig = defineConfig([
 		},
 	},
 	{
-		// drizzle-kit loads drizzle.config.ts outside Next, where env.ts cannot import server-only.
-		files: ['src/lib/env.ts', 'drizzle.config.ts'],
+		// Entry points outside Next read their own variables: drizzle-kit's config and tsx scripts.
+		files: ['src/lib/env.ts', 'drizzle.config.ts', 'scripts/**/*.ts'],
 		rules: { 'no-restricted-properties': 'off', 'no-restricted-imports': 'off' },
 	},
 	// Override default ignores of eslint-config-next.
