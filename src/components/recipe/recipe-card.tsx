@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { formatDuration } from '@/domain/recipe/duration';
 
 type RecipeCardProps = {
 	title: string;
@@ -11,21 +12,6 @@ type RecipeCardProps = {
 	tags: readonly string[];
 	href: string;
 };
-
-function formatMinutes(totalMinutes: number) {
-	const hours = Math.floor(totalMinutes / 60);
-	const minutes = totalMinutes % 60;
-
-	if (hours === 0) {
-		return `${minutes} min`;
-	}
-
-	if (minutes === 0) {
-		return `${hours} hr`;
-	}
-
-	return `${hours} hr ${minutes} min`;
-}
 
 function RecipeCard({ title, source, totalMinutes, yieldText, tags, href }: RecipeCardProps) {
 	return (
@@ -39,7 +25,7 @@ function RecipeCard({ title, source, totalMinutes, yieldText, tags, href }: Reci
 					<dl className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs tracking-wide text-muted-foreground uppercase">
 						<div>
 							<dt className="sr-only">Total time</dt>
-							<dd>{formatMinutes(totalMinutes)}</dd>
+							<dd>{formatDuration(totalMinutes)}</dd>
 						</div>
 						<div>
 							<dt className="sr-only">Yield</dt>
