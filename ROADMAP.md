@@ -59,14 +59,24 @@ Recipe Hub is one Next.js project organized as a layered, ports-and-adapters arc
 
 - **The application layer is the Data Access Layer** that the Next.js data security guide recommends: server-only, deciding for every read and write what the actor (an anonymous visitor or a member) may see or do, and returning minimal DTOs to the render context.
 - **`src/components/ui/`** holds the shadcn primitives, which are adjusted only through tokens and variants. Feature components in `src/components/<feature>/` compose primitives and receive data as props. They never fetch data or call services.
+- **Test kits** live in a `testing/` directory beside the layer they serve (synthetic samples in `src/domain/recipe/testing/`, in-memory port fakes in `src/application/testing/`, a migrated PGlite database in `src/infrastructure/db/testing/`). Only tests import them.
 
 ### 4.2 Dependency rules and enforcement
 
 - Domain imports only `zod` and pure helpers from `src/lib`. Application imports domain and `src/lib`. Neither imports Next.js, React, Drizzle, or a vendor SDK.
 - Presentation never imports infrastructure. Route Handlers that mount a vendor handler (the Better Auth endpoint) obtain it from composition.
-- Only `src/lib/env.ts` reads `process.env`. Everything else receives configuration from it.
+- Only `src/lib/env.ts` reads `process.env`. Everything else receives configuration from it. The one exception is `drizzle.config.ts`: drizzle-kit loads it outside Next, where `env.ts`'s `server-only` import cannot resolve, so it loads `.env.local` with `@next/env` and reads its own variable.
 - Server modules begin with `import 'server-only'`. Client components (`'use client'`) import only components, domain types, and pure helpers.
-- Session 2 adds enforcement: a `lint:boundaries` script running dependency-cruiser (the tool and script name the owner's other projects use) and an ESLint restriction on `process.env`. A rule that tooling cannot enforce is written here and checked in review.
+- **Enforcement.** `pnpm lint:boundaries` runs dependency-cruiser with `.dependency-cruiser.ts` (the owner's precedent from sage, kept to a short hand-written rule list). Type-only imports count. It checks that:
+  - domain imports only domain, pure `src/lib` helpers (not `env.ts` or `logger.ts`), and `zod`;
+  - application imports only application, domain, `src/lib` without `env.ts`, `zod`, and `server-only`;
+  - infrastructure and composition never import presentation, presentation never imports infrastructure, and components never import composition;
+  - `src/lib` imports no other layer;
+  - test kits and Vitest are imported only by tests;
+  - there are no cycles and no unresolvable imports;
+  - every application, infrastructure, and composition module imports `server-only`, except the two files drizzle-kit loads outside Next (`schema.ts` and `connection-string.ts` in `src/infrastructure/db/`).
+- ESLint forbids `process.env`, `globalThis.process`, and importing `process` outside `src/lib/env.ts` and `drizzle.config.ts`, and requires every `logger` message to be a string literal.
+- A rule that tooling cannot enforce is written here and checked in review.
 
 ### 4.3 Patterns
 
@@ -76,7 +86,7 @@ Recipe Hub is one Next.js project organized as a layered, ports-and-adapters arc
 | Strategy | `RecipeExtractor` port with JSON-LD, AI text, and AI vision implementations | The entry modes differ only in how a draft is produced. |
 | Adapter | Every infrastructure class | Vendor APIs are translated into port contracts. |
 | Composition root with constructor injection | `src/composition/` | Explicit wiring without a DI framework, and fakes injected in tests. |
-| Value object | Quantities, units, durations, yields | Each invariant lives in one place. |
+| Value object | Amounts, durations, yields, slugs, tags | Each invariant lives in one place. |
 | Mapper | Infrastructure (row to domain) and application (domain to DTO) | Each boundary owns its translation. |
 | Draft, review, save | All three entry modes | AI output is never saved unreviewed: every mode produces a `RecipeDraft` that the member reviews in the same form before saving. |
 
@@ -127,31 +137,50 @@ src/
   lib/                    env, logger, shared helpers
 ```
 
-Files are kebab-case (`recipe-repository.ts`), classes and types PascalCase, functions camelCase. Tests sit beside the code they test as `*.test.ts`.
+At the root, `drizzle.config.ts` configures drizzle-kit, `vercel.json` sets the build command that migrates before `next build`, and `.dependency-cruiser.ts` holds the boundary rules.
+
+Files are kebab-case (`recipe-repository.ts`), classes and types PascalCase, functions camelCase. Non-component modules export inline. Tests sit beside the code they test as `*.test.ts`.
 
 ### 4.6 Cross-cutting concerns
 
-- **Configuration:** `src/lib/env.ts` validates every variable with Zod once and exports a typed object (created in Session 1 with `NODE_ENV` and `VERCEL_ENV`; later sessions add their variables there). Vercel supplies the values; local development pulls them with `vercel env pull`.
-- **Errors:** domain and application errors are typed classes with stable codes. Presentation maps codes to user-facing messages, and unexpected errors reach Next.js error boundaries.
-- **Logging:** one logger module with one message structure: a constant message plus structured fields, with no values interpolated into messages. Lifecycle events (recipe created, import started or failed, access requested or granted, invite issued) log at info, recoverable problems at warn, failures at error. Never log tokens or family members' contact details.
-- **Validation:** Zod at every boundary: form input, AI output, scraped data, and database reads where types can drift.
-- **Testing:** Vitest for domain and application code with in-memory fakes for ports; integration tests for repositories against a Neon branch; Playwright for a few end-to-end flows once the core flows exist. Fixtures are synthetic or public-domain recipes, never real family data.
+- **Configuration:** `src/lib/env.ts` validates every variable with Zod once and exports a typed object (`NODE_ENV`, `VERCEL_ENV`, and the pooled `DATABASE_URL`; later sessions add their variables there). Vercel supplies the values; local development pulls them with `vercel env pull`. `drizzle.config.ts` reads `DATABASE_URL_UNPOOLED` itself (section 4.2).
+- **Errors:**
+  - Expected failures are classes extending `AppError` (`src/lib/errors.ts`) with a stable `code`: `recipe.invalid`, `recipe.not-found`, `recipe.invalid-page`, `access.sign-in-required`, `access.forbidden`.
+  - Reads return `null` when nothing is found; writes throw. Validation failures carry problems with dotted paths (`ingredientSections.0.lines.2.item`), the same shape drafts use, so the form renders both alike.
+  - Server Actions return expected errors as values and rethrow anything else, as the bundled error-handling guide says. Production masks thrown server errors to a digest, so a code never reaches the client by being thrown.
+  - Presentation maps codes to user-facing messages, and unexpected errors reach Next.js error boundaries.
+- **Logging:** `getLogger(name)` in `src/lib/logger.ts` writes one JSON line per event (`level`, `logger`, `message`, camelCase fields, and `err` serialized with its code and cause) through the console method matching the level, because Vercel takes a line's level from the console method, not from the JSON. It has no dependency. Messages are constant (ESLint enforces it), with values in the fields. Lifecycle events (recipe created, import started or failed, access requested or granted, invite issued) log at info with the acting `memberId`, recoverable problems at warn, failures at error. Never log tokens or family members' contact details.
+- **Validation:** Zod at every boundary: form input, AI output, scraped data, and every database read of a recipe document.
+- **Testing:**
+  - Vitest for domain and application code, with in-memory fakes for ports. Vitest aliases `server-only` to Next's own empty module, so server modules import in tests.
+  - Repository tests run against PGlite (Postgres 18.3 in WASM, with `pg_trgm`, `unaccent`, and `pgvector` available) built by the real migrations, inside `pnpm test`, with no secrets or branch quota.
+  - Playwright for a few end-to-end flows once the core flows exist.
+  - Fixtures are synthetic or public-domain recipes, never real family data.
 
 ## 5. Specifications and constraints
 
 ### 5.1 Recipe model
 
-The normalized shape every entry mode produces. Session 2 finalizes it; this is the starting point.
+The normalized shape every entry mode produces, finalized in Session 2 in `src/domain/recipe/`.
 
-- Title, short description, and notes (the story behind the recipe).
-- Source: who or where the recipe comes from (for example, "Grandma Rose" or a cookbook), distinct from the member who entered it.
-- Yield (servings or amount) and times (prep, cook, total) as value objects.
-- Ingredient sections, each with an optional heading and ingredient lines: quantity (including fractions and ranges), unit, item, preparation note, and the original text kept verbatim.
-- Instruction sections of ordered steps.
-- Tags (course, cuisine, dietary, occasion) from a managed vocabulary.
-- Images, each with a role: dish photos (public, shown on recipe pages and in previews) and original scans (members only).
-- Provenance: entry mode (manual, URL, photo), source URL, original images, and which model produced an AI draft.
-- Contributor and timestamps.
+- **Content** (member-editable): a title; an optional description, notes (the story behind the recipe), and source (who or where the recipe comes from, such as "Grandma Rose" or a cookbook, distinct from the member who entered it).
+- **Yield and times:** a yield is servings or "makes" an amount with an optional unit ("Serves 4 to 6", "Makes 10 biscuits"). Times are optional prep, cook, and total minutes; a stated total wins, otherwise prep plus cook.
+- **Amounts:** a positive decimal or a range (`{ min, max? }`), displayed as the nearest common fraction (halves, thirds, quarters, eighths). Units are free text as written.
+- **Ingredients and steps:** ingredient sections, each with an optional heading and lines that keep the original text verbatim beside their amount, unit, item, and preparation note. Instruction sections of steps, each an object with text, so a step can gain fields without reshaping stored recipes.
+- **Tags** are dynamic, with no fixed vocabulary or groups. The first recipe to use a tag sets its label; later spellings that differ only in case or spacing reuse it, and a contributor can respell a tag that only their recipe uses. Two saves racing to introduce the same new tag in different spellings can keep both; at this scale that is accepted and fixed by a merge.
+- **Images**, each with a role: dish photos (public; the first is the cover) and original scans (members only). Array order is display order.
+- **Provenance**, set at creation: the entry mode (`manual`, `url` with its source URL, or `photo`) and which model produced an AI draft.
+- **Identity:** uuidv7 ids generated by Postgres 18, a slug assigned once from the title (ASCII, at most 60 characters, `-2` and up on a collision) and never rewritten, so shared links keep working, the contributor, and timestamps.
+- **`RecipeDraft`:** the same content with every field optional, plus provenance and problems. Drafts are never saved; members review them in the recipe form.
+
+**Storage.** One `recipes` row per recipe: `content` (a jsonb document), `provenance` (jsonb), `tags` (`text[]`), and columns for id, slug, contributor, and timestamps. The mapper validates every read with the domain schema, which keeps schema changes small:
+
+- An added optional field needs no migration.
+- A new required field needs a default or a one-statement backfill.
+- A rename or restructure is a small SQL data migration.
+- A field that needs filtering or sorting becomes a generated column computed from `content`.
+
+Unknown keys are dropped on read, so older code that re-saves a recipe would drop fields newer code added; add fields in one deployment before anything depends on them.
 
 ### 5.2 Entry modes
 
@@ -166,7 +195,7 @@ The normalized shape every entry mode produces. Session 2 finalizes it; this is 
 - Typo tolerance and partial matches with `pg_trgm`, accent-insensitive matching with `unaccent`.
 - Filters: tags, source, contributor, total time, date added.
 - Relevance ranking, highlighted matches, pagination, and URL-held state.
-- To evaluate: `pg_search` (BM25 ranking) and semantic search with `pgvector` embeddings created at save time. Both extensions are available on the Neon database.
+- To evaluate: BM25 ranking with Neon's `lakebase_text` (Neon retired `pg_search` on 2026-09-21) and semantic search with `pgvector` embeddings created at save time.
 
 ### 5.4 Access control
 
@@ -183,14 +212,16 @@ The normalized shape every entry mode produces. Session 2 finalizes it; this is 
 - Vercel project `recipe-hub` in team `jrichard-personal` (Pro plan). Functions, Neon, and Blob are all in `iad1`.
 - Production is `https://recipes.jakerichard.tech`: a CNAME (TTL 300) in the `jakerichard.tech` Route 53 zone, with a Let's Encrypt certificate managed by Vercel. The `vercel.app` production alias redirects to it with a 308, as the personal-site project does for its own alias.
 - The Route 53 zone is in the owner's personal AWS account: use `--profile personal`. The default AWS profile is a work account and is never used for this project.
-- No staging environment. Pull requests get preview deployments behind Vercel Authentication, and from Session 2 each preview gets its own Neon branch.
+- No staging environment. Pull requests get preview deployments behind Vercel Authentication, and each gets its own Neon branch, `preview/<git-branch>`, created by the integration and deleted by `.github/workflows/preview-branch-cleanup.yml` when the pull request closes.
+- Local development uses the Neon branch `develop` through Development-scoped variables, never production.
+- Every build migrates its database before `next build` (`vercel.json`'s `buildCommand`). The previous deployment keeps serving during and after a production build, and Skew Protection keeps old Server Actions alive for 12 hours, so migrations are expand then contract: additive first, removals in a later deployment.
 - Environment variables are managed in Vercel and pulled locally with `vercel env pull`. The AI Gateway authenticates with Vercel's OIDC token, so no provider keys exist.
 - Email (access-request notifications, invites when sent by email, and sign-in codes) goes through Resend's free plan, with SPF and DKIM records for a sending domain in Route 53.
 
 ### 5.6 Platform limits that shape the design
 
 - Function request bodies are capped at 4.5 MB, so every image upload goes from the browser directly to Blob.
-- Neon Free plan: 1 GB storage, 100 compute-hours a month, 10 branches.
+- Neon Free plan: 1 GB storage, 100 compute-hours a month, 10 branches (production, `develop`, and one per open pull request). Preview deployments fail at the branch cap.
 - AI Gateway free tier: $5 a month, a subset of models, and lower rate limits. Buying credits unlocks every model at provider list price.
 - Functions run up to 800 seconds on Pro. Import actions set `maxDuration` explicitly.
 - Resend free plan: 3,000 emails a month and 100 a day, from a verified domain only.
@@ -216,7 +247,8 @@ Recipes are meant to be shared, so links need good previews before the site is u
 - **Formatting:** the owner's shared scheme from the Vispero/sage project: Prettier with tabs, single quotes, width 100, `es5` trailing commas, LF line endings, and perfectionist import sorting. Run `pnpm format`; never hand-format against it.
 - **Scripts:** `lint` runs every `lint:*` script, so new checks are added as `lint:*`.
 - **Commits:** a plain imperative sentence describing the change, without prefixes.
-- **Dependencies:** added with their first consumer, chosen against current documentation, installed with pnpm.
+- **Dependencies:** added with their first consumer, chosen against current documentation, installed with pnpm. pnpm blocks dependency build scripts, so each package that has one is listed in `pnpm-workspace.yaml`'s `allowBuilds` deliberately (`esbuild: false`: drizzle-kit's bundler runs from its platform package without the script).
+- **Migrations:** change `src/infrastructure/db/schema.ts`, run `pnpm db:generate --name <change>`, and commit the generated files. Never edit an applied migration. drizzle-kit 0.31 applies only migrations newer than the last one applied, so an older migration merged late would be skipped silently. `drizzle-kit check` (`pnpm lint:migrations`) only warns about that, so a test fails when the journal is out of timestamp order.
 - **UI primitives:** added with `pnpm shadcn add <name>`, then `pnpm format` and `pnpm exec eslint . --fix` (section 6.3).
 - **Documents:** `README.md` for setup, this file for plan and guidance, `AGENTS.md` for agent instructions.
 
@@ -344,13 +376,26 @@ The owner likes [tanstack.com](https://tanstack.com/) and [mstone.ai](https://ms
 | 2026-10-10 | Access requests reviewed on an admin page; email for notifications and sign-in codes through Resend's free plan | $0 at this volume, and the email-code fallback needs a sender anyway. |
 | 2026-10-10 | Sessions reordered: public browsing and search before authentication and authoring | Browsing no longer needs sign-in, so something shareable lands sooner. |
 | 2026-10-10 | Icons, manifest, the site-wide Open Graph image, and `metadataBase` in the launch session; per-recipe Open Graph images and JSON-LD with public browsing; `next/og`, not `@vercel/og` | Owner's placement. `@vercel/og` ships inside Next. |
+| 2026-10-10 | Drizzle ORM 0.45.4 with drizzle-kit 0.31.11, written ready for 1.0 (no relational queries, no `casing` option, no drizzle-zod) | 1.0 is a release candidate that still breaks APIs between releases, and Better Auth's relations-v2 schema generator has an open bug. 0.45 skips a migration merged out of timestamp order, so a test checks the journal's order. |
+| 2026-10-10 | `pg` with `attachDatabasePool` on the pooled URL; migrations on the unpooled URL; `sslmode` pinned to `verify-full` | Neon's and Vercel's recommendation for Fluid compute, with interactive transactions. The HTTP driver has none, and its migrator is not transactional. pg 8 already verifies fully and warns that pg 9 will not. |
+| 2026-10-10 | uuidv7 ids from Postgres 18 on every table; a recipe slug assigned once from the title | Readable share links that never break, and one ID strategy that Better Auth's tables can follow in Session 5. Renames keep the slug; duplicate titles get `-2`. |
+| 2026-10-10 | A recipe is a jsonb `content` document plus `provenance`, `tags`, and identity columns | Owner's direction: small schema changes stay cheap. Generated columns can read the row's own document, which suits Session 4's search. Replaces one table per section. |
+| 2026-10-10 | Amounts as positive decimals or ranges, units as written, original lines verbatim | What Mealie, Tandoor, and parse-ingredient store; display snaps to common fractions. |
+| 2026-10-10 | Dynamic tags: the first recipe to use a tag sets its label | Owner's direction, replacing a managed vocabulary with groups. |
+| 2026-10-10 | Typed error classes with stable codes; reads return `null`; Server Actions return expected errors as values | The bundled error-handling guide, with one error channel through the layers. A result type would thread through every caller while repositories still throw. |
+| 2026-10-10 | Authorization through an `ActorProvider` port with an always-anonymous placeholder until Session 5 | Public reads never resolve the actor, so they stay cacheable; writes resolve it inside the service, as the Next data-security guide's Data Access Layer does. Deployments refuse every write until sign-in exists. |
+| 2026-10-10 | Migrations run from `vercel.json`'s `buildCommand`; per-preview Neon branches deleted by a workflow when the pull request closes; a `develop` branch for local work | Versioned, and local `pnpm build` never migrates. The integration deletes a branch only after its last deployment is deleted, and `.env.local` pointed at production. |
+| 2026-10-10 | `drizzle.config.ts` is the one file besides `env.ts` that reads `process.env` | drizzle-kit loads it outside Next, where `env.ts`'s `server-only` import cannot resolve. |
+| 2026-10-10 | Repository tests against PGlite inside `pnpm test` | Real Postgres 18.3 built by the real migrations, with no secrets, no branch quota, and no CI change. Replaces tests against a Neon branch. |
+| 2026-10-10 | Logger: console-backed JSON lines with no dependency | Vercel takes a line's level from the console method. pino writes every level to stdout, so the level filter would show everything as info; LogTape works but is more than the app needs. |
+| 2026-10-10 | `error.tsx` lands with Session 3's first data-reading page | Nothing in Session 2 renders data, so a boundary could not be exercised. |
 
 ## 8. Chronology and dependencies
 
 ```mermaid
 flowchart LR
 	S0["0 Project setup (done)"] --> S1["1 Design system and app shell (done)"]
-	S0 --> S2["2 Architecture and data"]
+	S0 --> S2["2 Architecture and data (done)"]
 	S1 --> S3["3 Public browsing"]
 	S2 --> S3
 	S3 --> S4["4 Search"]
@@ -363,7 +408,7 @@ flowchart LR
 	S7 --> S8
 ```
 
-- Session 2 is next.
+- Session 3 is next.
 - Session 3 needs the design system and the data layer. It seeds synthetic recipes, so browsing works before authoring exists.
 - Session 4 builds on the browse UI and can run in parallel with Session 5.
 - Session 5 needs the design system for its account pages and the data layer for Better Auth's tables.
@@ -406,7 +451,7 @@ Deferred, each to the session that needs it:
   - `FieldSeparator` paints `bg-background` on cards in dark mode.
   - `Label`'s `peer-disabled` classes never match Base UI controls; use `FieldLabel` in a `Field`.
 
-### Session 2: Architecture foundation, recipe domain, and data layer
+### Session 2: Architecture foundation, recipe domain, and data layer (done 2026-10-10)
 
 **Goal:** the layered skeleton with enforced boundaries, the recipe domain model, and persistence.
 
@@ -421,6 +466,40 @@ Deferred, each to the session that needs it:
 **Forks:** Drizzle 0.45 or 1.0; Neon driver (serverless HTTP or WebSocket, or `pg` with Fluid compute pooling); ID strategy and URL slugs; how quantities are represented; the tag vocabulary; typed error classes or a result type.
 
 **Done when:** `lint:boundaries` passes and fails on a deliberate violation, a migration runs on a preview branch, and the recipe services are covered by tests.
+
+Delivered:
+
+- **Boundaries:** `lint:boundaries` with dependency-cruiser and the ESLint restrictions in section 4.2, verified to fail on deliberate violations.
+- **Shared:** `src/lib/env.ts` with `DATABASE_URL`, the `AppError` base, and the logger.
+- **Domain:** the recipe model in section 5.1 with Zod schemas, value objects (amounts, durations, yields, slugs, tags), `RecipeDraft`, problems, `InvalidRecipeError`, a minimal member model, and synthetic samples matching the design reference. `RecipeCard` formats time with the duration value object.
+- **Data:** Drizzle 0.45 on `pg` with `attachDatabasePool`, the `recipes` table and its first migration, `DrizzleRecipeRepository` with its mapper, and PGlite repository tests.
+- **Application:** `RecipeService` (public `getRecipe` and `listRecipes`; `createRecipe`, `updateRecipe`, and `deleteRecipe` for members, with edits and deletes limited to the contributor and admins), the `RecipeRepository` and `ActorProvider` ports, DTOs, in-memory fakes, and tests.
+- **Composition:** `getRecipeService()` in `src/composition/services.ts`, wired with the Drizzle repository and the always-anonymous `AnonymousActorProvider`.
+- **Operations:** migrations in the build through `vercel.json`, per-preview Neon branches with a cleanup workflow, and a `develop` branch for local work.
+
+Deferred, each to the session that needs it:
+
+- **Session 3:**
+  - The `error.tsx` boundary with the first data-reading page.
+  - Where seed data lives: the domain samples are test kits, which a seed script cannot import.
+  - Seeded recipes need a `contributorId` before any member exists.
+  - Paging is `limit` (at most 100) and `offset` today; revisit with the browse page's sorting.
+  - `RecipeCard` props versus `RecipeSummaryDto`.
+- **Session 4:**
+  - The `tsvector` and filter columns are generated from `content`, plus a GIN index on `tags`.
+  - `findTagLabels` reads every label in use; revisit at scale.
+  - BM25 means `lakebase_text`, since Neon retired `pg_search`.
+- **Session 5:**
+  - Configure Better Auth to use uuid ids, because `recipes.contributor_id` is a uuid. Then add its foreign key.
+  - Replace `AnonymousActorProvider`.
+  - Add a members-only read for scans; the public DTO drops them.
+  - Add contributor display names to public DTOs.
+  - Decide on pg's `enableChannelBinding` after testing it on a preview branch.
+- **Session 6:**
+  - Form mapping omits blank optional fields, because the domain rejects blank text.
+  - Server Actions map `AppError` codes to messages, and problem paths to fields.
+  - Consider shared contract tests that both the in-memory and Drizzle repositories run.
+- **Session 7:** extractors drop an invalid amount but keep the line's text. The draft schemas convert to JSON Schema in both directions.
 
 ### Session 3: Public browsing
 
@@ -459,7 +538,7 @@ Deferred, each to the session that needs it:
 - A seeded synthetic corpus with expected-result tests.
 - Rate limiting on the public search endpoint if it is not fully cached.
 
-**Forks:** Postgres full-text search alone, `pg_search` BM25, or hybrid with `pgvector` (embeddings revisited after Session 7); the facet set.
+**Forks:** Postgres full-text search alone, `lakebase_text` BM25, or hybrid with `pgvector` (embeddings revisited after Session 7); the facet set.
 
 **Done when:** misspellings, ingredient combinations, exclusions, and source filters return the expected results quickly on the seeded corpus.
 
@@ -555,6 +634,7 @@ Deferred, each to the session that needs it:
 
 | Action | Needed by |
 | --- | --- |
+| Turn on Neon preview branching, create the `develop` branch with Development-scoped variables, and add the Neon API key and project ID to GitHub | Session 2's pull request |
 | Create a Resend account, add its sending-domain records in Route 53, and store the API key in Vercel | Session 5 |
 | Be the first admin and register a passkey | Session 5 |
 | Try real recipe cards by hand; decide on AI Gateway credits | Session 7 |
@@ -566,7 +646,9 @@ Deferred, each to the session that needs it:
 - **Passkey familiarity:** some relatives may not know passkeys, and recovery depends on the admin. Mitigation: email one-time codes as the fallback, plain onboarding notes, and new invites for new devices.
 - **Sign-in on previews:** passkeys are bound to their domain. Mitigation: invites minted against each preview's Neon branch.
 - **Spam requests:** the request form is public. Mitigation: BotID, rate limits, and requests that create no account.
-- **Free tiers:** Resend allows 100 emails a day, and Neon Free has storage and compute caps. Both are fine at this scale; revisit if usage grows.
+- **Free tiers:** Resend allows 100 emails a day, and Neon Free has storage, compute, and branch caps. Both are fine at this scale; revisit if usage grows. A preview fails to deploy at the branch cap, so the cleanup workflow must keep running.
+- **Schema changes under live traffic:** builds migrate before the new deployment serves, and old deployments keep serving. Mitigation: expand-then-contract migrations.
+- **Drizzle 1.0:** a later upgrade rewrites the migrations folder and the client setup. Mitigation: no APIs that 1.0 removes.
 - **AI accuracy and cost:** handwritten cards vary widely. Mitigation: mandatory review, an evaluation set, budgets, and rate limits.
 - **Cache Components with authentication:** session-derived UI must follow the bundled guide so one member's view is never cached for everyone.
 - **Young primitives and stale theming:** Base UI is less than a year past 1.0, with open mobile screen-reader bugs, and next-themes has not shipped since March 2025. Mitigation: screen-reader passes in Session 8, and the Next.js guide's inline script if next-themes breaks.
@@ -575,7 +657,7 @@ Deferred, each to the session that needs it:
 
 - [x] Session 0: Project setup
 - [x] Session 1: Design system and app shell
-- [ ] Session 2: Architecture foundation, recipe domain, and data layer
+- [x] Session 2: Architecture foundation, recipe domain, and data layer
 - [ ] Session 3: Public browsing
 - [ ] Session 4: Search
 - [ ] Session 5: Authentication and contributor access
