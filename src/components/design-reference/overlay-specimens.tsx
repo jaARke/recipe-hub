@@ -12,6 +12,13 @@ import {
 import { Specimen } from '@/components/design-reference/reference-section';
 import { Button } from '@/components/ui/button';
 import {
+	Carousel,
+	CarouselContent,
+	CarouselItem,
+	CarouselNext,
+	CarouselPrevious,
+} from '@/components/ui/carousel';
+import {
 	Dialog,
 	DialogClose,
 	DialogContent,
@@ -43,6 +50,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 const tooltipSides = ['top', 'right', 'bottom', 'left'] as const;
+
+const carouselSlides = ['Mix', 'Rest', 'Shape', 'Bake', 'Serve'] as const;
 
 function SampleTabs({
 	variant,
@@ -85,6 +94,51 @@ function TabsSpecimen() {
 			</Specimen>
 			<Specimen label='orientation="vertical"'>
 				<SampleTabs variant="default" orientation="vertical" />
+			</Specimen>
+		</div>
+	);
+}
+
+function SampleCarousel({
+	label,
+	itemClassName,
+}: {
+	label: string;
+	// Sets how much of the view each slide takes.
+	itemClassName?: string;
+}) {
+	return (
+		// Room on each side for the arrows, which sit outside the slides.
+		<div className="px-12">
+			<Carousel opts={{ align: 'start' }} aria-label={label}>
+				<CarouselContent>
+					{carouselSlides.map((step, index) => (
+						<CarouselItem
+							key={step}
+							aria-label={`${index + 1} of ${carouselSlides.length}`}
+							className={itemClassName}
+						>
+							<div className="flex aspect-4/3 items-center justify-center rounded-xl bg-muted font-heading text-2xl font-medium">
+								{step}
+							</div>
+						</CarouselItem>
+					))}
+				</CarouselContent>
+				<CarouselPrevious />
+				<CarouselNext />
+			</Carousel>
+		</div>
+	);
+}
+
+function CarouselSpecimen() {
+	return (
+		<div className="grid gap-6 md:grid-cols-2">
+			<Specimen label="One slide per view: drag, the arrows, or arrow keys from inside">
+				<SampleCarousel label="Steps, one at a time" />
+			</Specimen>
+			<Specimen label='Several per view: className="basis-1/2" on each item'>
+				<SampleCarousel label="Steps, two at a time" itemClassName="basis-1/2" />
 			</Specimen>
 		</div>
 	);
@@ -254,4 +308,4 @@ function TooltipSpecimen() {
 	);
 }
 
-export { DialogSpecimen, DropdownMenuSpecimen, TabsSpecimen, TooltipSpecimen };
+export { CarouselSpecimen, DialogSpecimen, DropdownMenuSpecimen, TabsSpecimen, TooltipSpecimen };

@@ -6,11 +6,7 @@ import { PageContainer } from '@/components/layout/page-container';
 import { RecipeDetail, RecipeDetailSkeleton } from '@/components/recipe/recipe-detail';
 import { RecipeJsonLd } from '@/components/recipe/recipe-json-ld';
 import { defaultListSort } from '@/components/recipe/recipe-list-params';
-import {
-	RecipeEditLink,
-	RecipeEditLinkFrame,
-	RecipeScans,
-} from '@/components/recipe/recipe-member-view';
+import { RecipeEditLink, RecipeScans } from '@/components/recipe/recipe-member-view';
 import { recipeMetaDescription } from '@/components/recipe/recipe-meta-description';
 import { recipePath } from '@/components/recipe/recipe-paths';
 import { getRecipeService } from '@/composition/services';
@@ -92,13 +88,16 @@ async function RecipeBySlug({ params }: Pick<PageProps<'/recipes/[slug]'>, 'para
 
 	return (
 		<>
-			<RecipeEditLinkFrame>
-				<Suspense>
-					<RecipeEditAction slug={recipe.slug} />
-				</Suspense>
-			</RecipeEditLinkFrame>
 			<RecipeJsonLd recipe={recipe} siteUrl={siteUrl} />
-			<RecipeDetail recipe={recipe} headingLevel={1} />
+			<RecipeDetail
+				recipe={recipe}
+				headingLevel={1}
+				titleAction={
+					<Suspense>
+						<RecipeEditAction slug={recipe.slug} />
+					</Suspense>
+				}
+			/>
 			<Suspense>
 				<RecipeOriginalScans slug={recipe.slug} />
 			</Suspense>
@@ -108,15 +107,8 @@ async function RecipeBySlug({ params }: Pick<PageProps<'/recipes/[slug]'>, 'para
 
 export default function RecipePage({ params }: PageProps<'/recipes/[slug]'>) {
 	return (
-		<PageContainer width="reading" className="pt-2 pb-12 sm:pt-4 sm:pb-16">
-			<Suspense
-				fallback={
-					<>
-						<RecipeEditLinkFrame />
-						<RecipeDetailSkeleton />
-					</>
-				}
-			>
+		<PageContainer width="reading" className="py-12 sm:py-16">
+			<Suspense fallback={<RecipeDetailSkeleton />}>
 				<RecipeBySlug params={params} />
 			</Suspense>
 		</PageContainer>

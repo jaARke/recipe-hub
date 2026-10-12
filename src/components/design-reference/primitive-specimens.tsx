@@ -23,6 +23,7 @@ import {
 	TextareaSpecimen,
 } from '@/components/design-reference/form-specimens';
 import {
+	CarouselSpecimen,
 	DialogSpecimen,
 	DropdownMenuSpecimen,
 	TabsSpecimen,
@@ -49,6 +50,7 @@ const primitives = [
 	{ id: 'checkbox', title: 'Checkbox', Content: CheckboxSpecimen },
 	{ id: 'attachment', title: 'Attachment', Content: AttachmentSpecimen },
 	{ id: 'tabs', title: 'Tabs', Content: TabsSpecimen },
+	{ id: 'carousel', title: 'Carousel', Content: CarouselSpecimen },
 	{ id: 'dialog', title: 'Dialog', Content: DialogSpecimen },
 	{ id: 'dropdown-menu', title: 'Dropdown menu', Content: DropdownMenuSpecimen },
 	{ id: 'tooltip', title: 'Tooltip', Content: TooltipSpecimen },

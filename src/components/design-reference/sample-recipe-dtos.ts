@@ -16,8 +16,11 @@ import {
 } from '@/domain/recipe/samples/baking-and-desserts';
 import {
 	sampleButtermilkBiscuits,
+	sampleChickenSoup,
 	sampleMolassesSpiceCookies,
 	sampleRecipeContents,
+	sampleSundayPotRoast,
+	sampleTomatoSalad,
 } from '@/domain/recipe/samples/sample-recipes';
 import { slugify } from '@/domain/recipe/slug';
 
@@ -81,9 +84,20 @@ export const sampleRecipeSummaries: readonly RecipeSummaryDto[] = sampleRecipeCo
 	.slice(0, sampleGridCount)
 	.map((content) => toRecipeSummaryDto(sampleRecipe(content)));
 
-// The biscuits lead the samples and fill in every part of the page but a source link.
+const sampleBiscuits = sampleRecipe(sampleButtermilkBiscuits);
+
+// The biscuits lead the samples and fill in every part of the page but a source link. They borrow the
+// other seed photos, so the detail shows its row of thumbnails, the last without a description.
 export const sampleRecipeDetail = toPublicRecipeDto(
-	sampleRecipe(sampleButtermilkBiscuits),
+	{
+		...sampleBiscuits,
+		images: [
+			...sampleBiscuits.images,
+			...sampleRecipe(sampleChickenSoup).images,
+			...sampleRecipe(sampleSundayPotRoast).images,
+			...sampleRecipe(sampleTomatoSalad).images.map(({ role, pathname }) => ({ role, pathname })),
+		],
+	},
 	sampleContributor
 );
 

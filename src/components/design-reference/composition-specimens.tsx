@@ -16,6 +16,7 @@ import {
 import { RecipeCard } from '@/components/recipe/recipe-card';
 import { RecipeDetail } from '@/components/recipe/recipe-detail';
 import { RecipeGrid, RecipeGridSkeleton } from '@/components/recipe/recipe-grid';
+import { RecipeEditLink } from '@/components/recipe/recipe-member-view';
 import { RecipePagination } from '@/components/recipe/recipe-pagination';
 import { RecipesEmptyState } from '@/components/recipe/recipes-empty-state';
 import { HeaderSearchForm, HeaderSearchLink } from '@/components/search/header-search-bar';
@@ -182,11 +183,15 @@ function CompositionSpecimens() {
 			<ReferenceSubsection
 				id="recipe-detail"
 				title="Recipe detail"
-				description="Reading width, with ingredients and steps in text-lg. Its headings start at h4 here, under this page's own."
+				description="Reading width, with ingredients and steps in text-lg. The cover and the row of other photos each open a viewer of every photo, and the pencil beside the title, for the contributor and admins, opens the edit page. Its headings start at h4 here, under this page's own."
 			>
 				<Specimen className="px-0 py-10 sm:py-14">
 					<PageContainer width="reading">
-						<RecipeDetail recipe={sampleRecipeDetail} headingLevel={4} />
+						<RecipeDetail
+							recipe={sampleRecipeDetail}
+							headingLevel={4}
+							titleAction={<RecipeEditLink slug={sampleRecipeDetail.slug} />}
+						/>
 					</PageContainer>
 				</Specimen>
 			</ReferenceSubsection>
