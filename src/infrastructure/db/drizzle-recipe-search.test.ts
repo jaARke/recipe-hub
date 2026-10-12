@@ -1,22 +1,27 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { NewMember } from '@/application/ports/member-repository';
 import type {
 	HighlightedText,
 	RecipeSearchQuery,
 	RecipeSearchResults,
 	RecipeTextQuery,
 } from '@/application/ports/recipe-search';
-import { memberIdSchema } from '@/domain/member/member';
 import type { RecipeTimes } from '@/domain/recipe/duration';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
 import { recipeContentSchema, type RecipeContentInput } from '@/domain/recipe/recipe';
 import { slugify } from '@/domain/recipe/slug';
+import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { DrizzleRecipeSearch } from '@/infrastructure/db/drizzle-recipe-search';
 import { recipes } from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 
-const contributorId = memberIdSchema.parse('3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b');
+const contributor: NewMember = {
+	email: 'contributor@example.com',
+	displayName: 'Contributor',
+	role: 'member',
+};
 const dayInMilliseconds = 24 * 60 * 60 * 1000;
 
 type Fixture = {
@@ -175,6 +180,7 @@ beforeAll(async () => {
 	db = await createTestDatabase();
 	search = new DrizzleRecipeSearch(db);
 	const repository = new DrizzleRecipeRepository(db);
+	const contributorId = (await new DrizzleMemberRepository(db).create(contributor)).id;
 	for (const fixture of fixtures) {
 		const content = recipeContentSchema.parse(toContent(fixture));
 		const created = await repository.create({

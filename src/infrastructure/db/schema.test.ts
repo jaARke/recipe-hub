@@ -1,24 +1,32 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { memberIdSchema } from '@/domain/member/member';
+import type { NewMember } from '@/application/ports/member-repository';
+import type { MemberId } from '@/domain/member/member';
 import { totalMinutes, type RecipeTimes } from '@/domain/recipe/duration';
 import { recipeContentSchema, type RecipeContentInput } from '@/domain/recipe/recipe';
 import { sampleChickenSoup, sampleRecipeContents } from '@/domain/recipe/samples/sample-recipes';
 import { slugify } from '@/domain/recipe/slug';
 import { tagKey } from '@/domain/recipe/tag';
+import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { recipes } from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 
-const contributorId = memberIdSchema.parse('3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b');
+const contributor: NewMember = {
+	email: 'contributor@example.com',
+	displayName: 'Contributor',
+	role: 'member',
+};
 
 // Each test reads back only the row it stored, so the tests share one database.
 let db: TestDatabase;
 let repository: DrizzleRecipeRepository;
+let contributorId: MemberId;
 
 beforeAll(async () => {
 	db = await createTestDatabase();
 	repository = new DrizzleRecipeRepository(db);
+	contributorId = (await new DrizzleMemberRepository(db).create(contributor)).id;
 });
 
 afterAll(async () => {

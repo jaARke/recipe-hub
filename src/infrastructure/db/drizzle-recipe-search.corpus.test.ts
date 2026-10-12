@@ -1,17 +1,22 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { NewMember } from '@/application/ports/member-repository';
 import type { RecipeSearchQuery, RecipeSearchResults } from '@/application/ports/recipe-search';
 import { parseRecipeTextQuery } from '@/application/search/recipe-text-query';
-import { memberIdSchema } from '@/domain/member/member';
 import { recipeContentSchema } from '@/domain/recipe/recipe';
 import { sampleRecipeContents } from '@/domain/recipe/samples/sample-recipes';
 import { slugify } from '@/domain/recipe/slug';
+import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { DrizzleRecipeSearch } from '@/infrastructure/db/drizzle-recipe-search';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 
 // Expected results over every sample recipe, as the seeded previews hold them.
 
-const contributorId = memberIdSchema.parse('3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b');
+const contributor: NewMember = {
+	email: 'contributor@example.com',
+	displayName: 'Contributor',
+	role: 'member',
+};
 
 const chickenRecipes = [
 	'Chicken and dumplings',
@@ -48,6 +53,7 @@ beforeAll(async () => {
 	db = await createTestDatabase();
 	search = new DrizzleRecipeSearch(db);
 	const repository = new DrizzleRecipeRepository(db);
+	const contributorId = (await new DrizzleMemberRepository(db).create(contributor)).id;
 	for (const input of sampleRecipeContents) {
 		const content = recipeContentSchema.parse(input);
 		await repository.create({
