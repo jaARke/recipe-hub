@@ -337,6 +337,7 @@ Public, at `/search`, with Postgres full-text search, `pg_trgm`, and `unaccent` 
 - Production is `https://recipes.jakerichard.tech`: a CNAME (TTL 300) in the `jakerichard.tech` Route 53 zone, with a Let's Encrypt certificate managed by Vercel. The `vercel.app` production alias redirects to it with a 308, as the personal-site project does for its own alias.
 - The Route 53 zone is in the owner's personal AWS account: use `--profile personal`. The default AWS profile is a work account and is never used for this project.
 - No staging environment. Pull requests get preview deployments behind Vercel Authentication, and each gets its own Neon branch, `preview/<git-branch>`, created by the integration and deleted by `.github/workflows/preview-branch-cleanup.yml` when the pull request closes.
+- When Vercel misses a push, as its Git integration did during an incident on 2026-10-12, create the deployment from the Git ref (Deployments, then Create Deployment, or Vercel's API), not with the CLI, so it keeps its branch alias and its Neon branch.
 - Local development uses the Neon branch `develop` through Development-scoped variables, never production.
 - **Backups:** Neon keeps a 7-day restore window and takes a snapshot daily, keeping each for 35 days. The production branch, `main`, is protected. Neither covers deleting the database through Vercel, nor Blob photos (Session 8's off-Neon backup).
 - Every build migrates its database before `next build` (`vercel.json`'s `buildCommand`). The previous deployment keeps serving during and after a production build, and Skew Protection keeps old Server Actions alive for 12 hours, so migrations are expand then contract: additive first, removals in a later deployment.
@@ -653,6 +654,7 @@ The owner likes [tanstack.com](https://tanstack.com/) and [mstone.ai](https://ms
 | 2026-10-12 | `authInterrupts` not used: gated pages redirect to sign-in and show an in-page message to members without access | It is still experimental, and inside Suspense both give status 200 anyway; the proxy gives the real redirect status. |
 | 2026-10-12 | Contributor search filter keyed by member id (`contributor`), counted like sources | Names are mutable and not unique, so the URL names the member and the label comes from the join. |
 | 2026-10-12 | Scans served to members through the image route's own branch, never cached publicly or optimized | Resolves the Session 3 deferral; dish photos stay cacheable because their branch never reads the session. |
+| 2026-10-12 | A push Vercel missed is deployed from its Git ref, not with the CLI or an empty commit | Owner's choice. A Git-sourced deployment gets its branch alias and Neon branch, and adds no commit. |
 
 ## 8. Chronology and dependencies
 
@@ -963,6 +965,7 @@ Delivered:
   - Signed out: public pages unchanged, with "Added by Sample contributor" and its JSON-LD `author`; the contributor filter; `/contribute`, `/admin`, and `/account` redirecting to sign-in with a 307; and `/design`'s new section.
   - Signed in: the bootstrapped admin by email code; two requests sent from a browser, each notifying the admin by email, one approved with its invite emailed and one declined; a direct invite revoked; the invite accepted with a code, a passkey created and listed, a rename, `/admin` refused to the member, and passkey sign-in after signing out.
   - The build created and connected `preview/session-5-auth`, the first preview since `main` was protected. Vercel's Git integration missed both pushes during its incident that day, so the deployment was created from the Git ref through Vercel's API.
+- **Production:** the build applied `0003` and `0004`, bootstrapped the admin, and skipped the seed. Signed-out checks passed, and the owner signed in with a code, set a display name, and registered a passkey on 2026-10-12.
 
 Deferred, each to the session that needs it:
 
@@ -992,6 +995,8 @@ Deferred, each to the session that needs it:
     - Expired session rows appear to be deleted only when next read (unconfirmed); consider a periodic cleanup.
     - Two bootstraps running at once on a database with no admin would fail the second on the unique email.
     - `BLOB_WEBHOOK_PUBLIC_KEY`, from the Blob integration, has no consumer.
+    - `neondatabase/delete-branch-action@v3` targets Node 20, which GitHub now runs on Node 24 with a warning. Move to a release that targets Node 24.
+  - **End-to-end tests:** this session's preview checks ran in Playwright with a Vercel share link past preview protection, Chromium's virtual authenticator for passkeys, and codes read from the inbox. BotID refuses a headless browser, so the suites need a way past it on `/request-access`.
   - **Copy:** an invitee who enters an existing member's address signs in as that member, and the invite stays open; "Your account is ready" then reads slightly off.
 - **Known quirks:**
   - Better Auth's client types omit `catchAllError`, so `settleAuthCall` turns a thrown network failure into a status.
@@ -1068,11 +1073,10 @@ Deferred, each to the session that needs it:
 
 ## 10. Owner action items
 
-| Action | Needed by |
-| --- | --- |
-| Sign in on production with a code as `ADMIN_EMAIL`, set your display name on `/account`, and register a passkey | After Session 5 merges |
+| Action                                                      | Needed by |
+| ----------------------------------------------------------- | --------- |
 | Try real recipe cards by hand; decide on AI Gateway credits | Session 7 |
-| Review the brand mark; send invites; announce the site | Session 8 |
+| Review the brand mark; send invites; announce the site      | Session 8 |
 
 ## 11. Open questions and risks
 
