@@ -1,7 +1,7 @@
 import 'server-only';
 import type { FieldErrors, FormError } from '@/components/forms/form-state';
 import { InvalidInputError, type Problem } from '@/domain/problem';
-import { AppError } from '@/lib/errors';
+import { AppError, findQueryError, withoutQueryParameters } from '@/lib/errors';
 
 // The copy for each expected failure a form can meet, keyed by error code.
 const errorMessages: Partial<Record<string, string>> = {
@@ -23,6 +23,13 @@ function fieldErrorsFrom(problems: readonly Problem[]): FieldErrors {
 	return fieldErrors;
 }
 
+// Next logs a rethrown error in full, causes included, so a database error is replaced by one that
+// names the failed query without its parameters, which hold what the visitor typed.
+function withoutPersonalData(error: unknown): unknown {
+	const queryError = findQueryError(error);
+	return queryError === undefined ? error : new Error(withoutQueryParameters(queryError.message));
+}
+
 // Turns an expected failure into the form's error state. Anything else is rethrown: Next logs it, and
 // the form shows its failure message.
 export function toFormError(error: unknown): FormError {
@@ -32,7 +39,7 @@ export function toFormError(error: unknown): FormError {
 
 	const message = error instanceof AppError ? errorMessages[error.code] : undefined;
 	if (message === undefined) {
-		throw error;
+		throw withoutPersonalData(error);
 	}
 
 	return { status: 'error', message, fieldErrors: {} };

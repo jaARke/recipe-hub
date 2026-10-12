@@ -1,5 +1,5 @@
 import 'server-only';
-import { AppError } from '@/lib/errors';
+import { AppError, withoutQueryParameters } from '@/lib/errors';
 
 type LogLevel = 'info' | 'warn' | 'error';
 
@@ -8,17 +8,13 @@ export type LogFields = Record<string, unknown> & { err?: unknown };
 
 export type Logger = Record<LogLevel, (message: string, fields?: LogFields) => void>;
 
-// Drizzle's query errors end their message with the query's parameters, which can hold email
-// addresses, so the parameters are cut.
-const queryParametersSeparator = '\nparams: ';
-
 function serializeError(error: unknown): unknown {
 	if (!(error instanceof Error)) {
 		return error;
 	}
 
-	// The stack starts with the message, so it loses the parameters too.
-	const message = error.message.split(queryParametersSeparator)[0] ?? '';
+	// Query parameters can hold personal data. The stack starts with the message, so it loses them too.
+	const message = withoutQueryParameters(error.message);
 	return {
 		name: error.name,
 		message,
