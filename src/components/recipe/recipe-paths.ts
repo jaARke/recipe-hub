@@ -1,7 +1,12 @@
-// The first page is the bare list, so its link matches the one in the header.
-export function recipeListPath(page: number): string {
-	return page === 1 ? '/' : `/?page=${page}`;
-}
+export const recipeListPath = '/';
+
+export const recipeSearchPath = '/search';
+
+// The list's URL parameters, which search shares.
+export const recipeListParamNames = {
+	page: 'page',
+	sort: 'sort',
+} as const;
 
 export function recipePath(slug: string): string {
 	return `/recipes/${slug}`;

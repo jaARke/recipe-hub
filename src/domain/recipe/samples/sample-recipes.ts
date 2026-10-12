@@ -1,4 +1,34 @@
 import type { RecipeContentInput } from '@/domain/recipe/recipe';
+import {
+	sampleBrownButterChocolateChipCookies,
+	sampleCremeBrulee,
+	sampleEclairs,
+	sampleJalapenoCornbread,
+	sampleLemonBars,
+	sampleOatmealRaisinCookies,
+	sampleOvernightCinnamonRolls,
+	samplePeachCobbler,
+	sampleVanillaRicePudding,
+	sampleZucchiniBread,
+} from '@/domain/recipe/samples/baking-and-desserts';
+import {
+	sampleAppleCabbageSlaw,
+	sampleQuickPickledOnions,
+	sampleTomatoBasilBruschetta,
+} from '@/domain/recipe/samples/sides-and-starters';
+import {
+	sampleBlackBeanChili,
+	sampleChickenAndDumplings,
+	sampleChickpeaTomatoStew,
+	sampleLemonGarlicRoastChicken,
+	sampleMinestrone,
+	sampleRoastedCarrotGingerSoup,
+	sampleSausageGravyOverBiscuits,
+	sampleSplitPeaSoup,
+	sampleTomatoBasilSoup,
+	sampleTomatoTart,
+	sampleYellowChickenCurry,
+} from '@/domain/recipe/samples/soups-and-mains';
 
 // Synthetic recipes for tests, the seed script, and the design reference. Never real family data.
 
@@ -557,4 +587,28 @@ export const sampleRecipeContents: readonly RecipeContentInput[] = [
 	sampleSundayPotRoast,
 	sampleTomatoSalad,
 	sampleMolassesSpiceCookies,
+	sampleChickenAndDumplings,
+	sampleLemonGarlicRoastChicken,
+	sampleYellowChickenCurry,
+	sampleChickpeaTomatoStew,
+	sampleTomatoBasilSoup,
+	sampleSplitPeaSoup,
+	sampleMinestrone,
+	sampleSausageGravyOverBiscuits,
+	sampleTomatoTart,
+	sampleBlackBeanChili,
+	sampleRoastedCarrotGingerSoup,
+	sampleCremeBrulee,
+	sampleEclairs,
+	sampleJalapenoCornbread,
+	sampleLemonBars,
+	sampleOatmealRaisinCookies,
+	sampleBrownButterChocolateChipCookies,
+	samplePeachCobbler,
+	sampleOvernightCinnamonRolls,
+	sampleZucchiniBread,
+	sampleVanillaRicePudding,
+	sampleTomatoBasilBruschetta,
+	sampleAppleCabbageSlaw,
+	sampleQuickPickledOnions,
 ];

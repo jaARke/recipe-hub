@@ -1,9 +1,22 @@
 import 'server-only';
+import type { InferModelFromColumns } from 'drizzle-orm';
 import type { NewRecipe } from '@/application/ports/recipe-repository';
 import { recipeSchema, type Recipe, type RecipeContent } from '@/domain/recipe/recipe';
-import type { recipes } from '@/infrastructure/db/schema';
+import { recipes } from '@/infrastructure/db/schema';
 
-type RecipeRow = typeof recipes.$inferSelect;
+// What every recipe read selects and returns; the search columns exist only for queries.
+export const recipeColumns = {
+	id: recipes.id,
+	slug: recipes.slug,
+	contributorId: recipes.contributorId,
+	content: recipes.content,
+	provenance: recipes.provenance,
+	tags: recipes.tags,
+	createdAt: recipes.createdAt,
+	updatedAt: recipes.updatedAt,
+};
+
+type RecipeRow = InferModelFromColumns<typeof recipeColumns>;
 
 // Tags leave the content document for their own column.
 type ContentColumns = {

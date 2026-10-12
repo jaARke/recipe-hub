@@ -60,13 +60,13 @@ async function backdate(id: RecipeId) {
 }
 
 describe('create', () => {
-	it.each(sampleRecipeContents.map((content) => [content.title, content]))(
-		'stores the sample "%s" and reads it back unchanged',
-		async (_title, input) => {
+	// One test for every sample, so the samples share one database.
+	it('stores each sample and reads it back unchanged', async () => {
+		for (const input of sampleRecipeContents) {
 			const recipe = newRecipe(input);
 			const created = await repository.create(recipe);
 
-			expect(created).toEqual({
+			expect(created, input.title).toEqual({
 				...recipe.content,
 				id: expect.stringMatching(uuidV7),
 				slug: recipe.slugBase,
@@ -75,9 +75,9 @@ describe('create', () => {
 				createdAt: expect.any(Date),
 				updatedAt: created.createdAt,
 			});
-			expect(await repository.findById(created.id)).toEqual(created);
+			expect(await repository.findById(created.id), input.title).toEqual(created);
 		}
-	);
+	});
 
 	it('keeps ranges, images, and the provenance of an import', async () => {
 		const provenance: Provenance = {
@@ -161,8 +161,8 @@ describe('list', () => {
 		}
 		const [first, second, third] = created;
 
-		expect(await repository.list({ limit: 2, offset: 0 })).toEqual([third, second]);
-		expect(await repository.list({ limit: 2, offset: 2 })).toEqual([first]);
+		expect(await repository.list({ limit: 2, offset: 0, sort: 'newest' })).toEqual([third, second]);
+		expect(await repository.list({ limit: 2, offset: 2, sort: 'newest' })).toEqual([first]);
 	});
 
 	it('orders recipes created at the same moment by id', async () => {
@@ -171,9 +171,37 @@ describe('list', () => {
 		await backdate(first.id);
 		await backdate(second.id);
 
-		const listed = await repository.list({ limit: 10, offset: 0 });
+		const listed = await repository.list({ limit: 10, offset: 0, sort: 'newest' });
 
 		expect(listed.map(({ id }) => id)).toEqual([second.id, first.id]);
+	});
+
+	it('pages through recipes by title, ignoring accents and case, and then by id', async () => {
+		const titles = [
+			'zucchini bread',
+			'Éclairs',
+			'Apple crisp',
+			'Eclair filling',
+			'apple crisp',
+			'Eggplant parmesan',
+			'dumplings',
+		];
+		for (const title of titles) {
+			await repository.create(newRecipe({ ...sampleChickenSoup, title }));
+		}
+
+		const firstPage = await repository.list({ limit: 4, offset: 0, sort: 'title' });
+		const secondPage = await repository.list({ limit: 4, offset: 4, sort: 'title' });
+
+		expect([...firstPage, ...secondPage].map(({ title }) => title)).toEqual([
+			'Apple crisp',
+			'apple crisp',
+			'dumplings',
+			'Eclair filling',
+			'Éclairs',
+			'Eggplant parmesan',
+			'zucchini bread',
+		]);
 	});
 });
 
@@ -294,7 +322,7 @@ describe('reading stored documents', () => {
 		const created = await repository.create(newRecipe(sampleChickenSoup));
 		await db
 			.update(recipes)
-			.set({ content: sql`${recipes.content} - 'title'` })
+			.set({ content: sql`${recipes.content} - 'times'` })
 			.where(eq(recipes.id, created.id));
 
 		await expect(repository.findById(created.id)).rejects.toThrow(ZodError);

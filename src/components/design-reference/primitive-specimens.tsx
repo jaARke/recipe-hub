@@ -14,6 +14,7 @@ import {
 import {
 	CheckboxSpecimen,
 	FieldSpecimen,
+	InputGroupSpecimen,
 	InputSpecimen,
 	LabelSpecimen,
 	SelectSpecimen,
@@ -36,6 +37,7 @@ const primitives = [
 	{ id: 'pagination', title: 'Pagination', Content: PaginationSpecimen },
 	{ id: 'card', title: 'Card', Content: CardSpecimen },
 	{ id: 'input', title: 'Input', Content: InputSpecimen },
+	{ id: 'input-group', title: 'Input group', Content: InputGroupSpecimen },
 	{ id: 'textarea', title: 'Textarea', Content: TextareaSpecimen },
 	{ id: 'label', title: 'Label', Content: LabelSpecimen },
 	{ id: 'field', title: 'Field', Content: FieldSpecimen },

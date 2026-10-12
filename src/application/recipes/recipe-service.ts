@@ -1,8 +1,13 @@
 import 'server-only';
 import { z } from 'zod';
 import { requireMember } from '@/application/authorization';
+import { paginationSchema } from '@/application/pagination';
 import type { ActorProvider } from '@/application/ports/actor-provider';
-import type { RecipePage, RecipeRepository } from '@/application/ports/recipe-repository';
+import {
+	recipeSorts,
+	type RecipePage,
+	type RecipeRepository,
+} from '@/application/ports/recipe-repository';
 import { InvalidRecipePageError, RecipeNotFoundError } from '@/application/recipes/errors';
 import {
 	toPublicRecipeDto,
@@ -28,13 +33,7 @@ import { slugify, slugSchema } from '@/domain/recipe/slug';
 import { tagKey } from '@/domain/recipe/tag';
 import { getLogger } from '@/lib/logger';
 
-// A public URL chooses the page, and every listed recipe loads its whole document.
-const maxPageLimit = 100;
-
-const recipePageSchema = z.object({
-	limit: z.int().positive().max(maxPageLimit),
-	offset: z.int().nonnegative(),
-});
+const recipePageSchema = paginationSchema.extend({ sort: z.enum(recipeSorts) });
 
 const logger = getLogger('recipes');
 

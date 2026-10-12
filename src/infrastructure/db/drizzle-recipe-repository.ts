@@ -1,5 +1,5 @@
 import 'server-only';
-import { desc, eq, ne, or, sql } from 'drizzle-orm';
+import { and, arrayOverlaps, eq, ne, or, sql } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import type {
 	NewRecipe,
@@ -9,7 +9,13 @@ import type {
 import type { Recipe, RecipeContent, RecipeId } from '@/domain/recipe/recipe';
 import { slugCandidate } from '@/domain/recipe/slug';
 import { tagKey } from '@/domain/recipe/tag';
-import { toContentColumns, toInsertColumns, toRecipe } from '@/infrastructure/db/recipe-mapper';
+import {
+	recipeColumns,
+	toContentColumns,
+	toInsertColumns,
+	toRecipe,
+} from '@/infrastructure/db/recipe-mapper';
+import { recipeOrders } from '@/infrastructure/db/recipe-order';
 import { recipes } from '@/infrastructure/db/schema';
 
 export class DrizzleRecipeRepository implements RecipeRepository {
@@ -20,20 +26,20 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 	}
 
 	async findById(id: RecipeId): Promise<Recipe | null> {
-		const [row] = await this.db.select().from(recipes).where(eq(recipes.id, id));
+		const [row] = await this.db.select(recipeColumns).from(recipes).where(eq(recipes.id, id));
 		return row === undefined ? null : toRecipe(row);
 	}
 
 	async findBySlug(slug: string): Promise<Recipe | null> {
-		const [row] = await this.db.select().from(recipes).where(eq(recipes.slug, slug));
+		const [row] = await this.db.select(recipeColumns).from(recipes).where(eq(recipes.slug, slug));
 		return row === undefined ? null : toRecipe(row);
 	}
 
 	async list(page: RecipePage): Promise<Recipe[]> {
 		const rows = await this.db
-			.select()
+			.select(recipeColumns)
 			.from(recipes)
-			.orderBy(desc(recipes.createdAt), desc(recipes.id))
+			.orderBy(...recipeOrders[page.sort])
 			.limit(page.limit)
 			.offset(page.offset);
 		return rows.map(toRecipe);
@@ -57,7 +63,7 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 				.insert(recipes)
 				.values(toInsertColumns(recipe, slug))
 				.onConflictDoNothing({ target: recipes.slug })
-				.returning();
+				.returning(recipeColumns);
 			if (row !== undefined) {
 				return toRecipe(row);
 			}
@@ -69,7 +75,7 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 			.update(recipes)
 			.set({ ...toContentColumns(content), updatedAt: sql`now()` })
 			.where(eq(recipes.id, id))
-			.returning();
+			.returning(recipeColumns);
 		return row === undefined ? null : toRecipe(row);
 	}
 
@@ -87,11 +93,16 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 			return [];
 		}
 
-		// Reads every label in use so tagKey stays the one definition of a tag; Session 4 revisits this.
+		// The tag key index narrows the recipes, and tagKey stays the one definition of a tag.
 		const rows = await this.db
 			.selectDistinct({ label: sql<string>`unnest(${recipes.tags})` })
 			.from(recipes)
-			.where(excludeRecipeId === undefined ? undefined : ne(recipes.id, excludeRecipeId));
+			.where(
+				and(
+					arrayOverlaps(recipes.tagKeys, [...wanted]),
+					excludeRecipeId === undefined ? undefined : ne(recipes.id, excludeRecipeId)
+				)
+			);
 		return rows.map(({ label }) => label).filter((label) => wanted.has(tagKey(label)));
 	}
 
