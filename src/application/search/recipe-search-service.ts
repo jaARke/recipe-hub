@@ -16,22 +16,17 @@ import {
 import { parseRecipeTextQuery } from '@/application/search/recipe-text-query';
 import { memberIdSchema } from '@/domain/member/member';
 import { tagListSchema } from '@/domain/recipe/tag';
-import { nonEmptyTextSchema } from '@/domain/text';
+import { hasNoNul, nonEmptyTextSchema } from '@/domain/text';
 
 // A public URL supplies every value, so the query and the tag list are bounded. A source stays
 // unbounded, because the filters offer every source recipes use.
 const maxTextLength = 200;
 const maxTagCount = 20;
 
-// Postgres text cannot hold a NUL character, which a URL can carry as %00.
-function hasNoNul(text: string): boolean {
-	return !text.includes('\0');
-}
-
 const recipeSearchInputSchema = paginationSchema.extend({
 	text: z.string().trim().max(maxTextLength).refine(hasNoNul).optional(),
 	tags: tagListSchema.max(maxTagCount).refine((tags) => tags.every(hasNoNul)),
-	source: nonEmptyTextSchema.refine(hasNoNul).optional(),
+	source: nonEmptyTextSchema.optional(),
 	// Lowercased, as Postgres prints ids, so the chosen id matches the contributor facet's.
 	contributorId: z.string().trim().toLowerCase().pipe(memberIdSchema).optional(),
 	maxTotalMinutes: z.literal(recipeTotalTimeChoices).optional(),
