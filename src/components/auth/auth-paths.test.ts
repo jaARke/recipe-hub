@@ -24,6 +24,8 @@ describe('safeNextPath', () => {
 		['a newline the browser drops', '/\n/example.com'],
 		['a script URL', 'javascript:alert(1)'],
 		['a relative path', 'account'],
+		['dot segments that resolve to a protocol-relative URL', '/a/..//example.com'],
+		['encoded dot segments', '/a/%2e%2e//example.com'],
 	])('falls back to the recipe list for %s', (_, next) => {
 		expect(safeNextPath(next)).toBe('/');
 	});

@@ -20,12 +20,20 @@ export function signInHref(next: string): string {
 
 // Only a path on this site, otherwise the recipe list; a repeated parameter counts as absent. A
 // browser reads "//host" and "/\host" as another site, and drops tabs and newlines before parsing,
-// so the path is checked as the browser parses it.
+// so the path is checked as the browser parses it. Parsing also resolves dot segments, which can
+// turn "/a/..//host" into "//host", so the result is checked again.
 export function safeNextPath(value: string | string[] | undefined): string {
-	if (typeof value !== 'string' || !value.startsWith('/')) {
+	if (
+		typeof value !== 'string' ||
+		!value.startsWith('/') ||
+		!URL.canParse(value, placeholderOrigin)
+	) {
 		return '/';
 	}
 
 	const url = new URL(value, placeholderOrigin);
-	return url.origin === placeholderOrigin ? `${url.pathname}${url.search}${url.hash}` : '/';
+	if (url.origin !== placeholderOrigin || url.pathname.startsWith('//')) {
+		return '/';
+	}
+	return `${url.pathname}${url.search}${url.hash}`;
 }
