@@ -3,11 +3,14 @@ import {
 	CircleAlertIcon,
 	EllipsisIcon,
 	ImageIcon,
+	InfoIcon,
+	OctagonXIcon,
 	PlusIcon,
 	XIcon,
 } from 'lucide-react';
 import type { ComponentProps, ReactNode } from 'react';
 import { Specimen } from '@/components/design-reference/reference-section';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
 	Attachment,
 	AttachmentAction,
@@ -188,6 +191,29 @@ function CardSpecimen() {
 	);
 }
 
+function AlertSpecimen() {
+	return (
+		<div className="grid gap-6 md:grid-cols-2">
+			<Specimen label='variant="default" with an icon, title, and description' frame="bare">
+				<Alert>
+					<InfoIcon aria-hidden="true" />
+					<AlertTitle>Some steps need review</AlertTitle>
+					<AlertDescription>
+						Two steps were hard to read in the photo. Check them before saving.
+					</AlertDescription>
+				</Alert>
+			</Specimen>
+			<Specimen label='variant="destructive" with an icon, title, and description' frame="bare">
+				<Alert variant="destructive">
+					<OctagonXIcon aria-hidden="true" />
+					<AlertTitle>We couldn&apos;t save the recipe</AlertTitle>
+					<AlertDescription>Check your connection and try again.</AlertDescription>
+				</Alert>
+			</Specimen>
+		</div>
+	);
+}
+
 function SkeletonSpecimen() {
 	return (
 		<Specimen label="Placeholders sized to the content they stand in for">
@@ -280,6 +306,7 @@ function SeparatorSpecimen() {
 }
 
 export {
+	AlertSpecimen,
 	AttachmentSpecimen,
 	CardSpecimen,
 	EmptySpecimen,

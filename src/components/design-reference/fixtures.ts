@@ -13,3 +13,7 @@ export const sampleCourses: readonly SampleOption[] = [
 	{ value: 'dessert', label: 'Dessert' },
 	{ value: 'baking', label: 'Baking' },
 ];
+
+// An invite link as the admin page shows it once; the reserved domain keeps it from leading anywhere.
+export const sampleInviteLink =
+	'https://recipes.example/invite#c2FtcGxlLWludml0ZS1mb3ItdGhlLWRlc2lnbi1yZWY';

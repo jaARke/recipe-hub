@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { AccountSpecimens } from '@/components/design-reference/account-specimens';
 import { ColorSpecimens } from '@/components/design-reference/color-specimens';
 import { CompositionSpecimens } from '@/components/design-reference/composition-specimens';
 import { PrimitiveSpecimens } from '@/components/design-reference/primitive-specimens';
@@ -53,6 +54,13 @@ const sections = [
 		title: 'Compositions',
 		description: 'Primitives assembled the way recipe screens will use them, with sample content.',
 		Content: CompositionSpecimens,
+	},
+	{
+		id: 'accounts',
+		title: 'Accounts and admin',
+		description:
+			"The header's account controls, the account pages, and the admin page, with sample members and stand-ins for their actions.",
+		Content: AccountSpecimens,
 	},
 ] as const;
 

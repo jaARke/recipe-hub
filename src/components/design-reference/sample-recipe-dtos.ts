@@ -38,12 +38,12 @@ export const sampleContributor = memberSchema.parse({
 	createdAt: sampleCreatedAt,
 });
 
-// Other members, who appear only in the search facets.
-const sampleSam = {
+// Other members, who appear in the search facets and the admin page's member list.
+export const sampleSam = {
 	memberId: memberIdSchema.parse('5a1d9e2f-7b3c-4d8e-8f6a-2b3c4d5e6f7a'),
 	displayName: 'Sam',
 };
-const sampleJordan = {
+export const sampleJordan = {
 	memberId: memberIdSchema.parse('7c4e1a3b-9d2f-4a6e-b8c1-3d4e5f6a7b8c'),
 	displayName: 'Jordan',
 };
