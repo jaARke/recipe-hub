@@ -1,0 +1,357 @@
+import { getSessionCookie } from 'better-auth/cookies';
+import { eq } from 'drizzle-orm';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
+import { InviteUnavailableError } from '@/application/access/errors';
+import { InviteService } from '@/application/access/invite-service';
+import { actorFor } from '@/application/testing/actors';
+import { FixedActorProvider } from '@/application/testing/fixed-actor-provider';
+import type { InMemoryEmailSender } from '@/application/testing/in-memory-email-sender';
+import type { Auth } from '@/infrastructure/auth/better-auth';
+import {
+	cookiesFrom,
+	createTestAuth,
+	testHost,
+	testOrigin,
+} from '@/infrastructure/auth/testing/test-auth';
+import { DrizzleAccessRequestRepository } from '@/infrastructure/db/drizzle-access-request-repository';
+import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
+import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
+import { users } from '@/infrastructure/db/schema';
+import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
+
+const clientIp = '198.51.100.7';
+const sessionLifetimeSeconds = 180 * 24 * 60 * 60;
+
+// The routes the sign-in, invite, and account flows call; every other route answers 404.
+const enabledPaths = [
+	'/get-session',
+	'/sign-out',
+	'/email-otp/send-verification-otp',
+	'/sign-in/email-otp',
+	'/passkey/generate-register-options',
+	'/passkey/verify-registration',
+	'/passkey/generate-authenticate-options',
+	'/passkey/verify-authentication',
+	'/passkey/list-user-passkeys',
+	'/passkey/update-passkey',
+	'/passkey/delete-passkey',
+];
+
+type Route = { path: string; method: string };
+
+let db: TestDatabase;
+let members: DrizzleMemberRepository;
+let emails: InMemoryEmailSender;
+let auth: Auth;
+let backgroundWork: () => Promise<void>;
+let consoleInfo: MockInstance<typeof console.info>;
+
+beforeEach(async () => {
+	db = await createTestDatabase();
+	members = new DrizzleMemberRepository(db);
+	({ auth, emails, backgroundWork } = createTestAuth(db));
+	// Keeps log lines out of the test output; the logging test reads them here.
+	consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => {});
+});
+
+afterEach(async () => {
+	vi.restoreAllMocks();
+	await db.$client.close();
+});
+
+// Calls the handler as a browser on the dev server would.
+function request(method: string, path: string, body?: object, cookie?: string): Promise<Response> {
+	const headers = new Headers({ origin: testOrigin, 'x-forwarded-for': clientIp });
+	if (body !== undefined) {
+		headers.set('content-type', 'application/json');
+	}
+	if (cookie !== undefined) {
+		headers.set('cookie', cookie);
+	}
+
+	return auth.handler(
+		new Request(`${testOrigin}/api/auth${path}`, {
+			method,
+			headers,
+			body: body === undefined ? undefined : JSON.stringify(body),
+		})
+	);
+}
+
+// Waits for the email Better Auth sends after answering.
+async function requestCode(email: string): Promise<Response> {
+	const response = await request('POST', '/email-otp/send-verification-otp', {
+		email,
+		type: 'sign-in',
+	});
+	await backgroundWork();
+	return response;
+}
+
+function codeSentTo(email: string): string {
+	const message = emails.sentMessages.findLast((sent) => sent.to === email);
+	const code = message?.text.match(/sign-in code is:\n\n(\d{6})/)?.[1];
+	if (code === undefined) {
+		throw new Error('No code was sent to the address');
+	}
+	return code;
+}
+
+async function signIn(email: string, fields: object = {}): Promise<Response> {
+	await requestCode(email);
+	return request('POST', '/sign-in/email-otp', { email, otp: codeSentTo(email), ...fields });
+}
+
+// A code made without sending it, for an address that would never be sent one.
+function unsentCode(email: string): Promise<string> {
+	return auth.api.createVerificationOTP({
+		body: { email, type: 'sign-in' },
+		headers: new Headers({ host: testHost }),
+	});
+}
+
+function sessionCookieAttributes(response: Response): string | undefined {
+	return response.headers
+		.getSetCookie()
+		.find((cookie) => cookie.startsWith('better-auth.session_token='));
+}
+
+function mountedRoutes(): Route[] {
+	const endpoints = Object.values(auth.api) as { path?: string; options: { method: unknown } }[];
+	return endpoints.flatMap(({ path, options }) => {
+		const methods = [options.method].flat();
+		return path === undefined ? [] : [{ path, method: String(methods[0]) }];
+	});
+}
+
+async function inviteGrace() {
+	const admin = await members.create({
+		email: 'jake@example.com',
+		displayName: 'Jake',
+		role: 'admin',
+	});
+	const invites = new DrizzleInviteRepository(db);
+	const service = new InviteService(
+		invites,
+		new DrizzleAccessRequestRepository(db),
+		members,
+		emails,
+		new FixedActorProvider(actorFor(admin)),
+		new URL(testOrigin)
+	);
+	const issued = await service.issueInvite({ displayName: 'Grace Hopper' });
+	const token = new URL(issued.link).hash.slice(1);
+	await service.bindInviteEmail(token, 'Grace@Example.com');
+	return { service, inviteId: issued.id, token };
+}
+
+async function storedUser(email: string) {
+	const [row] = await db
+		.select({ inviteId: users.inviteId, emailVerified: users.emailVerified, image: users.image })
+		.from(users)
+		.where(eq(users.email, email));
+	return row;
+}
+
+describe('sending a sign-in code', () => {
+	it('emails a member a code', async () => {
+		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
+
+		const response = await requestCode('ada@example.com');
+
+		expect(response.status).toBe(200);
+		expect(codeSentTo('ada@example.com')).toMatch(/^\d{6}$/);
+	});
+
+	it('answers an unknown address as it answers a member, with no email and no account', async () => {
+		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
+
+		const forMember = await requestCode('ada@example.com');
+		const forStranger = await requestCode('stranger@example.com');
+
+		expect(forStranger.status).toBe(forMember.status);
+		expect(await forStranger.json()).toEqual(await forMember.json());
+		expect(emails.sentMessages.map((message) => message.to)).toEqual(['ada@example.com']);
+		expect(await members.findByEmail('stranger@example.com')).toBeNull();
+	});
+
+	it('refuses a fourth request from one client within a minute', async () => {
+		const statuses: number[] = [];
+		for (let attempt = 0; attempt < 4; attempt += 1) {
+			statuses.push((await requestCode('ada@example.com')).status);
+		}
+
+		expect(statuses).toEqual([200, 200, 200, 429]);
+	});
+});
+
+describe('signing in with a code', () => {
+	it('signs in a member', async () => {
+		const ada = await members.create({
+			email: 'ada@example.com',
+			displayName: 'Ada',
+			role: 'member',
+		});
+
+		const response = await signIn('ada@example.com');
+		const session = await auth.api.getSession({
+			headers: new Headers({ cookie: cookiesFrom(response.headers), host: testHost }),
+		});
+
+		expect(response.status).toBe(200);
+		expect(session?.user.id).toBe(ada.id);
+	});
+
+	it('sets the session cookie the proxy looks for', async () => {
+		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
+
+		const response = await signIn('ada@example.com');
+
+		expect(getSessionCookie(new Headers({ cookie: cookiesFrom(response.headers) }))).not.toBeNull();
+	});
+
+	it('refuses an account for an address without an open invite', async () => {
+		const response = await request('POST', '/sign-in/email-otp', {
+			email: 'stranger@example.com',
+			otp: await unsentCode('stranger@example.com'),
+		});
+
+		expect(response.status).toBe(403);
+		expect(await members.findByEmail('stranger@example.com')).toBeNull();
+	});
+});
+
+describe('accepting an invite', () => {
+	it('creates the invited member, signs them in for 180 days, and closes the invite', async () => {
+		const { service, inviteId, token } = await inviteGrace();
+
+		const response = await signIn('grace@example.com');
+		const grace = await members.findByEmail('grace@example.com');
+
+		expect(response.status).toBe(200);
+		expect(grace).toMatchObject({ displayName: 'Grace Hopper', role: 'member' });
+		expect(await storedUser('grace@example.com')).toMatchObject({ inviteId, emailVerified: true });
+		expect(sessionCookieAttributes(response)).toContain(`Max-Age=${sessionLifetimeSeconds}`);
+		expect(await service.getInvitePreview(token)).toBeNull();
+		const logged = consoleInfo.mock.calls.map(([line]) => JSON.parse(String(line)));
+		expect(logged).toContainEqual(
+			expect.objectContaining({ message: 'Access granted', memberId: grace?.id, inviteId })
+		);
+	});
+
+	it('takes the name and role from the invite, whatever the request sends', async () => {
+		await inviteGrace();
+
+		const response = await signIn('grace@example.com', {
+			name: 'Admiral Hopper',
+			role: 'admin',
+			image: 'https://example.com/portrait.png',
+		});
+
+		expect(response.status).toBe(200);
+		expect(await members.findByEmail('grace@example.com')).toMatchObject({
+			displayName: 'Grace Hopper',
+			role: 'member',
+		});
+		expect(await storedUser('grace@example.com')).toMatchObject({ image: null });
+	});
+
+	it('refuses a request that names an invite', async () => {
+		const { inviteId } = await inviteGrace();
+
+		const response = await signIn('grace@example.com', { inviteId });
+
+		expect(response.status).toBe(400);
+		expect(await members.findByEmail('grace@example.com')).toBeNull();
+	});
+
+	it('refuses a second account on an accepted invite', async () => {
+		const { service, token } = await inviteGrace();
+		await signIn('grace@example.com');
+
+		await expect(service.bindInviteEmail(token, 'lin@example.com')).rejects.toThrow(
+			InviteUnavailableError
+		);
+		const response = await request('POST', '/sign-in/email-otp', {
+			email: 'lin@example.com',
+			otp: await unsentCode('lin@example.com'),
+		});
+
+		expect(response.status).toBe(403);
+		expect(await members.findByEmail('lin@example.com')).toBeNull();
+	});
+});
+
+describe('passkeys', () => {
+	it('refuses registration options without a session', async () => {
+		const response = await request('GET', '/passkey/generate-register-options');
+
+		expect(response.status).toBe(401);
+	});
+
+	it('asks for a discoverable credential bound to the request host', async () => {
+		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
+		const signedIn = await signIn('ada@example.com');
+
+		const response = await request(
+			'GET',
+			'/passkey/generate-register-options',
+			undefined,
+			cookiesFrom(signedIn.headers)
+		);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({
+			rp: { name: 'Recipe Hub', id: 'localhost' },
+			authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
+		});
+	});
+
+	it('binds credentials to the production host on production', async () => {
+		({ auth, emails, backgroundWork } = createTestAuth(db, {
+			productionHost: 'recipes.example.com',
+		}));
+		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
+		const signedIn = await signIn('ada@example.com');
+
+		const response = await request(
+			'GET',
+			'/passkey/generate-register-options',
+			undefined,
+			cookiesFrom(signedIn.headers)
+		);
+
+		expect(await response.json()).toMatchObject({ rp: { id: 'recipes.example.com' } });
+	});
+});
+
+describe('routes', () => {
+	it('answers 404 on every route the flows do not call', async () => {
+		const unused = mountedRoutes().filter(
+			({ path }) => !enabledPaths.includes(path) && !path.includes(':')
+		);
+
+		for (const { path, method } of unused) {
+			expect((await request(method, path)).status, path).toBe(404);
+		}
+		expect(unused.length).toBeGreaterThan(0);
+	});
+
+	it('serves every route the flows call', async () => {
+		const routes = mountedRoutes().filter(({ path }) => enabledPaths.includes(path));
+
+		expect(routes.map(({ path }) => path).toSorted()).toEqual(enabledPaths.toSorted());
+		for (const { path, method } of routes) {
+			expect((await request(method, path)).status, path).not.toBe(404);
+		}
+	});
+
+	it('mounts no parameterized route but the two disabledPaths cannot name', () => {
+		const parameterized = mountedRoutes().filter(({ path }) => path.includes(':'));
+
+		expect(parameterized.map(({ path }) => path).toSorted()).toEqual([
+			'/callback/:id',
+			'/reset-password/:token',
+		]);
+	});
+});
