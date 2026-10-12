@@ -107,12 +107,13 @@ Recipe Hub is one Next.js project organized as a layered, ports-and-adapters arc
 - Server Components by default; `'use client'` only at interactive leaves.
 - Mutations are Server Actions that validate input with the domain schema, call one application service, and then invalidate cache tags.
 - **Server Action forms** (since Session 5):
-  - An action takes `(state, formData)`, reads fields with `formText` and `optionalFormText` (a blank optional field is absent), calls one service, and returns `FormState` (`src/components/forms/form-state.ts`). After a success it calls `updateTag` or `refresh()`; `updateTag` already re-renders the current route, so `refresh()` is only for reads that are not cached. It never redirects; the form navigates.
+  - An action takes `(state, formData)`, reads fields with `formText` and `optionalFormText` (a blank optional field is absent), calls one service, and returns `FormState` (`src/components/forms/form-state.ts`). After a success it calls `updateTag` or `refresh()`; `updateTag` already re-renders the current route, so `refresh()` is only for reads that are not cached.
+  - An action that leads to another page (creating or editing a recipe) redirects after its `updateTag` calls, so the destination renders fresh in the action's own response: a client navigation afterwards can get the CDN's copy from before the write for a few seconds. `useFormAction` lets Next's redirect through (`unstable_rethrow`). Deleting a recipe still navigates from its dialog, so the dialog's toast can show; the list may show the deleted recipe for those few seconds.
   - `toFormError` (`src/app/_lib/form-errors.ts`) turns validation problems into field errors and expected error codes into copy. Anything else is rethrown, without the query parameters a database error carries, because Next logs it in full.
   - Forms call their action through `useFormAction`, a client function. React replays a submit made before hydration through fetch, which BotID can check, and a call that fails in transport (a firewall 429, a lost connection) shows the form's failure message instead of the error page.
   - React resets a form after its action, so error states return the submitted text (`FormError.values`), and a Base UI checkbox or select remounts with the submitted value.
   - The recipe form (`src/components/recipe-form/`) keeps its value in a reducer with stable item ids and sends it as JSON in one hidden field, which `recipeContentFromForm` maps on the server. Errors attach to the items their paths name, so they follow moves. The form needs JavaScript for list editing and uploads, so Save stays disabled until hydration: it is the one form that does not work before hydration.
-  - Next keeps recent pages alive (Activity), with their state. The create form resets itself after a save, and the edit form is keyed by the recipe's `updatedAt`, so a recipe changed elsewhere starts it again.
+  - Next keeps recent pages alive (Activity), with their state. The create form starts over because its redirect remounts it, and the edit form is keyed by the recipe's `updatedAt`, so a recipe changed elsewhere starts it again.
 - Route Handlers only for HTTP-shaped needs: the auth endpoint, Blob client-upload tokens, and image delivery. Open Graph images, icons, the manifest, the sitemap, and robots use Next's metadata file conventions.
 - `src/proxy.ts` (Next 16's replacement for `middleware.ts`) makes optimistic redirects only: a request to `/contribute`, `/recipes/<slug>/edit`, `/admin`, or `/account` without a session cookie goes to `/sign-in?next=<path>`. Its matcher names those routes, so it never runs for public pages or metadata files. The authoritative check is the application layer, on every call.
 - **Sessions:**
@@ -502,8 +503,8 @@ Lowest ratios: muted text on muted fills 5.49:1 (light); destructive text on its
 ### 6.3 Components and patterns
 
 - **Library:** shadcn/ui on Base UI primitives, Vega style, Lucide icons.
-  - Installed primitives: alert, attachment, badge, button, card, checkbox, dialog, dropdown-menu, empty, field, input, input-group, label, pagination, progress, select, separator, skeleton, spinner, tabs, textarea, toast, tooltip.
-  - Add more with `pnpm shadcn add <name>`, then `pnpm format` and `pnpm exec eslint . --fix`, plus a demo on `/design`.
+  - Installed primitives: alert, attachment, badge, button, card, checkbox, dialog, carousel, dropdown-menu, empty, field, input, input-group, label, pagination, progress, select, separator, skeleton, spinner, tabs, textarea, toast, tooltip.
+  - Add more with `pnpm shadcn add <name>`, then `pnpm format` and `pnpm exec eslint . --fix`, plus a demo on `/design`. A generated file that still fails a lint rule gets a one-line suppression with its reason, listed in 6.5.
   - When the CLI offers to overwrite a primitive listed in 6.5, decline and keep the customized version.
 - **Composition:** Base UI composes through the `render` prop, not `asChild`. A link styled as a button takes `buttonVariants()` on the link itself, because Base UI's Button must not render links. `cn` comes from the `cn` package.
 - **Forms:**
@@ -543,10 +544,11 @@ Lowest ratios: muted text on muted fills 5.49:1 (light); destructive text on its
     - An ingredient line with an amount shows the amount and unit in bold, then the item and preparation; a line without one shows its original text.
     - Step numbers restart in each section.
     - Tags link to `/search?tag=`; cards and result rows keep plain badges, because the whole card is a link.
-    - A members-only strip streams in behind its own Suspense boundaries, so the public page stays prerendered: "Edit recipe" for the contributor and admins, in a row reserved above the recipe so nothing shifts, and an "Original recipe" section of scans for any member. Both are hidden in print.
+    - Members' parts stream in behind their own Suspense boundaries, so the public page stays prerendered: for the contributor and admins, a pencil icon button ("Edit recipe", with a tooltip) in a box `RecipeDetail` reserves at the right of the title's first line (`titleAction`), so nothing shifts; and for any member, an "Original recipe" section of scans. Both are hidden in print.
+    - The cover and a row of 4:3 thumbnails for the other dish photos open one viewer: a `Dialog` holding a `Carousel` of every photo in 4:3 boxes (`object-contain`, so each shows whole), with Previous and Next, arrow keys, the alt text, and "Photo 2 of 4" in a polite status. The scans section opens the same viewer with "Page" wording.
   - `IngredientLineText` renders an ingredient line for the recipe page and the recipe form's preview.
   - `recipeTextStyles` in `recipe-detail.tsx` holds the recipe text hierarchy.
-  - `RecipePhoto` is the one fixed-aspect `next/image` box.
+  - `RecipePhoto` is the one fixed-aspect `next/image` box (`fit` cover or contain), and `RecipeScanImage` its plain `<img>` sibling for scans, which are never optimized.
   - The site's name has one home, `siteName` in `src/lib/site.ts`, shared by pages, emails, and the passkey prompt.
 - **Pagination:**
   - `RecipePagination` shows Previous and Next only where they lead somewhere.
@@ -585,6 +587,7 @@ The owner likes [tanstack.com](https://tanstack.com/) and [mstone.ai](https://ms
 - `button.tsx` and `badge.tsx`, `default` variant: hover darkens the primary 10% toward the foreground instead of fading it to 80%. White text on faded Spruce is 4.26:1, which fails AA; on the darkened hover it is 7.48:1.
 - `button.tsx`, `destructive` variant: the focus border is full-strength `border-destructive` instead of 40 percent, so the focus indicator meets 3:1 like every other control.
 - `textarea.tsx`: `resize-y supports-[field-sizing:content]:resize-none`, so auto-growing textareas show no handle. A `size` variant adds `compact` (`min-h-0`), one line tall for list items.
+- `carousel.tsx`: Embla's slide animation runs in script, out of reach of the global reduced-motion rule, so a default breakpoint sets its duration to 0 under `prefers-reduced-motion`. An `eslint-disable-next-line react-hooks/set-state-in-effect`, with its reason, covers upstream's first `onSelect(api)`.
 - `button.tsx`: `aria-disabled:pointer-events-none aria-disabled:opacity-50`, so a pending button rendered with `focusableWhenDisabled`, which sets `aria-disabled` rather than `disabled`, dims like a disabled one.
 - `pagination.tsx`, `PaginationLink`: renders `next/link` with `buttonVariants({ variant: isActive ? 'outline' : 'ghost', size })` instead of Base UI's `Button` with `render={<a />}`. Base UI's Button must not render links, and `next/link` keeps page changes client-side. Its props are `next/link`'s.
 - `select.tsx`, `SelectContent`: `alignItemWithTrigger` defaults to `false`, so the popup opens below its trigger at the trigger's width. Base UI's default lays the selected item over the trigger, offset a few pixels so the popup overhangs it, and only for mouse input, so touch already opened below.
@@ -702,6 +705,9 @@ The owner likes [tanstack.com](https://tanstack.com/) and [mstone.ai](https://ms
 | 2026-10-12 | Two photo fields: "Photos" (public) and "Original recipe" (scans, members only) | The privacy difference shows where a file is dropped, and each role gets its own size. |
 | 2026-10-12 | The off-Neon backup stays in Session 8, as its first item | Owner's choice. Neon's restore window and snapshots cover everything but deleting the database through Vercel. |
 | 2026-10-12 | Hand-written helpers kept after an audit for libraries; adopted Better Auth's typed error codes, `Intl.Segmenter` for the account initial, `z.uuidv4()`, and NFC text | Owner asked. `format-quantity` fails 6 of 24 amount cases and cannot narrow its fractions; `Intl.DurationFormat`, slug libraries, and `nuqs` each break specified behavior. Watch `any-ascii` (non-Latin slugs), `react-dropzone`, `compressorjs`, and Base UI's `Form`. |
+| 2026-10-12 | Every dish photo is browsable: thumbnails under the cover open a viewer built from shadcn's `Carousel` (Embla) in the `Dialog` primitive; scans use the same viewer | Owner's choice, asking to build from the component library rather than from scratch. Embla 8.6 is shadcn's own carousel; a swipeable cover would crop photos and is harder to make accessible. |
+| 2026-10-12 | The edit control is a pencil icon button beside the recipe title | Owner's choice over a separate row: it sits with the content, in a reserved box so nothing shifts as it streams in. |
+| 2026-10-12 | Creating and editing a recipe redirect from the Server Action after `updateTag` (supersedes "never redirects"); deleting still navigates from its dialog | Found on the preview: a client navigation after a save could get Vercel's CDN copy from before it for a few seconds, while a redirect renders the destination in the action's own response, the bundled docs' read-your-own-writes pattern. Delete keeps its toast. |
 | 2026-10-12 | Domain text strips control characters, NUL included, rather than refusing NUL | Highlights mark matches with control characters, and imports make stray ones likelier; members never see them. |
 
 ## 8. Chronology and dependencies
@@ -852,7 +858,7 @@ Deferred, each to the session that needs it:
 - **Session 5:** resolved there: the seed's "Sample contributor" member (with `develop` reset from `main`), "Added by" and the JSON-LD `author`, and the image route's members-only branch for scans.
 - **Session 6:** resolved there.
   - Uploads write under each environment's folders, deletes refuse other environments' folders, and client uploads use `handleUploadPresigned`, JPEG only.
-  - Photos are re-encoded to JPEG in the browser, so Open Graph cards draw them without `sharp`. No dimensions are stored: no screen shows a photo at its natural shape.
+  - Photos are re-encoded to JPEG in the browser, so Open Graph cards draw them without `sharp`. Every dish photo now shows, in a thumbnail row and a viewer whose boxes letterbox each photo whole, so no dimensions are stored.
   - Server Actions invalidate `recipes` and `recipe:<slug>` with `updateTag`, and a recipe without a description gets a generated one.
   - Photos upload before the recipe saves, and saving checks each one is stored.
 - **Session 8:**
@@ -1074,15 +1080,16 @@ Delivered:
 - **Presentation:**
   - `/contribute` and `/recipes/<slug>/edit` with their Server Actions, and `/api/uploads`.
   - The recipe form in `src/components/recipe-form/`: sectioned lists with actions menus and announced moves, ingredient previews, tags, times and yield, two photo fields with browser processing, progress, cover and alt text, and a delete dialog.
-  - The recipe page: "Edit recipe", scans for members, old-slug redirects, tag links, and generated meta descriptions.
+  - The recipe page: a pencil "Edit recipe" button beside the title, every dish photo in thumbnails and a viewer (`Carousel` in a `Dialog`), scans for members in the same viewer, old-slug redirects, tag links, and generated meta descriptions.
   - "Add recipe" in the account menus; `ConfirmActionDialog` moved to `src/components/forms/` with `onSuccess`; `TextareaField` and `describedBy` shared.
-  - The `progress` primitive, the textarea's `compact` size, dimmed pending buttons, and scroll padding under the sticky header.
+  - The `progress` and `carousel` primitives, the textarea's `compact` size, dimmed pending buttons, and scroll padding under the sticky header.
+  - Creating and editing redirect from their Server Actions, so the editor lands on a fresh page.
   - `/design` renders the real recipe form: adding, editing a recipe with a headed first section, and reviewing a draft with problems.
 - **Audit for libraries:** hand-written helpers kept; Better Auth's typed error codes, `Intl.Segmenter` for the account initial, and `z.uuidv4()` adopted.
 - **Fixes:**
   - From two external reviews: slug candidates escaping the old-slug check, slug allocation racing between creates and renames, branch folders that could collide or come out empty, `previousSlug` read outside the lock, a delete acting on the recipe as read before it, last-write-wins edits, and a lossy edited yield.
   - Session reads wait for `connection()`, which ends the dev server's "unstable value while prerendering" error on cold signed-in pages and the discarded shell queries behind it in production.
-- **Operations:** `0005` applied to `develop`. Uploads need `BLOB_WEBHOOK_PUBLIC_KEY`, already set in every environment.
+- **Operations:** `0005` applied to `develop`; the owner reseeded its sample recipes with the aligned structures (the seed skips existing slugs) and deleted two development photos left by testing. Uploads need `BLOB_WEBHOOK_PUBLIC_KEY`, already set in every environment.
 - **Checks on `develop`,** driven by Playwright with an emailed code:
   - A recipe created with two dish photos and a scan: a portrait photo with an EXIF rotation came out upright, every upload was a JPEG within its size with no EXIF or GPS, and a transparent scan came out on white.
   - A slug cached as missing showed the recipe once created.
@@ -1091,6 +1098,15 @@ Delivered:
   - The upload route refused signed-out requests, other folders, other names, multipart, and malformed bodies.
   - Deleting landed on the list with its toast and no "Page not found" flash, and left the slugs and photos 404.
   - No layout overflow at 390 px.
+- **Checks on the preview,** driven by Playwright with a share link and emailed codes, as the admin and as a member invited from the preview's `/admin`:
+  - Uploads landed in `dish/preview/session-6-authoring-d6219029/` and the matching scan folder.
+  - A removed photo went from a CDN HIT to a REVALIDATED 404 on the image route and the image optimizer alike, so Vercel reads the route's `Vercel-Cache-Tag` and the purges work.
+  - The share card drew the photo.
+  - A rename gave the old URL a real 308.
+  - The member was refused the admin's recipe (no pencil, "You can't edit this recipe") but saw its scans; the member created, edited, renamed, and deleted their own recipe; and the admin edited it.
+  - The upload route refused a signed-out request. The runtime logs held only the expected info lines.
+  - The run found the page after a save showing the CDN's copy from before it for a few seconds, which the redirect fixed.
+  - The owner uploaded photos and edited recipes from their phone.
 
 Deferred, each to the session that needs it:
 
@@ -1101,14 +1117,17 @@ Deferred, each to the session that needs it:
   - Scans are 3072 px JPEGs, within every vision model's limits (Claude through Bedrock or Vertex takes at most 5 MB of base64). Revisit their order for multi-page imports.
   - The scans heading "Original recipe" sits beside the byline "Original recipe at <host>" on a URL import with scans.
 - **Session 8:**
-  - **Blob cleanup**, so Blob holds only what is in use (the owner's rule): a production cron that deletes this environment's blobs no recipe lists, older than a day (abandoned uploads, photos removed before saving, failed deletes); a script for `development`; and deleting a closed preview's folders when its pull request closes (folder rule in 5.5; it needs Blob credentials outside Vercel, such as a production endpoint that verifies GitHub's OIDC token). Two development orphans from this session's checks wait for it.
+  - **Blob cleanup**, so Blob holds only what is in use (the owner's rule): a production cron that deletes this environment's blobs no recipe lists, older than a day (abandoned uploads, photos removed before saving, failed deletes); a script for `development`; and deleting a closed preview's folders when its pull request closes (folder rule in 5.5; it needs Blob credentials outside Vercel, such as a production endpoint that verifies GitHub's OIDC token).
   - **Accessibility audit:**
     - Focus after deleting a recipe lands on the page body, so the first Tab skips the skip link and header.
     - Tag links on recipe pages are 20 px tall (they pass 2.5.8 through its spacing exception) and show a 2 px focus edge.
     - The field error alerts above.
+    - A scripted Tab moved focus out of open dialogs (the photo viewer and the delete confirmation, so every Base UI dialog here) into the page behind, which is hidden from screen readers but not inert. Headless Chromium may misread Base UI's focus guards, so confirm by hand first.
+    - The photo viewer opening on the first photo focuses its disabled Previous button first.
   - **Device checks for photos:** an Android portrait photo with an EXIF rotation, 24 and 48 MP iPhone photos on iOS 17 to 27, a HEIC from the Files app, a HEIC in desktop Chrome (refused with guidance), and exiftool showing no location. `crypto.randomUUID()` needs a secure context, so a phone cannot test against the dev server by its LAN address.
   - **Performance:** each service call reads the session again (the recipe page twice, the admin page four times); a request-scoped `cache()` around the actor in the composition root would share one read. `findImagesInUse` scans recipes' jsonb without an index.
   - **Tests:** pin Drizzle's query error format with a real failing query on PGlite, so the Drizzle 1.0 upgrade cannot silently undo the removal of query parameters from logs.
+  - **Photo viewer:** on a screen shorter than the dialog (about 630 px) the viewer scrolls inside it, since tokens cannot bound the 4:3 box by viewport height; arrow keys move it only while focus is inside the carousel, not on Close; portrait scans letterbox in the 4:3 box, which 3:4 slides for scans would avoid; the recipe form's saved-scan thumbnail keeps its own `<img>` rather than `RecipeScanImage`; image buttons repeat the link focus classes, which a wider base rule than `a:focus-visible` would cover.
   - **Small:** `/recipes/<missing>/edit` keeps the title "Edit recipe"; `renameMember` calls `refresh()` after `updateTag`, which already re-renders; the cleanup workflow's comment still names the Free plan's branch cap.
 - **Not scheduled:** servings scaling (the owner's choice to defer). Amounts are structured, so it needs no data change.
 - **Known quirks:**
@@ -1116,7 +1135,8 @@ Deferred, each to the session that needs it:
   - Upload names accept an uppercase UUID; browsers never produce one.
   - A crafted save that lists another recipe's photo in the moment between that photo's in-use check and its deletion keeps a reference to a deleted photo. It needs a member racing a delete, and only their recipe shows the gap.
   - Next keeps recent pages alive, so an abandoned edit reappears on the same version within that window.
-  - `develop`'s sample recipes keep their old ingredient structures until reseeded, because the seed skips existing slugs.
+  - After a delete, other visitors (and the list the deleting member lands on) can get the CDN's copy from before it for a few seconds, a deleted slug included.
+  - Image optimizer requests log with `x-matched-path: /api/images/[...path]`, which reads like the route itself.
   - Next 16.4's dev validation records clock reads that land after it has aborted a render; possibly an upstream bug.
   - The slug lock test uses a PL/pgSQL trigger, which PGlite supports today. A slug written by hand in SQL bypasses the lock; the unique constraint still guards current slugs, but not old ones.
 
@@ -1168,11 +1188,10 @@ Deferred, each to the session that needs it:
 
 ## 10. Owner action items
 
-| Action | Needed by |
-| --- | --- |
-| Upload photos from an iPhone and an Android phone on the Session 6 preview: camera, library, and a HEIC from Files | Session 6 merge |
+| Action                                                      | Needed by |
+| ----------------------------------------------------------- | --------- |
 | Try real recipe cards by hand; decide on AI Gateway credits | Session 7 |
-| Review the brand mark; send invites; announce the site | Session 8 |
+| Review the brand mark; send invites; announce the site      | Session 8 |
 
 ## 11. Open questions and risks
 
