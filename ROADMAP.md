@@ -1105,7 +1105,7 @@ Delivered:
   - A rename gave the old URL a real 308.
   - The member was refused the admin's recipe (no pencil, "You can't edit this recipe") but saw its scans; the member created, edited, renamed, and deleted their own recipe; and the admin edited it.
   - The upload route refused a signed-out request. The runtime logs held only the expected info lines.
-  - The run found the page after a save showing the CDN's copy from before it for a few seconds, which the redirect fixed.
+  - The run found the page after a save showing the CDN's copy from before it for a few seconds. After the redirect fix, the owner confirmed by hand that a save lands on the fresh page, that the viewer opens at the chosen photo and steps through the others, and that a delete lands on the list with its toast. A scripted recheck stalled because the Gmail connector stopped returning new sign-in emails for a while.
   - The owner uploaded photos and edited recipes from their phone.
 
 Deferred, each to the session that needs it:
