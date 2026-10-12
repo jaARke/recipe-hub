@@ -1,41 +1,52 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { getCachedRecipePage, recipesPerPage } from '@/app/_lib/recipe-cache';
+import { recipeSorts } from '@/application/ports/recipe-repository';
 import { PageContainer } from '@/components/layout/page-container';
 import { RecipeCard } from '@/components/recipe/recipe-card';
 import { firstRowCardCount, RecipeGrid, RecipeGridSkeleton } from '@/components/recipe/recipe-grid';
+import { parseRecipeListParams, recipeListHref } from '@/components/recipe/recipe-list-params';
 import { RecipePagination } from '@/components/recipe/recipe-pagination';
+import { recipeListPath } from '@/components/recipe/recipe-paths';
+import { RecipeSortForm, RecipeSortFormSkeleton } from '@/components/recipe/recipe-sort-form';
 import { RecipesEmptyState } from '@/components/recipe/recipes-empty-state';
 
-// The first page has no query; any other page is a plain positive number.
-function parsePageNumber(value: string | string[] | undefined): number | null {
-	if (value === undefined) {
-		return 1;
-	}
-
-	return typeof value === 'string' && /^[1-9]\d*$/.test(value) ? Number(value) : null;
+// Every page names its normalized URL, so /?page=1 points at /.
+export async function generateMetadata({ searchParams }: PageProps<'/'>): Promise<Metadata> {
+	const state = parseRecipeListParams(await searchParams);
+	return state === null ? {} : { alternates: { canonical: recipeListHref(state) } };
 }
 
 async function RecipeList({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) {
-	const page = parsePageNumber((await searchParams).page);
-	if (page === null) {
+	const state = parseRecipeListParams(await searchParams);
+	if (state === null) {
 		notFound();
 	}
 
 	// The first page carries the total, so a page past the end never reaches the database.
-	const firstPage = await getCachedRecipePage(1);
+	const firstPage = await getCachedRecipePage(1, state.sort);
 	const pageCount = Math.max(1, Math.ceil(firstPage.total / recipesPerPage));
-	if (page > pageCount) {
+	if (state.page > pageCount) {
 		notFound();
 	}
 
-	const { recipes } = page === 1 ? firstPage : await getCachedRecipePage(page);
+	const { recipes } =
+		state.page === 1 ? firstPage : await getCachedRecipePage(state.page, state.sort);
 	if (recipes.length === 0) {
 		return <RecipesEmptyState />;
 	}
 
 	return (
 		<>
+			<div className="flex justify-end">
+				<RecipeSortForm
+					id="recipe-sort"
+					action={recipeListPath}
+					sorts={recipeSorts}
+					value={state.sort}
+				/>
+			</div>
 			<RecipeGrid>
 				{recipes.map((recipe, index) => (
 					<li key={recipe.id}>
@@ -43,7 +54,13 @@ async function RecipeList({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>
 					</li>
 				))}
 			</RecipeGrid>
-			{pageCount > 1 && <RecipePagination page={page} pageCount={pageCount} />}
+			{pageCount > 1 && (
+				<RecipePagination
+					page={state.page}
+					pageCount={pageCount}
+					pageHref={(page) => recipeListHref({ page, sort: state.sort })}
+				/>
+			)}
 		</>
 	);
 }
@@ -52,7 +69,16 @@ export default function RecipesPage({ searchParams }: PageProps<'/'>) {
 	return (
 		<PageContainer width="wide" className="flex flex-col gap-8 py-12 sm:py-16">
 			<h1 className="font-heading text-4xl font-medium">Recipes</h1>
-			<Suspense fallback={<RecipeGridSkeleton />}>
+			<Suspense
+				fallback={
+					<>
+						<div className="flex justify-end">
+							<RecipeSortFormSkeleton />
+						</div>
+						<RecipeGridSkeleton />
+					</>
+				}
+			>
 				<RecipeList searchParams={searchParams} />
 			</Suspense>
 		</PageContainer>

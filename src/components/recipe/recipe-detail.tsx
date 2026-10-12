@@ -1,7 +1,7 @@
 import { cn } from 'cn';
 import type { PublicRecipeDto } from '@/application/recipes/recipe-dtos';
 import { RecipePhoto } from '@/components/recipe/recipe-photo';
-import { Badge } from '@/components/ui/badge';
+import { RecipeTags } from '@/components/recipe/recipe-summary';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatAmount } from '@/domain/recipe/amount';
 import { formatDuration, totalMinutes } from '@/domain/recipe/duration';
@@ -203,15 +203,7 @@ function RecipeDetail({
 				</Title>
 				<RecipeByline recipe={recipe} />
 				<RecipeMetaRow recipe={recipe} />
-				{recipe.tags.length > 0 && (
-					<ul className="flex flex-wrap gap-1.5">
-						{recipe.tags.map((tag) => (
-							<li key={tag}>
-								<Badge variant="secondary">{tag}</Badge>
-							</li>
-						))}
-					</ul>
-				)}
+				{recipe.tags.length > 0 && <RecipeTags tags={recipe.tags} />}
 			</header>
 			{cover !== undefined && (
 				// Left off the printout, which is for cooking from.

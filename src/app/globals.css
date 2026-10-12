@@ -26,6 +26,8 @@
 	--color-muted-foreground: var(--muted-foreground);
 	--color-accent: var(--accent);
 	--color-accent-foreground: var(--accent-foreground);
+	--color-highlight: var(--highlight);
+	--color-highlight-foreground: var(--highlight-foreground);
 	--color-destructive: var(--destructive);
 	--color-border: var(--border);
 	--color-input: var(--input);
@@ -95,6 +97,8 @@
 	--muted-foreground: oklch(0.49 0.004 90);
 	--accent: oklch(0.955 0.02 210);
 	--accent-foreground: oklch(0.21 0.004 90);
+	--highlight: oklch(0.9 0.045 205);
+	--highlight-foreground: oklch(0.21 0.004 90);
 	--destructive: oklch(0.5 0.19 20);
 	--border: oklch(0.9 0.003 90);
 	--input: oklch(0.66 0.004 90);
@@ -118,6 +122,8 @@
 		--muted-foreground: oklch(0.72 0.003 90);
 		--accent: oklch(0.29 0.025 205);
 		--accent-foreground: oklch(0.94 0.002 90);
+		--highlight: oklch(0.38 0.06 205);
+		--highlight-foreground: oklch(0.94 0.002 90);
 		--destructive: oklch(0.76 0.15 22);
 		--border: oklch(0.32 0.003 90);
 		--input: oklch(0.52 0.003 90);
@@ -139,6 +145,18 @@
 	}
 	body {
 		@apply bg-background text-foreground;
+	}
+	/* Search matches; bolder text is the cue that does not rely on color. */
+	mark {
+		@apply rounded-sm bg-highlight box-decoration-clone text-highlight-foreground;
+		font-weight: bolder;
+	}
+	/* Disclosures draw their own chevron. */
+	summary {
+		list-style: none;
+	}
+	summary::-webkit-details-marker {
+		display: none;
 	}
 	@media (prefers-reduced-motion: reduce) {
 		*,

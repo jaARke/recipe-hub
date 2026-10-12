@@ -78,6 +78,15 @@ const colorSwatches: readonly ColorSwatch[] = [
 		],
 	},
 	{
+		name: 'highlight',
+		sampleClassName: 'bg-highlight text-highlight-foreground',
+		tokens: [
+			{ utility: 'bg-highlight', variable: '--highlight' },
+			{ utility: 'text-highlight-foreground', variable: '--highlight-foreground' },
+		],
+		note: 'Search matches. The mark element sets it, with bolder text so a match never relies on color.',
+	},
+	{
 		name: 'destructive',
 		sampleClassName: 'bg-destructive/10 text-destructive',
 		tokens: [{ utility: 'text-destructive', variable: '--destructive' }],

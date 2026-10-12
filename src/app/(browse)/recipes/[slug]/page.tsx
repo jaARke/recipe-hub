@@ -6,11 +6,12 @@ import { PageContainer } from '@/components/layout/page-container';
 import { siteName } from '@/components/layout/site-name';
 import { RecipeDetail, RecipeDetailSkeleton } from '@/components/recipe/recipe-detail';
 import { RecipeJsonLd } from '@/components/recipe/recipe-json-ld';
+import { defaultListSort } from '@/components/recipe/recipe-list-params';
 import { recipePath } from '@/components/recipe/recipe-paths';
 import { siteUrl } from '@/lib/env';
 
 export async function generateStaticParams(): Promise<{ slug: string }[]> {
-	const { recipes } = await getCachedRecipePage(1);
+	const { recipes } = await getCachedRecipePage(1, defaultListSort);
 	// A param is required but production starts empty; this one fails the slug schema and prerenders a 404.
 	return recipes.length > 0 ? recipes.map(({ slug }) => ({ slug })) : [{ slug: '__placeholder__' }];
 }

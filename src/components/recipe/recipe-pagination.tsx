@@ -1,5 +1,4 @@
 import { pageItems } from '@/components/recipe/page-items';
-import { recipeListPath } from '@/components/recipe/recipe-paths';
 import {
 	Pagination,
 	PaginationContent,
@@ -10,7 +9,14 @@ import {
 	PaginationPrevious,
 } from '@/components/ui/pagination';
 
-function RecipePagination({ page, pageCount }: { page: number; pageCount: number }) {
+type RecipePaginationProps = {
+	page: number;
+	pageCount: number;
+	// Each page's link, carrying whatever else the URL holds, such as the order.
+	pageHref: (page: number) => string;
+};
+
+function RecipePagination({ page, pageCount, pageHref }: RecipePaginationProps) {
 	return (
 		<div className="flex flex-col items-center gap-3">
 			<Pagination>
@@ -18,7 +24,7 @@ function RecipePagination({ page, pageCount }: { page: number; pageCount: number
 				<PaginationContent className="flex-wrap justify-center">
 					{page > 1 && (
 						<PaginationItem>
-							<PaginationPrevious href={recipeListPath(page - 1)} />
+							<PaginationPrevious href={pageHref(page - 1)} />
 						</PaginationItem>
 					)}
 					{pageItems(page, pageCount).map((item) =>
@@ -29,7 +35,7 @@ function RecipePagination({ page, pageCount }: { page: number; pageCount: number
 						) : (
 							<PaginationItem key={item.page}>
 								<PaginationLink
-									href={recipeListPath(item.page)}
+									href={pageHref(item.page)}
 									isActive={item.page === page}
 									aria-label={`Page ${item.page}`}
 								>
@@ -40,7 +46,7 @@ function RecipePagination({ page, pageCount }: { page: number; pageCount: number
 					)}
 					{page < pageCount && (
 						<PaginationItem>
-							<PaginationNext href={recipeListPath(page + 1)} />
+							<PaginationNext href={pageHref(page + 1)} />
 						</PaginationItem>
 					)}
 				</PaginationContent>

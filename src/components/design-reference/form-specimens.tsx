@@ -1,3 +1,4 @@
+import { SearchIcon } from 'lucide-react';
 import { sampleCourses } from '@/components/design-reference/fixtures';
 import { Specimen } from '@/components/design-reference/reference-section';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -14,6 +15,12 @@ import {
 	FieldTitle,
 } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import {
+	InputGroup,
+	InputGroupAddon,
+	InputGroupInput,
+	InputGroupText,
+} from '@/components/ui/input-group';
 import { Label } from '@/components/ui/label';
 import {
 	Select,
@@ -64,6 +71,58 @@ function InputSpecimen() {
 					<FieldError id="input-invalid-error">
 						Add a title so the recipe shows up in search.
 					</FieldError>
+				</Field>
+			</FieldGroup>
+		</Specimen>
+	);
+}
+
+function InputGroupSpecimen() {
+	return (
+		<Specimen>
+			<FieldGroup className="grid gap-6 sm:grid-cols-2">
+				<Field>
+					<FieldLabel htmlFor="input-group-icon">Leading icon</FieldLabel>
+					<InputGroup>
+						<InputGroupInput id="input-group-icon" type="search" placeholder="Search recipes" />
+						<InputGroupAddon>
+							<SearchIcon aria-hidden="true" />
+						</InputGroupAddon>
+					</InputGroup>
+				</Field>
+				<Field>
+					<FieldLabel htmlFor="input-group-text">Trailing text</FieldLabel>
+					<InputGroup>
+						<InputGroupInput id="input-group-text" inputMode="numeric" defaultValue="35" />
+						<InputGroupAddon align="inline-end">
+							<InputGroupText>minutes</InputGroupText>
+						</InputGroupAddon>
+					</InputGroup>
+				</Field>
+				<Field data-disabled="true">
+					<FieldLabel htmlFor="input-group-disabled">Disabled</FieldLabel>
+					<InputGroup data-disabled="true">
+						<InputGroupInput id="input-group-disabled" defaultValue="Buttermilk" disabled />
+						<InputGroupAddon>
+							<SearchIcon aria-hidden="true" />
+						</InputGroupAddon>
+					</InputGroup>
+				</Field>
+				<Field data-invalid="true">
+					<FieldLabel htmlFor="input-group-invalid">Invalid</FieldLabel>
+					<InputGroup>
+						<InputGroupInput
+							id="input-group-invalid"
+							inputMode="numeric"
+							defaultValue="0"
+							aria-invalid="true"
+							aria-describedby="input-group-invalid-error"
+						/>
+						<InputGroupAddon align="inline-end">
+							<InputGroupText>minutes</InputGroupText>
+						</InputGroupAddon>
+					</InputGroup>
+					<FieldError id="input-group-invalid-error">Enter at least 1 minute.</FieldError>
 				</Field>
 			</FieldGroup>
 		</Specimen>
@@ -314,6 +373,7 @@ function CheckboxSpecimen() {
 export {
 	CheckboxSpecimen,
 	FieldSpecimen,
+	InputGroupSpecimen,
 	InputSpecimen,
 	LabelSpecimen,
 	SelectSpecimen,

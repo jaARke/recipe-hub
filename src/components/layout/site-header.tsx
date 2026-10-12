@@ -4,6 +4,8 @@ import { MainNav, MainNavLinks } from '@/components/layout/main-nav';
 import { PageContainer } from '@/components/layout/page-container';
 import { siteName } from '@/components/layout/site-name';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
+import { HeaderSearch } from '@/components/search/header-search';
+import { HeaderSearchBar } from '@/components/search/header-search-bar';
 
 function SiteHeader() {
 	return (
@@ -15,7 +17,12 @@ function SiteHeader() {
 				<Suspense fallback={<MainNavLinks />}>
 					<MainNav />
 				</Suspense>
-				<div className="ml-auto">
+				<div className="ml-auto flex items-center gap-2">
+					<Suspense fallback={<HeaderSearchBar />}>
+						<HeaderSearch>
+							<HeaderSearchBar />
+						</HeaderSearch>
+					</Suspense>
 					<ThemeToggle />
 				</div>
 			</PageContainer>
