@@ -51,9 +51,13 @@ function AccountMenuItems({ member }: { member: HeaderMember | null }) {
 	);
 }
 
+// Whole characters as a reader sees them, so an accented letter or an emoji is never split.
+const graphemes = new Intl.Segmenter('en-US', { granularity: 'grapheme' });
+
 // The member's first letter, so the button stays as small as the bar's other controls.
 function memberInitial(displayName: string): string {
-	return (Array.from(displayName)[0] ?? '').toLocaleUpperCase();
+	const [first] = graphemes.segment(displayName);
+	return (first?.segment ?? '').toLocaleUpperCase();
 }
 
 function AccountMenu({ member }: { member: HeaderMember }) {
