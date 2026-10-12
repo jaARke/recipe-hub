@@ -1,0 +1,12 @@
+ALTER TABLE "recipes" ADD COLUMN "search_vector" "tsvector" GENERATED ALWAYS AS (setweight(to_tsvector('public.recipe_english'::regconfig, "recipes"."content" ->> 'title'), 'A')
+	|| setweight(to_tsvector('public.recipe_english'::regconfig, jsonb_path_query_array("recipes"."content", '$.ingredientSections[*].lines[*].item')), 'B')
+	|| setweight(to_tsvector('public.recipe_english'::regconfig, public.immutable_array_to_string("recipes"."tags", ' ')), 'B')
+	|| setweight(to_tsvector('public.recipe_english'::regconfig, jsonb_path_query_array("recipes"."content", '$.description') || jsonb_path_query_array("recipes"."content", '$.notes') || jsonb_path_query_array("recipes"."content", '$.source')), 'C')
+	|| setweight(to_tsvector('public.recipe_english'::regconfig, jsonb_path_query_array("recipes"."content", '$.instructionSections[*].steps[*].text')), 'D')) STORED NOT NULL;--> statement-breakpoint
+ALTER TABLE "recipes" ADD COLUMN "search_words" text GENERATED ALWAYS AS (lower(public.immutable_unaccent(("recipes"."content" ->> 'title') || ' ' || jsonb_path_query_array("recipes"."content", '$.ingredientSections[*].lines[*].item')::text || ' ' || public.immutable_array_to_string("recipes"."tags", ' ')))) STORED NOT NULL;--> statement-breakpoint
+ALTER TABLE "recipes" ADD COLUMN "tag_keys" text[] GENERATED ALWAYS AS (public.search_keys("recipes"."tags")) STORED NOT NULL;--> statement-breakpoint
+ALTER TABLE "recipes" ADD COLUMN "source_key" text GENERATED ALWAYS AS (public.search_key("recipes"."content" ->> 'source')) STORED;--> statement-breakpoint
+ALTER TABLE "recipes" ADD COLUMN "total_minutes" bigint GENERATED ALWAYS AS (coalesce(("recipes"."content" #>> '{times,totalMinutes}')::bigint, ("recipes"."content" #>> '{times,prepMinutes}')::bigint + ("recipes"."content" #>> '{times,cookMinutes}')::bigint, ("recipes"."content" #>> '{times,prepMinutes}')::bigint, ("recipes"."content" #>> '{times,cookMinutes}')::bigint)) STORED;--> statement-breakpoint
+ALTER TABLE "recipes" ADD COLUMN "title_sort" text GENERATED ALWAYS AS (lower(public.immutable_unaccent("recipes"."content" ->> 'title') COLLATE pg_catalog.pg_unicode_fast)) STORED NOT NULL;--> statement-breakpoint
+CREATE INDEX "recipes_search_vector_idx" ON "recipes" USING gin ("search_vector");--> statement-breakpoint
+CREATE INDEX "recipes_tag_keys_idx" ON "recipes" USING gin ("tag_keys");

@@ -8,6 +8,20 @@
       "when": 1791675569284,
       "tag": "0000_create-recipes",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791773520987,
+      "tag": "0001_enable-search",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791775610138,
+      "tag": "0002_add-search-columns",
+      "breakpoints": true
     }
   ]
 }

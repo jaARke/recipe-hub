@@ -1,0 +1,183 @@
+{
+  "id": "ef898a11-b741-4c61-8133-9ded03185690",
+  "prevId": "d153ca9a-ed15-408a-aad7-2daadab16e6c",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.recipes": {
+      "name": "recipes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "uuidv7()"
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "contributor_id": {
+          "name": "contributor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content": {
+          "name": "content",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provenance": {
+          "name": "provenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tags": {
+          "name": "tags",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "search_vector": {
+          "name": "search_vector",
+          "type": "tsvector",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "setweight(to_tsvector('public.recipe_english'::regconfig, \"recipes\".\"content\" ->> 'title'), 'A')\n\t|| setweight(to_tsvector('public.recipe_english'::regconfig, jsonb_path_query_array(\"recipes\".\"content\", '$.ingredientSections[*].lines[*].item')), 'B')\n\t|| setweight(to_tsvector('public.recipe_english'::regconfig, public.immutable_array_to_string(\"recipes\".\"tags\", ' ')), 'B')\n\t|| setweight(to_tsvector('public.recipe_english'::regconfig, jsonb_path_query_array(\"recipes\".\"content\", '$.description') || jsonb_path_query_array(\"recipes\".\"content\", '$.notes') || jsonb_path_query_array(\"recipes\".\"content\", '$.source')), 'C')\n\t|| setweight(to_tsvector('public.recipe_english'::regconfig, jsonb_path_query_array(\"recipes\".\"content\", '$.instructionSections[*].steps[*].text')), 'D')",
+            "type": "stored"
+          }
+        },
+        "search_words": {
+          "name": "search_words",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "lower(public.immutable_unaccent((\"recipes\".\"content\" ->> 'title') || ' ' || jsonb_path_query_array(\"recipes\".\"content\", '$.ingredientSections[*].lines[*].item')::text || ' ' || public.immutable_array_to_string(\"recipes\".\"tags\", ' ')))",
+            "type": "stored"
+          }
+        },
+        "tag_keys": {
+          "name": "tag_keys",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "public.search_keys(\"recipes\".\"tags\")",
+            "type": "stored"
+          }
+        },
+        "source_key": {
+          "name": "source_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "generated": {
+            "as": "public.search_key(\"recipes\".\"content\" ->> 'source')",
+            "type": "stored"
+          }
+        },
+        "total_minutes": {
+          "name": "total_minutes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false,
+          "generated": {
+            "as": "coalesce((\"recipes\".\"content\" #>> '{times,totalMinutes}')::bigint, (\"recipes\".\"content\" #>> '{times,prepMinutes}')::bigint + (\"recipes\".\"content\" #>> '{times,cookMinutes}')::bigint, (\"recipes\".\"content\" #>> '{times,prepMinutes}')::bigint, (\"recipes\".\"content\" #>> '{times,cookMinutes}')::bigint)",
+            "type": "stored"
+          }
+        },
+        "title_sort": {
+          "name": "title_sort",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "lower(public.immutable_unaccent(\"recipes\".\"content\" ->> 'title') COLLATE pg_catalog.pg_unicode_fast)",
+            "type": "stored"
+          }
+        }
+      },
+      "indexes": {
+        "recipes_search_vector_idx": {
+          "name": "recipes_search_vector_idx",
+          "columns": [
+            {
+              "expression": "search_vector",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "recipes_tag_keys_idx": {
+          "name": "recipes_tag_keys_idx",
+          "columns": [
+            {
+              "expression": "tag_keys",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "recipes_slug_unique": {
+          "name": "recipes_slug_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "slug"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
