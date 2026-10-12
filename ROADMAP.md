@@ -488,9 +488,8 @@ flowchart LR
 	S7 --> S8
 ```
 
-- Session 4 is next; Session 5 can run in parallel with it.
 - Session 3 (done) seeded synthetic recipes, so browsing works before authoring exists.
-- Session 4 builds on the browse UI and can run in parallel with Session 5.
+- Session 4 is next. It builds on the browse UI and can run in parallel with Session 5.
 - Session 5 needs the design system for its account pages and the data layer for Better Auth's tables.
 - Session 6 needs public pages to land on and authentication, so recipes are attributed from the first save.
 - Session 7 builds on the authoring form, which doubles as the review form. Semantic search with embeddings created at import is revisited after Session 7.
@@ -742,7 +741,7 @@ Deferred, each to the session that needs it:
 
 - **Brand and sharing:**
   - A brand mark designed with the owner and the icon set from section 5.7: favicon, SVG icon with a dark variant, Apple touch icon, and manifest icons.
-  - The web app manifest, the site-wide Open Graph image, `metadataBase` from `env.ts`, and the Twitter card.
+  - The web app manifest, and the site-wide Open Graph image with its Twitter card (`metadataBase` landed in Session 3).
   - Verification with Meta's Sharing Debugger and Google's Rich Results Test.
 - **Tests and audits:**
   - Playwright end-to-end tests for browsing, search, the request and invite flow, manual entry, and import.
