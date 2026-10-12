@@ -101,7 +101,10 @@ function RecipeByline({ recipe }: { recipe: PublicRecipeDto }) {
 				</p>
 			)}
 			<div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-				<RecipeDate label="Added" date={recipe.createdAt} />
+				<RecipeDate
+					label={`Added by ${recipe.contributor.displayName} on`}
+					date={recipe.createdAt}
+				/>
 				{recipe.updatedAt.getTime() > recipe.createdAt.getTime() && (
 					<RecipeDate label="Edited" date={recipe.updatedAt} />
 				)}

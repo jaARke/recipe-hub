@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { NewMember } from '@/application/ports/member-repository';
 import type { RecipeSearchQuery, RecipeSearchResults } from '@/application/ports/recipe-search';
 import { parseRecipeTextQuery } from '@/application/search/recipe-text-query';
+import type { MemberId } from '@/domain/member/member';
 import { recipeContentSchema } from '@/domain/recipe/recipe';
 import { sampleRecipeContents } from '@/domain/recipe/samples/sample-recipes';
 import { slugify } from '@/domain/recipe/slug';
@@ -48,12 +49,13 @@ const tanteHeleneRecipes = [
 // The search shares one database, since none of the tests writes.
 let db: TestDatabase;
 let search: DrizzleRecipeSearch;
+let contributorId: MemberId;
 
 beforeAll(async () => {
 	db = await createTestDatabase();
 	search = new DrizzleRecipeSearch(db);
 	const repository = new DrizzleRecipeRepository(db);
-	const contributorId = (await new DrizzleMemberRepository(db).create(contributor)).id;
+	contributorId = (await new DrizzleMemberRepository(db).create(contributor)).id;
 	for (const input of sampleRecipeContents) {
 		const content = recipeContentSchema.parse(input);
 		await repository.create({
@@ -266,7 +268,7 @@ describe('filters', () => {
 });
 
 describe('facets', () => {
-	it('count the tags and sources of a typical search', async () => {
+	it('count the tags, sources, and contributors of a typical search', async () => {
 		const results = await searchFor('tomato');
 
 		expect(results.total).toBe(tomatoRecipes.length);
@@ -290,6 +292,9 @@ describe('facets', () => {
 				{ label: 'Grandpa Lou', count: 1 },
 				{ label: 'Tante Hélène', count: 1 },
 				{ label: 'Uncle Ray', count: 1 },
+			],
+			contributors: [
+				{ memberId: contributorId, displayName: 'Contributor', count: tomatoRecipes.length },
 			],
 		});
 	});

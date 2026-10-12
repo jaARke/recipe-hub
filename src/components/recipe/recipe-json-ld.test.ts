@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { PublicRecipeDto } from '@/application/recipes/recipe-dtos';
 import { RecipeJsonLd, toRecipeJsonLd } from '@/components/recipe/recipe-json-ld';
+import { memberIdSchema } from '@/domain/member/member';
 import {
 	parseRecipeContent,
 	recipeIdSchema,
@@ -22,6 +23,10 @@ function publicRecipe(slug: string, content: RecipeContentInput): PublicRecipeDt
 		...parseRecipeContent(content),
 		id: recipeIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e'),
 		slug,
+		contributor: {
+			id: memberIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-3b8d2f5c6e7f'),
+			displayName: 'Ada',
+		},
 		createdAt: new Date('2026-10-01T12:00:00.000Z'),
 		updatedAt: new Date('2026-10-05T08:30:00.000Z'),
 	};
@@ -51,6 +56,12 @@ describe('toRecipeJsonLd', () => {
 			recipeYield: 'Serves 6',
 			keywords: 'Soup, Weeknight',
 		});
+	});
+
+	it('names the contributor as the author, never the source', () => {
+		const soup = publicRecipe('weeknight-chicken-soup', sampleChickenSoup);
+
+		expect(toRecipeJsonLd(soup, siteUrl).author).toEqual({ '@type': 'Person', name: 'Ada' });
 	});
 
 	it('leaves out the image when the recipe has no dish photo', () => {

@@ -54,7 +54,11 @@ function getAuth(): Auth {
 const actors = new BetterAuthActorProvider(getAuth, headers);
 
 export function getRecipeService(): RecipeService {
-	return new RecipeService(new DrizzleRecipeRepository(db), actors);
+	return new RecipeService(
+		new DrizzleRecipeRepository(db),
+		new DrizzleMemberRepository(db),
+		actors
+	);
 }
 
 export function getRecipeSearchService(): RecipeSearchService {
@@ -62,7 +66,7 @@ export function getRecipeSearchService(): RecipeSearchService {
 }
 
 export function getRecipeImageService(): RecipeImageService {
-	return new RecipeImageService(new BlobImageStore({ storeId: env.BLOB_STORE_ID }));
+	return new RecipeImageService(new BlobImageStore({ storeId: env.BLOB_STORE_ID }), actors);
 }
 
 export function getAccessRequestService(): AccessRequestService {

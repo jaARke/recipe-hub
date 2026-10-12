@@ -17,6 +17,8 @@ export type RecipeSearchInput = {
 	text?: string;
 	tags: string[];
 	source?: string;
+	// A member's id, as the contributor facet lists it.
+	contributorId?: string;
 	maxTotalMinutes?: RecipeTotalTimeChoice;
 	addedWithin?: RecipeAddedWithin;
 	sort: RecipeSearchSort;

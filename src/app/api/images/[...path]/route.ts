@@ -1,5 +1,8 @@
 import type { NextRequest } from 'next/server';
+import { SignInRequiredError } from '@/application/authorization';
+import type { StoredImage } from '@/application/ports/image-store';
 import { getRecipeImageService } from '@/composition/services';
+import { isScanImagePathname } from '@/domain/recipe/recipe-image';
 import { getLogger } from '@/lib/logger';
 
 const logger = getLogger('images');
@@ -14,23 +17,26 @@ function notFoundResponse(): Response {
 	return new Response(null, { status: 404, headers: { 'Cache-Control': 'no-store' } });
 }
 
+function refusedQueryResponse(pathname: string, params: URLSearchParams): Response {
+	logger.warn('Image request refused for its query', {
+		pathname,
+		parameters: [...params.keys()],
+	});
+	return notFoundResponse();
+}
+
 // The CDN keys on the query string, so any other query would bypass the cache.
 function isAllowedQuery(params: URLSearchParams): boolean {
 	const names = [...params.keys()];
 	return names.length === 0 || (names.length === 1 && names[0] === optimizerParameter);
 }
 
-export async function GET(request: NextRequest, context: RouteContext<'/api/images/[...path]'>) {
-	const { path } = await context.params;
-	if (!isAllowedQuery(request.nextUrl.searchParams)) {
-		logger.warn('Image request refused for its query', {
-			pathname: path.join('/'),
-			parameters: [...request.nextUrl.searchParams.keys()],
-		});
-		return notFoundResponse();
+async function publicImageResponse(pathname: string, params: URLSearchParams): Promise<Response> {
+	if (!isAllowedQuery(params)) {
+		return refusedQueryResponse(pathname, params);
 	}
 
-	const image = await getRecipeImageService().getPublicImage(path.join('/'));
+	const image = await getRecipeImageService().getPublicImage(pathname);
 	if (image === null) {
 		return notFoundResponse();
 	}
@@ -44,4 +50,45 @@ export async function GET(request: NextRequest, context: RouteContext<'/api/imag
 			'Cache-Control': `public, max-age=${cacheMaxAgeSeconds}, s-maxage=${cacheMaxAgeSeconds}, immutable`,
 		},
 	});
+}
+
+// A signed-out visitor gets the same 404 as a missing scan.
+async function findMemberImage(pathname: string): Promise<StoredImage | null> {
+	try {
+		return await getRecipeImageService().getMemberImage(pathname);
+	} catch (error) {
+		if (error instanceof SignInRequiredError) {
+			return null;
+		}
+		throw error;
+	}
+}
+
+// Scans are never optimized, so any query is refused, and no cache keeps them.
+async function scanResponse(pathname: string, params: URLSearchParams): Promise<Response> {
+	if (params.size > 0) {
+		return refusedQueryResponse(pathname, params);
+	}
+
+	const image = await findMemberImage(pathname);
+	if (image === null) {
+		return notFoundResponse();
+	}
+
+	return new Response(image.body, {
+		headers: {
+			'Content-Type': image.contentType,
+			'X-Content-Type-Options': 'nosniff',
+			'Cache-Control': 'private, no-store',
+		},
+	});
+}
+
+export async function GET(request: NextRequest, context: RouteContext<'/api/images/[...path]'>) {
+	const { path } = await context.params;
+	const pathname = path.join('/');
+	const params = request.nextUrl.searchParams;
+	return isScanImagePathname(pathname)
+		? scanResponse(pathname, params)
+		: publicImageResponse(pathname, params);
 }

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { coverImage, isPublicImagePathname, recipeImageSchema } from '@/domain/recipe/recipe-image';
+import {
+	coverImage,
+	isPublicImagePathname,
+	isScanImagePathname,
+	recipeImageSchema,
+} from '@/domain/recipe/recipe-image';
 
 describe('recipeImageSchema', () => {
 	it('accepts an image stored under its role', () => {
@@ -61,5 +66,21 @@ describe('isPublicImagePathname', () => {
 		'dish/%2e%2e/scan/card-front.jpg',
 	])('refuses %s', (pathname) => {
 		expect(isPublicImagePathname(pathname)).toBe(false);
+	});
+});
+
+describe('isScanImagePathname', () => {
+	it('accepts a scan', () => {
+		expect(isScanImagePathname('scan/seed/card-front.jpg')).toBe(true);
+	});
+
+	it.each([
+		'dish/seed/soup.jpg',
+		'card-front.jpg',
+		'scans/card-front.jpg',
+		'scan/../dish/soup.jpg',
+		'scan/%2e%2e/dish/soup.jpg',
+	])('refuses %s', (pathname) => {
+		expect(isScanImagePathname(pathname)).toBe(false);
 	});
 });

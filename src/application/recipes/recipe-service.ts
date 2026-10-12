@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireMember } from '@/application/authorization';
 import { paginationSchema } from '@/application/pagination';
 import type { ActorProvider } from '@/application/ports/actor-provider';
+import type { MemberRepository } from '@/application/ports/member-repository';
 import {
 	recipeSorts,
 	type RecipePage,
@@ -59,10 +60,12 @@ function parseProvenance(input: unknown): Provenance {
 
 export class RecipeService {
 	private readonly recipes: RecipeRepository;
+	private readonly members: MemberRepository;
 	private readonly actors: ActorProvider;
 
-	constructor(recipes: RecipeRepository, actors: ActorProvider) {
+	constructor(recipes: RecipeRepository, members: MemberRepository, actors: ActorProvider) {
 		this.recipes = recipes;
+		this.members = members;
 		this.actors = actors;
 	}
 
@@ -73,7 +76,17 @@ export class RecipeService {
 		}
 
 		const recipe = await this.recipes.findBySlug(slug);
-		return recipe === null ? null : toPublicRecipeDto(recipe);
+		if (recipe === null) {
+			return null;
+		}
+
+		// A foreign key keeps every contributor, so a missing one is broken data, not a missing recipe.
+		const contributor = await this.members.findById(recipe.contributorId);
+		if (contributor === null) {
+			throw new Error('Recipe contributor was not found');
+		}
+
+		return toPublicRecipeDto(recipe, contributor);
 	}
 
 	async listRecipes(page: RecipePage): Promise<RecipeSummaryPage> {

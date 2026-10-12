@@ -10,16 +10,28 @@ import { RecipeSearchService } from '@/application/search/recipe-search-service'
 import { memberActor } from '@/application/testing/actors';
 import { FixedRecipeSearch } from '@/application/testing/fixed-recipe-search';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
+import { memberIdSchema } from '@/domain/member/member';
 import { parseRecipeContent } from '@/domain/recipe/recipe';
 import { sampleChickenSoup } from '@/domain/recipe/samples/sample-recipes';
 
 const firstPage: RecipeSearchInput = { tags: [], sort: 'relevance', limit: 24, offset: 0 };
 
+const adaId = memberIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e');
+
 const noResults: RecipeSearchResults = {
 	hits: [],
 	total: 0,
 	match: 'exact',
-	facets: { tags: [], sources: [] },
+	facets: { tags: [], sources: [], contributors: [] },
+};
+
+// The search lists a chosen member who exists, even with no recipe left.
+const noResultsByAda: RecipeSearchResults = {
+	...noResults,
+	facets: {
+		...noResults.facets,
+		contributors: [{ memberId: adaId, displayName: 'Ada', count: 0 }],
+	},
 };
 
 function tagLabels(count: number): string[] {
@@ -34,12 +46,13 @@ function createSearch(results: RecipeSearchResults) {
 
 describe('searchRecipes', () => {
 	it('parses the text and normalizes the filters into the query', async () => {
-		const { recipes, service } = createSearch(noResults);
+		const { recipes, service } = createSearch(noResultsByAda);
 
 		await service.searchRecipes({
 			text: '  chicken -"bay leaf" ',
 			tags: [' weeknight', 'Soup', 'WEEKNIGHT'],
 			source: ' Grandpa Lou ',
+			contributorId: ` ${adaId.toUpperCase()} `,
 			maxTotalMinutes: 60,
 			addedWithin: 'month',
 			sort: 'title',
@@ -56,6 +69,7 @@ describe('searchRecipes', () => {
 				},
 				tags: ['weeknight', 'Soup'],
 				source: 'Grandpa Lou',
+				contributorId: adaId,
 				maxTotalMinutes: 60,
 				addedWithin: 'month',
 				sort: 'title',
@@ -105,6 +119,7 @@ describe('searchRecipes', () => {
 		['a NUL character in the text', { text: 'soup\0' }],
 		['a NUL character in a tag', { tags: ['Soup\0'] }],
 		['a NUL character in the source', { source: 'Grandpa\0Lou' }],
+		['a contributor id that is not an id', { contributorId: 'ada' }],
 		['a total time that is not a choice', { maxTotalMinutes: 45 }],
 		['an unknown window for the date added', { addedWithin: 'day' }],
 		['an unknown sort', { sort: 'oldest' }],
@@ -120,6 +135,15 @@ describe('searchRecipes', () => {
 			service.searchRecipes({ ...firstPage, ...overrides } as RecipeSearchInput)
 		).rejects.toThrow(InvalidRecipeSearchError);
 		expect(recipes.receivedQueries).toEqual([]);
+	});
+
+	it('rejects a contributor id the facet does not list, since it names no member', async () => {
+		const { recipes, service } = createSearch(noResults);
+
+		await expect(service.searchRecipes({ ...firstPage, contributorId: adaId })).rejects.toThrow(
+			InvalidRecipeSearchError
+		);
+		expect(recipes.receivedQueries).toMatchObject([{ contributorId: adaId }]);
 	});
 
 	it('returns the page of results, each summarized for its card', async () => {
@@ -140,6 +164,7 @@ describe('searchRecipes', () => {
 		const facets: RecipeSearchFacets = {
 			tags: [{ label: 'Soup', count: 3 }],
 			sources: [{ label: 'Grandpa Lou', count: 1 }],
+			contributors: [{ memberId: soup.contributorId, displayName: 'Ada', count: 1 }],
 		};
 		const { service } = createSearch({
 			hits: [{ recipe: soup, title, snippet }],

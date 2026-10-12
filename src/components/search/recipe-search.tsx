@@ -102,7 +102,7 @@ function RecipeSearch({
 					<Section id={resultsHeadingId} className="sr-only">
 						Results
 					</Section>
-					<RecipeSearchActiveFilters state={state} />
+					<RecipeSearchActiveFilters state={state} facets={results.facets} />
 					<div className="flex flex-wrap items-center justify-between gap-4">
 						{/* Outside any keyed subtree, so it stays in place and each new count is announced. */}
 						<p role="status" className="text-sm text-muted-foreground">
@@ -168,6 +168,7 @@ function RecipeSearchSkeleton() {
 					<div className="hidden lg:flex lg:w-64 lg:shrink-0 lg:flex-col lg:gap-6">
 						<Skeleton className="h-7 w-20" />
 						<Skeleton className="h-32 w-full" />
+						<Skeleton className="h-14 w-full" />
 						<Skeleton className="h-14 w-full" />
 						<Skeleton className="h-14 w-full" />
 						<Skeleton className="h-14 w-full" />

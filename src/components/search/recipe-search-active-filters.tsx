@@ -1,6 +1,11 @@
 import { XIcon } from 'lucide-react';
 import Link from 'next/link';
-import { addedWithinLabels, totalTimeLabels } from '@/components/search/recipe-search-filters';
+import type { RecipeSearchFacets } from '@/application/ports/recipe-search';
+import {
+	addedWithinLabels,
+	chosenContributor,
+	totalTimeLabels,
+} from '@/components/search/recipe-search-filters';
 import {
 	recipeSearchHref,
 	withoutFilters,
@@ -16,7 +21,7 @@ type ActiveFilter = {
 	href: string;
 };
 
-function activeFilters(state: RecipeSearchState): ActiveFilter[] {
+function activeFilters(state: RecipeSearchState, facets: RecipeSearchFacets): ActiveFilter[] {
 	const without = (change: Partial<RecipeSearchState>) =>
 		recipeSearchHref({ ...state, ...change, page: 1 });
 
@@ -30,6 +35,14 @@ function activeFilters(state: RecipeSearchState): ActiveFilter[] {
 			key: 'source',
 			label: `From ${state.source}`,
 			href: without({ source: undefined }),
+		});
+	}
+	const contributor = chosenContributor(state, facets.contributors);
+	if (contributor !== undefined) {
+		filters.push({
+			key: 'contributor',
+			label: `Added by ${contributor.displayName}`,
+			href: without({ contributorId: undefined }),
 		});
 	}
 	if (state.maxTotalMinutes !== undefined) {
@@ -49,8 +62,14 @@ function activeFilters(state: RecipeSearchState): ActiveFilter[] {
 	return filters;
 }
 
-function RecipeSearchActiveFilters({ state }: { state: RecipeSearchState }) {
-	const filters = activeFilters(state);
+function RecipeSearchActiveFilters({
+	state,
+	facets,
+}: {
+	state: RecipeSearchState;
+	facets: RecipeSearchFacets;
+}) {
+	const filters = activeFilters(state, facets);
 	if (filters.length === 0) {
 		return null;
 	}

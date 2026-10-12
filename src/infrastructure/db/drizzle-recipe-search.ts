@@ -1,9 +1,10 @@
 import 'server-only';
-import { and, count, desc, inArray, isNotNull, lte, sql, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, gt, inArray, isNotNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import type {
 	HighlightedText,
 	RecipeAddedWithin,
+	RecipeContributorCount,
 	RecipeFacetCount,
 	RecipeMatch,
 	RecipeSearch,
@@ -13,10 +14,11 @@ import type {
 	RecipeSearchSort,
 	RecipeTextQuery,
 } from '@/application/ports/recipe-search';
+import { memberIdSchema, type MemberId } from '@/domain/member/member';
 import type { Recipe } from '@/domain/recipe/recipe';
 import { recipeColumns, toRecipe } from '@/infrastructure/db/recipe-mapper';
 import { recipeOrders } from '@/infrastructure/db/recipe-order';
-import { recipes, recipeSearchConfiguration } from '@/infrastructure/db/schema';
+import { recipes, recipeSearchConfiguration, users } from '@/infrastructure/db/schema';
 import {
 	hasMatch,
 	passageHeadlineOptions,
@@ -43,10 +45,11 @@ type TextMatch = {
 	highlightQuery?: SQL;
 };
 
-// Kept apart, because the source facet counts with every filter but its own.
+// Kept apart, because the source and contributor facets count with every filter but their own.
 type SearchFilters = {
 	tags?: SQL;
 	source?: SQL;
+	contributor?: SQL;
 	maxTotalMinutes?: SQL;
 	addedWithin?: SQL;
 };
@@ -121,6 +124,10 @@ function searchFilters(query: RecipeSearchQuery): SearchFilters {
 			query.source === undefined
 				? undefined
 				: sql`${recipes.sourceKey} = public.search_key(${query.source})`,
+		contributor:
+			query.contributorId === undefined
+				? undefined
+				: eq(recipes.contributorId, query.contributorId),
 		maxTotalMinutes:
 			query.maxTotalMinutes === undefined
 				? undefined
@@ -137,6 +144,7 @@ function matching(match: TextMatch, filters: SearchFilters): SQL | undefined {
 		match.condition,
 		filters.tags,
 		filters.source,
+		filters.contributor,
 		filters.maxTotalMinutes,
 		filters.addedWithin
 	);
@@ -210,12 +218,13 @@ export class DrizzleRecipeSearch implements RecipeSearch {
 		filters: SearchFilters,
 		total: number
 	): Promise<RecipeSearchResults> {
-		const [hits, tags, sources] = await Promise.all([
+		const [hits, tags, sources, contributors] = await Promise.all([
 			this.findHits(query, match, filters),
 			this.countTags(match, filters),
 			this.countSources(match, filters),
+			this.countContributors(match, filters, query.contributorId),
 		]);
-		return { hits, total, match: match.kind, facets: { tags, sources } };
+		return { hits, total, match: match.kind, facets: { tags, sources, contributors } };
 	}
 
 	private async findHits(
@@ -289,6 +298,7 @@ export class DrizzleRecipeSearch implements RecipeSearch {
 				and(
 					match.condition,
 					filters.tags,
+					filters.contributor,
 					filters.maxTotalMinutes,
 					filters.addedWithin,
 					isNotNull(recipes.sourceKey)
@@ -296,5 +306,33 @@ export class DrizzleRecipeSearch implements RecipeSearch {
 			)
 			.groupBy(recipes.sourceKey)
 			.orderBy(desc(count()), recipes.sourceKey);
+	}
+
+	// Counted from members, so the chosen one is listed even with no result left: a URL holds only
+	// the id, and the filters need the name. Ordered as sources are, by count and then name.
+	private async countContributors(
+		match: TextMatch,
+		filters: SearchFilters,
+		chosen: MemberId | undefined
+	): Promise<RecipeContributorCount[]> {
+		const recipeCount = count(recipes.id);
+		const rows = await this.db
+			.select({ memberId: users.id, displayName: users.displayName, count: recipeCount })
+			.from(users)
+			.leftJoin(
+				recipes,
+				and(
+					eq(recipes.contributorId, users.id),
+					match.condition,
+					filters.tags,
+					filters.source,
+					filters.maxTotalMinutes,
+					filters.addedWithin
+				)
+			)
+			.groupBy(users.id)
+			.having(or(gt(recipeCount, 0), chosen === undefined ? undefined : eq(users.id, chosen)))
+			.orderBy(desc(recipeCount), sql`public.search_key(${users.displayName})`, users.id);
+		return rows.map((row) => ({ ...row, memberId: memberIdSchema.parse(row.memberId) }));
 	}
 }

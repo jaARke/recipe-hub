@@ -14,6 +14,7 @@ import {
 	type RecipeSearchPage,
 } from '@/application/search/recipe-search-dtos';
 import { parseRecipeTextQuery } from '@/application/search/recipe-text-query';
+import { memberIdSchema } from '@/domain/member/member';
 import { tagListSchema } from '@/domain/recipe/tag';
 import { nonEmptyTextSchema } from '@/domain/text';
 
@@ -31,6 +32,8 @@ const recipeSearchInputSchema = paginationSchema.extend({
 	text: z.string().trim().max(maxTextLength).refine(hasNoNul).optional(),
 	tags: tagListSchema.max(maxTagCount).refine((tags) => tags.every(hasNoNul)),
 	source: nonEmptyTextSchema.refine(hasNoNul).optional(),
+	// Lowercased, as Postgres prints ids, so the chosen id matches the contributor facet's.
+	contributorId: z.string().trim().toLowerCase().pipe(memberIdSchema).optional(),
 	maxTotalMinutes: z.literal(recipeTotalTimeChoices).optional(),
 	addedWithin: z.enum(recipeAddedWithin).optional(),
 	sort: z.enum(recipeSearchSorts),
@@ -55,6 +58,15 @@ export class RecipeSearchService {
 			...filters,
 			text: text === undefined ? undefined : parseRecipeTextQuery(text),
 		});
+		// The facet lists the chosen member whenever one exists, so an id it lacks names no member.
+		const { contributorId } = filters;
+		if (
+			contributorId !== undefined &&
+			!results.facets.contributors.some((contributor) => contributor.memberId === contributorId)
+		) {
+			throw new InvalidRecipeSearchError();
+		}
+
 		return {
 			results: results.hits.map(toRecipeSearchResultDto),
 			total: results.total,

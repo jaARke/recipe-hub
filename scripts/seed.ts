@@ -127,7 +127,11 @@ if (env.VERCEL_ENV === 'production') {
 			const members = new DrizzleMemberRepository(db);
 			const contributor = await findOrCreateSampleContributor(members);
 			await seed(
-				new RecipeService(new DrizzleRecipeRepository(db), new SeedActorProvider(contributor)),
+				new RecipeService(
+					new DrizzleRecipeRepository(db),
+					members,
+					new SeedActorProvider(contributor)
+				),
 				new BlobImageStore({ storeId: env.BLOB_STORE_ID })
 			);
 		});

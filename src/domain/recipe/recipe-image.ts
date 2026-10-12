@@ -65,3 +65,8 @@ export function isRecipeImageContentType(contentType: string): boolean {
 export function isPublicImagePathname(pathname: string): boolean {
 	return recipeImageSchema.safeParse({ role: 'dish', pathname }).success;
 }
+
+// Whether a requested pathname names a scan, which only members may see.
+export function isScanImagePathname(pathname: string): boolean {
+	return recipeImageSchema.safeParse({ role: 'scan', pathname }).success;
+}

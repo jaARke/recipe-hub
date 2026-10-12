@@ -1,7 +1,8 @@
-import { sampleCatalogFacets } from '@/components/design-reference/fixtures';
 import { ReferenceSubsection, Specimen } from '@/components/design-reference/reference-section';
 import { SamplePhotoUpload } from '@/components/design-reference/sample-photo-upload';
 import {
+	sampleCatalogFacets,
+	sampleContributor,
 	sampleRecipeDetail,
 	sampleRecipeSummaries,
 	sampleSearchPage,
@@ -29,6 +30,7 @@ import type { RecipeSearchState } from '@/components/search/search-params';
 const sampleSearchState: RecipeSearchState = {
 	text: 'butter',
 	tags: ['Baking'],
+	contributorId: sampleContributor.id,
 	sort: 'relevance',
 	page: 1,
 };
@@ -122,7 +124,7 @@ function CompositionSpecimens() {
 			<ReferenceSubsection
 				id="search-results"
 				title="Search results"
-				description="A search for butter among baking recipes. Filters sit beside the results from lg and fold into a disclosure below it; they apply with their button, while the order applies on selection. Active filters are links that remove themselves, the count is announced as it changes, and matches are marked. Its headings start at h4 here."
+				description="A search for butter among baking recipes added by one member. Filters sit beside the results from lg and fold into a disclosure below it; they apply with their button, while the order applies on selection. Active filters are links that remove themselves, the count is announced as it changes, and matches are marked. Its headings start at h4 here."
 			>
 				<Specimen>
 					<RecipeSearch

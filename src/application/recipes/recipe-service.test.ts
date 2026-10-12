@@ -4,8 +4,9 @@ import type { Actor } from '@/application/ports/actor-provider';
 import type { RecipePage } from '@/application/ports/recipe-repository';
 import { InvalidRecipePageError, RecipeNotFoundError } from '@/application/recipes/errors';
 import { RecipeService, type CreateRecipeInput } from '@/application/recipes/recipe-service';
-import { adminActor, anonymousActor, memberActor } from '@/application/testing/actors';
+import { actorFor, adminActor, anonymousActor, memberActor } from '@/application/testing/actors';
 import { FixedActorProvider } from '@/application/testing/fixed-actor-provider';
+import { InMemoryMemberRepository } from '@/application/testing/in-memory-member-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
 import type { RecipeContentInput } from '@/domain/recipe/recipe';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
@@ -30,13 +31,24 @@ function manualEntry(content: RecipeContentInput): CreateRecipeInput {
 // One catalog, with a service per actor.
 function createCatalog() {
 	const recipes = new InMemoryRecipeRepository();
-	const serviceFor = (actor: Actor) => new RecipeService(recipes, new FixedActorProvider(actor));
-	return { recipes, serviceFor };
+	const members = new InMemoryMemberRepository();
+	const serviceFor = (actor: Actor) =>
+		new RecipeService(recipes, members, new FixedActorProvider(actor));
+	// Signed in with an account, so recipe pages can name the member.
+	const addMember = async (displayName: string) =>
+		actorFor(
+			await members.create({
+				email: `${displayName.toLowerCase()}@example.com`,
+				displayName,
+				role: 'member',
+			})
+		);
+	return { recipes, members, serviceFor, addMember };
 }
 
 async function catalogWithBiscuits() {
 	const catalog = createCatalog();
-	const author = memberActor();
+	const author = await catalog.addMember('Ada');
 	const ref = await catalog.serviceFor(author).createRecipe(manualEntry(sampleButtermilkBiscuits));
 	return { ...catalog, author, ref };
 }
@@ -54,10 +66,12 @@ afterEach(() => {
 
 describe('public reads', () => {
 	it('never ask who is calling, so pages can cache them', async () => {
-		const { recipes, serviceFor } = createCatalog();
-		const ref = await serviceFor(memberActor()).createRecipe(manualEntry(sampleTomatoSalad));
+		const { recipes, members, serviceFor, addMember } = createCatalog();
+		const ref = await serviceFor(await addMember('Ada')).createRecipe(
+			manualEntry(sampleTomatoSalad)
+		);
 		const actors = new FixedActorProvider(memberActor());
-		const reader = new RecipeService(recipes, actors);
+		const reader = new RecipeService(recipes, members, actors);
 
 		await reader.getRecipe(ref.slug);
 		await reader.listRecipes({ limit: 10, offset: 0, sort: 'newest' });
@@ -67,9 +81,10 @@ describe('public reads', () => {
 });
 
 describe('getRecipe', () => {
-	it('shows dish photos and the source URL, but no scans, contributor, or entry details', async () => {
-		const { serviceFor } = createCatalog();
-		const ref = await serviceFor(memberActor()).createRecipe({
+	it("shows dish photos, the source URL, and the contributor's name, but no scans or entry details", async () => {
+		const { serviceFor, addMember } = createCatalog();
+		const author = await addMember('Ada');
+		const ref = await serviceFor(author).createRecipe({
 			content: { ...sampleChickenSoup, images: [scan, dishPhoto] },
 			provenance: {
 				entryMode: 'url',
@@ -87,6 +102,7 @@ describe('getRecipe', () => {
 			images: [dishPhoto],
 			sourceUrl: 'https://example.com/soup',
 		});
+		expect(recipe?.contributor).toEqual({ id: author.memberId, displayName: 'Ada' });
 		expect(recipe).not.toHaveProperty('contributorId');
 		expect(recipe).not.toHaveProperty('provenance');
 		expect(recipe).not.toHaveProperty('entryMode');
@@ -98,6 +114,26 @@ describe('getRecipe', () => {
 
 		expect(await reader.getRecipe('buttermilk-biscuits')).toBeNull();
 		expect(await reader.getRecipe('Not a slug!')).toBeNull();
+	});
+
+	it("shows the contributor's current name", async () => {
+		const { members, serviceFor, author, ref } = await catalogWithBiscuits();
+
+		await members.rename(author.memberId, 'Ada L.');
+
+		expect((await serviceFor(anonymousActor()).getRecipe(ref.slug))?.contributor).toEqual({
+			id: author.memberId,
+			displayName: 'Ada L.',
+		});
+	});
+
+	it('fails when the contributor has no account, which the foreign key rules out', async () => {
+		const { serviceFor } = createCatalog();
+		const ref = await serviceFor(memberActor()).createRecipe(manualEntry(sampleChickenSoup));
+
+		await expect(serviceFor(anonymousActor()).getRecipe(ref.slug)).rejects.toThrow(
+			'Recipe contributor was not found'
+		);
 	});
 });
 
@@ -247,7 +283,8 @@ describe('createRecipe', () => {
 	});
 
 	it('reuses the label already in use for a tag and keeps the spelling of a new one', async () => {
-		const member = createCatalog().serviceFor(memberActor());
+		const { serviceFor, addMember } = createCatalog();
+		const member = serviceFor(await addMember('Ada'));
 		await member.createRecipe(manualEntry({ ...sampleChickenSoup, tags: ['Weeknight', 'Soup'] }));
 
 		const ref = await member.createRecipe(
