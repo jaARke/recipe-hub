@@ -11,6 +11,7 @@ import { inviteIdSchema, type InviteId } from '@/domain/member/invite';
 import {
 	memberIdSchema,
 	memberRoleSchema,
+	sessionLifetimeDays,
 	signInCodeLifetimeMinutes,
 	type MemberId,
 } from '@/domain/member/member';
@@ -130,7 +131,7 @@ export function createAuth(options: AuthOptions) {
 				inviteId: { type: 'string', input: false, required: false, unique: true },
 			},
 		},
-		session: { expiresIn: 180 * secondsPerDay, updateAge: secondsPerDay },
+		session: { expiresIn: sessionLifetimeDays * secondsPerDay, updateAge: secondsPerDay },
 		// On everywhere, not only when NODE_ENV is production, so every environment runs the same limits.
 		rateLimit: {
 			enabled: true,

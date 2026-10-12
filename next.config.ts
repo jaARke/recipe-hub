@@ -1,3 +1,4 @@
+import { withBotId } from 'botid/next/config';
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
@@ -17,4 +18,5 @@ const nextConfig: NextConfig = {
 	},
 };
 
-export default nextConfig;
+// Adds the rewrites that carry BotID's browser check through this site's own origin.
+export default withBotId(nextConfig);

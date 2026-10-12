@@ -22,6 +22,9 @@ export const emailAddressSchema = z
 // How long an emailed sign-in code works; Better Auth enforces it and the email states it.
 export const signInCodeLifetimeMinutes = 10;
 
+// How long a session lasts without a visit; each day's first visit renews it.
+export const sessionLifetimeDays = 180;
+
 // The account page's form, where a member changes their name.
 const profileFieldsSchema = z.object({ displayName: displayNameSchema });
 

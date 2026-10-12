@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 
 type NavItem = { href: string; label: string };
 
+// Shared with the phone menu, which holds these links below sm.
 const navItems: readonly NavItem[] = [{ href: '/', label: 'Recipes' }];
 
 // Without a pathname, as while MainNav waits for one, no link is marked as the current page.
@@ -33,4 +34,4 @@ function MainNav() {
 	return <MainNavLinks pathname={usePathname()} />;
 }
 
-export { MainNav, MainNavLinks };
+export { MainNav, MainNavLinks, navItems };
