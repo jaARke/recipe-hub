@@ -276,7 +276,7 @@ Public, at `/search`, with Postgres full-text search, `pg_trgm`, and `unaccent` 
 - **Pages:** 24 results a page, numbered with the shared `RecipePagination`.
 - **Input:** the service bounds what a public URL supplies: a query of at most 200 characters, at most 20 tags, and no NUL characters, which Postgres text cannot hold. A source is unbounded, because the filters offer every source recipes use. Invalid input gets the soft 404.
 - **Later:**
-  - BM25 with Neon's `lakebase_text`: the storage is ready, but it is 0.1.x, cannot run in PGlite, and Free-plan support is unconfirmed.
+  - BM25 with Neon's `lakebase_text`: the storage is ready, but it is 0.1.x, cannot run in PGlite, and support on Neon's Launch plan is unconfirmed.
   - Semantic search with `pgvector` after Session 7: embedding every public query clashes with members-only AI.
   - "Did you mean" corrections from a words list.
 
@@ -297,6 +297,7 @@ Public, at `/search`, with Postgres full-text search, `pg_trgm`, and `unaccent` 
 - The Route 53 zone is in the owner's personal AWS account: use `--profile personal`. The default AWS profile is a work account and is never used for this project.
 - No staging environment. Pull requests get preview deployments behind Vercel Authentication, and each gets its own Neon branch, `preview/<git-branch>`, created by the integration and deleted by `.github/workflows/preview-branch-cleanup.yml` when the pull request closes.
 - Local development uses the Neon branch `develop` through Development-scoped variables, never production.
+- **Backups:** Neon keeps a 7-day restore window and takes a snapshot daily, keeping each for 35 days. The production branch, `main`, is protected. Neither covers deleting the database through Vercel, nor Blob photos (Session 8's off-Neon backup).
 - Every build migrates its database before `next build` (`vercel.json`'s `buildCommand`). The previous deployment keeps serving during and after a production build, and Skew Protection keeps old Server Actions alive for 12 hours, so migrations are expand then contract: additive first, removals in a later deployment.
 - Every build then runs `pnpm db:seed`, which seeds preview branches with 30 synthetic recipes (four with photos) and refuses production, so production never holds synthetic recipes. The recipes double as search's expected-result corpus, so search can be checked on every preview.
   - The seed is idempotent: it skips recipes whose slug exists and uploads only missing photos. A Postgres advisory lock serializes concurrent builds of one pull request, which would otherwise both create a recipe (the second as `-2`).
@@ -305,7 +306,7 @@ Public, at `/search`, with Postgres full-text search, `pg_trgm`, and `unaccent` 
 - **Rate limits:** a Vercel WAF rate-limit rule on the path `/search` (fixed 60-second window, 100 requests per IP), created in the dashboard. Blocked requests never reach a function or the database.
   - Pro has 40 such rules, at $0.50 per million allowed requests drawn from the monthly credit.
   - Counters are per region, and prefetches count too, which is why the limit is generous.
-  - Start with the Log action and switch to 429 once the logs look right.
+  - It was published returning 429 rather than logging first.
 - Environment variables are managed in Vercel and pulled locally with `vercel env pull`. The AI Gateway and Blob authenticate with Vercel's OIDC token, so no provider keys or Blob tokens exist. Locally, the Blob SDK refreshes an expired development token with the Vercel CLI's credentials.
   - The Neon integration also adds `PG*`, `POSTGRES_*`, and `NEON_PROJECT_ID` variables. The app reads none of them; they are the integration's to manage and harmless to keep.
 - **Blob layout:** one private store, `recipe-hub-images`, serves every environment, since Blob has no branches.
@@ -318,8 +319,8 @@ Public, at `/search`, with Postgres full-text search, `pg_trgm`, and `unaccent` 
 ### 5.6 Platform limits that shape the design
 
 - Function request bodies are capped at 4.5 MB, so every image upload goes from the browser directly to Blob.
-- Neon Free plan: 1 GB storage, 100 compute-hours a month, 10 branches (production, `develop`, and one per open pull request). Preview deployments fail at the branch cap.
-  - The compute suspends after 5 idle minutes, and each wake costs at least 5 minutes of compute. Uncached search reaches the database on every request, so a crawler sending unique queries could keep it awake and reach the monthly cap in about two weeks. The WAF rule on `/search` guards against that.
+- Neon Launch plan, billed through Vercel with no monthly minimum: $0.106 per CU-hour, $0.35 per GB-month of storage, $0.20 per GB-month of history, and $0.09 per GB-month of snapshots. Ten branches are included (production, `develop`, and one per open pull request), then $1.50 per branch-month.
+  - The compute suspends after 5 idle minutes, and each wake costs at least 5 minutes of compute. Uncached search reaches the database on every request, so a crawler sending unique queries could keep it awake around the clock: about 180 CU-hours, roughly $19 a month at 0.25 CU, and more if it scales up. The WAF rule on `/search` guards against that.
 - AI Gateway free tier: $5 a month, a subset of models, and lower rate limits. Buying credits unlocks every model at provider list price.
 - Functions run up to 800 seconds on Pro. Import actions set `maxDuration` explicitly.
 - Resend free plan: 3,000 emails a month and 100 a day, from a verified domain only.
@@ -494,7 +495,7 @@ The owner likes [tanstack.com](https://tanstack.com/) and [mstone.ai](https://ms
 | Date | Decision | Rationale |
 | --- | --- | --- |
 | 2026-10-10 | Next.js 16 (App Router), TypeScript end to end, one Vercel project | One Zod recipe schema serves the form, AI output, and database. Zero-config on Vercel. FastAPI with Vite needs Vercel Services (beta) and two copies of the schema; TanStack Start is still a release candidate. |
-| 2026-10-10 | Neon Postgres via the Vercel Marketplace (Free plan, `iad1`, Postgres 18, Neon Auth off) | Postgres handles the search. Fast scale-to-zero, billed through Vercel, per-preview branches. Aurora resumes in about 15 seconds and needs IAM setup; Supabase's free tier pauses after a week idle. |
+| 2026-10-10 | Neon Postgres via the Vercel Marketplace (Free plan, `iad1`, Postgres 18, Neon Auth off; plan superseded below) | Postgres handles the search. Fast scale-to-zero, billed through Vercel, per-preview branches. Aurora resumes in about 15 seconds and needs IAM setup; Supabase's free tier pauses after a week idle. |
 | 2026-10-10 | Private Vercel Blob store `recipe-hub-images` (`iad1`) | Scans stay behind the login, and client uploads avoid the 4.5 MB body limit. Access mode cannot change after creation. |
 | 2026-10-10 | Better Auth with the Facebook provider; allowlist in the database (sign-in method superseded below) | Auth.js v5 never went stable and its maintainers recommend Better Auth. A hook before user creation gates sign-up. |
 | 2026-10-10 | Drizzle ORM, version chosen in Session 2 | Close to SQL (needed for search) and supported by Better Auth. 1.0 was a release candidate at the time. |
@@ -564,6 +565,8 @@ The owner likes [tanstack.com](https://tanstack.com/) and [mstone.ai](https://ms
 | 2026-10-11 | 30 synthetic samples, seeded on previews, double as the search corpus | Search can be checked on every preview against the recipes the tests use. |
 | 2026-10-11 | Forms promise "works before hydration", not "works without JavaScript" | Suspense content arrives hidden and is revealed by an inline script, so with JavaScript off results never appear, and Base UI controls need hydration. |
 | 2026-10-12 | The image route allows one query parameter, `_vercel_system`, and logs a warning for every query it refuses | Vercel's image optimizer adds it when fetching a source image, so every optimized dish photo had failed with "Bad status code from upstream image" since Session 3, on previews and, once photos exist, production. The platform passes the parameter through from outside requests too, so it can bypass the CDN cache; Session 8 reviews that. |
+| 2026-10-12 | Neon Launch plan, with the restore window and scheduled snapshots configured and the production branch, `main`, protected | A daily recoverable backup needs a paid plan: Free keeps 6 hours of history and one manual snapshot. Launch has no minimum and costs a few dollars a month at this size. The restore window recovers what is noticed quickly, to the second; snapshots reach back 35 days for what is noticed late. Neither survives deleting the database through Vercel, which Neon calls permanent, and neither covers Blob photos. |
+| 2026-10-12 | Self-hosted Better Auth, not Neon's Managed Better Auth (Neon Auth) | It exposes no passkeys, documents no invite-only sign-up or hooks before user creation, and asks Server Components that read the session to set `dynamic = 'force-dynamic'`, which Cache Components replaces. It documents no exit to self-hosting. Familiar sign-in methods (Google, passwords) are Better Auth options either way. |
 
 ## 8. Chronology and dependencies
 
@@ -800,6 +803,7 @@ Deferred, each to the session that needs it:
   - Rate-limit the access-request form. Either add a second WAF rule on the form's POST (the CLI's `server_action` condition), or call `checkRateLimit` from `@vercel/firewall` in the Server Action, which lets the form show an inline error.
     - `checkRateLimit` fails open on an unknown rule id, does nothing in development, and needs Protection Bypass for Automation on previews.
     - Call BotID's `checkBotId()` first.
+  - The invite-minting script cannot read a preview branch's connection string locally: the Neon integration's variables are Sensitive, and each preview's branch URL is injected at deploy time, so `vercel env pull` never sees it. Choose a path: the owner copies the branch's connection string from the Neon Console into a git-ignored file, `neonctl` with a Neon API key, or minting during the preview build.
 - **Session 6:**
   - Strip C0 control characters in the domain's text schema. Highlights mark matches with `\u0002` and `\u0003`, so those characters in a recipe would misplace its highlights (never markup). Session 7's imports make them likelier.
   - Link recipe-page tags to `/search?tag=...` for browsing by tag. Cards cannot, because the whole card is a link.
@@ -821,6 +825,7 @@ Deferred, each to the session that needs it:
   - **drizzle-kit.** Its `out` must be relative to the working directory, and `--custom` rewrites the previous snapshot with its keys reordered.
   - **The close-match parser.** It takes words as runs of letters and numbers, so a script whose vowel signs never combine into one character (Devanagari) would split mid-word.
   - **Vercel docs.** They disagree on the Runtime Cache's tags per item (128 or 64) and on the Pro rate-limit window cap (10 minutes or 3,600 seconds).
+  - **Neon SQL Editor.** A 9 KB paste of 13 `EXPLAIN ANALYZE` statements failed with `can't access property "map", Q.fields is undefined`. Runs of 2 to 5 KB worked, each statement in its own result tab.
   - **Vercel's image optimizer.** It fetches a local source with an undocumented `_vercel_system` query parameter, and request logs omit query strings, so the route's refusal warning is the way to see it.
   - **Source counts with close matches.** In close-match mode, source counts use close matching, but choosing a source that has exact matches shows those instead, so a count can differ from the results it leads to.
 
@@ -905,7 +910,8 @@ Deferred, each to the session that needs it:
   - An accessibility audit: automated with axe, plus keyboard, VoiceOver, and TalkBack passes. Fixes follow.
   - A performance pass: Core Web Vitals, image sizing, caching.
   - A security review: authorization on every write and AI use case, public endpoints and their rate limits, BotID, upload limits, SSRF, and response headers.
-- **Operations:** log review, an error alerting decision, a backup and restore approach for Neon (consider a periodic export), and a runbook in the README.
+- **Operations:** log review, an error alerting decision, the off-Neon backup, and a runbook in the README.
+  - The off-Neon backup is a nightly `pg_dump` (a Postgres 18 client over the unpooled URL) stored outside Neon, plus a copy of Blob photos. It is the only defense against deleting the database through Vercel. Consider landing it with Session 6, when real recipes arrive.
 - **Launch decisions:** the indexing decision revisited, invites sent, and onboarding notes for members.
 
 **Owner actions:** review the brand mark; send invites; announce the site.
@@ -928,8 +934,8 @@ Deferred, each to the session that needs it:
 - **Passkey familiarity:** some relatives may not know passkeys, and recovery depends on the admin. Mitigation: email one-time codes as the fallback, plain onboarding notes, and new invites for new devices.
 - **Sign-in on previews:** passkeys are bound to their domain. Mitigation: invites minted against each preview's Neon branch.
 - **Spam requests:** the request form is public. Mitigation: BotID, rate limits, and requests that create no account.
-- **Uncached public search:** every search reaches Neon, so a crawler sending unique queries could spend the monthly compute-hours. Mitigation: the WAF rate-limit rule on `/search`, which blocks before a function runs.
-- **Free tiers:** Resend allows 100 emails a day, and Neon Free has storage, compute, and branch caps. Both are fine at this scale; revisit if usage grows. A preview fails to deploy at the branch cap, so the cleanup workflow must keep running.
+- **Uncached public search:** every search reaches Neon, so a crawler sending unique queries could run up compute charges. Mitigation: the WAF rate-limit rule on `/search`, which blocks before a function runs.
+- **Plan limits:** Resend's free plan allows 100 emails a day, which is fine at this scale; revisit if usage grows. Neon's Launch plan bills every branch beyond ten at $1.50 a month, so the cleanup workflow must keep running.
 - **Schema changes under live traffic:** builds migrate before the new deployment serves, and old deployments keep serving. Mitigation: expand-then-contract migrations.
 - **Drizzle 1.0:** a later upgrade rewrites the migrations folder and the client setup. Mitigation: no APIs that 1.0 removes.
 - **AI accuracy and cost:** handwritten cards vary widely. Mitigation: mandatory review, an evaluation set, budgets, and rate limits.
