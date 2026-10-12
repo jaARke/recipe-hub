@@ -1,0 +1,65 @@
+import 'server-only';
+import { z } from 'zod';
+import { paginationSchema } from '@/application/pagination';
+import {
+	recipeAddedWithin,
+	recipeSearchSorts,
+	type RecipeSearch,
+} from '@/application/ports/recipe-search';
+import { InvalidRecipeSearchError } from '@/application/search/errors';
+import {
+	recipeTotalTimeChoices,
+	toRecipeSearchResultDto,
+	type RecipeSearchInput,
+	type RecipeSearchPage,
+} from '@/application/search/recipe-search-dtos';
+import { parseRecipeTextQuery } from '@/application/search/recipe-text-query';
+import { tagListSchema } from '@/domain/recipe/tag';
+import { nonEmptyTextSchema } from '@/domain/recipe/text';
+
+// A public URL supplies every value, so the query and the tag list are bounded. A source stays
+// unbounded, because the filters offer every source recipes use.
+const maxTextLength = 200;
+const maxTagCount = 20;
+
+// Postgres text cannot hold a NUL character, which a URL can carry as %00.
+function hasNoNul(text: string): boolean {
+	return !text.includes('\0');
+}
+
+const recipeSearchInputSchema = paginationSchema.extend({
+	text: z.string().trim().max(maxTextLength).refine(hasNoNul).optional(),
+	tags: tagListSchema.max(maxTagCount).refine((tags) => tags.every(hasNoNul)),
+	source: nonEmptyTextSchema.refine(hasNoNul).optional(),
+	maxTotalMinutes: z.literal(recipeTotalTimeChoices).optional(),
+	addedWithin: z.enum(recipeAddedWithin).optional(),
+	sort: z.enum(recipeSearchSorts),
+});
+
+// Search is open to everyone: it never asks for the actor, so pages can call it freely.
+export class RecipeSearchService {
+	private readonly recipes: RecipeSearch;
+
+	constructor(recipes: RecipeSearch) {
+		this.recipes = recipes;
+	}
+
+	async searchRecipes(input: RecipeSearchInput): Promise<RecipeSearchPage> {
+		const result = recipeSearchInputSchema.safeParse(input);
+		if (!result.success) {
+			throw new InvalidRecipeSearchError();
+		}
+
+		const { text, ...filters } = result.data;
+		const results = await this.recipes.search({
+			...filters,
+			text: text === undefined ? undefined : parseRecipeTextQuery(text),
+		});
+		return {
+			results: results.hits.map(toRecipeSearchResultDto),
+			total: results.total,
+			match: results.match,
+			facets: results.facets,
+		};
+	}
+}

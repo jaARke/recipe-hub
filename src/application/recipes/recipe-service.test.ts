@@ -60,7 +60,7 @@ describe('public reads', () => {
 		const reader = new RecipeService(recipes, actors);
 
 		await reader.getRecipe(ref.slug);
-		await reader.listRecipes({ limit: 10, offset: 0 });
+		await reader.listRecipes({ limit: 10, offset: 0, sort: 'newest' });
 
 		expect(actors.wasAsked).toBe(false);
 	});
@@ -114,15 +114,41 @@ describe('listRecipes', () => {
 			return { titles: recipes.map(({ title }) => title), total };
 		};
 
-		expect(await listed({ limit: 2, offset: 0 })).toEqual({
+		expect(await listed({ limit: 2, offset: 0, sort: 'newest' })).toEqual({
 			titles: ['Lemon icebox pie with a graham cracker crust', 'Weeknight chicken soup'],
 			total: 3,
 		});
-		expect(await listed({ limit: 2, offset: 2 })).toEqual({
+		expect(await listed({ limit: 2, offset: 2, sort: 'newest' })).toEqual({
 			titles: ['Buttermilk biscuits'],
 			total: 3,
 		});
-		expect(await listed({ limit: 2, offset: 4 })).toEqual({ titles: [], total: 3 });
+		expect(await listed({ limit: 2, offset: 4, sort: 'newest' })).toEqual({ titles: [], total: 3 });
+	});
+
+	it('lists recipes A to Z by title, ignoring accents and case', async () => {
+		const { serviceFor } = createCatalog();
+		const member = serviceFor(memberActor());
+		for (const content of [
+			sampleChickenSoup,
+			{ ...sampleTomatoSalad, title: 'garden tomato salad' },
+			{ ...sampleLemonIceboxPie, title: 'Éclair icebox pie' },
+			sampleButtermilkBiscuits,
+		]) {
+			await member.createRecipe(manualEntry(content));
+		}
+
+		const { recipes } = await serviceFor(anonymousActor()).listRecipes({
+			limit: 10,
+			offset: 0,
+			sort: 'title',
+		});
+
+		expect(recipes.map(({ title }) => title)).toEqual([
+			'Buttermilk biscuits',
+			'Éclair icebox pie',
+			'garden tomato salad',
+			'Weeknight chicken soup',
+		]);
 	});
 
 	it('summarizes each recipe for its card', async () => {
@@ -131,7 +157,9 @@ describe('listRecipes', () => {
 			manualEntry({ ...sampleChickenSoup, images: [scan, dishPhoto, secondDishPhoto] })
 		);
 
-		expect(await serviceFor(anonymousActor()).listRecipes({ limit: 10, offset: 0 })).toEqual({
+		expect(
+			await serviceFor(anonymousActor()).listRecipes({ limit: 10, offset: 0, sort: 'newest' })
+		).toEqual({
 			recipes: [
 				{
 					id: ref.id,
@@ -150,15 +178,16 @@ describe('listRecipes', () => {
 	});
 
 	it.each([
-		{ limit: 0, offset: 0 },
-		{ limit: 1.5, offset: 0 },
-		{ limit: 101, offset: 0 },
-		{ limit: 10, offset: -1 },
-		{ limit: 10, offset: Number.NaN },
+		{ limit: 0, offset: 0, sort: 'newest' },
+		{ limit: 1.5, offset: 0, sort: 'newest' },
+		{ limit: 101, offset: 0, sort: 'newest' },
+		{ limit: 10, offset: -1, sort: 'newest' },
+		{ limit: 10, offset: Number.NaN, sort: 'newest' },
+		{ limit: 10, offset: 0, sort: 'oldest' },
 	])('rejects the page %o', async (page) => {
 		const reader = createCatalog().serviceFor(anonymousActor());
 
-		await expect(reader.listRecipes(page)).rejects.toThrow(InvalidRecipePageError);
+		await expect(reader.listRecipes(page as RecipePage)).rejects.toThrow(InvalidRecipePageError);
 	});
 });
 
@@ -169,7 +198,10 @@ describe('createRecipe', () => {
 		await expect(reader.createRecipe(manualEntry(sampleChickenSoup))).rejects.toThrow(
 			SignInRequiredError
 		);
-		expect(await reader.listRecipes({ limit: 10, offset: 0 })).toEqual({ recipes: [], total: 0 });
+		expect(await reader.listRecipes({ limit: 10, offset: 0, sort: 'newest' })).toEqual({
+			recipes: [],
+			total: 0,
+		});
 	});
 
 	it('records the acting member as the contributor', async () => {

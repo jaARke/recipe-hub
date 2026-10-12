@@ -2,6 +2,7 @@ import type {
 	NewRecipe,
 	RecipePage,
 	RecipeRepository,
+	RecipeSort,
 } from '@/application/ports/recipe-repository';
 import {
 	recipeIdSchema,
@@ -11,6 +12,15 @@ import {
 } from '@/domain/recipe/recipe';
 import { slugCandidate } from '@/domain/recipe/slug';
 import { tagKey } from '@/domain/recipe/tag';
+
+// Mirrors the database's title sort key: lowercased, with accents stripped.
+function titleSortKey(recipe: Recipe): string {
+	return recipe.title.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+}
+
+function compareText(a: string, b: string): number {
+	return a < b ? -1 : a > b ? 1 : 0;
+}
 
 export class InMemoryRecipeRepository implements RecipeRepository {
 	private readonly recipes = new Map<RecipeId, Recipe>();
@@ -24,11 +34,7 @@ export class InMemoryRecipeRepository implements RecipeRepository {
 	}
 
 	async list(page: RecipePage): Promise<Recipe[]> {
-		// Reversed first, so the stable sort lists recipes created in the same millisecond newest first.
-		return [...this.recipes.values()]
-			.reverse()
-			.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-			.slice(page.offset, page.offset + page.limit);
+		return this.sorted(page.sort).slice(page.offset, page.offset + page.limit);
 	}
 
 	async count(): Promise<number> {
@@ -83,6 +89,19 @@ export class InMemoryRecipeRepository implements RecipeRepository {
 			.filter((label) => wanted.has(tagKey(label)));
 
 		return [...new Set(labels)];
+	}
+
+	private sorted(sort: RecipeSort): Recipe[] {
+		const recipes = [...this.recipes.values()];
+		switch (sort) {
+			case 'newest':
+				// Reversed first, so the stable sort lists recipes created in the same millisecond newest first.
+				return recipes.reverse().sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+			case 'title':
+				return recipes.sort(
+					(a, b) => compareText(titleSortKey(a), titleSortKey(b)) || compareText(a.id, b.id)
+				);
+		}
 	}
 
 	private freeSlug(base: string): string {

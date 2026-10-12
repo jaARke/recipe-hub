@@ -11,15 +11,19 @@ export type NewRecipe = {
 	slugBase: string;
 };
 
+// Newest first, or A to Z by title with accents and case ignored.
+export const recipeSorts = ['newest', 'title'] as const;
+export type RecipeSort = (typeof recipeSorts)[number];
+
 export type RecipePage = {
 	limit: number;
 	offset: number;
+	sort: RecipeSort;
 };
 
 export interface RecipeRepository {
 	findById(id: RecipeId): Promise<Recipe | null>;
 	findBySlug(slug: string): Promise<Recipe | null>;
-	// Newest first.
 	list(page: RecipePage): Promise<Recipe[]>;
 	count(): Promise<number>;
 	create(recipe: NewRecipe): Promise<Recipe>;
