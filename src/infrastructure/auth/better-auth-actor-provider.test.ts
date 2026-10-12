@@ -66,6 +66,23 @@ describe('currentActor', () => {
 		expect(actor).toEqual({ kind: 'anonymous' });
 	});
 
+	it('reads the request before building Better Auth', async () => {
+		let built = false;
+		// A prerender's request never resolves.
+		const provider = new BetterAuthActorProvider(
+			() => {
+				built = true;
+				return auth;
+			},
+			() => new Promise<Headers>(() => {})
+		);
+
+		void provider.currentActor();
+		await Promise.resolve();
+
+		expect(built).toBe(false);
+	});
+
 	it('reads a session due for renewal without extending it', async () => {
 		await members.create(jake);
 		const headers = await signedInHeaders(jake.email);

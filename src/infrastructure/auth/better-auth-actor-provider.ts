@@ -16,8 +16,10 @@ export class BetterAuthActorProvider implements ActorProvider {
 	}
 
 	async currentActor(): Promise<Actor> {
+		// Read first: prerendering stops at the request, before building Better Auth reads the clock.
+		const requestHeaders = await this.requestHeaders();
 		const session = await this.auth().api.getSession({
-			headers: await this.requestHeaders(),
+			headers: requestHeaders,
 			query: { disableRefresh: true },
 		});
 		if (session === null) {
