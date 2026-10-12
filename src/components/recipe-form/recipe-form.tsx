@@ -1,6 +1,5 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
@@ -12,7 +11,6 @@ import { uploadPhoto, type PhotoUploader } from '@/components/recipe-form/photo-
 import {
 	recipeFormFieldNames,
 	type EditedRecipe,
-	type SavedRecipe,
 } from '@/components/recipe-form/recipe-form-fields';
 import {
 	editRecipeForm,
@@ -25,7 +23,6 @@ import {
 import { SectionedListField } from '@/components/recipe-form/sectioned-list-field';
 import { TagsField } from '@/components/recipe-form/tags-field';
 import { IngredientLineText } from '@/components/recipe/ingredient-line-text';
-import { recipePath } from '@/components/recipe/recipe-paths';
 import { Button } from '@/components/ui/button';
 import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field';
 import {
@@ -57,7 +54,8 @@ type TextFieldName = Exclude<RecipeFormErrorField, 'tags'>;
 type RecipeFormProps = {
 	// Built with recipeFormValues, from nothing, a recipe to edit, or a draft to review.
 	initial: RecipeFormValues;
-	action: FormAction<SavedRecipe>;
+	// Redirects to the recipe once it is saved, which also starts the form over.
+	action: FormAction;
 	// Where this environment keeps new photos of each role.
 	uploadFolders: Record<RecipeImageRole, string>;
 	uploader?: PhotoUploader;
@@ -103,7 +101,6 @@ function RecipeForm({
 	editing,
 	submitLabel,
 }: RecipeFormProps) {
-	const router = useRouter();
 	const baseId = React.useId();
 	const formRef = React.useRef<HTMLFormElement>(null);
 	const [values, dispatch] = React.useReducer(editRecipeForm, initial);
@@ -119,17 +116,11 @@ function RecipeForm({
 	};
 
 	// A save's problems name places in what it sent, so they land through that submission's targets.
-	const saveRecipe: FormAction<SavedRecipe> = async (previous, formData) => {
+	const saveRecipe: FormAction = async (previous, formData) => {
 		const { targets } = submission;
 		const result = await action(previous, formData);
 		if (result.status === 'error') {
 			dispatch({ type: 'attachErrors', fieldErrors: result.fieldErrors, targets });
-		} else if (result.status === 'success') {
-			// The page keeps its state across navigations, so the form for a new recipe starts over.
-			if (!isEditing) {
-				dispatch({ type: 'load', values: initial });
-			}
-			router.push(recipePath(result.slug));
 		}
 		return result;
 	};

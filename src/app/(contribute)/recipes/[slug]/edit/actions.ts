@@ -1,22 +1,20 @@
 'use server';
 
 import { updateTag } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { toFormError } from '@/app/_lib/form-errors';
 import { recipeCacheTags } from '@/app/_lib/recipe-cache';
 import type { RecipeRef, UpdatedRecipeRef } from '@/application/recipes/recipe-dtos';
 import { formText } from '@/components/forms/form-data';
 import type { FormState } from '@/components/forms/form-state';
 import { recipeContentFromForm } from '@/components/recipe-form/recipe-form-content';
-import {
-	recipeFormFieldNames,
-	type SavedRecipe,
-} from '@/components/recipe-form/recipe-form-fields';
+import { recipeFormFieldNames } from '@/components/recipe-form/recipe-form-fields';
+import { recipePath } from '@/components/recipe/recipe-paths';
 import { getRecipeService } from '@/composition/services';
 
-export async function updateRecipe(
-	_state: FormState<SavedRecipe>,
-	formData: FormData
-): Promise<FormState<SavedRecipe>> {
+// Redirects to the saved recipe, so the editor sees it rendered fresh in this response; a
+// navigation afterwards could get the CDN's copy from before the save for a few seconds.
+export async function updateRecipe(_state: FormState, formData: FormData): Promise<FormState> {
 	let recipe: UpdatedRecipeRef;
 	try {
 		recipe = await getRecipeService().updateRecipe(
@@ -33,7 +31,7 @@ export async function updateRecipe(
 	if (recipe.previousSlug !== undefined) {
 		updateTag(recipeCacheTags.recipe(recipe.previousSlug));
 	}
-	return { status: 'success', slug: recipe.slug };
+	redirect(recipePath(recipe.slug));
 }
 
 // Its re-render of the edit page finds no recipe, but React commits that together with the dialog's

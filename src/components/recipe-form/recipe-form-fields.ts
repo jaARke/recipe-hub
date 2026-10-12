@@ -15,11 +15,6 @@ export type EditedRecipe = {
 	version: string;
 };
 
-// What a save returns, so the form can open the saved recipe.
-export type SavedRecipe = {
-	slug: string;
-};
-
 // The recipe as the form sends it: text as typed, without blank items or blank optional text. Its
 // paths match the recipe content's, so a problem the domain finds names the item that caused it.
 export type RecipeFormPayload = {

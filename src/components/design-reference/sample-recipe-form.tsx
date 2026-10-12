@@ -9,7 +9,6 @@ import { recipeContentFromForm } from '@/components/recipe-form/recipe-form-cont
 import {
 	recipeFormFieldNames,
 	type EditedRecipe,
-	type SavedRecipe,
 } from '@/components/recipe-form/recipe-form-fields';
 import type { RecipeFormValues } from '@/components/recipe-form/recipe-form-values';
 import { parseRecipeContent } from '@/domain/recipe/recipe';
@@ -48,8 +47,8 @@ const sampleUpload: PhotoUploader = (_pathname, _file, { onProgress, signal }) =
 	});
 
 // Checks the recipe as the action and the service do, then saves nothing, so the form stays here.
-const saveSampleRecipe: FormAction<SavedRecipe> = (_state, formData) =>
-	standIn<FormState<SavedRecipe>>(
+const saveSampleRecipe: FormAction = (_state, formData) =>
+	standIn<FormState>(
 		inputProblems(() =>
 			parseRecipeContent(recipeContentFromForm(formText(formData, recipeFormFieldNames.recipe)))
 		) ?? {
