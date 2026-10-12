@@ -1,3 +1,4 @@
+import type { authClient } from '@/components/auth/auth-client';
 import { authFieldNames } from '@/components/auth/auth-forms';
 import type { FormError } from '@/components/forms/form-state';
 
@@ -8,11 +9,23 @@ export type AuthClientError = {
 	status: number;
 };
 
+// Better Auth's codes, plus the passkey ceremony codes SimpleWebAuthn reports, which it does not list.
+// Checking codes through this type turns a code renamed in an upgrade into a type error.
+type AuthErrorCode =
+	| keyof typeof authClient.$ERROR_CODES
+	| 'ERROR_CEREMONY_ABORTED'
+	| 'ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY'
+	| 'ERROR_AUTHENTICATOR_PREVIOUSLY_REGISTERED';
+
+function hasCode(error: AuthClientError, code: AuthErrorCode): boolean {
+	return error.code === code;
+}
+
 const tooManyTriesMessage = 'Too many tries in a short time. Wait a minute, then try again.';
 
 // Reported when the passkey dialog is closed or times out (the browser doesn't say which), or when a
 // newer passkey request replaces it.
-const passkeyCancellationCodes: ReadonlySet<string> = new Set([
+const passkeyCancellationCodes: ReadonlySet<string> = new Set<AuthErrorCode>([
 	'AUTH_CANCELLED',
 	'ERROR_CEREMONY_ABORTED',
 	'ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY',
@@ -43,7 +56,7 @@ export function codeRequestError(error: AuthClientError): FormError {
 	if (error.status === 429) {
 		return formError(tooManyTriesMessage);
 	}
-	if (error.code === 'INVALID_EMAIL') {
+	if (hasCode(error, 'INVALID_EMAIL')) {
 		return fieldError(authFieldNames.email, 'Enter an email address, like name@example.com.');
 	}
 	return formError("We couldn't send a code. Try again in a moment.");
@@ -55,19 +68,20 @@ export function codeSignInError(error: AuthClientError): FormError {
 	if (error.status === 429) {
 		return formError(tooManyTriesMessage);
 	}
-	switch (error.code) {
-		case 'INVALID_OTP':
-			return fieldError(
-				authFieldNames.code,
-				"That code didn't work. Check the email and try again, or send a new code."
-			);
-		case 'OTP_EXPIRED':
-			return fieldError(authFieldNames.code, 'That code has expired. Send a new code.');
-		case 'TOO_MANY_ATTEMPTS':
-			return fieldError(
-				authFieldNames.code,
-				'That code was entered wrong too many times. Send a new code.'
-			);
+	if (hasCode(error, 'INVALID_OTP')) {
+		return fieldError(
+			authFieldNames.code,
+			"That code didn't work. Check the email and try again, or send a new code."
+		);
+	}
+	if (hasCode(error, 'OTP_EXPIRED')) {
+		return fieldError(authFieldNames.code, 'That code has expired. Send a new code.');
+	}
+	if (hasCode(error, 'TOO_MANY_ATTEMPTS')) {
+		return fieldError(
+			authFieldNames.code,
+			'That code was entered wrong too many times. Send a new code.'
+		);
 	}
 	if (error.status === 403) {
 		return formError(
@@ -88,7 +102,7 @@ export function passkeySignInErrorMessage(error: AuthClientError): string {
 	if (error.status === 429) {
 		return tooManyTriesMessage;
 	}
-	if (error.code === 'PASSKEY_NOT_FOUND') {
+	if (hasCode(error, 'PASSKEY_NOT_FOUND')) {
 		return "That passkey isn't set up for an account here. Sign in with an email code, then add a new passkey on your account page.";
 	}
 	return "We couldn't sign you in with that passkey. Try again, or sign in with an email code.";
@@ -96,14 +110,14 @@ export function passkeySignInErrorMessage(error: AuthClientError): string {
 
 // Adding a passkey needs a sign-in from the last day, so an older session must sign in again first.
 export function isStaleSessionError(error: AuthClientError): boolean {
-	return error.code === 'SESSION_NOT_FRESH';
+	return hasCode(error, 'SESSION_NOT_FRESH');
 }
 
 export function passkeyRegistrationErrorMessage(error: AuthClientError): string {
 	if (isPasskeyCancellation(error)) {
 		return 'No passkey was added.';
 	}
-	if (error.code === 'ERROR_AUTHENTICATOR_PREVIOUSLY_REGISTERED') {
+	if (hasCode(error, 'ERROR_AUTHENTICATOR_PREVIOUSLY_REGISTERED')) {
 		return 'This device already has a passkey for your account.';
 	}
 	if (error.status === 429) {
@@ -116,7 +130,7 @@ export function passkeyRegistrationErrorMessage(error: AuthClientError): string 
 }
 
 export function passkeyRemovalErrorMessage(error: AuthClientError): string {
-	if (error.code === 'PASSKEY_NOT_FOUND') {
+	if (hasCode(error, 'PASSKEY_NOT_FOUND')) {
 		return 'That passkey was already removed.';
 	}
 	if (error.status === 429) {
