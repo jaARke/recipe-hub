@@ -38,6 +38,7 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from '@/components/ui/empty';
+import { Progress, ProgressLabel, ProgressValue } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
@@ -122,7 +123,7 @@ function AttachmentSpecimen() {
 					))}
 				</ul>
 			</Specimen>
-			<Specimen label='orientation="vertical", as the photo upload lists chosen photos'>
+			<Specimen label='orientation="vertical"'>
 				<ul className="flex flex-wrap gap-3">
 					{attachmentStates.map((attachment) => (
 						<li key={attachment.state}>
@@ -238,10 +239,32 @@ function SpinnerSpecimen() {
 					<Spinner />
 					Loading recipes
 				</span>
-				<Button variant="outline" disabled>
+				<Button variant="outline" disabled focusableWhenDisabled>
 					<Spinner data-icon="inline-start" />
 					Importing
 				</Button>
+			</div>
+		</Specimen>
+	);
+}
+
+const progressSamples = [
+	{ name: 'biscuits-plated.jpg', value: 0 },
+	{ name: 'recipe-card-front.jpg', value: 64 },
+	{ name: 'soup-pot.jpg', value: 100 },
+] as const;
+
+function ProgressSpecimen() {
+	return (
+		<Specimen label="At 0, 64, and 100: ProgressLabel gives the bar its accessible name, and ProgressValue its percent">
+			<div className="flex max-w-sm flex-col gap-6">
+				{progressSamples.map(({ name, value }) => (
+					// Fixed, like the site's other formats, so the server and browser render the same text.
+					<Progress key={name} value={value} locale="en-US">
+						<ProgressLabel>Uploading {name}</ProgressLabel>
+						<ProgressValue />
+					</Progress>
+				))}
 			</div>
 		</Specimen>
 	);
@@ -310,6 +333,7 @@ export {
 	AttachmentSpecimen,
 	CardSpecimen,
 	EmptySpecimen,
+	ProgressSpecimen,
 	SeparatorSpecimen,
 	SkeletonSpecimen,
 	SpinnerSpecimen,

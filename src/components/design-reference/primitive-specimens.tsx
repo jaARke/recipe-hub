@@ -8,6 +8,7 @@ import {
 	AttachmentSpecimen,
 	CardSpecimen,
 	EmptySpecimen,
+	ProgressSpecimen,
 	SeparatorSpecimen,
 	SkeletonSpecimen,
 	SpinnerSpecimen,
@@ -55,6 +56,7 @@ const primitives = [
 	{ id: 'toast', title: 'Toast', Content: ToastSpecimen },
 	{ id: 'skeleton', title: 'Skeleton', Content: SkeletonSpecimen },
 	{ id: 'spinner', title: 'Spinner', Content: SpinnerSpecimen },
+	{ id: 'progress', title: 'Progress', Content: ProgressSpecimen },
 	{ id: 'empty', title: 'Empty', Content: EmptySpecimen },
 	{ id: 'separator', title: 'Separator', Content: SeparatorSpecimen },
 ] as const;

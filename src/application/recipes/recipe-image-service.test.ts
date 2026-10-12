@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { SignInRequiredError } from '@/application/authorization';
 import type { Actor } from '@/application/ports/actor-provider';
+import { InvalidImageUploadError } from '@/application/recipes/errors';
+import { ImageFolders } from '@/application/recipes/image-folders';
 import { RecipeImageService } from '@/application/recipes/recipe-image-service';
 import { anonymousActor, memberActor } from '@/application/testing/actors';
 import { FixedActorProvider } from '@/application/testing/fixed-actor-provider';
@@ -9,11 +11,15 @@ import { InMemoryImageStore } from '@/application/testing/in-memory-image-store'
 const dishPhoto = 'dish/seed/soup.jpg';
 const scan = 'scan/soup-card.jpg';
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+const upload = 'dish/development/3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b.jpg';
+const scanUpload = 'scan/development/0b6e2f4a-9c1d-4e8b-a7f3-5d2c1b0a9e8f.jpg';
 
+let consoleInfo: MockInstance<typeof console.info>;
 let consoleWarn: MockInstance<typeof console.warn>;
 
 beforeEach(() => {
-	// Keeps warning lines out of the test output; the content type tests read them here.
+	// Keeps log lines out of the test output; the tests that check logging read them here.
+	consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => {});
 	consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
@@ -30,7 +36,10 @@ async function storeWithSoup() {
 
 function serviceFor(images: InMemoryImageStore, actor: Actor) {
 	const actors = new FixedActorProvider(actor);
-	return { actors, service: new RecipeImageService(images, actors) };
+	return {
+		actors,
+		service: new RecipeImageService(images, actors, new ImageFolders('development')),
+	};
 }
 
 async function bytes(body: ReadableStream<Uint8Array> | undefined): Promise<Uint8Array> {
@@ -123,5 +132,59 @@ describe('getMemberImage', () => {
 		const { service } = serviceFor(await storeWithSoup(), memberActor());
 
 		expect(await service.getMemberImage('scan/biscuit-card.jpg')).toBeNull();
+	});
+});
+
+describe('uploadFolders', () => {
+	it("names this environment's folder for each role", () => {
+		const { service } = serviceFor(new InMemoryImageStore(), memberActor());
+
+		expect(service.uploadFolders()).toEqual({
+			dish: 'dish/development/',
+			scan: 'scan/development/',
+		});
+	});
+});
+
+describe('authorizeUpload', () => {
+	it('refuses an anonymous visitor', async () => {
+		const { service } = serviceFor(new InMemoryImageStore(), anonymousActor());
+
+		await expect(service.authorizeUpload(upload)).rejects.toThrow(SignInRequiredError);
+		expect(consoleInfo).not.toHaveBeenCalled();
+	});
+
+	it.each([upload, scanUpload])(
+		'lets a member upload one JPEG of up to 8 MB to %s, and logs it',
+		async (pathname) => {
+			const member = memberActor();
+			const { service } = serviceFor(new InMemoryImageStore(), member);
+
+			expect(await service.authorizeUpload(pathname)).toEqual({
+				contentType: 'image/jpeg',
+				maximumSizeInBytes: 8 * 1024 * 1024,
+			});
+			expect(consoleInfo).toHaveBeenCalledOnce();
+			expect(JSON.parse(String(consoleInfo.mock.calls[0]?.[0]))).toEqual({
+				level: 'info',
+				logger: 'images',
+				message: 'Image upload authorized',
+				memberId: member.memberId,
+				pathname,
+			});
+		}
+	);
+
+	it.each([
+		'dish/production/3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b.jpg',
+		'dish/development/soup.jpg',
+		'dish/development/3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b.png',
+		'dish/development/../../scan/production/3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b.jpg',
+	])('refuses %s, which is not a new upload in this environment', async (pathname) => {
+		const { service } = serviceFor(new InMemoryImageStore(), memberActor());
+
+		await expect(service.authorizeUpload(pathname)).rejects.toThrow(InvalidImageUploadError);
+		expect(consoleInfo).not.toHaveBeenCalled();
+		expect(consoleWarn).toHaveBeenCalledOnce();
 	});
 });

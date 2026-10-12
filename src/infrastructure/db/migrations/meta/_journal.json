@@ -36,6 +36,13 @@
       "when": 1791819216118,
       "tag": "0004_detach-invites-from-deleted-requests",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791827558586,
+      "tag": "0005_add-old-recipe-slugs",
+      "breakpoints": true
     }
   ]
 }

@@ -84,6 +84,19 @@ export const recipes = pgTable(
 	]
 );
 
+// Slugs a recipe was renamed from, which keep finding it and which no other recipe takes.
+export const oldRecipeSlugs = pgTable(
+	'old_recipe_slugs',
+	{
+		slug: text('slug').primaryKey(),
+		recipeId: uuid('recipe_id')
+			.notNull()
+			.references(() => recipes.id, { onDelete: 'cascade' }),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+	},
+	(table) => [index('old_recipe_slugs_recipe_id_idx').on(table.recipeId)]
+);
+
 // Better Auth reads the tables below by their JS keys, so the keys keep its field names. Its
 // user name maps to displayName.
 

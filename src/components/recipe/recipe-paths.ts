@@ -1,6 +1,10 @@
+import { imageRouteSrc } from '@/lib/image-paths';
+
 export const recipeListPath = '/';
 
 export const recipeSearchPath = '/search';
+
+export const contributePath = '/contribute';
 
 // The list's URL parameters, which search shares.
 export const recipeListParamNames = {
@@ -12,7 +16,11 @@ export function recipePath(slug: string): string {
 	return `/recipes/${slug}`;
 }
 
+export function recipeEditPath(slug: string): string {
+	return `${recipePath(slug)}/edit`;
+}
+
 // The Blob store is private, so images reach the browser through the delivery route.
 export function recipeImageSrc(pathname: string): string {
-	return `/api/images/${pathname}`;
+	return imageRouteSrc(pathname);
 }

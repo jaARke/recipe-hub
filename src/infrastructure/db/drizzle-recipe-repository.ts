@@ -1,11 +1,14 @@
 import 'server-only';
-import { and, arrayOverlaps, eq, ne, or, sql } from 'drizzle-orm';
+import { and, arrayOverlaps, eq, ne, sql } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import type {
 	NewRecipe,
 	RecipePage,
 	RecipeRepository,
+	RecipeUpdate,
+	UpdatedRecipe,
 } from '@/application/ports/recipe-repository';
+import { RecipeEditConflictError } from '@/application/recipes/errors';
 import type { Recipe, RecipeContent, RecipeId } from '@/domain/recipe/recipe';
 import { slugCandidate } from '@/domain/recipe/slug';
 import { tagKey } from '@/domain/recipe/tag';
@@ -16,7 +19,104 @@ import {
 	toRecipe,
 } from '@/infrastructure/db/recipe-mapper';
 import { recipeOrders } from '@/infrastructure/db/recipe-order';
-import { recipes } from '@/infrastructure/db/schema';
+import { oldRecipeSlugs, recipes } from '@/infrastructure/db/schema';
+
+// Every slug allocation takes this transaction-scoped lock, so a slug checked free stays free until
+// the write that takes it commits. The unique constraint covers current slugs only, not old ones.
+const slugLockKey = 'recipe-hub:recipe-slugs';
+
+async function lockSlugs(tx: PgDatabase<PgQueryResultHKT>): Promise<void> {
+	await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${slugLockKey}))`);
+}
+
+// Every image pathname a recipe lists, as a jsonb array of strings.
+const imagePathnames = sql`jsonb_path_query_array(${recipes.content}, '$.images[*].pathname')`;
+
+// Each save moves updatedAt by a millisecond at least, so it versions the recipe at a Date's precision.
+function contentChanges(content: RecipeContent) {
+	return {
+		...toContentColumns(content),
+		updatedAt: sql`greatest(now(), ${recipes.updatedAt} + interval '1 millisecond')`,
+	};
+}
+
+// Whether a recipe other than the excluded one holds the slug, current or old.
+async function isSlugTaken(
+	tx: PgDatabase<PgQueryResultHKT>,
+	slug: string,
+	excludeRecipeId?: RecipeId
+): Promise<boolean> {
+	const rows = await tx
+		.select({ slug: recipes.slug })
+		.from(recipes)
+		.where(
+			and(
+				eq(recipes.slug, slug),
+				excludeRecipeId === undefined ? undefined : ne(recipes.id, excludeRecipeId)
+			)
+		)
+		.unionAll(
+			tx
+				.select({ slug: oldRecipeSlugs.slug })
+				.from(oldRecipeSlugs)
+				.where(
+					and(
+						eq(oldRecipeSlugs.slug, slug),
+						excludeRecipeId === undefined ? undefined : ne(oldRecipeSlugs.recipeId, excludeRecipeId)
+					)
+				)
+		);
+	return rows.length > 0;
+}
+
+// The first candidate no other recipe holds. A recipe's own slugs count as free for it, so retitling
+// back takes back an old slug and a base whose first free candidate is the current slug keeps it.
+async function findFreeSlug(
+	tx: PgDatabase<PgQueryResultHKT>,
+	slugBase: string,
+	recipeId?: RecipeId
+): Promise<string> {
+	for (let attempt = 1; ; attempt += 1) {
+		const slug = slugCandidate(slugBase, attempt);
+		if (!(await isSlugTaken(tx, slug, recipeId))) {
+			return slug;
+		}
+	}
+}
+
+async function replaceContent(
+	tx: PgDatabase<PgQueryResultHKT>,
+	id: RecipeId,
+	content: RecipeContent
+): Promise<Recipe> {
+	const [row] = await tx
+		.update(recipes)
+		.set(contentChanges(content))
+		.where(eq(recipes.id, id))
+		.returning(recipeColumns);
+	return toRecipe(row!);
+}
+
+// Takes the slug, keeps the previous one as an old slug, and releases the new one if it was an old
+// slug of this recipe.
+async function takeSlug(
+	tx: PgDatabase<PgQueryResultHKT>,
+	id: RecipeId,
+	previousSlug: string,
+	slug: string,
+	content: RecipeContent
+): Promise<Recipe> {
+	const [row] = await tx
+		.update(recipes)
+		.set({ ...contentChanges(content), slug })
+		.where(eq(recipes.id, id))
+		.returning(recipeColumns);
+	await tx
+		.delete(oldRecipeSlugs)
+		.where(and(eq(oldRecipeSlugs.slug, slug), eq(oldRecipeSlugs.recipeId, id)));
+	await tx.insert(oldRecipeSlugs).values({ slug: previousSlug, recipeId: id });
+	return toRecipe(row!);
+}
 
 export class DrizzleRecipeRepository implements RecipeRepository {
 	private readonly db: PgDatabase<PgQueryResultHKT>;
@@ -31,7 +131,17 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 	}
 
 	async findBySlug(slug: string): Promise<Recipe | null> {
-		const [row] = await this.db.select(recipeColumns).from(recipes).where(eq(recipes.slug, slug));
+		const [row] = await this.db
+			.select(recipeColumns)
+			.from(recipes)
+			.where(eq(recipes.slug, slug))
+			.unionAll(
+				this.db
+					.select(recipeColumns)
+					.from(oldRecipeSlugs)
+					.innerJoin(recipes, eq(recipes.id, oldRecipeSlugs.recipeId))
+					.where(eq(oldRecipeSlugs.slug, slug))
+			);
 		return row === undefined ? null : toRecipe(row);
 	}
 
@@ -50,41 +160,51 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 	}
 
 	async create(recipe: NewRecipe): Promise<Recipe> {
-		const taken = await this.findTakenSlugs(recipe.slugBase);
-
-		// A conflict means a concurrent insert took the candidate, so the next one is tried.
-		for (let attempt = 1; ; attempt += 1) {
-			const slug = slugCandidate(recipe.slugBase, attempt);
-			if (taken.has(slug)) {
-				continue;
-			}
-
-			const [row] = await this.db
+		return this.db.transaction(async (tx) => {
+			await lockSlugs(tx);
+			const slug = await findFreeSlug(tx, recipe.slugBase);
+			const [row] = await tx
 				.insert(recipes)
 				.values(toInsertColumns(recipe, slug))
-				.onConflictDoNothing({ target: recipes.slug })
 				.returning(recipeColumns);
-			if (row !== undefined) {
-				return toRecipe(row);
+			return toRecipe(row!);
+		});
+	}
+
+	async update(id: RecipeId, update: RecipeUpdate): Promise<UpdatedRecipe | null> {
+		const { content, expectedUpdatedAt, slugBase } = update;
+		return this.db.transaction(async (tx) => {
+			// The slug lock comes before the row lock, in the order every rename takes them.
+			if (slugBase !== undefined) {
+				await lockSlugs(tx);
 			}
-		}
+
+			// Locked, so the version checked is the one replaced, and edits of one recipe take turns.
+			const [current] = await tx
+				.select({ slug: recipes.slug, updatedAt: recipes.updatedAt })
+				.from(recipes)
+				.where(eq(recipes.id, id))
+				.for('update');
+			if (current === undefined) {
+				return null;
+			}
+
+			if (current.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+				throw new RecipeEditConflictError();
+			}
+
+			const slug = slugBase === undefined ? current.slug : await findFreeSlug(tx, slugBase, id);
+			const recipe =
+				slug === current.slug
+					? await replaceContent(tx, id, content)
+					: await takeSlug(tx, id, current.slug, slug, content);
+			return { recipe, previousSlug: current.slug };
+		});
 	}
 
-	async update(id: RecipeId, content: RecipeContent): Promise<Recipe | null> {
-		const [row] = await this.db
-			.update(recipes)
-			.set({ ...toContentColumns(content), updatedAt: sql`now()` })
-			.where(eq(recipes.id, id))
-			.returning(recipeColumns);
+	async delete(id: RecipeId): Promise<Recipe | null> {
+		const [row] = await this.db.delete(recipes).where(eq(recipes.id, id)).returning(recipeColumns);
 		return row === undefined ? null : toRecipe(row);
-	}
-
-	async delete(id: RecipeId): Promise<boolean> {
-		const rows = await this.db
-			.delete(recipes)
-			.where(eq(recipes.id, id))
-			.returning({ id: recipes.id });
-		return rows.length > 0;
 	}
 
 	async findTagLabels(keys: readonly string[], excludeRecipeId?: RecipeId): Promise<string[]> {
@@ -106,13 +226,17 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 		return rows.map(({ label }) => label).filter((label) => wanted.has(tagKey(label)));
 	}
 
-	// The base and its numbered candidates. A long base's candidates are truncated and can escape
-	// this lookup, which only costs a retry, since the insert itself resolves conflicts.
-	private async findTakenSlugs(slugBase: string): Promise<Set<string>> {
+	async findImagesInUse(pathnames: readonly string[]): Promise<string[]> {
+		const wanted = new Set(pathnames);
+		if (wanted.size === 0) {
+			return [];
+		}
+
+		// The recipes listing any of the pathnames, then each pathname they list that was asked about.
 		const rows = await this.db
-			.select({ slug: recipes.slug })
+			.selectDistinct({ pathname: sql<string>`jsonb_array_elements_text(${imagePathnames})` })
 			.from(recipes)
-			.where(or(eq(recipes.slug, slugBase), sql`starts_with(${recipes.slug}, ${`${slugBase}-`})`));
-		return new Set(rows.map(({ slug }) => slug));
+			.where(sql`${imagePathnames} ?| ${sql.param([...wanted])}::text[]`);
+		return rows.map(({ pathname }) => pathname).filter((pathname) => wanted.has(pathname));
 	}
 }

@@ -6,13 +6,24 @@ type InMemoryImage = {
 	etag: string;
 };
 
-// Records whether it was read, so tests can prove that refused pathnames never reach the store.
+// Records whether it was read, so tests can prove that refused pathnames never reach the store, and
+// what it deleted. A test can make deleting fail, as an unreachable store would.
 export class InMemoryImageStore implements ImageStore {
 	private readonly images = new Map<string, InMemoryImage>();
+	private readonly deleted: string[] = [];
 	private read = false;
+	private deletesFail = false;
 
 	get wasRead(): boolean {
 		return this.read;
+	}
+
+	get deletedPathnames(): readonly string[] {
+		return this.deleted;
+	}
+
+	failDeletes(): void {
+		this.deletesFail = true;
 	}
 
 	async get(pathname: string): Promise<StoredImage | null> {
@@ -44,5 +55,16 @@ export class InMemoryImageStore implements ImageStore {
 		}
 
 		this.images.set(pathname, { body, contentType, etag: crypto.randomUUID() });
+	}
+
+	async delete(pathnames: readonly string[]): Promise<void> {
+		if (this.deletesFail) {
+			throw new Error('The image store could not be reached');
+		}
+
+		for (const pathname of pathnames) {
+			this.images.delete(pathname);
+			this.deleted.push(pathname);
+		}
 	}
 }

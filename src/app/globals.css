@@ -140,8 +140,9 @@
 	a:focus-visible {
 		@apply ring-3 ring-ring/50 outline-1;
 	}
+	/* Focus and anchors scroll clear of the sticky header (h-14 and its border) and the focus ring. */
 	html {
-		@apply font-sans;
+		@apply scroll-pt-16 font-sans;
 	}
 	body {
 		@apply bg-background text-foreground;

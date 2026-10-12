@@ -35,7 +35,7 @@ export type RecipeContentInput = z.input<typeof recipeContentSchema>;
 
 export const recipeSchema = recipeContentSchema.extend({
 	id: recipeIdSchema,
-	// Assigned once at creation and kept when the title changes, so shared links keep working.
+	// Follows the title; old slugs keep finding the recipe, so shared links keep working.
 	slug: slugSchema,
 	contributorId: memberIdSchema,
 	provenance: provenanceSchema,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { toFormError } from '@/app/_lib/form-errors';
+import { RecipeEditConflictError, RecipeNotFoundError } from '@/application/recipes/errors';
 import { InvalidAccessRequestError } from '@/domain/member/errors';
 
 describe('toFormError', () => {
@@ -16,6 +17,24 @@ describe('toFormError', () => {
 				name: 'Enter some text.',
 				email: 'Enter an email address, like name@example.com.',
 			},
+		});
+	});
+
+	it('says a recipe is gone when a write finds it deleted', () => {
+		expect(toFormError(new RecipeNotFoundError())).toEqual({
+			status: 'error',
+			message:
+				'That recipe was deleted, or this page is out of date. Reload the page and try again.',
+			fieldErrors: {},
+		});
+	});
+
+	it('says a recipe changed since the form loaded it, so the save was refused', () => {
+		expect(toFormError(new RecipeEditConflictError())).toEqual({
+			status: 'error',
+			message:
+				'This recipe changed after you opened it. Copy anything you want to keep, then reload the page and make your changes again.',
+			fieldErrors: {},
 		});
 	});
 

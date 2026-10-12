@@ -1,5 +1,4 @@
 import { ReferenceSubsection, Specimen } from '@/components/design-reference/reference-section';
-import { SamplePhotoUpload } from '@/components/design-reference/sample-photo-upload';
 import {
 	sampleCatalogFacets,
 	sampleContributor,
@@ -9,6 +8,11 @@ import {
 } from '@/components/design-reference/sample-recipe-dtos';
 import { SampleRecipeForm } from '@/components/design-reference/sample-recipe-form';
 import { PageContainer } from '@/components/layout/page-container';
+import type { EditedRecipe } from '@/components/recipe-form/recipe-form-fields';
+import {
+	recipeFormValues,
+	type RecipeFormValues,
+} from '@/components/recipe-form/recipe-form-values';
 import { RecipeCard } from '@/components/recipe/recipe-card';
 import { RecipeDetail } from '@/components/recipe/recipe-detail';
 import { RecipeGrid, RecipeGridSkeleton } from '@/components/recipe/recipe-grid';
@@ -26,6 +30,10 @@ import {
 	RecipeSearchFiltersSidebar,
 } from '@/components/search/recipe-search-filters';
 import type { RecipeSearchState } from '@/components/search/search-params';
+import type { Problem } from '@/domain/problem';
+import { parseRecipeContent } from '@/domain/recipe/recipe';
+import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
+import { sampleSundayPotRoast } from '@/domain/recipe/samples/sample-recipes';
 
 const sampleSearchState: RecipeSearchState = {
 	text: 'butter',
@@ -54,6 +62,88 @@ const noResultStates: readonly { label: string; state: RecipeSearchState }[] = [
 	{
 		label: 'A query with filters',
 		state: { text: 'biscuts', tags: ['Holiday'], sort: 'relevance', page: 1 },
+	},
+];
+
+// Any id and version: the stand-in action never reads them, and they mark the form as editing.
+const sampleEditedRecipe: EditedRecipe = {
+	id: '0199c7a4-2c3e-7b1a-9f00-000000000001',
+	version: '2026-10-12T00:00:00.000Z',
+};
+
+// An import as an extractor might hand it over: no title, and a line and a step to check against
+// the original.
+const sampleDraft: { content: RecipeDraftContent; problems: Problem[] } = {
+	content: {
+		source: 'Great-aunt Edie',
+		yield: { kind: 'makes', amount: { min: 16 }, unit: 'bars' },
+		times: { prepMinutes: 20, cookMinutes: 45 },
+		ingredientSections: [
+			{
+				heading: 'For the crust',
+				lines: [
+					{
+						text: '1 cup all-purpose flour',
+						amount: { min: 1 },
+						unit: 'cup',
+						item: 'all-purpose flour',
+					},
+					{
+						text: '½ cup butter, softened',
+						amount: { min: 0.5 },
+						unit: 'cup',
+						item: 'butter',
+						preparation: 'softened',
+					},
+				],
+			},
+			{
+				heading: 'For the filling',
+				lines: [
+					{ text: '2 eggs', amount: { min: 2 }, item: 'eggs' },
+					{ text: '1 cup sugar', amount: { min: 1 }, unit: 'cup', item: 'sugar' },
+					{ text: '3 tablespoons lemon' },
+				],
+			},
+		],
+		instructionSections: [
+			{
+				steps: [
+					{ text: 'Heat the oven to 350°F and press the crust into an 8-inch pan.' },
+					{ text: 'Bake 20 minutes, then pour in the filling and bake until set.' },
+				],
+			},
+		],
+		tags: ['Dessert'],
+	},
+	problems: [
+		{ path: 'title', message: "Add a title. The original doesn't show one." },
+		{
+			path: 'ingredientSections.1.lines.2',
+			message: 'Check this line against the original. Part of it was hard to read.',
+		},
+		{
+			path: 'instructionSections.0.steps.1',
+			message: 'Check this step against the original. Part of it was hard to read.',
+		},
+	],
+};
+
+// The recipe form's starting values, as its pages build them.
+const recipeFormSamples: readonly {
+	label: string;
+	initial: RecipeFormValues;
+	editing?: EditedRecipe;
+}[] = [
+	{ label: 'Adding a recipe', initial: recipeFormValues() },
+	{
+		label: 'Editing a recipe whose first section has a heading',
+		initial: recipeFormValues(parseRecipeContent(sampleSundayPotRoast)),
+		editing: sampleEditedRecipe,
+	},
+	{
+		label: 'Reviewing an import, with its problems marked',
+		initial: recipeFormValues(sampleDraft.content, sampleDraft.problems),
 	},
 ];
 
@@ -179,24 +269,15 @@ function CompositionSpecimens() {
 			<ReferenceSubsection
 				id="recipe-form"
 				title="Recipe form"
-				description="The field layout for manual entry and import review. Ingredients and steps are lists of growing fields, grouped into sections with optional headings. It does not save anything."
+				description="For adding and editing a recipe, and for reviewing an import. Ingredients and steps are lists of growing fields in sections, and each item's menu moves or removes it; each ingredient shows how it will read. Chosen photos are resized and upload at once. Here uploads are simulated, and saving checks the recipe as the site does but saves nothing."
 			>
-				<Specimen className="px-0 py-10 sm:py-14">
-					<PageContainer width="reading">
-						<SampleRecipeForm />
-					</PageContainer>
-				</Specimen>
-			</ReferenceSubsection>
-			<ReferenceSubsection
-				id="photo-upload"
-				title="Photo upload"
-				description="Drag photos onto the drop area, or choose them with the button, which opens the native picker; the file input itself is never shown. Chosen files are listed below it. Nothing uploads: the upload states are under Attachment."
-			>
-				<Specimen className="px-0 py-10 sm:py-14">
-					<PageContainer width="reading">
-						<SamplePhotoUpload />
-					</PageContainer>
-				</Specimen>
+				{recipeFormSamples.map(({ label, initial, editing }) => (
+					<Specimen key={label} label={label} className="px-0 py-10 sm:py-14">
+						<PageContainer width="reading">
+							<SampleRecipeForm initial={initial} editing={editing} />
+						</PageContainer>
+					</Specimen>
+				))}
 			</ReferenceSubsection>
 		</div>
 	);

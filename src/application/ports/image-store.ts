@@ -12,4 +12,6 @@ export interface ImageStore {
 	has(pathname: string): Promise<boolean>;
 	// Never overwrites: putting a pathname that is already taken fails.
 	put(pathname: string, body: Uint8Array, contentType: string): Promise<void>;
+	// Deletes the images and anything cached from them.
+	delete(pathnames: readonly string[]): Promise<void>;
 }

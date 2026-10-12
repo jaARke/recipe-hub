@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import type { RecipeSummaryDto } from '@/application/recipes/recipe-dtos';
+import { describedBy } from '@/components/forms/described-by';
 import { recipePath } from '@/components/recipe/recipe-paths';
 import {
-	describedByIds,
 	RecipeCover,
 	RecipeFacts,
 	recipeFacts,
@@ -26,7 +26,7 @@ function RecipeCard({ recipe, eager = false }: { recipe: RecipeSummaryDto; eager
 		<Link
 			href={recipePath(recipe.slug)}
 			aria-labelledby={titleId}
-			aria-describedby={describedByIds(sourceId, detailsId)}
+			aria-describedby={describedBy(sourceId, detailsId)}
 			className="block h-full rounded-xl transition-shadow hover:shadow-md"
 		>
 			{/* The photo box sits flush with the top edge, as the card does for an image first child. */}

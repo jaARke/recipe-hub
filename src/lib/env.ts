@@ -1,4 +1,5 @@
 import 'server-only';
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 
 const envSchema = z
@@ -12,10 +13,14 @@ const envSchema = z
 		VERCEL_URL: z.hostname().optional(),
 		// Set by Vercel on Git deployments: the branch's lasting host, without a scheme.
 		VERCEL_BRANCH_URL: z.hostname().optional(),
+		// Set by Vercel on Git deployments: the branch, which names a preview's image folders.
+		VERCEL_GIT_COMMIT_REF: z.string().min(1).optional(),
 		// Pooled connection for the app; migrations use the unpooled URL through drizzle.config.ts.
 		DATABASE_URL: z.url(),
 		// The image store; the Blob SDK reads and refreshes Vercel's OIDC token itself.
 		BLOB_STORE_ID: z.string().min(1),
+		// Verifies Blob's upload callbacks. None are requested, but the SDK's upload handler needs it.
+		BLOB_WEBHOOK_PUBLIC_KEY: z.string().min(1),
 		// Signs session cookies and encrypts stored sign-in codes.
 		BETTER_AUTH_SECRET: z.string().min(32),
 		// Must stay unset: Better Auth reads it itself and would use it in place of BETTER_AUTH_SECRET.
@@ -30,6 +35,10 @@ const envSchema = z
 	.refine((vars) => vars.VERCEL_ENV !== 'preview' || vars.VERCEL_URL !== undefined, {
 		message: 'Vercel sets VERCEL_URL on every preview deployment',
 		path: ['VERCEL_URL'],
+	})
+	.refine((vars) => vars.VERCEL_ENV !== 'preview' || vars.VERCEL_GIT_COMMIT_REF !== undefined, {
+		message: 'Vercel sets VERCEL_GIT_COMMIT_REF on every Git deployment',
+		path: ['VERCEL_GIT_COMMIT_REF'],
 	});
 
 export const env = envSchema.parse(process.env);
@@ -49,3 +58,23 @@ export const appUrl =
 		: env.VERCEL_ENV === 'preview'
 			? new URL(`https://${env.VERCEL_BRANCH_URL ?? env.VERCEL_URL}`)
 			: new URL('http://localhost:3000');
+
+// A branch as one folder name: readable (lowercase letters and digits, every other run one hyphen),
+// then a hash of the exact name, so feature/x and feature-x differ and no name comes out empty.
+function branchFolder(branch: string): string {
+	const readable = branch
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-')
+		.replace(/^-|-$/g, '');
+	const hash = createHash('sha256').update(branch).digest('hex').slice(0, 8);
+	return readable === '' ? hash : `${readable}-${hash}`;
+}
+
+// Where this deployment's images go under each role's folder. One store serves every environment, so
+// each writes and deletes only in its own: production, a preview's branch, or development.
+export const imageEnvironment =
+	env.VERCEL_ENV === 'production'
+		? 'production'
+		: env.VERCEL_ENV === 'preview'
+			? `preview/${branchFolder(env.VERCEL_GIT_COMMIT_REF!)}`
+			: 'development';

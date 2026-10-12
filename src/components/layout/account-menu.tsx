@@ -9,7 +9,7 @@ import {
 } from '@/components/auth/auth-paths';
 import { useSignOut } from '@/components/auth/use-sign-out';
 import type { HeaderMember } from '@/components/layout/header-member';
-import { recipeListPath } from '@/components/recipe/recipe-paths';
+import { contributePath, recipeListPath } from '@/components/recipe/recipe-paths';
 import { Button } from '@/components/ui/button';
 import {
 	DropdownMenu,
@@ -39,6 +39,7 @@ function AccountMenuItems({ member }: { member: HeaderMember | null }) {
 	return (
 		<DropdownMenuGroup>
 			<DropdownMenuLabel>Signed in as {member.displayName}</DropdownMenuLabel>
+			<DropdownMenuItem render={<Link href={contributePath} />}>Add recipe</DropdownMenuItem>
 			<DropdownMenuItem render={<Link href={accountPath} />}>Account</DropdownMenuItem>
 			{member.role === 'admin' && (
 				<DropdownMenuItem render={<Link href={adminPath} />}>Admin</DropdownMenuItem>

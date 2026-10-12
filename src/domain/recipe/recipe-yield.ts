@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { amountSchema, formatAmount } from '@/domain/recipe/amount';
+import { amountSchema } from '@/domain/recipe/amount';
+import { formatAmount } from '@/domain/recipe/amount-format';
 import { nonEmptyTextSchema } from '@/domain/text';
 
 export const recipeYieldSchema = z.discriminatedUnion('kind', [

@@ -3,22 +3,35 @@ import { z } from 'zod';
 import { requireMember } from '@/application/authorization';
 import { paginationSchema } from '@/application/pagination';
 import type { ActorProvider } from '@/application/ports/actor-provider';
+import type { ImageStore } from '@/application/ports/image-store';
 import type { MemberRepository } from '@/application/ports/member-repository';
 import {
 	recipeSorts,
 	type RecipePage,
 	type RecipeRepository,
+	type UpdatedRecipe,
 } from '@/application/ports/recipe-repository';
-import { InvalidRecipePageError, RecipeNotFoundError } from '@/application/recipes/errors';
 import {
+	InvalidRecipePageError,
+	RecipeEditConflictError,
+	RecipeNotFoundError,
+} from '@/application/recipes/errors';
+import type { ImageFolders } from '@/application/recipes/image-folders';
+import {
+	toEditableRecipeDto,
 	toPublicRecipeDto,
+	toRecipeMemberViewDto,
 	toRecipeRef,
 	toRecipeSummaryDto,
+	type EditableRecipeDto,
 	type PublicRecipeDto,
+	type RecipeMemberViewDto,
 	type RecipeRef,
 	type RecipeSummaryPage,
+	type UpdatedRecipeRef,
 } from '@/application/recipes/recipe-dtos';
-import { assertCanModifyRecipe } from '@/application/recipes/recipe-policy';
+import { assertCanModifyRecipe, canModifyRecipe } from '@/application/recipes/recipe-policy';
+import type { MemberId } from '@/domain/member/member';
 import { problemsFromZodError } from '@/domain/problem';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
 import { provenanceSchema, type Provenance } from '@/domain/recipe/provenance';
@@ -30,11 +43,18 @@ import {
 	type RecipeContentInput,
 	type RecipeId,
 } from '@/domain/recipe/recipe';
+import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import { slugify, slugSchema } from '@/domain/recipe/slug';
 import { tagKey } from '@/domain/recipe/tag';
 import { getLogger } from '@/lib/logger';
 
 const recipePageSchema = paginationSchema.extend({ sort: z.enum(recipeSorts) });
+
+// A recipe's version as an editor holds it: its updatedAt, from Date.toISOString().
+const versionSchema = z.iso.datetime().transform((value) => new Date(value));
+
+// For an image this environment never stored: its upload failed, was cut off, or never happened.
+const unstoredImageMessage = "This photo didn't finish uploading. Remove it and add it again.";
 
 const logger = getLogger('recipes');
 
@@ -61,21 +81,28 @@ function parseProvenance(input: unknown): Provenance {
 export class RecipeService {
 	private readonly recipes: RecipeRepository;
 	private readonly members: MemberRepository;
+	private readonly images: ImageStore;
 	private readonly actors: ActorProvider;
+	private readonly folders: ImageFolders;
 
-	constructor(recipes: RecipeRepository, members: MemberRepository, actors: ActorProvider) {
+	constructor(
+		recipes: RecipeRepository,
+		members: MemberRepository,
+		images: ImageStore,
+		actors: ActorProvider,
+		folders: ImageFolders
+	) {
 		this.recipes = recipes;
 		this.members = members;
+		this.images = images;
 		this.actors = actors;
+		this.folders = folders;
 	}
 
-	// Public reads never ask for the actor, so pages can cache them.
+	// Public reads never ask for the actor, so pages can cache them. An old slug finds the recipe too,
+	// and the DTO carries its current slug.
 	async getRecipe(slug: string): Promise<PublicRecipeDto | null> {
-		if (!slugSchema.safeParse(slug).success) {
-			return null;
-		}
-
-		const recipe = await this.recipes.findBySlug(slug);
+		const recipe = await this.findRecipeBySlug(slug);
 		if (recipe === null) {
 			return null;
 		}
@@ -102,11 +129,35 @@ export class RecipeService {
 		return { recipes: recipes.map(toRecipeSummaryDto), total };
 	}
 
+	// Members-only reads resolve the actor first too, so an anonymous caller learns nothing.
+	async getRecipeForEditing(slug: string): Promise<EditableRecipeDto | null> {
+		const actor = requireMember(await this.actors.currentActor());
+		const recipe = await this.findRecipeBySlug(slug);
+		if (recipe === null) {
+			return null;
+		}
+
+		assertCanModifyRecipe(actor, recipe);
+		return toEditableRecipeDto(recipe);
+	}
+
+	// Null for a signed-out visitor, who sees the public recipe alone.
+	async getRecipeMemberView(slug: string): Promise<RecipeMemberViewDto | null> {
+		const actor = await this.actors.currentActor();
+		if (actor.kind === 'anonymous') {
+			return null;
+		}
+
+		const recipe = await this.findRecipeBySlug(slug);
+		return recipe === null ? null : toRecipeMemberViewDto(recipe, canModifyRecipe(actor, recipe));
+	}
+
 	// Writes resolve the actor first, so an anonymous caller learns nothing about which recipes exist.
 	async createRecipe(input: CreateRecipeInput): Promise<RecipeRef> {
 		const actor = requireMember(await this.actors.currentActor());
 		const content = parseRecipeContent(input.content);
 		const provenance = parseProvenance(input.provenance);
+		await this.assertImagesStored(content.images, []);
 
 		const recipe = await this.recipes.create({
 			content: await this.withCanonicalTags(content),
@@ -123,22 +174,55 @@ export class RecipeService {
 		return toRecipeRef(recipe);
 	}
 
-	async updateRecipe(id: string, input: RecipeContentInput): Promise<RecipeRef> {
+	// The slug follows the title, and the previous one keeps finding the recipe. A change of case or
+	// punctuation leaves the slug as it is. The version is the editor's EditableRecipeDto.updatedAt as
+	// an ISO string; a save made since, or a malformed version, is a conflict, which a reload resolves.
+	async updateRecipe(
+		id: string,
+		input: RecipeContentInput,
+		expectedUpdatedAt: string
+	): Promise<UpdatedRecipeRef> {
 		const actor = requireMember(await this.actors.currentActor());
 		const recipe = await this.findRecipe(id);
 		assertCanModifyRecipe(actor, recipe);
-		const content = parseRecipeContent(input);
+		// Checked before the content, so a stale copy is not checked against images saved since.
+		const version = versionSchema.safeParse(expectedUpdatedAt);
+		if (!version.success || version.data.getTime() !== recipe.updatedAt.getTime()) {
+			throw this.staleSave(recipe.id, actor.memberId);
+		}
 
-		const updated = await this.recipes.update(
-			recipe.id,
-			await this.withCanonicalTags(content, recipe.id)
-		);
+		const content = parseRecipeContent(input);
+		await this.assertImagesStored(content.images, recipe.images);
+		const slugBase = slugify(content.title);
+
+		// The repository checks the version again under its lock, so the images replaced are these.
+		let updated: UpdatedRecipe | null;
+		try {
+			updated = await this.recipes.update(recipe.id, {
+				content: await this.withCanonicalTags(content, recipe.id),
+				expectedUpdatedAt: version.data,
+				slugBase: slugBase === slugify(recipe.title) ? undefined : slugBase,
+			});
+		} catch (error) {
+			throw error instanceof RecipeEditConflictError
+				? this.staleSave(recipe.id, actor.memberId)
+				: error;
+		}
 		if (updated === null) {
 			throw new RecipeNotFoundError();
 		}
 
-		logger.info('Recipe updated', { recipeId: updated.id, memberId: actor.memberId });
-		return toRecipeRef(updated);
+		const { recipe: saved, previousSlug } = updated;
+		logger.info('Recipe updated', { recipeId: saved.id, memberId: actor.memberId });
+		const kept = new Set(saved.images.map(({ pathname }) => pathname));
+		await this.deleteImages(
+			saved.id,
+			recipe.images.filter(({ pathname }) => !kept.has(pathname))
+		);
+		return {
+			...toRecipeRef(saved),
+			...(saved.slug !== previousSlug && { previousSlug }),
+		};
 	}
 
 	async deleteRecipe(id: string): Promise<RecipeRef> {
@@ -146,13 +230,20 @@ export class RecipeService {
 		const recipe = await this.findRecipe(id);
 		assertCanModifyRecipe(actor, recipe);
 
+		// The deleted row's slug and images, which a concurrent edit may have changed since the read.
 		const deleted = await this.recipes.delete(recipe.id);
-		if (!deleted) {
+		if (deleted === null) {
 			throw new RecipeNotFoundError();
 		}
 
-		logger.info('Recipe deleted', { recipeId: recipe.id, memberId: actor.memberId });
-		return toRecipeRef(recipe);
+		logger.info('Recipe deleted', { recipeId: deleted.id, memberId: actor.memberId });
+		await this.deleteImages(deleted.id, deleted.images);
+		return toRecipeRef(deleted);
+	}
+
+	// Slugs arrive from URLs, so a malformed slug names no recipe.
+	private async findRecipeBySlug(slug: string): Promise<Recipe | null> {
+		return slugSchema.safeParse(slug).success ? this.recipes.findBySlug(slug) : null;
 	}
 
 	// Ids arrive from URLs and forms, so a malformed id names no recipe.
@@ -166,7 +257,65 @@ export class RecipeService {
 		return recipe;
 	}
 
+	// Each image the recipe does not already have must be an upload this environment stored. Images it
+	// has stay as they are, such as production's photos on a preview's copy.
+	private async assertImagesStored(
+		images: readonly RecipeImage[],
+		existing: readonly RecipeImage[]
+	): Promise<void> {
+		const existingPathnames = new Set(existing.map(({ pathname }) => pathname));
+		const stored = await Promise.all(
+			images.map(
+				async ({ pathname }) =>
+					existingPathnames.has(pathname) ||
+					(this.folders.contains(pathname) && (await this.images.has(pathname)))
+			)
+		);
+
+		const problems = stored.flatMap((isStored, index) =>
+			isStored ? [] : [{ path: `images.${index}.pathname`, message: unstoredImageMessage }]
+		);
+		if (problems.length > 0) {
+			throw new InvalidRecipeError(problems);
+		}
+	}
+
+	// After the write commits, so a failure leaves an unused photo behind rather than a recipe pointing
+	// at a missing one. Other environments' photos, such as production's on a preview's copy, are kept,
+	// and so is a photo another recipe still lists, as a crafted save can make it do.
+	private async deleteImages(recipeId: RecipeId, images: readonly RecipeImage[]): Promise<void> {
+		const ownPathnames = images
+			.map(({ pathname }) => pathname)
+			.filter((pathname) => this.folders.contains(pathname));
+		if (ownPathnames.length === 0) {
+			return;
+		}
+
+		try {
+			const inUse = new Set(await this.recipes.findImagesInUse(ownPathnames));
+			const pathnames = ownPathnames.filter((pathname) => !inUse.has(pathname));
+			const keptPathnames = ownPathnames.filter((pathname) => inUse.has(pathname));
+			if (pathnames.length > 0) {
+				await this.images.delete(pathnames);
+			}
+
+			logger.info('Recipe images deleted', {
+				recipeId,
+				pathnames,
+				...(keptPathnames.length > 0 && { keptPathnames }),
+			});
+		} catch (err) {
+			logger.warn('Recipe images could not be deleted', { recipeId, pathnames: ownPathnames, err });
+		}
+	}
+
 	// A tag takes the label other recipes already use, so an update can respell a tag only it uses.
+	// Logged, since the editor has to reload and redo their changes.
+	private staleSave(recipeId: RecipeId, memberId: MemberId): RecipeEditConflictError {
+		logger.warn('Recipe save refused as stale', { recipeId, memberId });
+		return new RecipeEditConflictError();
+	}
+
 	private async withCanonicalTags(
 		content: RecipeContent,
 		excludeRecipeId?: RecipeId

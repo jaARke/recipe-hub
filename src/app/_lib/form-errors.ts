@@ -13,6 +13,10 @@ const errorMessages: Partial<Record<string, string>> = {
 	'access.invite-not-found': 'That invite was already used, revoked, or has expired.',
 	'access.request-not-found':
 		'That request was already handled. Reload the page to see the latest.',
+	'recipe.not-found':
+		'That recipe was deleted, or this page is out of date. Reload the page and try again.',
+	'recipe.edit-conflict':
+		'This recipe changed after you opened it. Copy anything you want to keep, then reload the page and make your changes again.',
 };
 
 // Next logs a rethrown error in full, causes included, so a database error is replaced by one that

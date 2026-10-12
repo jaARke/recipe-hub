@@ -1,11 +1,12 @@
 import { cn } from 'cn';
 import type { PublicRecipeDto } from '@/application/recipes/recipe-dtos';
+import { IngredientLineText } from '@/components/recipe/ingredient-line-text';
 import { RecipePhoto } from '@/components/recipe/recipe-photo';
 import { RecipeTags } from '@/components/recipe/recipe-summary';
+import { recipeSearchHref } from '@/components/search/search-params';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatAmount } from '@/domain/recipe/amount';
 import { formatDuration, totalMinutes } from '@/domain/recipe/duration';
-import type { IngredientLine, IngredientSection } from '@/domain/recipe/ingredient';
+import type { IngredientSection } from '@/domain/recipe/ingredient';
 import type { InstructionSection } from '@/domain/recipe/instruction';
 import { coverImage } from '@/domain/recipe/recipe-image';
 import { formatYield } from '@/domain/recipe/recipe-yield';
@@ -38,6 +39,11 @@ type RecipeMetaItem = {
 
 // A reading-width container's column is 624px.
 const coverPhotoSizes = '(min-width: 672px) 624px, 100vw';
+
+// Every recipe with the tag, newest first as search lists them without a query.
+function tagSearchHref(tag: string): string {
+	return recipeSearchHref({ tags: [tag], sort: 'newest', page: 1 });
+}
 
 function recipeMetaItems({
 	times,
@@ -113,24 +119,6 @@ function RecipeByline({ recipe }: { recipe: PublicRecipeDto }) {
 	);
 }
 
-function IngredientLineText({ line }: { line: IngredientLine }) {
-	// Without an amount there is nothing to emphasize, so the line reads as it was written.
-	if (line.amount === undefined) {
-		return line.text;
-	}
-
-	const amount = formatAmount(line.amount);
-	return (
-		<>
-			<span className="font-semibold">
-				{line.unit === undefined ? amount : `${amount} ${line.unit}`}
-			</span>{' '}
-			{line.item}
-			{line.preparation !== undefined && `, ${line.preparation}`}
-		</>
-	);
-}
-
 function IngredientSectionList({
 	section,
 	headingTag: Heading,
@@ -201,7 +189,7 @@ function RecipeDetail({
 				</Title>
 				<RecipeByline recipe={recipe} />
 				<RecipeMetaRow recipe={recipe} />
-				{recipe.tags.length > 0 && <RecipeTags tags={recipe.tags} />}
+				{recipe.tags.length > 0 && <RecipeTags tags={recipe.tags} tagHref={tagSearchHref} />}
 			</header>
 			{cover !== undefined && (
 				// Left off the printout, which is for cooking from.

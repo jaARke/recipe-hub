@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { describedBy } from '@/components/forms/described-by';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 
@@ -14,9 +15,6 @@ function TextField({ id, label, description, error, ...inputProps }: TextFieldPr
 	const descriptionId = `${id}-description`;
 	const errorId = `${id}-error`;
 	const invalid = error !== undefined;
-	const describedBy = [description !== undefined && descriptionId, invalid && errorId]
-		.filter(Boolean)
-		.join(' ');
 
 	return (
 		<Field data-invalid={invalid ? 'true' : undefined}>
@@ -24,7 +22,10 @@ function TextField({ id, label, description, error, ...inputProps }: TextFieldPr
 			<Input
 				id={id}
 				aria-invalid={invalid ? 'true' : undefined}
-				aria-describedby={describedBy === '' ? undefined : describedBy}
+				aria-describedby={describedBy(
+					description !== undefined && descriptionId,
+					invalid && errorId
+				)}
 				{...inputProps}
 			/>
 			{description !== undefined && (
