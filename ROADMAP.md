@@ -246,6 +246,7 @@ Unknown keys are dropped on read, so older code that re-saves a recipe would dro
   - Locally, `pnpm db:seed` seeds `develop` on demand.
   - Seeded recipes belong to a fixed synthetic member id, `00000000-0000-4000-8000-000000000001`, which has no account.
 - Environment variables are managed in Vercel and pulled locally with `vercel env pull`. The AI Gateway and Blob authenticate with Vercel's OIDC token, so no provider keys or Blob tokens exist. Locally, the Blob SDK refreshes an expired development token with the Vercel CLI's credentials.
+  - The Neon integration also adds `PG*`, `POSTGRES_*`, and `NEON_PROJECT_ID` variables. The app reads none of them; they are the integration's to manage and harmless to keep.
 - **Blob layout:** one private store, `recipe-hub-images`, serves every environment, since Blob has no branches.
   - Pathnames put visibility first, then the environment: `dish/production/...`, `dish/preview/...`, `dish/development/...`, `scan/<environment>/...`, and seed photos at `dish/seed/<slug>.jpg`.
   - Preview branches copy production's rows, so previews read production's photos.
@@ -631,12 +632,15 @@ Deferred, each to the session that needs it:
   - Record image dimensions at upload if a screen shows a photo at its natural shape, and show more than the cover photo.
   - Server Actions invalidate `recipes` and `recipe:<slug>` with `updateTag`.
   - A recipe without a description publishes no meta or Open Graph description; consider a fallback with the form.
+  - The Open Graph image caches its photo by pathname with `cacheLife('max')`, a missing photo included. Upload before saving the recipe so a card never caches the no-photo layout for a pathname that later exists.
 - **Session 8:**
   - `sitemap.ts` and the `sitemap` line in `robots.ts`, when noindex comes off.
   - Open Graph caching:
     - Consider explicit immutable headers through `ImageResponse`'s `headers`, since the URLs are versioned. The cost: a deleted recipe's card lingers on the CDN unless purged.
     - Downscale the embedded photo; photo cards are 770 to 955 KB.
   - Unknown slugs and invalid pages return the not-found page with status 200 and `noindex`. Revisit with a proxy existence check if real 404s matter.
+    - The server's HTML holds only the skeleton; the not-found UI arrives in the streamed payload, so clients without JavaScript see the skeleton alone.
+    - An invalid list page keeps the title "Recipe Hub"; an unknown slug gets "Page not found".
   - Rich Results Test: recipes without a photo cannot qualify, and `recipeYield` is text ("Serves 8") where Google prefers a number for servings.
   - Check that Flat Rate CDN is on in Billing.
 - **Operations:** `neondatabase/delete-branch-action` v3.2.1 is the latest release, a composite action. The Node 20 warning comes from the `setup-node@v4` it pins. Revisit when Neon updates it, or replace it with a `neonctl` step.
