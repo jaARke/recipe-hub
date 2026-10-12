@@ -14,6 +14,7 @@ import {
 	type MemberId,
 } from '@/domain/member/member';
 import { getLogger } from '@/lib/logger';
+import { siteName } from '@/lib/site';
 
 const logger = getLogger('access');
 
@@ -22,7 +23,7 @@ function signInCodeEmail(to: string, code: string): EmailMessage {
 		to,
 		subject: 'Your sign-in code',
 		text: [
-			`Your Recipe Hub sign-in code is:\n\n${code}`,
+			`Your ${siteName} sign-in code is:\n\n${code}`,
 			`It expires in ${signInCodeLifetimeMinutes} minutes. If you didn't ask for a code, you can ignore this email.`,
 		].join('\n\n'),
 	};

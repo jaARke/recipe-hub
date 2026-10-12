@@ -39,6 +39,7 @@ import {
 import type { Member } from '@/domain/member/member';
 import { formatDate } from '@/lib/dates';
 import { getLogger } from '@/lib/logger';
+import { siteName } from '@/lib/site';
 
 const logger = getLogger('access');
 
@@ -60,10 +61,10 @@ function inviteLink(appUrl: URL, token: string): string {
 function inviteEmail(invite: Invite, inviter: Member, to: string, link: string): EmailMessage {
 	return {
 		to,
-		subject: `${inviter.displayName} invited you to Recipe Hub`,
+		subject: `${inviter.displayName} invited you to ${siteName}`,
 		text: [
 			`Hi ${invite.displayName},`,
-			`${inviter.displayName} invited you to Recipe Hub, where you can add recipes to the shared collection.`,
+			`${inviter.displayName} invited you to ${siteName}, where you can add recipes to the shared collection.`,
 			`Open this link to create your account:\n${link}`,
 			`The link works once and expires on ${formatDate(invite.expiresAt)}. To reach ${inviter.displayName}, reply to this email.`,
 		].join('\n\n'),

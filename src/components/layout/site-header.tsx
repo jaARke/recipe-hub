@@ -2,10 +2,10 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { MainNav, MainNavLinks } from '@/components/layout/main-nav';
 import { PageContainer } from '@/components/layout/page-container';
-import { siteName } from '@/components/layout/site-name';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
 import { HeaderSearch } from '@/components/search/header-search';
 import { HeaderSearchBar } from '@/components/search/header-search-bar';
+import { siteName } from '@/lib/site';
 
 function SiteHeader() {
 	return (

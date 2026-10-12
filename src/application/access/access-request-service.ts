@@ -17,6 +17,7 @@ import {
 } from '@/domain/member/access-request';
 import type { Member } from '@/domain/member/member';
 import { getLogger } from '@/lib/logger';
+import { siteName } from '@/lib/site';
 
 const logger = getLogger('access');
 
@@ -30,7 +31,7 @@ function accessRequestNotification(
 		to: admin.email,
 		subject: 'New access request',
 		text: [
-			`${request.name} asked for access to Recipe Hub.`,
+			`${request.name} asked for access to ${siteName}.`,
 			`Review the request on the admin page:\n${new URL('/admin', appUrl).href}`,
 		].join('\n\n'),
 		idempotencyKey: `access-request-notification/${request.id}/${admin.id}`,

@@ -5,9 +5,9 @@ import { notFound } from 'next/navigation';
 import { ImageResponse } from 'next/og';
 import { getCachedRecipe } from '@/app/_lib/recipe-cache';
 import type { PublicRecipeDto } from '@/application/recipes/recipe-dtos';
-import { siteName } from '@/components/layout/site-name';
 import { getRecipeImageService } from '@/composition/services';
 import { coverImage } from '@/domain/recipe/recipe-image';
+import { siteName } from '@/lib/site';
 
 type ImageProps = {
 	params: Promise<{ slug: string }>;
