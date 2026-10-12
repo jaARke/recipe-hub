@@ -111,6 +111,14 @@ describe('searchRecipes', () => {
 		expect(recipes.receivedQueries).toMatchObject([{ source: 'a'.repeat(500) }]);
 	});
 
+	it('strips hidden characters from the source, as every recipe text field does', async () => {
+		const { recipes, service } = createSearch(noResults);
+
+		await service.searchRecipes({ ...firstPage, source: 'Grandpa\0 Lou\u0007' });
+
+		expect(recipes.receivedQueries).toMatchObject([{ source: 'Grandpa Lou' }]);
+	});
+
 	it.each([
 		['text over 200 characters', { text: 'a'.repeat(201) }],
 		['more than 20 tags', { tags: tagLabels(21) }],
@@ -118,7 +126,6 @@ describe('searchRecipes', () => {
 		['a blank source', { source: ' ' }],
 		['a NUL character in the text', { text: 'soup\0' }],
 		['a NUL character in a tag', { tags: ['Soup\0'] }],
-		['a NUL character in the source', { source: 'Grandpa\0Lou' }],
 		['a contributor id that is not an id', { contributorId: 'ada' }],
 		['a total time that is not a choice', { maxTotalMinutes: 45 }],
 		['an unknown window for the date added', { addedWithin: 'day' }],

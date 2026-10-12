@@ -37,13 +37,11 @@ describe('accessRequestFieldsSchema', () => {
 		expect(problemPaths({})).toEqual(['name', 'relationship']);
 	});
 
-	it('rejects a NUL character, which Postgres cannot store', () => {
-		const result = accessRequestFieldsSchema.safeParse({
+	it('strips a NUL character, which Postgres cannot store', () => {
+		expect(accessRequestFieldsSchema.parse({ name: 'Ada', relationship: 'A\0 neighbor' })).toEqual({
 			name: 'Ada',
-			relationship: 'A\0neighbor',
+			relationship: 'A neighbor',
 		});
-
-		expect(result.success).toBe(false);
 	});
 
 	it('rejects an email that is not an address', () => {
