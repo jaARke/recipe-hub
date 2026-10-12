@@ -1,5 +1,5 @@
 import type { Actor, MemberActor } from '@/application/ports/actor-provider';
-import { memberIdSchema, type MemberRole } from '@/domain/member/member';
+import { memberIdSchema, type Member, type MemberRole } from '@/domain/member/member';
 
 function newMemberActor(role: MemberRole): MemberActor {
 	return { kind: 'member', memberId: memberIdSchema.parse(crypto.randomUUID()), role };
@@ -16,4 +16,9 @@ export function memberActor(): MemberActor {
 
 export function adminActor(): MemberActor {
 	return newMemberActor('admin');
+}
+
+// Signed in as a stored member, for use cases that read the member's own record.
+export function actorFor(member: Member): MemberActor {
+	return { kind: 'member', memberId: member.id, role: member.role };
 }

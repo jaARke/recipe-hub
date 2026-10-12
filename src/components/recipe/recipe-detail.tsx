@@ -9,6 +9,7 @@ import type { IngredientLine, IngredientSection } from '@/domain/recipe/ingredie
 import type { InstructionSection } from '@/domain/recipe/instruction';
 import { coverImage } from '@/domain/recipe/recipe-image';
 import { formatYield } from '@/domain/recipe/recipe-yield';
+import { formatDate } from '@/lib/dates';
 
 // The recipe page's text hierarchy, shared with the typography specimen.
 const recipeTextStyles = {
@@ -37,12 +38,6 @@ type RecipeMetaItem = {
 
 // A reading-width container's column is 624px.
 const coverPhotoSizes = '(min-width: 672px) 624px, 100vw';
-
-// A fixed zone, because the server renders in UTC and an evening edit would read as the next day.
-const recipeDateFormat = new Intl.DateTimeFormat('en-US', {
-	dateStyle: 'long',
-	timeZone: 'America/New_York',
-});
 
 function recipeMetaItems({
 	times,
@@ -86,7 +81,7 @@ function RecipeMetaRow({ recipe }: { recipe: Pick<PublicRecipeDto, 'times' | 'yi
 function RecipeDate({ label, date }: { label: string; date: Date }) {
 	return (
 		<p>
-			{label} <time dateTime={date.toISOString()}>{recipeDateFormat.format(date)}</time>
+			{label} <time dateTime={date.toISOString()}>{formatDate(date)}</time>
 		</p>
 	);
 }

@@ -25,3 +25,12 @@ export function requireMember(actor: Actor): MemberActor {
 
 	return actor;
 }
+
+export function requireAdmin(actor: Actor): MemberActor {
+	const member = requireMember(actor);
+	if (member.role !== 'admin') {
+		throw new ForbiddenError();
+	}
+
+	return member;
+}
