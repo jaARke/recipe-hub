@@ -8,16 +8,22 @@ export type LogFields = Record<string, unknown> & { err?: unknown };
 
 export type Logger = Record<LogLevel, (message: string, fields?: LogFields) => void>;
 
+// Drizzle's query errors end their message with the query's parameters, which can hold email
+// addresses, so the parameters are cut.
+const queryParametersSeparator = '\nparams: ';
+
 function serializeError(error: unknown): unknown {
 	if (!(error instanceof Error)) {
 		return error;
 	}
 
+	// The stack starts with the message, so it loses the parameters too.
+	const message = error.message.split(queryParametersSeparator)[0] ?? '';
 	return {
 		name: error.name,
-		message: error.message,
+		message,
 		...(error instanceof AppError && { code: error.code }),
-		stack: error.stack,
+		stack: error.stack?.replace(error.message, message),
 		...(error.cause !== undefined && { cause: serializeError(error.cause) }),
 	};
 }
