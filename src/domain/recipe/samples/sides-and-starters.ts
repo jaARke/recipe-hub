@@ -15,8 +15,7 @@ export const sampleTomatoBasilBruschetta: RecipeContentInput = {
 				{
 					text: '1 garlic clove, halved',
 					amount: { min: 1 },
-					unit: 'clove',
-					item: 'garlic',
+					item: 'garlic clove',
 					preparation: 'halved',
 				},
 				{

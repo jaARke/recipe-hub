@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import * as React from 'react';
 import type { RecipeSearchResultDto } from '@/application/search/recipe-search-dtos';
+import { describedBy } from '@/components/forms/described-by';
 import { recipePath } from '@/components/recipe/recipe-paths';
 import {
-	describedByIds,
 	RecipeCover,
 	RecipeFacts,
 	recipeFacts,
@@ -46,7 +46,7 @@ function RecipeSearchResult({
 		<Link
 			href={recipePath(recipe.slug)}
 			aria-labelledby={titleId}
-			aria-describedby={describedByIds(sourceId, snippetId, detailsId)}
+			aria-describedby={describedBy(sourceId, snippetId, detailsId)}
 			className="group flex gap-4 py-4 sm:gap-6"
 		>
 			<RecipeCover

@@ -8,6 +8,8 @@ import type { MemberId } from '@/domain/member/member';
 // The one home for recipe cache tags: Server Actions invalidate these names after a write.
 export const recipeCacheTags = {
 	list: 'recipes',
+	// A recipe read by an old slug carries its current slug's tag too, so invalidating the current
+	// slug clears it.
 	recipe: (slug: string) => `recipe:${slug}`,
 	// Every recipe page showing the member's name, so a rename reaches them all.
 	member: (id: MemberId) => `member:${id}`,
@@ -15,14 +17,16 @@ export const recipeCacheTags = {
 
 export const recipesPerPage = 24;
 
-// Writes invalidate the tags; revalidating a day after caching catches edits made outside the app.
+// Tagged with the slug asked for, so a miss clears once a recipe takes it, and with the current
+// slug. Writes invalidate the tags; revalidating a day after caching catches edits made outside
+// the app.
 export async function getCachedRecipe(slug: string): Promise<PublicRecipeDto | null> {
 	'use cache';
 	cacheTag(recipeCacheTags.recipe(slug));
 	cacheLife('days');
 	const recipe = await getRecipeService().getRecipe(slug);
 	if (recipe !== null) {
-		cacheTag(recipeCacheTags.member(recipe.contributor.id));
+		cacheTag(recipeCacheTags.recipe(recipe.slug), recipeCacheTags.member(recipe.contributor.id));
 	}
 	return recipe;
 }

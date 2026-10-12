@@ -1,19 +1,26 @@
 import { cn } from 'cn';
+import type { ReactNode } from 'react';
 import type { PublicRecipeDto } from '@/application/recipes/recipe-dtos';
+import { IngredientLineText } from '@/components/recipe/ingredient-line-text';
+import {
+	RecipeImageViewer,
+	RecipeImageViewerTrigger,
+} from '@/components/recipe/recipe-image-viewer';
 import { RecipePhoto } from '@/components/recipe/recipe-photo';
 import { RecipeTags } from '@/components/recipe/recipe-summary';
+import { recipeSearchHref } from '@/components/search/search-params';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatAmount } from '@/domain/recipe/amount';
 import { formatDuration, totalMinutes } from '@/domain/recipe/duration';
-import type { IngredientLine, IngredientSection } from '@/domain/recipe/ingredient';
+import type { IngredientSection } from '@/domain/recipe/ingredient';
 import type { InstructionSection } from '@/domain/recipe/instruction';
-import { coverImage } from '@/domain/recipe/recipe-image';
+import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import { formatYield } from '@/domain/recipe/recipe-yield';
 import { formatDate } from '@/lib/dates';
 
 // The recipe page's text hierarchy, shared with the typography specimen.
 const recipeTextStyles = {
-	title: 'font-heading text-4xl font-medium md:text-5xl',
+	// Long words wrap rather than push a control beside the title off a narrow screen.
+	title: 'min-w-0 font-heading text-4xl font-medium wrap-anywhere md:text-5xl',
 	section: 'font-heading text-2xl font-medium',
 	subsection: 'text-lg font-semibold',
 	body: 'text-lg',
@@ -38,6 +45,14 @@ type RecipeMetaItem = {
 
 // A reading-width container's column is 624px.
 const coverPhotoSizes = '(min-width: 672px) 624px, 100vw';
+
+// The other photos' thumbnails are w-24.
+const thumbnailPhotoSizes = '96px';
+
+// Every recipe with the tag, newest first as search lists them without a query.
+function tagSearchHref(tag: string): string {
+	return recipeSearchHref({ tags: [tag], sort: 'newest', page: 1 });
+}
 
 function recipeMetaItems({
 	times,
@@ -113,24 +128,6 @@ function RecipeByline({ recipe }: { recipe: PublicRecipeDto }) {
 	);
 }
 
-function IngredientLineText({ line }: { line: IngredientLine }) {
-	// Without an amount there is nothing to emphasize, so the line reads as it was written.
-	if (line.amount === undefined) {
-		return line.text;
-	}
-
-	const amount = formatAmount(line.amount);
-	return (
-		<>
-			<span className="font-semibold">
-				{line.unit === undefined ? amount : `${amount} ${line.unit}`}
-			</span>{' '}
-			{line.item}
-			{line.preparation !== undefined && `, ${line.preparation}`}
-		</>
-	);
-}
-
 function IngredientSectionList({
 	section,
 	headingTag: Heading,
@@ -182,38 +179,86 @@ function InstructionSectionList({
 	);
 }
 
+// The cover, then a row of the other photos; each opens the viewer at itself. Left off the printout,
+// which is for cooking from.
+function RecipePhotos({ title, images }: { title: string; images: readonly RecipeImage[] }) {
+	const [cover, ...others] = images;
+	if (cover === undefined) {
+		return null;
+	}
+
+	return (
+		<RecipeImageViewer role="dish" title={title} images={images}>
+			<div className="flex flex-col gap-3 print:hidden">
+				{/* Each button is named for its photo, so the photo inside it is decorative. */}
+				<RecipeImageViewerTrigger index={0} className="w-full rounded-xl">
+					<RecipePhoto
+						pathname={cover.pathname}
+						alt=""
+						sizes={coverPhotoSizes}
+						preload
+						className="aspect-3/2"
+					/>
+				</RecipeImageViewerTrigger>
+				{others.length > 0 && (
+					<ul className="flex flex-wrap gap-3">
+						{others.map((image, index) => (
+							<li key={image.pathname}>
+								<RecipeImageViewerTrigger index={index + 1} className="rounded-md">
+									<RecipePhoto
+										pathname={image.pathname}
+										alt=""
+										sizes={thumbnailPhotoSizes}
+										className="aspect-4/3 w-24"
+									/>
+								</RecipeImageViewerTrigger>
+							</li>
+						))}
+					</ul>
+				)}
+			</div>
+		</RecipeImageViewer>
+	);
+}
+
 function RecipeDetail({
 	recipe,
 	headingLevel,
+	titleAction,
 }: {
 	recipe: PublicRecipeDto;
 	headingLevel: RecipeHeadingLevel;
+	// A control beside the title, such as the edit link. Its box is reserved whenever it is passed, so
+	// a link that streams in later moves nothing.
+	titleAction?: ReactNode;
 }) {
 	const { title: Title, section: Section, subsection } = recipeHeadingTags[headingLevel];
 	const titleId = `${recipe.slug}-title`;
-	const cover = coverImage(recipe.images);
+	const title = (
+		<Title id={titleId} className={recipeTextStyles.title}>
+			{recipe.title}
+		</Title>
+	);
 
 	return (
 		<article aria-labelledby={titleId} className="flex flex-col gap-10">
 			<header className="flex flex-col gap-4">
-				<Title id={titleId} className={recipeTextStyles.title}>
-					{recipe.title}
-				</Title>
+				{titleAction === undefined ? (
+					title
+				) : (
+					<div className="flex items-start justify-between gap-4">
+						{title}
+						{/* As tall as the title's first line, so an icon button centers on it. */}
+						<div className="flex h-10 w-9 shrink-0 items-center md:h-13 print:hidden">
+							{titleAction}
+						</div>
+					</div>
+				)}
 				<RecipeByline recipe={recipe} />
 				<RecipeMetaRow recipe={recipe} />
-				{recipe.tags.length > 0 && <RecipeTags tags={recipe.tags} />}
+				{recipe.tags.length > 0 && <RecipeTags tags={recipe.tags} tagHref={tagSearchHref} />}
 			</header>
-			{cover !== undefined && (
-				// Left off the printout, which is for cooking from.
-				<RecipePhoto
-					pathname={cover.pathname}
-					// The recipe's title is always beside its photo, so a photo without a description is decorative.
-					alt={cover.alt ?? ''}
-					sizes={coverPhotoSizes}
-					preload
-					className="aspect-3/2 rounded-xl print:hidden"
-				/>
-			)}
+			<RecipePhotos title={recipe.title} images={recipe.images} />
 			{recipe.description !== undefined && (
 				<p className={recipeTextStyles.body}>{recipe.description}</p>
 			)}

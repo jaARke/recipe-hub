@@ -3,12 +3,10 @@ import { SignInRequiredError } from '@/application/authorization';
 import type { StoredImage } from '@/application/ports/image-store';
 import { getRecipeImageService } from '@/composition/services';
 import { isScanImagePathname } from '@/domain/recipe/recipe-image';
+import { imageCacheMaxAgeSeconds, imageCacheTag } from '@/lib/image-paths';
 import { getLogger } from '@/lib/logger';
 
 const logger = getLogger('images');
-
-// Pathnames are never reused, so a stored image never changes.
-const cacheMaxAgeSeconds = 365 * 24 * 60 * 60;
 
 // Vercel's image optimizer adds this parameter when it fetches a source image.
 const optimizerParameter = '_vercel_system';
@@ -47,7 +45,9 @@ async function publicImageResponse(pathname: string, params: URLSearchParams): P
 			ETag: image.etag,
 			'X-Content-Type-Options': 'nosniff',
 			// Vercel's CDN caches on s-maxage and strips it, so browsers keep max-age and immutable.
-			'Cache-Control': `public, max-age=${cacheMaxAgeSeconds}, s-maxage=${cacheMaxAgeSeconds}, immutable`,
+			'Cache-Control': `public, max-age=${imageCacheMaxAgeSeconds}, s-maxage=${imageCacheMaxAgeSeconds}, immutable`,
+			// Deleting the photo purges the CDN's copies by this tag.
+			'Vercel-Cache-Tag': imageCacheTag(pathname),
 		},
 	});
 }

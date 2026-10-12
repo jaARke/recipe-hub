@@ -9,7 +9,7 @@ import {
 } from '@/components/auth/auth-paths';
 import { useSignOut } from '@/components/auth/use-sign-out';
 import type { HeaderMember } from '@/components/layout/header-member';
-import { recipeListPath } from '@/components/recipe/recipe-paths';
+import { contributePath, recipeListPath } from '@/components/recipe/recipe-paths';
 import { Button } from '@/components/ui/button';
 import {
 	DropdownMenu,
@@ -39,6 +39,7 @@ function AccountMenuItems({ member }: { member: HeaderMember | null }) {
 	return (
 		<DropdownMenuGroup>
 			<DropdownMenuLabel>Signed in as {member.displayName}</DropdownMenuLabel>
+			<DropdownMenuItem render={<Link href={contributePath} />}>Add recipe</DropdownMenuItem>
 			<DropdownMenuItem render={<Link href={accountPath} />}>Account</DropdownMenuItem>
 			{member.role === 'admin' && (
 				<DropdownMenuItem render={<Link href={adminPath} />}>Admin</DropdownMenuItem>
@@ -51,9 +52,13 @@ function AccountMenuItems({ member }: { member: HeaderMember | null }) {
 	);
 }
 
+// Whole characters as a reader sees them, so an accented letter or an emoji is never split.
+const graphemes = new Intl.Segmenter('en-US', { granularity: 'grapheme' });
+
 // The member's first letter, so the button stays as small as the bar's other controls.
 function memberInitial(displayName: string): string {
-	return (Array.from(displayName)[0] ?? '').toLocaleUpperCase();
+	const [first] = graphemes.segment(displayName);
+	return (first?.segment ?? '').toLocaleUpperCase();
 }
 
 function AccountMenu({ member }: { member: HeaderMember }) {

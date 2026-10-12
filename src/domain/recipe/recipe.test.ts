@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { problemsFromZodError } from '@/domain/problem';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
+import { maxIngredientLineLength } from '@/domain/recipe/ingredient-limits';
 import { parseRecipeContent, recipeContentSchema, recipeSchema } from '@/domain/recipe/recipe';
 import {
 	sampleButtermilkBiscuits,
@@ -48,6 +49,16 @@ describe('recipeContentSchema', () => {
 		expect(problemPaths(withLines([]))).toEqual(['ingredientSections.0.lines']);
 		expect(problemPaths({ ...sampleChickenSoup, instructionSections: [{ steps: [] }] })).toEqual([
 			'instructionSections.0.steps',
+		]);
+	});
+
+	it('accepts an ingredient line up to the length limit and rejects a longer one', () => {
+		const line = (text: string) => ({ text, item: text });
+		const longest = 'a'.repeat(maxIngredientLineLength);
+
+		expect(problemPaths(withLines([line(longest)]))).toEqual([]);
+		expect(problemPaths(withLines([line(`${longest}a`)]))).toEqual([
+			'ingredientSections.0.lines.0.text',
 		]);
 	});
 

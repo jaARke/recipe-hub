@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { Actor, ActorProvider, MemberActor } from '@/application/ports/actor-provider';
 import type { ImageStore } from '@/application/ports/image-store';
 import type { MemberRepository, NewMember } from '@/application/ports/member-repository';
+import { ImageFolders } from '@/application/recipes/image-folders';
 import { RecipeService } from '@/application/recipes/recipe-service';
 import type { Member } from '@/domain/member/member';
 import { sampleRecipeContents } from '@/domain/recipe/samples/sample-recipes';
@@ -22,6 +23,9 @@ const photosFolder = path.join(import.meta.dirname, 'seed/photos');
 
 // Every seed photo is a JPEG, as scripts/seed/photos/SOURCES.md lists.
 const photoContentType = 'image/jpeg';
+
+// Seed photos live at dish/seed/<slug>.jpg, shared by every environment the seed runs in.
+const seedImageEnvironment = 'seed';
 
 // Every sample's contributor. No one signs in as it: its address can never receive a code.
 const sampleContributor: NewMember = {
@@ -126,13 +130,17 @@ if (env.VERCEL_ENV === 'production') {
 			const db = drizzle({ client: pool });
 			const members = new DrizzleMemberRepository(db);
 			const contributor = await findOrCreateSampleContributor(members);
+			const folders = new ImageFolders(seedImageEnvironment);
+			const images = new BlobImageStore({ storeId: env.BLOB_STORE_ID, folders });
 			await seed(
 				new RecipeService(
 					new DrizzleRecipeRepository(db),
 					members,
-					new SeedActorProvider(contributor)
+					images,
+					new SeedActorProvider(contributor),
+					folders
 				),
-				new BlobImageStore({ storeId: env.BLOB_STORE_ID })
+				images
 			);
 		});
 	} catch (err) {

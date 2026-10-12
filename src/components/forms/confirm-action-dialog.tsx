@@ -26,10 +26,12 @@ type ConfirmActionDialogProps = {
 	cancelLabel: string;
 	confirmLabel: string;
 	pendingLabel: string;
-	// Said in a toast, because the item the action removes takes this dialog with it.
+	// Said in a toast, because the dialog disappears with the item it removes or the page it leaves.
 	successMessage: string;
 	failureMessage: string;
 	action: FormAction;
+	// Runs after the success toast, such as to leave a page whose subject the action deleted.
+	onSuccess?: () => void;
 	// Hidden inputs naming what the action acts on.
 	children: React.ReactNode;
 };
@@ -45,12 +47,14 @@ function ConfirmActionDialog({
 	successMessage,
 	failureMessage,
 	action,
+	onSuccess,
 	children,
 }: ConfirmActionDialogProps) {
 	const [state, formAction, pending] = useFormAction(async (previous, formData) => {
 		const next = await action(previous, formData);
 		if (next.status === 'success') {
 			toast.add({ type: 'success', title: successMessage });
+			onSuccess?.();
 		}
 		return next;
 	}, failureMessage);

@@ -1,7 +1,7 @@
 import { LinkIcon } from 'lucide-react';
 import type { InviteDto } from '@/application/access/access-dtos';
 import { adminFieldNames } from '@/components/admin/admin-forms';
-import { ConfirmActionDialog } from '@/components/admin/confirm-action-dialog';
+import { ConfirmActionDialog } from '@/components/forms/confirm-action-dialog';
 import type { FormAction } from '@/components/forms/form-state';
 import {
 	Empty,

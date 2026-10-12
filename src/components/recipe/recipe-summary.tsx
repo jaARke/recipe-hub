@@ -1,5 +1,6 @@
 import { cn } from 'cn';
 import { CookingPotIcon } from 'lucide-react';
+import Link from 'next/link';
 import type { RecipeSummaryDto } from '@/application/recipes/recipe-dtos';
 import { RecipePhoto } from '@/components/recipe/recipe-photo';
 import { Badge } from '@/components/ui/badge';
@@ -27,10 +28,6 @@ function recipeFacts({
 }
 
 // The ids of the parts that rendered, for a link's aria-describedby.
-function describedByIds(...ids: (string | undefined)[]): string | undefined {
-	const renderedIds = ids.filter((id) => id !== undefined);
-	return renderedIds.length > 0 ? renderedIds.join(' ') : undefined;
-}
 
 function RecipeCover({
 	image,
@@ -84,16 +81,28 @@ function RecipeFacts({ facts }: { facts: readonly RecipeFact[] }) {
 	);
 }
 
-function RecipeTags({ tags }: { tags: readonly string[] }) {
+function RecipeTags({
+	tags,
+	tagHref,
+}: {
+	tags: readonly string[];
+	// Links each tag where given; a card or a result row is a link itself, so its tags are not.
+	tagHref?: (tag: string) => string;
+}) {
 	return (
 		<ul className="flex flex-wrap gap-1.5">
 			{tags.map((tag) => (
 				<li key={tag}>
-					<Badge variant="secondary">{tag}</Badge>
+					<Badge
+						variant="secondary"
+						render={tagHref === undefined ? undefined : <Link href={tagHref(tag)} />}
+					>
+						{tag}
+					</Badge>
 				</li>
 			))}
 		</ul>
 	);
 }
 
-export { describedByIds, RecipeCover, RecipeFacts, recipeFacts, RecipeTags };
+export { RecipeCover, RecipeFacts, recipeFacts, RecipeTags };

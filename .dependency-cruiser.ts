@@ -24,11 +24,17 @@ const config: IConfiguration = {
 		},
 		{
 			name: 'domain-is-pure',
-			comment: 'Domain imports only domain, pure src/lib helpers, and zod.',
+			comment: 'Domain imports only domain, pure src/lib helpers, zod, and parse-ingredient.',
 			severity: 'error',
 			from: { path: '^src/domain/', pathNot: TESTS },
 			to: {
-				pathNot: ['^src/domain/', PURE_LIB, `${NODE_MODULES}zod/`, `${NODE_MODULES}vitest/`],
+				pathNot: [
+					'^src/domain/',
+					PURE_LIB,
+					`${NODE_MODULES}zod/`,
+					`${NODE_MODULES}parse-ingredient/`,
+					`${NODE_MODULES}vitest/`,
+				],
 			},
 		},
 		{

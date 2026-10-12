@@ -8,6 +8,7 @@ import {
 	AttachmentSpecimen,
 	CardSpecimen,
 	EmptySpecimen,
+	ProgressSpecimen,
 	SeparatorSpecimen,
 	SkeletonSpecimen,
 	SpinnerSpecimen,
@@ -22,6 +23,7 @@ import {
 	TextareaSpecimen,
 } from '@/components/design-reference/form-specimens';
 import {
+	CarouselSpecimen,
 	DialogSpecimen,
 	DropdownMenuSpecimen,
 	TabsSpecimen,
@@ -48,6 +50,7 @@ const primitives = [
 	{ id: 'checkbox', title: 'Checkbox', Content: CheckboxSpecimen },
 	{ id: 'attachment', title: 'Attachment', Content: AttachmentSpecimen },
 	{ id: 'tabs', title: 'Tabs', Content: TabsSpecimen },
+	{ id: 'carousel', title: 'Carousel', Content: CarouselSpecimen },
 	{ id: 'dialog', title: 'Dialog', Content: DialogSpecimen },
 	{ id: 'dropdown-menu', title: 'Dropdown menu', Content: DropdownMenuSpecimen },
 	{ id: 'tooltip', title: 'Tooltip', Content: TooltipSpecimen },
@@ -55,6 +58,7 @@ const primitives = [
 	{ id: 'toast', title: 'Toast', Content: ToastSpecimen },
 	{ id: 'skeleton', title: 'Skeleton', Content: SkeletonSpecimen },
 	{ id: 'spinner', title: 'Spinner', Content: SpinnerSpecimen },
+	{ id: 'progress', title: 'Progress', Content: ProgressSpecimen },
 	{ id: 'empty', title: 'Empty', Content: EmptySpecimen },
 	{ id: 'separator', title: 'Separator', Content: SeparatorSpecimen },
 ] as const;

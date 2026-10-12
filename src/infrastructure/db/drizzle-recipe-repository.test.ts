@@ -3,11 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ZodError } from 'zod';
 import type { NewMember } from '@/application/ports/member-repository';
 import type { NewRecipe } from '@/application/ports/recipe-repository';
+import { describeRecipeRepositoryContract } from '@/application/testing/recipe-repository-contract';
 import { memberIdSchema, type MemberId } from '@/domain/member/member';
-import type { Provenance } from '@/domain/recipe/provenance';
 import {
 	recipeContentSchema,
-	recipeIdSchema,
 	type RecipeContentInput,
 	type RecipeId,
 } from '@/domain/recipe/recipe';
@@ -15,11 +14,9 @@ import {
 	sampleButtermilkBiscuits,
 	sampleChickenSoup,
 	sampleLemonIceboxPie,
-	sampleRecipeContents,
 	sampleTomatoSalad,
 } from '@/domain/recipe/samples/sample-recipes';
-import { slugCandidate, slugify } from '@/domain/recipe/slug';
-import { tagKey } from '@/domain/recipe/tag';
+import { slugify } from '@/domain/recipe/slug';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { recipes } from '@/infrastructure/db/schema';
@@ -31,7 +28,6 @@ const contributor: NewMember = {
 	role: 'member',
 };
 const unknownMemberId = memberIdSchema.parse('3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b');
-const missingId = recipeIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e');
 const backdated = new Date('2026-01-01T00:00:00Z');
 
 const uuidV7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -68,79 +64,34 @@ async function backdate(id: RecipeId) {
 		.where(eq(recipes.id, id));
 }
 
+// Refuses any write of a slug made without an advisory lock held, as an unserialized one would be.
+async function requireSlugLock() {
+	await db.execute(
+		sql.raw(`create function require_slug_lock() returns trigger language plpgsql as $$
+begin
+	if not exists (
+		select 1 from pg_locks where locktype = 'advisory' and pid = pg_backend_pid() and granted
+	) then
+		raise exception 'slug written without the slug lock';
+	end if;
+	return new;
+end
+$$`)
+	);
+	await db.execute(
+		sql`create trigger require_slug_lock before insert or update of slug on recipes for each row execute function require_slug_lock()`
+	);
+}
+
+describeRecipeRepositoryContract(() => ({ repository, contributorId }));
+
 describe('create', () => {
-	// One test for every sample, so the samples share one database.
-	it('stores each sample and reads it back unchanged', async () => {
-		for (const input of sampleRecipeContents) {
-			const recipe = newRecipe(input);
-			const created = await repository.create(recipe);
-
-			expect(created, input.title).toEqual({
-				...recipe.content,
-				id: expect.stringMatching(uuidV7),
-				slug: recipe.slugBase,
-				contributorId,
-				provenance: recipe.provenance,
-				createdAt: expect.any(Date),
-				updatedAt: created.createdAt,
-			});
-			expect(await repository.findById(created.id), input.title).toEqual(created);
-		}
-	});
-
-	it('keeps ranges, images, and the provenance of an import', async () => {
-		const provenance: Provenance = {
-			entryMode: 'url',
-			sourceUrl: 'https://example.com/chicken-soup',
-			aiModel: 'example/model',
-		};
-		const recipe = newRecipe(
-			{
-				...sampleChickenSoup,
-				images: [
-					{ role: 'dish', pathname: 'dish/soup.jpg', alt: 'A bowl of chicken soup' },
-					{ role: 'scan', pathname: 'scan/soup-card.jpg' },
-				],
-			},
-			{ provenance }
-		);
-
-		const found = await repository.findById((await repository.create(recipe)).id);
-
-		expect(found).toMatchObject({ ...recipe.content, provenance });
-		expect(found?.ingredientSections[0]?.lines[2]?.amount).toEqual({ min: 2, max: 3 });
-	});
-
 	it('assigns time-ordered uuidv7 ids', async () => {
 		const first = await repository.create(newRecipe(sampleChickenSoup));
 		const second = await repository.create(newRecipe(sampleTomatoSalad));
 
 		expect(first.id).toMatch(uuidV7);
 		expect(second.id > first.id).toBe(true);
-	});
-
-	it('numbers the slug when the title is taken', async () => {
-		const slugs = [];
-		for (let count = 0; count < 3; count += 1) {
-			slugs.push((await repository.create(newRecipe(sampleButtermilkBiscuits))).slug);
-		}
-
-		expect(slugs).toEqual([
-			'buttermilk-biscuits',
-			'buttermilk-biscuits-2',
-			'buttermilk-biscuits-3',
-		]);
-	});
-
-	it('moves on when the insert finds a candidate the lookup missed', async () => {
-		// Truncated to fit the suffix, this base's second candidate falls outside the lookup.
-		const slugBase = `${'a'.repeat(50)}-${'b'.repeat(8)}`;
-		await repository.create(newRecipe(sampleChickenSoup, { slugBase }));
-		await repository.create(newRecipe(sampleChickenSoup, { slugBase: slugCandidate(slugBase, 2) }));
-
-		const created = await repository.create(newRecipe(sampleChickenSoup, { slugBase }));
-
-		expect(created.slug).toBe(slugCandidate(slugBase, 3));
 	});
 
 	it('refuses a contributor who is not a member', async () => {
@@ -154,36 +105,7 @@ describe('create', () => {
 	});
 });
 
-describe('findById and findBySlug', () => {
-	it('find a stored recipe', async () => {
-		const created = await repository.create(newRecipe(sampleLemonIceboxPie));
-
-		expect(await repository.findById(created.id)).toEqual(created);
-		expect(await repository.findBySlug('lemon-icebox-pie-with-a-graham-cracker-crust')).toEqual(
-			created
-		);
-	});
-
-	it('return null when nothing matches', async () => {
-		await repository.create(newRecipe(sampleLemonIceboxPie));
-
-		expect(await repository.findById(missingId)).toBeNull();
-		expect(await repository.findBySlug('lemon-icebox-pie')).toBeNull();
-	});
-});
-
 describe('list', () => {
-	it('pages through recipes newest first', async () => {
-		const created = [];
-		for (const content of sampleRecipeContents.slice(0, 3)) {
-			created.push(await repository.create(newRecipe(content)));
-		}
-		const [first, second, third] = created;
-
-		expect(await repository.list({ limit: 2, offset: 0, sort: 'newest' })).toEqual([third, second]);
-		expect(await repository.list({ limit: 2, offset: 2, sort: 'newest' })).toEqual([first]);
-	});
-
 	it('orders recipes created at the same moment by id', async () => {
 		const first = await repository.create(newRecipe(sampleChickenSoup));
 		const second = await repository.create(newRecipe(sampleLemonIceboxPie));
@@ -194,134 +116,60 @@ describe('list', () => {
 
 		expect(listed.map(({ id }) => id)).toEqual([second.id, first.id]);
 	});
-
-	it('pages through recipes by title, ignoring accents and case, and then by id', async () => {
-		const titles = [
-			'zucchini bread',
-			'Éclairs',
-			'Apple crisp',
-			'Eclair filling',
-			'apple crisp',
-			'Eggplant parmesan',
-			'dumplings',
-		];
-		for (const title of titles) {
-			await repository.create(newRecipe({ ...sampleChickenSoup, title }));
-		}
-
-		const firstPage = await repository.list({ limit: 4, offset: 0, sort: 'title' });
-		const secondPage = await repository.list({ limit: 4, offset: 4, sort: 'title' });
-
-		expect([...firstPage, ...secondPage].map(({ title }) => title)).toEqual([
-			'Apple crisp',
-			'apple crisp',
-			'dumplings',
-			'Eclair filling',
-			'Éclairs',
-			'Eggplant parmesan',
-			'zucchini bread',
-		]);
-	});
-});
-
-describe('count', () => {
-	it('counts every recipe', async () => {
-		expect(await repository.count()).toBe(0);
-
-		for (const content of sampleRecipeContents.slice(0, 3)) {
-			await repository.create(newRecipe(content));
-		}
-
-		expect(await repository.count()).toBe(3);
-	});
 });
 
 describe('update', () => {
-	it('replaces the content and tags, keeps the slug, and moves updatedAt', async () => {
-		const created = await repository.create(newRecipe(sampleButtermilkBiscuits));
-		await backdate(created.id);
-		// The new content has no description, so a merged document would show the old one.
-		const content = recipeContentSchema.parse({
-			...sampleChickenSoup,
-			tags: ['Soup', 'Make ahead'],
-		});
-
-		const updated = await repository.update(created.id, content);
-
-		expect(updated).toEqual({
-			...content,
-			id: created.id,
-			slug: 'buttermilk-biscuits',
-			contributorId,
-			provenance: created.provenance,
-			createdAt: backdated,
-			updatedAt: expect.any(Date),
-		});
-		expect(updated?.description).toBeUndefined();
-		expect(updated?.updatedAt.getTime()).toBeGreaterThan(backdated.getTime());
-		expect(await repository.findById(created.id)).toEqual(updated);
-	});
-
-	it('keeps the provenance unchanged', async () => {
-		const provenance: Provenance = { entryMode: 'photo', aiModel: 'example/model' };
-		const created = await repository.create(newRecipe(sampleButtermilkBiscuits, { provenance }));
-
-		const updated = await repository.update(
-			created.id,
-			recipeContentSchema.parse(sampleChickenSoup)
-		);
-
-		expect(updated?.provenance).toEqual(provenance);
-		expect((await repository.findById(created.id))?.provenance).toEqual(provenance);
-	});
-
-	it('returns null when no recipe has the id', async () => {
-		const content = recipeContentSchema.parse(sampleChickenSoup);
-
-		expect(await repository.update(missingId, content)).toBeNull();
-	});
-});
-
-describe('delete', () => {
-	it('removes the recipe and reports whether one was there', async () => {
+	it('moves updatedAt to the time of the save', async () => {
 		const created = await repository.create(newRecipe(sampleChickenSoup));
+		await backdate(created.id);
 
-		expect(await repository.delete(created.id)).toBe(true);
-		expect(await repository.findById(created.id)).toBeNull();
-		expect(await repository.delete(created.id)).toBe(false);
+		const updated = await repository.update(created.id, {
+			content: recipeContentSchema.parse(sampleTomatoSalad),
+			expectedUpdatedAt: backdated,
+		});
+
+		// Now, not merely a millisecond past the stored version.
+		expect(updated?.recipe.updatedAt.getTime()).toBeGreaterThan(backdated.getTime() + 1);
 	});
 });
 
-describe('findTagLabels', () => {
-	it('finds labels in use whose key matches, across case and spacing', async () => {
-		await repository.create(newRecipe(sampleChickenSoup));
-		await repository.create(newRecipe(sampleLemonIceboxPie));
-		const keys = [' make  AHEAD', 'SOUP', 'Breakfast'].map(tagKey);
+describe('slug allocation', () => {
+	it('holds the slug lock while a create or a rename writes a slug', async () => {
+		const pie = await repository.create(newRecipe(sampleLemonIceboxPie));
+		await requireSlugLock();
 
-		const labels = await repository.findTagLabels(keys);
+		const created = await repository.create(newRecipe(sampleButtermilkBiscuits));
+		const renamed = await repository.update(pie.id, {
+			content: recipeContentSchema.parse(sampleChickenSoup),
+			expectedUpdatedAt: pie.updatedAt,
+			slugBase: 'weeknight-chicken-soup',
+		});
 
-		expect(labels.toSorted()).toEqual(['Make ahead', 'Soup']);
+		expect(created.slug).toBe('buttermilk-biscuits');
+		expect(renamed?.recipe.slug).toBe('weeknight-chicken-soup');
 	});
 
-	it('ignores the excluded recipe, so its own spellings can change', async () => {
+	it('is checked here by a trigger that refuses a slug written without the lock', async () => {
 		const pie = await repository.create(newRecipe(sampleLemonIceboxPie));
-		await repository.create(
-			newRecipe(sampleChickenSoup, {
-				content: recipeContentSchema.parse({ ...sampleChickenSoup, tags: ['make  AHEAD'] }),
+		await requireSlugLock();
+
+		await expect(
+			db.update(recipes).set({ slug: 'lemon-pie' }).where(eq(recipes.id, pie.id))
+		).rejects.toThrow(
+			expect.objectContaining({
+				cause: expect.objectContaining({ message: 'slug written without the slug lock' }),
 			})
 		);
-		const keys = ['Dessert', 'Make ahead'].map(tagKey);
-
-		const labels = await repository.findTagLabels(keys, pie.id);
-
-		expect(labels).toEqual(['make AHEAD']);
 	});
+});
 
-	it('returns nothing for no keys without querying', async () => {
+describe('findTagLabels and findImagesInUse', () => {
+	it('return nothing for nothing asked without querying', async () => {
 		await repository.create(newRecipe(sampleChickenSoup));
 		const query = vi.spyOn(db.$client, 'query');
 
 		expect(await repository.findTagLabels([])).toEqual([]);
+		expect(await repository.findImagesInUse([])).toEqual([]);
 		expect(query).not.toHaveBeenCalled();
 	});
 });

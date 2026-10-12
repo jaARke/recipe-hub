@@ -149,8 +149,7 @@ export const sampleChickenSoup: RecipeContentInput = {
 				{
 					text: '2 celery stalks, sliced',
 					amount: { min: 2 },
-					unit: 'stalks',
-					item: 'celery',
+					item: 'celery stalks',
 					preparation: 'sliced',
 				},
 				{
@@ -161,7 +160,7 @@ export const sampleChickenSoup: RecipeContentInput = {
 				},
 				{ text: '8 cups chicken broth', amount: { min: 8 }, unit: 'cups', item: 'chicken broth' },
 				{ text: '6 ounces egg noodles', amount: { min: 6 }, unit: 'ounces', item: 'egg noodles' },
-				{ text: 'Salt to taste', item: 'salt', preparation: 'to taste' },
+				{ text: 'Salt to taste', item: 'Salt', preparation: 'to taste' },
 			],
 		},
 	],
@@ -308,8 +307,7 @@ export const sampleSundayPotRoast: RecipeContentInput = {
 				{
 					text: '4 garlic cloves, smashed',
 					amount: { min: 4 },
-					unit: 'cloves',
-					item: 'garlic',
+					item: 'garlic cloves',
 					preparation: 'smashed',
 				},
 				{
@@ -356,7 +354,7 @@ export const sampleSundayPotRoast: RecipeContentInput = {
 				},
 				{
 					text: 'Salt and black pepper to taste',
-					item: 'salt and black pepper',
+					item: 'Salt and black pepper',
 					preparation: 'to taste',
 				},
 			],
@@ -452,7 +450,7 @@ export const sampleTomatoSalad: RecipeContentInput = {
 				},
 				{
 					text: 'Flaky salt and black pepper to taste',
-					item: 'flaky salt and black pepper',
+					item: 'Flaky salt and black pepper',
 					preparation: 'to taste',
 				},
 			],
@@ -532,8 +530,7 @@ export const sampleMolassesSpiceCookies: RecipeContentInput = {
 					text: '1 cup packed dark brown sugar',
 					amount: { min: 1 },
 					unit: 'cup',
-					item: 'dark brown sugar',
-					preparation: 'packed',
+					item: 'packed dark brown sugar',
 				},
 				{ text: '1 large egg', amount: { min: 1 }, item: 'large egg' },
 				{

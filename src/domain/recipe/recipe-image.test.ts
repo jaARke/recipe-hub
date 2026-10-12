@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
 	coverImage,
+	dishImages,
 	isPublicImagePathname,
 	isScanImagePathname,
 	recipeImageSchema,
+	scanImages,
 } from '@/domain/recipe/recipe-image';
 
 describe('recipeImageSchema', () => {
@@ -35,6 +37,17 @@ describe('recipeImageSchema', () => {
 		'dish/',
 	])('rejects the pathname %s, which could leave its folder', (pathname) => {
 		expect(recipeImageSchema.safeParse({ role: 'dish', pathname }).success).toBe(false);
+	});
+});
+
+describe('dishImages and scanImages', () => {
+	const firstScan = { role: 'scan', pathname: 'scan/card-front.jpg' } as const;
+	const dish = { role: 'dish', pathname: 'dish/plated.jpg' } as const;
+	const secondScan = { role: 'scan', pathname: 'scan/card-back.jpg' } as const;
+
+	it('separates dish photos from scans and keeps their order', () => {
+		expect(dishImages([firstScan, dish, secondScan])).toEqual([dish]);
+		expect(scanImages([firstScan, dish, secondScan])).toEqual([firstScan, secondScan]);
 	});
 });
 

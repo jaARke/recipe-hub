@@ -1,160 +1,79 @@
 'use client';
 
-import { sampleCourses } from '@/components/design-reference/fixtures';
-import { SampleSectionedList } from '@/components/design-reference/sample-sectioned-list';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
+import { inputProblems, standIn } from '@/components/design-reference/stand-in-actions';
+import { formText } from '@/components/forms/form-data';
+import type { FormAction, FormState } from '@/components/forms/form-state';
+import type { PhotoUploader } from '@/components/recipe-form/photo-upload';
+import { RecipeForm } from '@/components/recipe-form/recipe-form';
+import { recipeContentFromForm } from '@/components/recipe-form/recipe-form-content';
 import {
-	Field,
-	FieldDescription,
-	FieldError,
-	FieldGroup,
-	FieldLabel,
-	FieldLegend,
-	FieldSet,
-} from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { toast } from '@/components/ui/toast';
-import { sampleButtermilkBiscuits } from '@/domain/recipe/samples/sample-recipes';
+	recipeFormFieldNames,
+	type EditedRecipe,
+} from '@/components/recipe-form/recipe-form-fields';
+import type { RecipeFormValues } from '@/components/recipe-form/recipe-form-values';
+import { parseRecipeContent } from '@/domain/recipe/recipe';
+import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
 
-const ingredientSeeds = sampleButtermilkBiscuits.ingredientSections.map((section) => ({
-	heading: section.heading,
-	items: section.lines.map((line) => line.text),
-}));
+// Photo pathnames name a folder the recipe accepts, though nothing is stored there.
+const sampleUploadFolders: Record<RecipeImageRole, string> = {
+	dish: 'dish/development/',
+	scan: 'scan/development/',
+};
 
-const stepSeeds = sampleButtermilkBiscuits.instructionSections.map((section) => ({
-	heading: section.heading,
-	items: section.steps.map((step) => step.text),
-}));
+// About two seconds from start to finish, long enough to watch a photo's progress.
+const sampleUploadSteps = 20;
+const sampleUploadStepMilliseconds = 100;
 
-function SampleRecipeForm() {
+// Reports progress as an upload would and stores nothing.
+const sampleUpload: PhotoUploader = (_pathname, _file, { onProgress, signal }) =>
+	new Promise((resolve, reject) => {
+		let step = 0;
+		const timer = setInterval(() => {
+			step += 1;
+			onProgress(step / sampleUploadSteps);
+			if (step === sampleUploadSteps) {
+				clearInterval(timer);
+				resolve();
+			}
+		}, sampleUploadStepMilliseconds);
+		signal.addEventListener(
+			'abort',
+			() => {
+				clearInterval(timer);
+				reject(signal.reason);
+			},
+			{ once: true }
+		);
+	});
+
+// Checks the recipe as the action and the service do, then saves nothing, so the form stays here.
+const saveSampleRecipe: FormAction = (_state, formData) =>
+	standIn<FormState>(
+		inputProblems(() =>
+			parseRecipeContent(recipeContentFromForm(formText(formData, recipeFormFieldNames.recipe)))
+		) ?? {
+			status: 'error',
+			message: 'Nothing was saved: this sample form shows the layout only.',
+			fieldErrors: {},
+		}
+	);
+
+function SampleRecipeForm({
+	initial,
+	editing,
+}: {
+	initial: RecipeFormValues;
+	editing?: EditedRecipe;
+}) {
 	return (
-		<form
-			noValidate
-			className="flex flex-col gap-8"
-			onSubmit={(event) => {
-				event.preventDefault();
-				toast.add({
-					type: 'info',
-					title: 'Nothing was saved',
-					description: 'This sample form shows the layout only.',
-				});
-			}}
-		>
-			<FieldGroup>
-				<Field data-invalid="true">
-					<FieldLabel htmlFor="sample-title">Title</FieldLabel>
-					<Input
-						id="sample-title"
-						name="title"
-						required
-						aria-invalid="true"
-						aria-describedby="sample-title-description sample-title-error"
-					/>
-					<FieldDescription id="sample-title-description">
-						Use the name you know it by.
-					</FieldDescription>
-					<FieldError id="sample-title-error">
-						Add a title so the recipe shows up in search.
-					</FieldError>
-				</Field>
-				<Field>
-					<FieldLabel htmlFor="sample-source">Source</FieldLabel>
-					<Input
-						id="sample-source"
-						name="source"
-						placeholder="Grandma Rose"
-						aria-describedby="sample-source-description"
-					/>
-					<FieldDescription id="sample-source-description">
-						Who or where the recipe comes from.
-					</FieldDescription>
-				</Field>
-				<FieldSet>
-					<FieldLegend>Times and yield</FieldLegend>
-					<div className="grid gap-4 sm:grid-cols-3">
-						<Field>
-							<FieldLabel htmlFor="sample-prep">Prep, in minutes</FieldLabel>
-							<Input
-								id="sample-prep"
-								name="prepMinutes"
-								type="number"
-								inputMode="numeric"
-								min={0}
-							/>
-						</Field>
-						<Field>
-							<FieldLabel htmlFor="sample-cook">Cook, in minutes</FieldLabel>
-							<Input
-								id="sample-cook"
-								name="cookMinutes"
-								type="number"
-								inputMode="numeric"
-								min={0}
-							/>
-						</Field>
-						<Field>
-							<FieldLabel htmlFor="sample-yield">Yield</FieldLabel>
-							<Input id="sample-yield" name="yield" placeholder="Serves 6" />
-						</Field>
-					</div>
-				</FieldSet>
-				<Field>
-					<FieldLabel htmlFor="sample-course">Course</FieldLabel>
-					<Select name="course" items={sampleCourses}>
-						<SelectTrigger id="sample-course">
-							<SelectValue placeholder="Choose a course" />
-						</SelectTrigger>
-						<SelectContent>
-							{sampleCourses.map((item) => (
-								<SelectItem key={item.value} value={item.value}>
-									{item.label}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</Field>
-				<SampleSectionedList
-					legend="Ingredients"
-					description="One ingredient per field. Add a section for a separate part, such as a glaze."
-					itemName="Ingredient"
-					itemPlaceholder="2½ cups all-purpose flour"
-					headingPlaceholder="For the glaze"
-					initialSections={ingredientSeeds}
-				/>
-				<SampleSectionedList
-					legend="Steps"
-					description="One step per field. Add a section for a separate part, such as a glaze."
-					itemName="Step"
-					itemPlaceholder="Heat the oven to 450°F."
-					headingPlaceholder="For the glaze"
-					ordered
-					initialSections={stepSeeds}
-				/>
-				<Field>
-					<FieldLabel htmlFor="sample-notes">Notes</FieldLabel>
-					<Textarea id="sample-notes" name="notes" placeholder="The story behind the recipe" />
-				</Field>
-				<Field orientation="horizontal">
-					<Checkbox id="sample-favorite" name="favorite" />
-					<FieldLabel htmlFor="sample-favorite">Mark as a favorite</FieldLabel>
-				</Field>
-			</FieldGroup>
-			<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-				<Button type="button" variant="outline">
-					Cancel
-				</Button>
-				<Button type="submit">Save recipe</Button>
-			</div>
-		</form>
+		<RecipeForm
+			initial={initial}
+			action={saveSampleRecipe}
+			uploadFolders={sampleUploadFolders}
+			uploader={sampleUpload}
+			editing={editing}
+			submitLabel="Save recipe"
+		/>
 	);
 }
 

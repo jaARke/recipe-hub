@@ -53,6 +53,11 @@ export function dishImages(images: readonly RecipeImage[]): RecipeImage[] {
 	return images.filter((image) => image.role === 'dish');
 }
 
+// The images only members may see: the original photos of a written recipe.
+export function scanImages(images: readonly RecipeImage[]): RecipeImage[] {
+	return images.filter((image) => image.role === 'scan');
+}
+
 export function coverImage(images: readonly RecipeImage[]): RecipeImage | undefined {
 	return dishImages(images)[0];
 }
