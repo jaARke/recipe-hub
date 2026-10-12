@@ -7,6 +7,8 @@ const envSchema = z.object({
 	VERCEL_ENV: z.enum(['development', 'preview', 'production']).optional(),
 	// Set by Vercel on every deployment, previews included: the production host, without a scheme.
 	VERCEL_PROJECT_PRODUCTION_URL: z.hostname().optional(),
+	// Set by Vercel on every deployment; its image optimizer pins source requests to it with `dpl`.
+	VERCEL_DEPLOYMENT_ID: z.string().min(1).optional(),
 	// Pooled connection for the app; migrations use the unpooled URL through drizzle.config.ts.
 	DATABASE_URL: z.url(),
 	// The image store; the Blob SDK reads and refreshes Vercel's OIDC token itself.
