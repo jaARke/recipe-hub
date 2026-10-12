@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { nonEmptyTextSchema } from '@/domain/recipe/text';
+import { nonEmptyTextSchema } from '@/domain/text';
 
 // Plain segments only: in a URL, `..`, `%2e%2e`, or `\` would climb out of the role's folder.
 const imagePathnameSchema = z

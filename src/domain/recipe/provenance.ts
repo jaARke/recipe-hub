@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { nonEmptyTextSchema } from '@/domain/recipe/text';
+import { nonEmptyTextSchema } from '@/domain/text';
 
 // How a recipe entered the catalog. Set at creation and not editable by members.
 export const provenanceSchema = z.discriminatedUnion('entryMode', [

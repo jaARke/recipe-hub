@@ -18,6 +18,7 @@ import {
 	type RecipeSummaryPage,
 } from '@/application/recipes/recipe-dtos';
 import { assertCanModifyRecipe } from '@/application/recipes/recipe-policy';
+import { problemsFromZodError } from '@/domain/problem';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
 import { provenanceSchema, type Provenance } from '@/domain/recipe/provenance';
 import {
@@ -28,7 +29,6 @@ import {
 	type RecipeContentInput,
 	type RecipeId,
 } from '@/domain/recipe/recipe';
-import { recipeProblemsFromZodError } from '@/domain/recipe/recipe-problem';
 import { slugify, slugSchema } from '@/domain/recipe/slug';
 import { tagKey } from '@/domain/recipe/tag';
 import { getLogger } from '@/lib/logger';
@@ -47,7 +47,7 @@ function parseProvenance(input: unknown): Provenance {
 	const result = provenanceSchema.safeParse(input);
 	if (!result.success) {
 		throw new InvalidRecipeError(
-			recipeProblemsFromZodError(result.error).map((problem) => ({
+			problemsFromZodError(result.error).map((problem) => ({
 				...problem,
 				path: problem.path === '' ? 'provenance' : `provenance.${problem.path}`,
 			}))

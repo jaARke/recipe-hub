@@ -15,7 +15,7 @@ import {
 } from '@/application/search/recipe-search-dtos';
 import { parseRecipeTextQuery } from '@/application/search/recipe-text-query';
 import { tagListSchema } from '@/domain/recipe/tag';
-import { nonEmptyTextSchema } from '@/domain/recipe/text';
+import { nonEmptyTextSchema } from '@/domain/text';
 
 // A public URL supplies every value, so the query and the tag list are bounded. A source stays
 // unbounded, because the filters offer every source recipes use.

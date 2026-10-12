@@ -1,9 +1,9 @@
 import { z } from 'zod';
+import { problemSchema } from '@/domain/problem';
 import { ingredientLineSchema, ingredientSectionSchema } from '@/domain/recipe/ingredient';
 import { instructionSectionSchema, instructionStepSchema } from '@/domain/recipe/instruction';
 import { provenanceSchema } from '@/domain/recipe/provenance';
 import { recipeContentSchema } from '@/domain/recipe/recipe';
-import { recipeProblemSchema } from '@/domain/recipe/recipe-problem';
 
 const draftIngredientSectionSchema = ingredientSectionSchema.extend({
 	lines: z.array(ingredientLineSchema.partial({ item: true })),
@@ -24,6 +24,6 @@ export type RecipeDraftContent = z.infer<typeof recipeDraftContentSchema>;
 export const recipeDraftSchema = z.object({
 	content: recipeDraftContentSchema,
 	provenance: provenanceSchema,
-	problems: z.array(recipeProblemSchema),
+	problems: z.array(problemSchema),
 });
 export type RecipeDraft = z.infer<typeof recipeDraftSchema>;

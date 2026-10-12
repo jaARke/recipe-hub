@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { problemsFromZodError } from '@/domain/problem';
 import { recipeContentSchema } from '@/domain/recipe/recipe';
 import { recipeDraftContentSchema, recipeDraftSchema } from '@/domain/recipe/recipe-draft';
-import { recipeProblemsFromZodError } from '@/domain/recipe/recipe-problem';
 import { sampleLemonIceboxPie } from '@/domain/recipe/samples/sample-recipes';
 
 describe('recipeDraftContentSchema', () => {
@@ -46,7 +46,7 @@ describe('recipeDraftSchema', () => {
 			images: [],
 		};
 		const validation = recipeContentSchema.safeParse(content);
-		const problems = validation.success ? [] : recipeProblemsFromZodError(validation.error);
+		const problems = validation.success ? [] : problemsFromZodError(validation.error);
 
 		const draft = recipeDraftSchema.parse({
 			content,

@@ -1,16 +1,16 @@
 import { z } from 'zod';
 import { memberIdSchema } from '@/domain/member/member';
+import { problemsFromZodError } from '@/domain/problem';
 import { recipeTimesSchema } from '@/domain/recipe/duration';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
 import { ingredientSectionSchema } from '@/domain/recipe/ingredient';
 import { instructionSectionSchema } from '@/domain/recipe/instruction';
 import { provenanceSchema } from '@/domain/recipe/provenance';
 import { recipeImageListSchema } from '@/domain/recipe/recipe-image';
-import { recipeProblemsFromZodError } from '@/domain/recipe/recipe-problem';
 import { recipeYieldSchema } from '@/domain/recipe/recipe-yield';
 import { slugSchema } from '@/domain/recipe/slug';
 import { tagListSchema } from '@/domain/recipe/tag';
-import { nonEmptyTextSchema } from '@/domain/recipe/text';
+import { nonEmptyTextSchema } from '@/domain/text';
 
 export const recipeIdSchema = z.uuid().brand<'RecipeId'>();
 export type RecipeId = z.infer<typeof recipeIdSchema>;
@@ -47,7 +47,7 @@ export type Recipe = z.infer<typeof recipeSchema>;
 export function parseRecipeContent(input: unknown): RecipeContent {
 	const result = recipeContentSchema.safeParse(input);
 	if (!result.success) {
-		throw new InvalidRecipeError(recipeProblemsFromZodError(result.error));
+		throw new InvalidRecipeError(problemsFromZodError(result.error));
 	}
 	return result.data;
 }
