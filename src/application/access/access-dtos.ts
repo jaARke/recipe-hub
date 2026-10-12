@@ -22,12 +22,16 @@ export type InviteDto = {
 	expiresAt: Date;
 };
 
+// Whether the invite went out by email: no address was given, it was sent, or sending failed.
+export type InviteDelivery =
+	{ status: 'not-requested' } | { status: 'sent' | 'failed'; to: string };
+
 // Returned to the admin who issued the invite; the link is never shown again.
 export type IssuedInviteDto = {
 	id: InviteId;
+	displayName: string;
 	link: string;
-	// False when an address was given but the email could not be sent, so the admin copies the link.
-	emailed: boolean;
+	delivery: InviteDelivery;
 };
 
 // What anyone holding the link sees: no address, inviter, or request.

@@ -2,6 +2,7 @@ import 'server-only';
 import {
 	toInviteDto,
 	toInvitePreviewDto,
+	type InviteDelivery,
 	type InviteDto,
 	type InvitePreviewDto,
 	type IssuedInviteDto,
@@ -114,16 +115,21 @@ export class InviteService {
 			expiresAt: inviteExpiry(new Date()),
 		});
 		const link = inviteLink(this.appUrl, token);
-		const emailed =
-			fields.sendTo !== undefined && (await this.sendInvite(invite, fields.sendTo, link));
+		const delivery: InviteDelivery =
+			fields.sendTo === undefined
+				? { status: 'not-requested' }
+				: {
+						status: (await this.sendInvite(invite, fields.sendTo, link)) ? 'sent' : 'failed',
+						to: fields.sendTo,
+					};
 
 		logger.info('Invite issued', {
 			inviteId: invite.id,
 			requestId: invite.requestId,
 			memberId: actor.memberId,
-			emailed,
+			delivery: delivery.status,
 		});
-		return { id: invite.id, link, emailed };
+		return { id: invite.id, displayName: invite.displayName, link, delivery };
 	}
 
 	// Newest first.

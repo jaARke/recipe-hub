@@ -100,8 +100,9 @@ describe('issueInvite', () => {
 
 		expect(issued).toEqual({
 			id: expect.any(String),
+			displayName: 'Ada',
 			link: expect.stringMatching(/^https:\/\/recipes\.example\.com\/invite#[\w-]{43}$/),
-			emailed: false,
+			delivery: { status: 'not-requested' },
 		});
 		const token = tokenOf(issued.link);
 		expect(await invites.findByTokenHash(await hashInviteToken(token))).toEqual({
@@ -173,7 +174,7 @@ describe('issueInvite', () => {
 			sendTo: 'Ada@Example.com',
 		});
 
-		expect(issued.emailed).toBe(true);
+		expect(issued.delivery).toEqual({ status: 'sent', to: 'ada@example.com' });
 		expect(emails.sentMessages).toEqual([
 			{
 				to: 'ada@example.com',
@@ -198,7 +199,10 @@ describe('issueInvite', () => {
 			sendTo: 'ada@example.com',
 		});
 
-		expect(issued).toMatchObject({ emailed: false, link: expect.stringContaining('/invite#') });
+		expect(issued).toMatchObject({
+			delivery: { status: 'failed', to: 'ada@example.com' },
+			link: expect.stringContaining('/invite#'),
+		});
 		expect(consoleWarn).toHaveBeenCalledOnce();
 		expect(JSON.parse(String(consoleWarn.mock.calls[0]?.[0]))).toEqual({
 			level: 'warn',
@@ -229,7 +233,7 @@ describe('issueInvite', () => {
 			inviteId: issued.id,
 			requestId: request.id,
 			memberId: admin.id,
-			emailed: true,
+			delivery: 'sent',
 		});
 		expect(loggedText()).not.toMatch(/Ada|Jake|@example\.com/);
 		expect(loggedText()).not.toContain(tokenOf(issued.link));
