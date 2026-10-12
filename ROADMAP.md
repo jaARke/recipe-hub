@@ -87,6 +87,7 @@ Recipe Hub is one Next.js project organized as a layered, ports-and-adapters arc
 | Pattern | Where | Why |
 | --- | --- | --- |
 | Repository | `RecipeRepository` and `MemberRepository` ports with Drizzle adapters | Services and tests do not depend on how data is stored. |
+| Query port | `RecipeSearch` with `DrizzleRecipeSearch` | Postgres matches, ranks, highlights, and counts facets; the service validates input and maps results to DTOs. |
 | Strategy | `RecipeExtractor` port with JSON-LD, AI text, and AI vision implementations | The entry modes differ only in how a draft is produced. |
 | Adapter | Every infrastructure class | Vendor APIs are translated into port contracts. |
 | Composition root with constructor injection | `src/composition/` | Explicit wiring without a DI framework, and fakes injected in tests. |
@@ -103,14 +104,27 @@ Recipe Hub is one Next.js project organized as a layered, ports-and-adapters arc
 - Route Handlers only for HTTP-shaped needs: the auth endpoint, Blob client-upload tokens, and image delivery. Open Graph images, icons, the manifest, the sitemap, and robots use Next's metadata file conventions.
 - `proxy.ts` (Next 16's replacement for `middleware.ts`) makes optimistic redirects only on the contribute and admin routes; its matcher excludes metadata files. The authoritative check is the application layer, on every call.
 - Cache Components (`'use cache'`, `cacheTag`, `cacheLife`) for public pages, which are the same for every visitor. Session-dependent UI (sign-in state, an Edit button) streams in behind Suspense, following the bundled guide `authentication-with-cache-components.md`.
-- **Cached reads:** `src/app/_lib/recipe-cache.ts` is the one home for recipe cache tags (`recipes` for every list page, `recipe:<slug>` for a recipe) and for the cached reads pages use. The reads use `cacheLife('days')`: writes invalidate the tags, and revalidation in the background a day after an entry was cached catches edits made outside the app (entries expire after a week). Server Actions invalidate with `updateTag`, using `RecipeRef`'s slug. The application layer never imports `next/cache`.
+- **Cached reads:** `src/app/_lib/recipe-cache.ts` is the one home for recipe cache tags (`recipes` for every list page, `recipe:<slug>` for a recipe) and for the cached reads pages use. Server Actions invalidate with `updateTag`, using `RecipeRef`'s slug. The application layer never imports `next/cache`.
+  - The reads use `cacheLife('days')`, and writes invalidate the tags. A result consumed into a prerendered shell persists in Vercel's ISR cache and revalidates in the background, which catches edits made outside the app.
+  - A runtime entry, such as a list page read after `searchParams`, lives in the instance's in-memory cache: it is not shared between instances, and a day after it was cached it counts as a miss and is rebuilt while the request waits.
+  - List pages are cached per page and sort (`getCachedRecipePage(page, sort)`), which keeps the keys few.
+  - A `'use cache'` argument is part of the key, so pass a fresh object with every key present and arrays sorted, never raw `searchParams`.
+- **Search is not cached.** Every query and filter makes its own URL, so entries would rarely be reused and would push list entries out of the in-memory cache. The bundled docs name search filters as the worst case for `'use cache: remote'`. Results are read inside Suspense on every request, and a Vercel WAF rate-limit rule on `/search` protects Neon's compute-hours (section 5.5).
 - **Dynamic routes:**
   - With Partial Prefetching, `params` and `searchParams` are read inside `<Suspense>`, with skeleton fallbacks that mirror the page. No `loading.tsx`.
-  - A `notFound()` inside Suspense keeps status 200 and adds `noindex`, so unknown slugs and invalid pages get a soft 404.
+  - A `notFound()` inside Suspense keeps status 200 and adds `noindex`, so unknown slugs, invalid parameters, and pages past the end get a soft 404. A `redirect()` there is a client-side redirect with status 200, and a `next.config` redirect cannot drop a query parameter (the request's query is merged into the destination), so a page names its normalized URL with `alternates.canonical` instead.
   - `generateStaticParams` must return at least one param or the build fails. Recipe pages return the first page's slugs, or a placeholder that fails the slug schema and prerenders a 404 while production is empty.
   - `MainNav` reads `usePathname` inside Suspense, with a fallback that marks no link as current.
 - **Metadata routes** inside a route group get a hash suffix (`/recipes/<slug>/opengraph-image-<hash>/<id>`). Every named export of a metadata file is re-exported into its route, so helpers stay unexported.
-- Search state lives in the URL (`searchParams`) so results are shareable and work with the back button. The recipe list keeps its page there too (`/?page=2`; page 1 has no query).
+- **URL state:** search state lives in the URL (`searchParams`) so results are shareable and work with the back button.
+  - The list keeps its page and sort there (`/?sort=title&page=2`). Defaults are left out, so each view has one URL, and `generateMetadata` on `/` sets the canonical URL, so `/?page=1` names `/`.
+  - Search uses `q`, `tag` (repeated), `source`, `time`, `added`, `sort`, and `page`. `src/components/search/search-params.ts` is the one module that parses and builds them.
+  - An empty value means absent, because forms submit blank fields.
+- **Forms:** `next/form` for every GET form. It navigates client-side and still submits natively before hydration.
+  - It drops a query string in `action`, so state travels in hidden inputs.
+  - With JavaScript it drops a submit button's name and value, so no state lives in a button.
+  - `useFormStatus` never reports pending for it in the App Router.
+  - Before hydration, the query field, links, and native `<details>` work. Base UI selects and checkboxes do nothing, so filters and sort need JavaScript; with JavaScript off, Suspense content never appears at all.
 
 ### 4.5 Target structure
 
@@ -166,7 +180,7 @@ Files are kebab-case (`recipe-repository.ts`), classes and types PascalCase, fun
   Vercel supplies the values; local development pulls them with `vercel env pull`. The Blob SDK reads and refreshes Vercel's OIDC token itself; there is no read-write token. `drizzle.config.ts` and the scripts read their own variables (section 4.2).
 
 - **Errors:**
-  - Expected failures are classes extending `AppError` (`src/lib/errors.ts`) with a stable `code`: `recipe.invalid`, `recipe.not-found`, `recipe.invalid-page`, `access.sign-in-required`, `access.forbidden`.
+  - Expected failures are classes extending `AppError` (`src/lib/errors.ts`) with a stable `code`: `recipe.invalid`, `recipe.not-found`, `recipe.invalid-page`, `recipe.invalid-search`, `access.sign-in-required`, `access.forbidden`.
   - Reads return `null` when nothing is found; writes throw. Validation failures carry problems with dotted paths (`ingredientSections.0.lines.2.item`), the same shape drafts use, so the form renders both alike.
   - Server Actions return expected errors as values and rethrow anything else, as the bundled error-handling guide says. Production masks thrown server errors to a digest, so a code never reaches the client by being thrown.
   - Presentation maps codes to user-facing messages, and unexpected errors reach Next.js error boundaries.
@@ -174,7 +188,9 @@ Files are kebab-case (`recipe-repository.ts`), classes and types PascalCase, fun
 - **Validation:** Zod at every boundary: form input, AI output, scraped data, and every database read of a recipe document.
 - **Testing:**
   - Vitest for domain and application code, with in-memory fakes for ports. Vitest aliases `server-only` to Next's own empty module, so server modules import in tests.
-  - Repository tests run against PGlite (Postgres 18.3 in WASM, with `pg_trgm`, `unaccent`, and `pgvector` available) built by the real migrations, inside `pnpm test`, with no secrets or branch quota.
+  - Repository tests run against PGlite (Postgres 18.3 in WASM, loading `pg_trgm` and `unaccent` from its contrib modules) built by the real migrations, inside `pnpm test`, with no secrets or branch quota. `pgvector` ships separately, as `@electric-sql/pglite-pgvector`.
+  - PGlite differs from `pg` in two ways tests cannot catch: `pg` returns `count(*)` as a string (use Drizzle's `count()` or `::int`), and PGlite rejects a migration chunk holding more than one statement.
+  - Search's expected-result tests run over every sample recipe, the same corpus previews are seeded with.
   - Playwright for a few end-to-end flows once the core flows exist.
   - Fixtures are synthetic or public-domain recipes, never real family data.
   - Infrastructure adapters are tested against real engines, never module mocks. `BlobImageStore` is a thin pass-through with no local engine, so the seed run and the preview verify it.
@@ -206,6 +222,22 @@ The normalized shape every entry mode produces, finalized in Session 2 in `src/d
 - A rename or restructure is a small SQL data migration.
 - A field that needs filtering or sorting becomes a generated column computed from `content`.
 
+**Search columns** (Session 4) are STORED generated columns, computed by Postgres from `content` and `tags`:
+
+- `search_vector`: the weighted `tsvector`.
+- `search_words`: the unaccented title, ingredient items, and tags, which close matches compare.
+- `tag_keys`: each tag lowercased like `tagKey`.
+- `source_key`: the source, lowercased.
+- `total_minutes`: by `totalMinutes`' rule.
+- `title_sort`: the title unaccented and lowercased.
+
+How they behave:
+
+- Recipe reads select the original columns only (`recipeColumns`).
+- They recompute when a write sets a column they read.
+- Changing a helper function, the text search configuration, or `unaccent`'s rules recomputes nothing, so such a change ships with a backfill (`UPDATE recipes SET content = content`).
+- A document without a title, or with times that are not whole numbers, cannot be stored, because the columns would fail.
+
 Unknown keys are dropped on read, so older code that re-saves a recipe would drop fields newer code added; add fields in one deployment before anything depends on them.
 
 ### 5.2 Entry modes
@@ -217,11 +249,36 @@ Unknown keys are dropped on read, so older code that re-saves a recipe would dro
 
 ### 5.3 Search
 
-- Weighted full-text search: title first, then ingredients and tags, then description and notes, then instructions. `websearch_to_tsquery` syntax gives quoted phrases, `-` exclusions, and `or`.
-- Typo tolerance and partial matches with `pg_trgm`, accent-insensitive matching with `unaccent`.
-- Filters: tags, source, contributor, total time, date added.
-- Relevance ranking, highlighted matches, pagination, and URL-held state.
-- To evaluate: BM25 ranking with Neon's `lakebase_text` (Neon retired `pg_search` on 2026-09-21) and semantic search with `pgvector` embeddings created at save time.
+Public, at `/search`, with Postgres full-text search, `pg_trgm`, and `unaccent` (decided in Session 4).
+
+- **Matching:**
+  - A weighted `tsvector`: A the title; B ingredient items and tags; C the description, notes, and source; D the steps. Ingredient items are indexed rather than verbatim lines, so units and amounts never match.
+  - Queries go through `websearch_to_tsquery`, which gives quoted phrases, `-` exclusions, and `or`, and never raises a syntax error. Curly quotes, which phones type, are read as quotes.
+  - The `public.recipe_english` text search configuration runs `unaccent` before English stemming, so "creme brulee" finds "Crème brûlée" and the highlight keeps its accents. Tag keys keep accents, as `tagKey` does.
+- **Close matches:**
+  - When nothing matches exactly, a second query compares the included words with `search_words` by `word_similarity`, at 0.5 or more. pg_trgm's default of 0.6 misses a one-letter slip in a short word ("chiken" scores 0.5).
+  - Excluded terms still exclude. The page says "No exact matches for “chiken”. Showing close matches."
+- **Filters:**
+  - Tags combine with AND and compare by key.
+  - Source compares ignoring case.
+  - Total time is "or less" (15, 30, 60, or 120 minutes), and recipes without a time drop out.
+  - Date added is a rolling past week, month, or year.
+  - A contributor filter waits for Session 5's display names.
+- **Facets:** tags are counted within the results, so a count is what adding that tag would leave. Sources are counted with every filter but the source, so another source can be chosen.
+- **Sorting:**
+  - Best match is offered only with a query and is then the default. It ranks with `ts_rank_cd` (default weights, no length normalization), or by similarity for close matches.
+  - Newest is the default otherwise.
+  - A to Z sorts by `title_sort`.
+  - Every order ends with the id, so ties are stable across pages. The list at `/` offers Newest and A to Z.
+- **Highlights:**
+  - `ts_headline` runs for the page's rows only and marks matches with control characters, which the adapter splits into text segments. Nothing from a recipe is ever rendered as HTML.
+  - The snippet comes from the first of the description, ingredient lines, notes, and steps that matched, with "…" where a fragment is cut. Otherwise it is the description.
+- **Pages:** 24 results a page, numbered with the shared `RecipePagination`.
+- **Input:** the service bounds what a public URL supplies: a query of at most 200 characters, at most 20 tags, and no NUL characters, which Postgres text cannot hold. A source is unbounded, because the filters offer every source recipes use. Invalid input gets the soft 404.
+- **Later:**
+  - BM25 with Neon's `lakebase_text`: the storage is ready, but it is 0.1.x, cannot run in PGlite, and Free-plan support is unconfirmed.
+  - Semantic search with `pgvector` after Session 7: embedding every public query clashes with members-only AI.
+  - "Did you mean" corrections from a words list.
 
 ### 5.4 Access control
 
@@ -241,10 +298,14 @@ Unknown keys are dropped on read, so older code that re-saves a recipe would dro
 - No staging environment. Pull requests get preview deployments behind Vercel Authentication, and each gets its own Neon branch, `preview/<git-branch>`, created by the integration and deleted by `.github/workflows/preview-branch-cleanup.yml` when the pull request closes.
 - Local development uses the Neon branch `develop` through Development-scoped variables, never production.
 - Every build migrates its database before `next build` (`vercel.json`'s `buildCommand`). The previous deployment keeps serving during and after a production build, and Skew Protection keeps old Server Actions alive for 12 hours, so migrations are expand then contract: additive first, removals in a later deployment.
-- Every build then runs `pnpm db:seed`, which seeds preview branches with six synthetic recipes and their photos and refuses production, so production never holds synthetic recipes.
+- Every build then runs `pnpm db:seed`, which seeds preview branches with 30 synthetic recipes (four with photos) and refuses production, so production never holds synthetic recipes. The recipes double as search's expected-result corpus, so search can be checked on every preview.
   - The seed is idempotent: it skips recipes whose slug exists and uploads only missing photos. A Postgres advisory lock serializes concurrent builds of one pull request, which would otherwise both create a recipe (the second as `-2`).
   - Locally, `pnpm db:seed` seeds `develop` on demand.
   - Seeded recipes belong to a fixed synthetic member id, `00000000-0000-4000-8000-000000000001`, which has no account.
+- **Rate limits:** a Vercel WAF rate-limit rule on the path `/search` (fixed 60-second window, 100 requests per IP), created in the dashboard. Blocked requests never reach a function or the database.
+  - Pro has 40 such rules, at $0.50 per million allowed requests drawn from the monthly credit.
+  - Counters are per region, and prefetches count too, which is why the limit is generous.
+  - Start with the Log action and switch to 429 once the logs look right.
 - Environment variables are managed in Vercel and pulled locally with `vercel env pull`. The AI Gateway and Blob authenticate with Vercel's OIDC token, so no provider keys or Blob tokens exist. Locally, the Blob SDK refreshes an expired development token with the Vercel CLI's credentials.
   - The Neon integration also adds `PG*`, `POSTGRES_*`, and `NEON_PROJECT_ID` variables. The app reads none of them; they are the integration's to manage and harmless to keep.
 - **Blob layout:** one private store, `recipe-hub-images`, serves every environment, since Blob has no branches.
@@ -258,6 +319,7 @@ Unknown keys are dropped on read, so older code that re-saves a recipe would dro
 
 - Function request bodies are capped at 4.5 MB, so every image upload goes from the browser directly to Blob.
 - Neon Free plan: 1 GB storage, 100 compute-hours a month, 10 branches (production, `develop`, and one per open pull request). Preview deployments fail at the branch cap.
+  - The compute suspends after 5 idle minutes, and each wake costs at least 5 minutes of compute. Uncached search reaches the database on every request, so a crawler sending unique queries could keep it awake and reach the monthly cap in about two weeks. The WAF rule on `/search` guards against that.
 - AI Gateway free tier: $5 a month, a subset of models, and lower rate limits. Buying credits unlocks every model at provider list price.
 - Functions run up to 800 seconds on Pro. Import actions set `maxDuration` explicitly.
 - Resend free plan: 3,000 emails a month and 100 a day, from a verified domain only.
@@ -299,6 +361,12 @@ Recipes are meant to be shared, so links need good previews before the site is u
 - **Commits:** a plain imperative sentence describing the change, without prefixes.
 - **Dependencies:** added with their first consumer, chosen against current documentation, installed with pnpm. pnpm blocks dependency build scripts, so each package that has one is listed in `pnpm-workspace.yaml`'s `allowBuilds` deliberately (`esbuild: false`: drizzle-kit's bundler runs from its platform package without the script).
 - **Migrations:** change `src/infrastructure/db/schema.ts`, run `pnpm db:generate --name <change>`, and commit the generated files. Never edit an applied migration. drizzle-kit 0.31 applies only migrations newer than the last one applied, so an older migration merged late would be skipped silently. `drizzle-kit check` (`pnpm lint:migrations`) only warns about that, so a test fails when the journal is out of timestamp order.
+  - Extensions, functions, and text search configurations, which drizzle-kit does not model, go in a custom migration (`pnpm db:generate --custom --name <change>`), journaled before anything that uses them. Put `--> statement-breakpoint` after every statement: PGlite rejects a chunk holding two.
+  - The migrator applies every pending migration in one transaction, so `CREATE INDEX CONCURRENTLY` cannot be used.
+  - Adding a STORED generated column rewrites the table under an exclusive lock, held until that transaction commits, which blocks the previous deployment's reads. At today's size this takes milliseconds. Once the table is large, combine additions into one `ALTER TABLE` and set `lock_timeout` first.
+  - Never interpolate a JavaScript value into a generated or index expression: drizzle-kit writes it as `$1`. Write constants literally, or through one `sql.raw` constant (`recipeSearchConfiguration`).
+  - Changing a generated column's expression: drizzle-kit 0.31 drops and re-adds the column without its indexes (drizzle-orm issue 4929). Rewrite the generated statement to `ALTER TABLE ... ALTER COLUMN ... SET EXPRESSION AS (...)`, which keeps them.
+  - An immutable SQL wrapper uses a SQL-standard `RETURN` body with schema-qualified names, because Postgres 17 and later run index builds and maintenance with a restricted `search_path`.
 - **UI primitives:** added with `pnpm shadcn add <name>`, then `pnpm format` and `pnpm exec eslint . --fix` (section 6.3).
 - **Documents:** `README.md` for setup, this file for plan and guidance, `AGENTS.md` for agent instructions.
 
@@ -328,12 +396,13 @@ The UI must feel consistent and deliberate. This section is the binding design l
 | `secondary`, `muted` | Quiet fills (badges, notes) | `oklch(0.955 0.002 90)` | `oklch(0.27 0.002 90)`, `oklch(0.25 0.002 90)` |
 | `muted-foreground` | Supporting text | `oklch(0.49 0.004 90)` | `oklch(0.72 0.003 90)` |
 | `accent` | Hover and highlight fill in menus, tinted with Spruce | `oklch(0.955 0.02 210)` | `oklch(0.29 0.025 205)` |
+| `highlight`, `highlight-foreground` | Search matches (`<mark>`), tinted with Spruce; text is `foreground` | `oklch(0.9 0.045 205)` | `oklch(0.38 0.06 205)` |
 | `destructive` | Destructive actions and errors | `oklch(0.5 0.19 20)` | `oklch(0.76 0.15 22)` |
 | `border` | Dividers and surface edges (decorative) | `oklch(0.9 0.003 90)` | `oklch(0.32 0.003 90)` |
 | `input` | Form control outlines, at least 3:1 | `oklch(0.66 0.004 90)` | `oklch(0.52 0.003 90)` |
 | `ring` | Focus, equal to primary | `oklch(0.46 0.07 210)` | `oklch(0.78 0.08 205)` |
 
-Lowest ratios: muted text on muted fills 5.49:1 (light); destructive text on its hover tint 4.55:1; input borders 3.02:1 (light) and 3.41:1 (dark). A token change is rechecked against every pair before it lands.
+Lowest ratios: muted text on muted fills 5.49:1 (light); destructive text on its hover tint 4.55:1; input borders 3.02:1 (light) and 3.41:1 (dark). Highlighted text is 13.34:1 (light) and 8.18:1 (dark) on its fill. A token change is rechecked against every pair before it lands.
 
 **Themes.** Light and dark, through the `.dark` class on `<html>` set by `next-themes`. The default follows the device; the header toggle offers Light, Dark, and System. The dark tokens and the `dark:` variant apply on screen only, so printouts always use the light tokens.
 
@@ -353,14 +422,14 @@ Lowest ratios: muted text on muted fills 5.49:1 (light); destructive text on its
 
 **Layout.**
 
-- **Header:** a sticky, compact top bar (`h-14`) holding the wordmark, the main nav, and the theme toggle.
+- **Header:** a sticky, compact top bar (`h-14`) holding the wordmark, the main nav, search, and the theme toggle. On phones, search is an icon link to `/search`; from `sm` it is a field in a `<search>` landmark (`w-56`, `w-72` from `lg`), and it is left out on `/search`, whose own field is the only one there. The bar has room for one more 36 px control at 390 px but not at 360 or 375, so the next one brings the mobile menu.
 - **Containers:** `PageContainer` sets the width: `wide` (`max-w-6xl`) for browsing and `reading` (`max-w-2xl`) for recipe content.
 - **Browse grid:** one column on phones, two on tablets, three on desktop.
 
 ### 6.3 Components and patterns
 
 - **Library:** shadcn/ui on Base UI primitives, Vega style, Lucide icons.
-  - Installed primitives: attachment, badge, button, card, checkbox, dialog, dropdown-menu, empty, field, input, label, pagination, select, separator, skeleton, spinner, tabs, textarea, toast, tooltip.
+  - Installed primitives: attachment, badge, button, card, checkbox, dialog, dropdown-menu, empty, field, input, input-group, label, pagination, select, separator, skeleton, spinner, tabs, textarea, toast, tooltip.
   - Add more with `pnpm shadcn add <name>`, then `pnpm format` and `pnpm exec eslint . --fix`, plus a demo on `/design`.
   - When the CLI offers to overwrite a primitive listed in 6.5, decline and keep the customized version.
 - **Composition:** Base UI composes through the `render` prop, not `asChild`. A link styled as a button takes `buttonVariants()` on the link itself, because Base UI's Button must not render links. `cn` comes from the `cn` package.
@@ -376,7 +445,8 @@ Lowest ratios: muted text on muted fills 5.49:1 (light); destructive text on its
 - **Theme:** `ThemeProvider` in `src/components/layout/` holds the next-themes configuration. `ThemeToggle` swaps its sun and moon icons with `dark:` classes so the server render never depends on the theme.
 - **Recipes:**
   - `RecipeCard` takes a `RecipeSummaryDto`. A recipe without a photo keeps the same 4:3 box, in `bg-muted` with a muted cooking-pot icon, so every row lines up.
-  - Card photos are decorative (`alt=""`), because the card's link is named by its title. Cards in the first row load eagerly.
+  - Card photos are decorative (`alt=""`). A card's or result row's link is named by its title (`aria-labelledby`) and described by its source, snippet, and details (`aria-describedby`), so a screen reader does not read the whole card as the link's name. Cards in the first row and the first three search results load eagerly.
+  - `recipe-summary.tsx` holds what the card and the result row share: the 4:3 cover or no-photo box (`RecipeCover`), the facts, and the tags.
   - `RecipeDetail` takes a `PublicRecipeDto` and a heading level: 1 on recipe pages, 4 under `/design`'s own headings.
   - The detail shows the source, the dates added and edited (en-US, America/New_York, in `<time>`), a 3:2 cover that preloads and is hidden in print, ingredients and steps in `text-lg`, and notes.
     - An ingredient line with an amount shows the amount and unit in bold, then the item and preparation; a line without one shows its original text.
@@ -388,6 +458,16 @@ Lowest ratios: muted text on muted fills 5.49:1 (light); destructive text on its
   - `RecipePagination` shows Previous and Next only where they lead somewhere.
   - It shows the first and last pages, the current page with one on each side, and an ellipsis for longer gaps (a gap of one page shows that page), plus a "Page 3 of 5" label.
   - It wraps on narrow phones rather than scrolling sideways.
+  - It takes a `pageHref(page)` function, so the list and search share it and each keeps its own parameters.
+- **Sorting:** `RecipeSortForm` is a GET form whose `Select` submits on selection, with the page's other state in hidden inputs. Paging keeps the order.
+- **Search results:**
+  - `/search` holds the query form (field, "Search" button, a hint about phrases and exclusions), the filters, and the results.
+  - Filters sit in a sidebar from `lg` and in a native `<details>` "Filters" disclosure below it, both rendered from one component, each in its own form. They apply with an "Apply filters" button, never on each change, so choosing several loads once.
+  - Above the results are the active filters as removable chips, "Clear filters", the count in a polite status (`<p role="status">`, with an sr-only note of the query, close matches, order, and page, so a new search or page is announced even when the count is the same), and the sort.
+  - Results are `RecipeSearchResult` rows in a divided list: a small 4:3 cover, the title as a heading, the source, a two-line snippet, the facts, and the tags.
+  - `HighlightedSegments` renders highlighted text as text and `<mark>`. A base rule styles `<mark>` with the highlight tokens and bolder weight, the cue that does not rely on color.
+  - No-result states use the `empty` primitive, with a way forward (clear the filters, or shorten the search). Close matches carry a line above them.
+- **Disclosures:** native `<details>` with a `<summary>` styled by `buttonVariants` and a rotating chevron. A base rule hides the browser's marker.
 - **Printing:** the header and the cover photo are hidden, and sections, steps, and notes avoid page breaks.
 
 ### 6.4 References
@@ -469,6 +549,19 @@ The owner likes [tanstack.com](https://tanstack.com/) and [mstone.ai](https://ms
 | 2026-10-11 | Cached reads and tag names in `src/app/_lib/recipe-cache.ts`, with `cacheLife('days')` | One home for the tags Session 6's Server Actions invalidate, outside the application layer, which may not import `next/cache`. Background revalidation after a day catches edits made outside the app. |
 | 2026-10-11 | `generateStaticParams` returns a placeholder slug while no recipes exist | Cache Components fails the build on an empty result, and production starts empty. The placeholder fails the slug schema and prerenders a 404. |
 | 2026-10-11 | Print uses the light tokens: the dark theme applies on screen only | Paper is light. |
+| 2026-10-11 | Search with Postgres full-text search, `pg_trgm`, and `unaccent`; not `lakebase_text` BM25 or hybrid `pgvector` | It runs in PGlite, so tests check real ranking, and on Neon's Free plan. BM25's corpus weighting is invisible at this size, and `lakebase_text` is 0.1.x, cannot run locally, and is unconfirmed on the Free plan. Hybrid search would embed every public query, against members-only AI. The storage is ready for BM25 later. |
+| 2026-10-11 | Accents ignored through a `recipe_english` text search configuration (`unaccent`, then English stemming), plus an `immutable_unaccent` wrapper for the sort and similarity columns | The configuration keeps accents in highlights. The wrapper is honest about immutability because it names `public.unaccent`, whose rules Neon changes only by support ticket. |
+| 2026-10-11 | Close matches only when nothing matches exactly: `word_similarity` of 0.5 or more against the title, ingredient items, and tags | The smallest rule that finds every tested misspelling's recipe first ("chiken", "biscut", "pot rost") while unrelated queries stay empty. Per-word corrections ("Did you mean") can follow. |
+| 2026-10-11 | Facets: tags (AND, counted within the results) and source (counted with every other filter); total time and date added as filters without counts; the contributor filter in Session 5 | Tags have no groups, so OR would mostly widen results. Contributors have no public names yet. |
+| 2026-10-11 | Sorts: Best match (only with a query), Newest, and A to Z, on `/` and `/search`, each order defined once | Resolves the sorting moved from Session 3. A to Z uses an unaccented key, so accented titles sort beside plain ones. |
+| 2026-10-11 | Search results are not cached; a Vercel WAF rate-limit rule guards `/search`; list pages are cached per page and sort; no `'use cache: remote'` | Per-query entries would rarely be reused and would push list entries out of the per-instance cache, and the docs name search filters as remote caching's worst case. Neon's compute-hours are the scarce resource, and the WAF blocks requests before a function runs. Session 5 can add a rule of its own or call `checkRateLimit`. |
+| 2026-10-11 | Search at its own route, `/search`, which lists every recipe when empty; `/` keeps the cached home list | Filter-only browsing works, and the home list stays cached. |
+| 2026-10-11 | `/?page=1` and other default parameters name `/` through `alternates.canonical` | A `next.config` redirect would loop, a `redirect()` inside Suspense is a client-side redirect with status 200, and `proxy.ts` stays limited to gated routes. |
+| 2026-10-11 | Header search: an icon link on phones, a field from `sm`, left out on `/search` | A field at 375 px would show four to nine characters, and a second row would add height to every page. |
+| 2026-10-11 | Results as rows; filters in a sidebar from `lg` and a `<details>` disclosure below, applied with a button; only `input-group` added | Rows fit four to five on a phone screen and give snippets room. `<details>` works before hydration and needs no new primitive. Applying on each change would navigate on every arrow key in a select. |
+| 2026-10-11 | Highlight tokens tinted with Spruce, with bolder text | One accent hue in the design language; the weight is the cue that does not rely on color. |
+| 2026-10-11 | 30 synthetic samples, seeded on previews, double as the search corpus | Search can be checked on every preview against the recipes the tests use. |
+| 2026-10-11 | Forms promise "works before hydration", not "works without JavaScript" | Suspense content arrives hidden and is revealed by an inline script, so with JavaScript off results never appear, and Base UI controls need hydration. |
 
 ## 8. Chronology and dependencies
 
@@ -478,7 +571,7 @@ flowchart LR
 	S0 --> S2["2 Architecture and data (done)"]
 	S1 --> S3["3 Public browsing (done)"]
 	S2 --> S3
-	S3 --> S4["4 Search"]
+	S3 --> S4["4 Search (done)"]
 	S1 --> S5["5 Auth and contributor access"]
 	S2 --> S5
 	S3 --> S6["6 Authoring"]
@@ -489,7 +582,8 @@ flowchart LR
 ```
 
 - Session 3 (done) seeded synthetic recipes, so browsing works before authoring exists.
-- Session 4 is next. It builds on the browse UI and can run in parallel with Session 5.
+- Session 4 (done) added search and grew the seeded samples to 30, which double as its expected-result corpus.
+- Session 5 is next. If another session's migration merges first, the later branch regenerates its migration after rebasing, so its timestamp is newest (section 5.8).
 - Session 5 needs the design system for its account pages and the data layer for Better Auth's tables.
 - Session 6 needs public pages to land on and authentication, so recipes are attributed from the first save.
 - Session 7 builds on the authoring form, which doubles as the review form. Semantic search with embeddings created at import is revisited after Session 7.
@@ -556,10 +650,11 @@ Delivered:
 Deferred, each to the session that needs it:
 
 - **Session 3:** resolved there: the `error.tsx` boundary, where seed data lives, the seeded `contributorId`, paging with a total count, and `RecipeCard` taking `RecipeSummaryDto`.
-- **Session 4:**
-  - The `tsvector` and filter columns are generated from `content`, plus a GIN index on `tags`.
-  - `findTagLabels` reads every label in use; revisit at scale.
-  - BM25 means `lakebase_text`, since Neon retired `pg_search`.
+- **Session 4:** resolved there.
+  - The search and filter columns are generated from `content` and `tags`.
+  - The GIN index went on `tag_keys`, since filters compare keys.
+  - `findTagLabels` now narrows rows through that index.
+  - BM25 with `lakebase_text` was evaluated and deferred.
 - **Session 5:**
   - Configure Better Auth to use uuid ids, because `recipes.contributor_id` is a uuid. Then add its foreign key.
   - Replace `AnonymousActorProvider`.
@@ -615,11 +710,11 @@ Delivered:
 
 Deferred, each to the session that needs it:
 
-- **Session 4:**
-  - Sorting (relevance, newest, A to Z) for the list and search alike, on Session 4's unaccent-backed generated columns.
-  - A canonical URL for `/?page=1`, which duplicates `/`.
-  - A `RecipePagination` composition demo on `/design`, alongside search pagination.
-  - If rendering `?page` requests loads the database noticeably, consider `'use cache: remote'` (platform fees).
+- **Session 4:** resolved there.
+  - Sorting for the list and search.
+  - The canonical URL for `/?page=1`.
+  - The `RecipePagination` demo.
+  - `'use cache: remote'`: not needed yet. Session 8 revisits it if Neon's compute-hours climb.
 - **Session 5:**
   - Before the `contributor_id` foreign key, choose one: a placeholder member row for the seed member `00000000-0000-4000-8000-000000000001` in non-production branches, or reassigning seeded recipes and resetting `develop`.
   - "Added by <display name>" on recipe pages, and `author` in the JSON-LD.
@@ -649,7 +744,7 @@ Deferred, each to the session that needs it:
   - Satori: `lineClamp` works only with `display: 'block'`, and adjacent JSX text children throw (use a template string).
   - Cards in the first row load eagerly. On tall screens a photo in the second row can be the largest paint, which is accepted.
 
-### Session 4: Search
+### Session 4: Search (done 2026-10-11)
 
 **Goal:** fast, forgiving, filterable search.
 
@@ -666,6 +761,61 @@ Deferred, each to the session that needs it:
 **Forks:** Postgres full-text search alone, `lakebase_text` BM25, or hybrid with `pgvector` (embeddings revisited after Session 7); the facet set.
 
 **Done when:** misspellings, ingredient combinations, exclusions, and source filters return the expected results quickly on the seeded corpus.
+
+Delivered:
+
+- **Storage:** two migrations.
+  - A custom one creates `pg_trgm`, `unaccent`, the immutable helpers (`immutable_unaccent`, `immutable_array_to_string`, `search_key`, `search_keys`), and the `recipe_english` configuration.
+  - A generated one adds the six search columns of section 5.1, with GIN indexes on `search_vector` and `tag_keys`.
+  - Recipe reads select the original columns only.
+- **Application:**
+  - The `RecipeSearch` port.
+  - `RecipeSearchService`, which validates public input (`recipe.invalid-search`) and parses text for close matches the way `websearch_to_tsquery` does, reading curly quotes as quotes.
+  - Sort on `listRecipes`, and the shared `paginationSchema` in `src/application/pagination.ts`.
+- **Infrastructure:**
+  - `DrizzleRecipeSearch`: exact and close matches, filters, facets, three sorts, and highlights for the page's rows, split into text segments.
+  - One definition of each order (`recipe-order.ts`).
+  - `findTagLabels` narrowed through the tag-key index.
+- **Presentation:**
+  - `/search`, and the header search.
+  - Sort and a canonical URL on `/`.
+  - `RecipePagination` with `pageHref`, and the shared recipe summary pieces, with card and row links named by their titles.
+  - `input-group`, the highlight tokens, and `/design` demos: the search bar, results, loading, no results, and recipe pagination.
+- **Corpus and tests:**
+  - 30 synthetic samples, seeded on previews.
+  - Expected-result tests over all of them: misspellings, ingredient combinations, exclusions, phrases, `or`, partial words, accents both ways, source, tag, and time filters, facets, and A to Z.
+  - Tests that the generated columns agree with `totalMinutes` and `tagKey`, and tests of the parser, the service, and the URL helpers.
+- **Speed:** in PGlite, a full search takes 2 to 8 ms over 2,000 recipes. The close-match query, run only when nothing matches exactly, takes 35 to 45 ms there.
+
+Deferred, each to the session that needs it:
+
+- **Session 5:**
+  - The contributor filter, once display names exist, counted like sources.
+  - The header has room for one more 36 px control at 390 px, but not at 360 or 375. The next one brings the mobile menu deferred from Session 1.
+  - Rate-limit the access-request form. Either add a second WAF rule on the form's POST (the CLI's `server_action` condition), or call `checkRateLimit` from `@vercel/firewall` in the Server Action, which lets the form show an inline error.
+    - `checkRateLimit` fails open on an unknown rule id, does nothing in development, and needs Protection Bypass for Automation on previews.
+    - Call BotID's `checkBotId()` first.
+- **Session 6:**
+  - Strip C0 control characters in the domain's text schema. Highlights mark matches with `\u0002` and `\u0003`, so those characters in a recipe would misplace its highlights (never markup). Session 7's imports make them likelier.
+  - Link recipe-page tags to `/search?tag=...` for browsing by tag. Cards cannot, because the whole card is a link.
+- **Session 8:**
+  - **Pending feedback while a search loads.** `useFormStatus` never reports pending for `next/form` in the App Router, so the old results stay until the new ones arrive. If Neon's wake-up makes the wait noticeable, dim the results with the `data-pending` pattern in the bundled `interactive-apps.md`.
+  - **Neon compute-hours.** Watch them, and consider `'use cache: remote'` for list reads if they climb. Check whether an idle pooled connection keeps the compute awake.
+  - **Close matches.** "chick" also reaches black bean chili and chocolate chip cookies at 0.5; a cutoff relative to the best score would drop them. Consider "Did you mean" corrections from a words list, and BM25 with `lakebase_text` once it matures.
+  - **Phone filters.** The disclosure stays open after "Apply filters", with focus on the button. Revisit with real use.
+  - **Accessibility audit:**
+    - Card titles are not headings.
+    - After a client-side page change, focus stays on the clicked page link while the page scrolls to the top.
+  - **Indexing.** Search pages keep `noindex` when indexing turns on.
+  - **`/design` navigation.** The Compositions section has no in-section navigation and now holds about ten subsections.
+- **Known quirks:**
+  - **`next/form` prefetch.** Its docs list `prefetch` as a boolean defaulting to true, but the source accepts only `false` or `null`, and it prefetches only the shell.
+  - **Soft 404 in development.** It emits two robots meta tags: the root's and the injected `noindex`.
+  - **`ts_debug`.** It shows `unaccent`'s output capitalized, so it is unreliable for checking `recipe_english`.
+  - **drizzle-kit.** Its `out` must be relative to the working directory, and `--custom` rewrites the previous snapshot with its keys reordered.
+  - **The close-match parser.** It takes words as runs of letters and numbers, so a script whose vowel signs never combine into one character (Devanagari) would split mid-word.
+  - **Vercel docs.** They disagree on the Runtime Cache's tags per item (128 or 64) and on the Pro rate-limit window cap (10 minutes or 3,600 seconds).
+  - **Source counts with close matches.** In close-match mode, source counts use close matching, but choosing a source that has exact matches shows those instead, so a count can differ from the results it leads to.
 
 ### Session 5: Authentication and contributor access
 
@@ -759,6 +909,7 @@ Deferred, each to the session that needs it:
 
 | Action | Needed by |
 | --- | --- |
+| Create the WAF rate-limit rule on `/search` (section 5.5), starting with Log, then switch it to 429 | Session 4 merge |
 | Create a Resend account, add its sending-domain records in Route 53, and store the API key in Vercel | Session 5 |
 | Be the first admin and register a passkey | Session 5 |
 | Try real recipe cards by hand; decide on AI Gateway credits | Session 7 |
@@ -771,6 +922,7 @@ Deferred, each to the session that needs it:
 - **Passkey familiarity:** some relatives may not know passkeys, and recovery depends on the admin. Mitigation: email one-time codes as the fallback, plain onboarding notes, and new invites for new devices.
 - **Sign-in on previews:** passkeys are bound to their domain. Mitigation: invites minted against each preview's Neon branch.
 - **Spam requests:** the request form is public. Mitigation: BotID, rate limits, and requests that create no account.
+- **Uncached public search:** every search reaches Neon, so a crawler sending unique queries could spend the monthly compute-hours. Mitigation: the WAF rate-limit rule on `/search`, which blocks before a function runs.
 - **Free tiers:** Resend allows 100 emails a day, and Neon Free has storage, compute, and branch caps. Both are fine at this scale; revisit if usage grows. A preview fails to deploy at the branch cap, so the cleanup workflow must keep running.
 - **Schema changes under live traffic:** builds migrate before the new deployment serves, and old deployments keep serving. Mitigation: expand-then-contract migrations.
 - **Drizzle 1.0:** a later upgrade rewrites the migrations folder and the client setup. Mitigation: no APIs that 1.0 removes.
@@ -784,7 +936,7 @@ Deferred, each to the session that needs it:
 - [x] Session 1: Design system and app shell
 - [x] Session 2: Architecture foundation, recipe domain, and data layer
 - [x] Session 3: Public browsing
-- [ ] Session 4: Search
+- [x] Session 4: Search
 - [ ] Session 5: Authentication and contributor access
 - [ ] Session 6: Recipe authoring
 - [ ] Session 7: AI import from photos and URLs
