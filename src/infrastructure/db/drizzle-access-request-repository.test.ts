@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -5,7 +6,10 @@ import {
 	type AccessRequestFields,
 	type AccessRequestId,
 } from '@/domain/member/access-request';
+import { inviteExpiry } from '@/domain/member/invite';
 import { DrizzleAccessRequestRepository } from '@/infrastructure/db/drizzle-access-request-repository';
+import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
+import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { accessRequests } from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 
@@ -114,6 +118,29 @@ describe('deletePending', () => {
 
 		expect(await repository.deletePending(created.id)).toBe(true);
 		expect(await repository.findById(created.id)).toBeNull();
+	});
+
+	// An invite whose approval failed partway still names its pending request.
+	it('deletes a pending request an invite names, keeping the invite', async () => {
+		const created = await repository.create(fromAda);
+		const admin = await new DrizzleMemberRepository(db).create({
+			email: 'admin@example.com',
+			displayName: 'Admin',
+			role: 'admin',
+		});
+		const invites = new DrizzleInviteRepository(db);
+		const tokenHash = randomBytes(32).toString('hex');
+		const invite = await invites.create({
+			tokenHash,
+			requestId: created.id,
+			displayName: 'Ada',
+			role: 'member',
+			createdBy: admin.id,
+			expiresAt: inviteExpiry(backdated),
+		});
+
+		expect(await repository.deletePending(created.id)).toBe(true);
+		expect(await invites.findByTokenHash(tokenHash)).toEqual({ ...invite, requestId: undefined });
 	});
 
 	it('returns false when no pending request has the id', async () => {

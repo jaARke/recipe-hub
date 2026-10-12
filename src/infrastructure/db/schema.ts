@@ -227,7 +227,8 @@ export const invites = pgTable(
 			.primaryKey()
 			.default(sql`uuidv7()`),
 		tokenHash: text('token_hash').notNull().unique(),
-		requestId: uuid('request_id').references(() => accessRequests.id),
+		// Declining deletes the request, even when an invite whose approval failed still names it.
+		requestId: uuid('request_id').references(() => accessRequests.id, { onDelete: 'set null' }),
 		displayName: text('display_name').notNull(),
 		role: text('role', { enum: ['member', 'admin'] }).notNull(),
 		email: text('email'),
