@@ -953,9 +953,16 @@ Delivered:
   - `pnpm db:bootstrap` in the build, and the seed's sample contributor.
   - In Vercel: `BETTER_AUTH_SECRET` and `ADMIN_EMAIL`, and the second WAF rule.
   - Resend's records in Route 53.
-- **Fixes:** logged errors, and errors that form actions rethrow, lose their query parameters, and text fields refuse NUL. Both came out of the external review.
+- **Fixes:**
+  - Logged errors, and errors that form actions rethrow, lose their query parameters, and text fields refuse NUL. Both came out of the first external review.
+  - Declining deletes a request that an invite still names (migration `0004`), from the second.
+  - The session read awaits the request before building Better Auth, which reads the clock, so prerendering stops first.
 - **Design reference:** the `alert` primitive, and an "Accounts and admin" section rendering the real components.
-- **Tests:** 672, including Better Auth's flows end to end on PGlite.
+- **Tests:** 674, including Better Auth's flows end to end on PGlite.
+- **Preview checks:**
+  - Signed out: public pages unchanged, with "Added by Sample contributor" and its JSON-LD `author`; the contributor filter; `/contribute`, `/admin`, and `/account` redirecting to sign-in with a 307; and `/design`'s new section.
+  - Signed in: the bootstrapped admin by email code; two requests sent from a browser, each notifying the admin by email, one approved with its invite emailed and one declined; a direct invite revoked; the invite accepted with a code, a passkey created and listed, a rename, `/admin` refused to the member, and passkey sign-in after signing out.
+  - The build created and connected `preview/session-5-auth`, the first preview since `main` was protected. Vercel's Git integration missed both pushes during its incident that day, so the deployment was created from the Git ref through Vercel's API.
 
 Deferred, each to the session that needs it:
 
@@ -994,6 +1001,7 @@ Deferred, each to the session that needs it:
   - Reloading `/invite` after its fragment is removed shows "This invite can't be used".
   - Migration `0003` fails on a database whose recipes name a contributor without an account; only `develop` had one, and it was reset from `main` on 2026-10-12 before migrating.
   - `/design` logs a preload warning for the buttermilk biscuits photo.
+  - BotID refuses a headless browser on previews, so a scripted check of `/request-access` needs a person to send the request.
 
 ### Session 6: Recipe authoring
 
