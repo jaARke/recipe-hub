@@ -1,6 +1,6 @@
 'use client';
 
-import { sampleCourses, sampleRecipe } from '@/components/design-reference/fixtures';
+import { sampleCourses } from '@/components/design-reference/fixtures';
 import { SampleSectionedList } from '@/components/design-reference/sample-sectioned-list';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -23,13 +23,17 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
+import { sampleButtermilkBiscuits } from '@/domain/recipe/samples/sample-recipes';
 
-const ingredientSeeds = sampleRecipe.ingredientSections.map((section) => ({
+const ingredientSeeds = sampleButtermilkBiscuits.ingredientSections.map((section) => ({
 	heading: section.heading,
-	items: section.ingredients.map((ingredient) => `${ingredient.quantity} ${ingredient.item}`),
+	items: section.lines.map((line) => line.text),
 }));
 
-const stepSeeds = [{ items: sampleRecipe.steps }];
+const stepSeeds = sampleButtermilkBiscuits.instructionSections.map((section) => ({
+	heading: section.heading,
+	items: section.steps.map((step) => step.text),
+}));
 
 function SampleRecipeForm() {
 	return (

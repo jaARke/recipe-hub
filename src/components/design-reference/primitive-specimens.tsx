@@ -1,4 +1,8 @@
-import { BadgeSpecimen, ButtonSpecimen } from '@/components/design-reference/action-specimens';
+import {
+	BadgeSpecimen,
+	ButtonSpecimen,
+	PaginationSpecimen,
+} from '@/components/design-reference/action-specimens';
 import {
 	AttachmentSpecimen,
 	CardSpecimen,
@@ -29,6 +33,7 @@ import { buttonVariants } from '@/components/ui/button';
 const primitives = [
 	{ id: 'button', title: 'Button', Content: ButtonSpecimen },
 	{ id: 'badge', title: 'Badge', Content: BadgeSpecimen },
+	{ id: 'pagination', title: 'Pagination', Content: PaginationSpecimen },
 	{ id: 'card', title: 'Card', Content: CardSpecimen },
 	{ id: 'input', title: 'Input', Content: InputSpecimen },
 	{ id: 'textarea', title: 'Textarea', Content: TextareaSpecimen },

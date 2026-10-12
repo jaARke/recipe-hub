@@ -59,13 +59,17 @@ Recipe Hub is one Next.js project organized as a layered, ports-and-adapters arc
 
 - **The application layer is the Data Access Layer** that the Next.js data security guide recommends: server-only, deciding for every read and write what the actor (an anonymous visitor or a member) may see or do, and returning minimal DTOs to the render context.
 - **`src/components/ui/`** holds the shadcn primitives, which are adjusted only through tokens and variants. Feature components in `src/components/<feature>/` compose primitives and receive data as props. They never fetch data or call services.
-- **Test kits** live in a `testing/` directory beside the layer they serve (synthetic samples in `src/domain/recipe/testing/`, in-memory port fakes in `src/application/testing/`, a migrated PGlite database in `src/infrastructure/db/testing/`). Only tests import them.
+- **Test kits** live in a `testing/` directory beside the layer they serve (in-memory port fakes in `src/application/testing/`, a migrated PGlite database in `src/infrastructure/db/testing/`). Only tests import them.
+- **Synthetic samples** live in `src/domain/recipe/samples/`. Tests, the seed script, and the design reference all use them, so each sample recipe exists once.
 
 ### 4.2 Dependency rules and enforcement
 
 - Domain imports only `zod` and pure helpers from `src/lib`. Application imports domain and `src/lib`. Neither imports Next.js, React, Drizzle, or a vendor SDK.
 - Presentation never imports infrastructure. Route Handlers that mount a vendor handler (the Better Auth endpoint) obtain it from composition.
-- Only `src/lib/env.ts` reads `process.env`. Everything else receives configuration from it. The one exception is `drizzle.config.ts`: drizzle-kit loads it outside Next, where `env.ts`'s `server-only` import cannot resolve, so it loads `.env.local` with `@next/env` and reads its own variable.
+- Only `src/lib/env.ts` reads `process.env`. Everything else receives configuration from it. The exceptions are entry points that run outside Next, where `env.ts`'s `server-only` import cannot resolve:
+  - `drizzle.config.ts`, which drizzle-kit loads.
+  - The scripts in `scripts/`, which tsx runs with `scripts/tsconfig.json`. It maps `@/` to `src/` and `server-only` to Next's empty module (the alias Vitest uses), so scripts can import server modules.
+  - Each loads `.env.local` with `@next/env` and reads its own variables with Zod. Under tsx, `@next/env` is imported whole, because it is bundled CommonJS.
 - Server modules begin with `import 'server-only'`. Client components (`'use client'`) import only components, domain types, and pure helpers.
 - **Enforcement.** `pnpm lint:boundaries` runs dependency-cruiser with `.dependency-cruiser.ts` (the owner's precedent from sage, kept to a short hand-written rule list). Type-only imports count. It checks that:
   - domain imports only domain, pure `src/lib` helpers (not `env.ts` or `logger.ts`), and `zod`;
@@ -75,7 +79,7 @@ Recipe Hub is one Next.js project organized as a layered, ports-and-adapters arc
   - test kits and Vitest are imported only by tests;
   - there are no cycles and no unresolvable imports;
   - every application, infrastructure, and composition module imports `server-only`, except the two files drizzle-kit loads outside Next (`schema.ts` and `connection-string.ts` in `src/infrastructure/db/`).
-- ESLint forbids `process.env`, `globalThis.process`, and importing `process` outside `src/lib/env.ts` and `drizzle.config.ts`, and requires every `logger` message to be a string literal.
+- ESLint forbids `process.env`, `globalThis.process`, and importing `process` outside `src/lib/env.ts`, `drizzle.config.ts`, and `scripts/`, and requires every `logger` message in `src/` and `scripts/` to be a string literal. dependency-cruiser checks `src/` only: a script is its own composition root.
 - A rule that tooling cannot enforce is written here and checked in review.
 
 ### 4.3 Patterns
@@ -99,13 +103,24 @@ Recipe Hub is one Next.js project organized as a layered, ports-and-adapters arc
 - Route Handlers only for HTTP-shaped needs: the auth endpoint, Blob client-upload tokens, and image delivery. Open Graph images, icons, the manifest, the sitemap, and robots use Next's metadata file conventions.
 - `proxy.ts` (Next 16's replacement for `middleware.ts`) makes optimistic redirects only on the contribute and admin routes; its matcher excludes metadata files. The authoritative check is the application layer, on every call.
 - Cache Components (`'use cache'`, `cacheTag`, `cacheLife`) for public pages, which are the same for every visitor. Session-dependent UI (sign-in state, an Edit button) streams in behind Suspense, following the bundled guide `authentication-with-cache-components.md`.
-- Search state lives in the URL (`searchParams`) so results are shareable and work with the back button.
+- **Cached reads:** `src/app/_lib/recipe-cache.ts` is the one home for recipe cache tags (`recipes` for every list page, `recipe:<slug>` for a recipe) and for the cached reads pages use. The reads use `cacheLife('days')`: writes invalidate the tags, and revalidation in the background a day after an entry was cached catches edits made outside the app (entries expire after a week). Server Actions invalidate with `updateTag`, using `RecipeRef`'s slug. The application layer never imports `next/cache`.
+- **Dynamic routes:**
+  - With Partial Prefetching, `params` and `searchParams` are read inside `<Suspense>`, with skeleton fallbacks that mirror the page. No `loading.tsx`.
+  - A `notFound()` inside Suspense keeps status 200 and adds `noindex`, so unknown slugs and invalid pages get a soft 404.
+  - `generateStaticParams` must return at least one param or the build fails. Recipe pages return the first page's slugs, or a placeholder that fails the slug schema and prerenders a 404 while production is empty.
+  - `MainNav` reads `usePathname` inside Suspense, with a fallback that marks no link as current.
+- **Metadata routes** inside a route group get a hash suffix (`/recipes/<slug>/opengraph-image-<hash>/<id>`). Every named export of a metadata file is re-exported into its route, so helpers stay unexported.
+- Search state lives in the URL (`searchParams`) so results are shareable and work with the back button. The recipe list keeps its page there too (`/?page=2`; page 1 has no query).
 
 ### 4.5 Target structure
 
 ```text
+assets/fonts/             static TTF subsets for Open Graph images, with their licenses
+scripts/                  entry points run with tsx outside Next (seed)
+  seed/photos/            seed photos and their sources
 src/
   app/                    presentation: routing, thin pages and actions
+    _lib/                 cached reads and cache tags shared by routes
     (browse)/             public: recipe list and detail, search
     (contribute)/         approved members: add, edit, import
     (account)/            request access, accept an invite, sign in, privacy
@@ -137,13 +152,19 @@ src/
   lib/                    env, logger, shared helpers
 ```
 
-At the root, `drizzle.config.ts` configures drizzle-kit, `vercel.json` sets the build command that migrates before `next build`, and `.dependency-cruiser.ts` holds the boundary rules.
+At the root, `drizzle.config.ts` configures drizzle-kit, `vercel.json` sets the build command that migrates and seeds before `next build`, and `.dependency-cruiser.ts` holds the boundary rules.
 
 Files are kebab-case (`recipe-repository.ts`), classes and types PascalCase, functions camelCase. Non-component modules export inline. Tests sit beside the code they test as `*.test.ts`.
 
 ### 4.6 Cross-cutting concerns
 
-- **Configuration:** `src/lib/env.ts` validates every variable with Zod once and exports a typed object (`NODE_ENV`, `VERCEL_ENV`, and the pooled `DATABASE_URL`; later sessions add their variables there). Vercel supplies the values; local development pulls them with `vercel env pull`. `drizzle.config.ts` reads `DATABASE_URL_UNPOOLED` itself (section 4.2).
+- **Configuration:** `src/lib/env.ts` validates every variable with Zod once and exports a typed object, so later sessions add their variables there. Today it holds:
+  - `NODE_ENV`, `VERCEL_ENV`, and the pooled `DATABASE_URL`;
+  - `BLOB_STORE_ID`;
+  - `VERCEL_PROJECT_PRODUCTION_URL`, from which it derives `siteUrl` (production's origin on every deployment, `http://localhost:3000` when absent).
+
+  Vercel supplies the values; local development pulls them with `vercel env pull`. The Blob SDK reads and refreshes Vercel's OIDC token itself; there is no read-write token. `drizzle.config.ts` and the scripts read their own variables (section 4.2).
+
 - **Errors:**
   - Expected failures are classes extending `AppError` (`src/lib/errors.ts`) with a stable `code`: `recipe.invalid`, `recipe.not-found`, `recipe.invalid-page`, `access.sign-in-required`, `access.forbidden`.
   - Reads return `null` when nothing is found; writes throw. Validation failures carry problems with dotted paths (`ingredientSections.0.lines.2.item`), the same shape drafts use, so the form renders both alike.
@@ -156,6 +177,8 @@ Files are kebab-case (`recipe-repository.ts`), classes and types PascalCase, fun
   - Repository tests run against PGlite (Postgres 18.3 in WASM, with `pg_trgm`, `unaccent`, and `pgvector` available) built by the real migrations, inside `pnpm test`, with no secrets or branch quota.
   - Playwright for a few end-to-end flows once the core flows exist.
   - Fixtures are synthetic or public-domain recipes, never real family data.
+  - Infrastructure adapters are tested against real engines, never module mocks. `BlobImageStore` is a thin pass-through with no local engine, so the seed run and the preview verify it.
+  - Presentation logic that is pure (JSON-LD mapping, page numbering) is tested beside its component.
 
 ## 5. Specifications and constraints
 
@@ -169,6 +192,9 @@ The normalized shape every entry mode produces, finalized in Session 2 in `src/d
 - **Ingredients and steps:** ingredient sections, each with an optional heading and lines that keep the original text verbatim beside their amount, unit, item, and preparation note. Instruction sections of steps, each an object with text, so a step can gain fields without reshaping stored recipes.
 - **Tags** are dynamic, with no fixed vocabulary or groups. The first recipe to use a tag sets its label; later spellings that differ only in case or spacing reuse it, and a contributor can respell a tag that only their recipe uses. Two saves racing to introduce the same new tag in different spellings can keep both; at this scale that is accepted and fixed by a merge.
 - **Images**, each with a role: dish photos (public; the first is the cover) and original scans (members only). Array order is display order.
+  - Each image is a Blob pathname plus optional alt text. A pathname starts with its role (`dish/` or `scan/`) and has only plain segments (letters, numbers, `_`, `-`, `.`), because `..` or `%2e%2e` would climb from `dish/` into `scan/` once the SDK builds the blob URL.
+  - Only JPEG, PNG, WebP, and AVIF are served (`recipeImageContentTypes`).
+  - No dimensions are stored yet: every screen shows photos in fixed-aspect boxes.
 - **Provenance**, set at creation: the entry mode (`manual`, `url` with its source URL, or `photo`) and which model produced an AI draft.
 - **Identity:** uuidv7 ids generated by Postgres 18, a slug assigned once from the title (ASCII, at most 60 characters, `-2` and up on a collision) and never rewritten, so shared links keep working, the contributor, and timestamps.
 - **`RecipeDraft`:** the same content with every field optional, plus provenance and problems. Drafts are never saved; members review them in the recipe form.
@@ -215,7 +241,17 @@ Unknown keys are dropped on read, so older code that re-saves a recipe would dro
 - No staging environment. Pull requests get preview deployments behind Vercel Authentication, and each gets its own Neon branch, `preview/<git-branch>`, created by the integration and deleted by `.github/workflows/preview-branch-cleanup.yml` when the pull request closes.
 - Local development uses the Neon branch `develop` through Development-scoped variables, never production.
 - Every build migrates its database before `next build` (`vercel.json`'s `buildCommand`). The previous deployment keeps serving during and after a production build, and Skew Protection keeps old Server Actions alive for 12 hours, so migrations are expand then contract: additive first, removals in a later deployment.
-- Environment variables are managed in Vercel and pulled locally with `vercel env pull`. The AI Gateway authenticates with Vercel's OIDC token, so no provider keys exist.
+- Every build then runs `pnpm db:seed`, which seeds preview branches with six synthetic recipes and their photos and refuses production, so production never holds synthetic recipes.
+  - The seed is idempotent: it skips recipes whose slug exists and uploads only missing photos. A Postgres advisory lock serializes concurrent builds of one pull request, which would otherwise both create a recipe (the second as `-2`).
+  - Locally, `pnpm db:seed` seeds `develop` on demand.
+  - Seeded recipes belong to a fixed synthetic member id, `00000000-0000-4000-8000-000000000001`, which has no account.
+- Environment variables are managed in Vercel and pulled locally with `vercel env pull`. The AI Gateway and Blob authenticate with Vercel's OIDC token, so no provider keys or Blob tokens exist. Locally, the Blob SDK refreshes an expired development token with the Vercel CLI's credentials.
+  - The Neon integration also adds `PG*`, `POSTGRES_*`, and `NEON_PROJECT_ID` variables. The app reads none of them; they are the integration's to manage and harmless to keep.
+- **Blob layout:** one private store, `recipe-hub-images`, serves every environment, since Blob has no branches.
+  - Pathnames put visibility first, then the environment: `dish/production/...`, `dish/preview/...`, `dish/development/...`, `scan/<environment>/...`, and seed photos at `dish/seed/<slug>.jpg`.
+  - Preview branches copy production's rows, so previews read production's photos.
+  - Writes and deletes stay inside their own environment's prefix, so a preview never deletes a photo production uses.
+  - Seed photos are reachable through production's image route too. They are public-domain or CC0, so that is harmless.
 - Email (access-request notifications, invites when sent by email, and sign-in codes) goes through Resend's free plan, with SPF and DKIM records for a sending domain in Route 53.
 
 ### 5.6 Platform limits that shape the design
@@ -225,7 +261,11 @@ Unknown keys are dropped on read, so older code that re-saves a recipe would dro
 - AI Gateway free tier: $5 a month, a subset of models, and lower rate limits. Buying credits unlocks every model at provider list price.
 - Functions run up to 800 seconds on Pro. Import actions set `maxDuration` explicitly.
 - Resend free plan: 3,000 emails a month and 100 a day, from a verified domain only.
-- `ImageResponse` (Open Graph images): a 500 KB bundle including fonts, flexbox and a CSS subset only, and TTF, OTF, or WOFF fonts (not WOFF2). Production responses are cached as immutable for a year, so per-recipe image URLs are versioned.
+- `ImageResponse` (Open Graph images):
+  - Flexbox and a CSS subset only, no CSS variables or oklch. Static TTF, OTF, or WOFF fonts only: not WOFF2, and not variable fonts.
+  - `<img>` sources must be JPEG or PNG: WebP renders blank and AVIF throws.
+  - The docs' 500 KB bundle limit is Edge-era wording and is not enforced on the Node runtime.
+  - Next 16.4 sends `Cache-Control: public, max-age=0, must-revalidate`, not immutable, so each fetch renders again. Per-recipe image URLs are still versioned, and an old version's URL returns 404.
 
 ### 5.7 Sharing and metadata
 
@@ -236,16 +276,26 @@ Recipes are meant to be shared, so links need good previews before the site is u
   - A site-wide image for the root.
   - Per-recipe images (title, source, dish photo) generated through `generateImageMetadata`, with the recipe revision in the image id so an edit changes the URL.
   - `twitter.card` set to `summary_large_image`, using the Open Graph image.
-  - `metadataBase` set explicitly from `env.ts`.
-  - Fonts as committed static TTF instances, because `next/font` cannot feed `ImageResponse`.
-- **Structured data:** schema.org `Recipe` JSON-LD on recipe pages (bundled guide `json-ld.md`), with ISO 8601 times, ingredients, `HowToStep` and `HowToSection`, and yield. It powers rich results only if pages are indexed, and helps recipe apps import our pages.
-- **Crawling:** `robots.ts` and `sitemap.ts`. Whether public recipes are indexed by search engines is a fork (Session 3); if not, pages carry `noindex` through metadata, not a robots.txt rule, which Google cannot see past.
+  - `metadataBase` set explicitly from `env.ts` (`siteUrl`, from `VERCEL_PROJECT_PRODUCTION_URL`), since Session 3. Next's own fallback covers only Open Graph images, while canonical URLs, `og:url`, and JSON-LD need absolute URLs. On previews, Next points `og:image` at the branch URL regardless.
+  - Fonts as committed static TTF instances in `assets/fonts/`, because `next/font` cannot feed `ImageResponse`.
+    - Fraunces is instanced from Google Fonts' variable file at SOFT 100, weight 500, optical size 72 (upstream statics have no 500), then subset to Latin: `fonttools varLib.instancer "Fraunces[SOFT,WONK,opsz,wght].ttf" SOFT=100 wght=500 opsz=72 WONK=0` and `pyftsubset --layout-features='kern,liga' --no-hinting` with the Latin unicode list.
+    - Hanken Grotesk Regular is the upstream static file, subset the same way.
+    - fontTools runs in a throwaway virtualenv, not as a dependency.
+  - The card's colors are constants that mirror the light theme tokens in sRGB, because Satori reads neither CSS variables nor oklch.
+- **Structured data:** schema.org `Recipe` JSON-LD on recipe pages (bundled guide `json-ld.md`), typed with `schema-dts`.
+  - Fields: ISO 8601 times (prep and cook only as a pair), ingredients as written, `HowToStep`s with named `HowToSection`s for headed sections, yield, keywords from tags, and every dish photo as an absolute URL.
+  - It omits `author` until contributors have public names (Session 5), since a source can be a cookbook rather than a person.
+  - It powers rich results only if pages are indexed (Google requires an image), and helps recipe apps import our pages.
+- **Crawling:** pages carry `noindex, follow` through the root layout's metadata until launch, not a robots.txt rule, which Google cannot see past.
+  - `robots.ts` allows everything, so crawlers can read each noindex and link-preview bots can fetch Open Graph images.
+  - `sitemap.ts` arrives with the indexing flip in Session 8. Google advises listing only URLs you want indexed, and Next does not escape sitemap XML (slugs are ASCII).
+  - Vercel adds `X-Robots-Tag: noindex` to previews.
 - **Verification:** Meta's Sharing Debugger and Google's Rich Results Test on production. Previews sit behind Vercel Authentication, so outside crawlers cannot fetch their images.
 
 ### 5.8 Project conventions
 
 - **Formatting:** the owner's shared scheme from the Vispero/sage project: Prettier with tabs, single quotes, width 100, `es5` trailing commas, LF line endings, and perfectionist import sorting. Run `pnpm format`; never hand-format against it.
-- **Scripts:** `lint` runs every `lint:*` script, so new checks are added as `lint:*`.
+- **Scripts:** `lint` runs every `lint:*` script, so new checks are added as `lint:*`. Scripts that run app code outside Next live in `scripts/` and run with `tsx --tsconfig scripts/tsconfig.json` (section 4.2).
 - **Commits:** a plain imperative sentence describing the change, without prefixes.
 - **Dependencies:** added with their first consumer, chosen against current documentation, installed with pnpm. pnpm blocks dependency build scripts, so each package that has one is listed in `pnpm-workspace.yaml`'s `allowBuilds` deliberately (`esbuild: false`: drizzle-kit's bundler runs from its platform package without the script).
 - **Migrations:** change `src/infrastructure/db/schema.ts`, run `pnpm db:generate --name <change>`, and commit the generated files. Never edit an applied migration. drizzle-kit 0.31 applies only migrations newer than the last one applied, so an older migration merged late would be skipped silently. `drizzle-kit check` (`pnpm lint:migrations`) only warns about that, so a test fails when the journal is out of timestamp order.
@@ -258,7 +308,7 @@ The UI must feel consistent and deliberate. This section is the binding design l
 
 ### 6.1 Rules
 
-- **Tokens only.** Color, typography, radius, spacing, shadow, and motion come from tokens in `src/app/globals.css` (Tailwind v4 `@theme`). Outside `src/components/ui/`, code never uses raw color values, arbitrary values such as `text-[13px]`, inline style objects for visual values, or one-off styles.
+- **Tokens only.** Color, typography, radius, spacing, shadow, and motion come from tokens in `src/app/globals.css` (Tailwind v4 `@theme`). Outside `src/components/ui/`, code never uses raw color values, arbitrary values such as `text-[13px]`, inline style objects for visual values, or one-off styles. The one exception is Open Graph images: `ImageResponse` takes inline styles only, so the card defines a few colors once, as constants that mirror the light theme tokens.
 - **Semantic names.** Components use semantic tokens (background, card, popover, primary, secondary, muted, accent, destructive, border, input, ring) rather than palette steps, so a theme changes in one place. Every token is defined for both themes.
 - **Primitives first.** Screens are built from the primitives in `src/components/ui/`. A new look is a new variant on the primitive, never an override at the call site. Primitives keep shadcn's generated class strings, arbitrary values included, so upstream changes merge cleanly; each deliberate change is listed in 6.5.
 - **One of each.** One type scale with paired line heights, one radius token, one focus treatment, one set of motion durations that respects `prefers-reduced-motion`.
@@ -285,7 +335,7 @@ The UI must feel consistent and deliberate. This section is the binding design l
 
 Lowest ratios: muted text on muted fills 5.49:1 (light); destructive text on its hover tint 4.55:1; input borders 3.02:1 (light) and 3.41:1 (dark). A token change is rechecked against every pair before it lands.
 
-**Themes.** Light and dark, through the `.dark` class on `<html>` set by `next-themes`. The default follows the device; the header toggle offers Light, Dark, and System.
+**Themes.** Light and dark, through the `.dark` class on `<html>` set by `next-themes`. The default follows the device; the header toggle offers Light, Dark, and System. The dark tokens and the `dark:` variant apply on screen only, so printouts always use the light tokens.
 
 **Typography.**
 
@@ -310,7 +360,7 @@ Lowest ratios: muted text on muted fills 5.49:1 (light); destructive text on its
 ### 6.3 Components and patterns
 
 - **Library:** shadcn/ui on Base UI primitives, Vega style, Lucide icons.
-  - Installed primitives: attachment, badge, button, card, checkbox, dialog, dropdown-menu, empty, field, input, label, select, separator, skeleton, spinner, tabs, textarea, toast, tooltip.
+  - Installed primitives: attachment, badge, button, card, checkbox, dialog, dropdown-menu, empty, field, input, label, pagination, select, separator, skeleton, spinner, tabs, textarea, toast, tooltip.
   - Add more with `pnpm shadcn add <name>`, then `pnpm format` and `pnpm exec eslint . --fix`, plus a demo on `/design`.
   - When the CLI offers to overwrite a primitive listed in 6.5, decline and keep the customized version.
 - **Composition:** Base UI composes through the `render` prop, not `asChild`. A link styled as a button takes `buttonVariants()` on the link itself, because Base UI's Button must not render links. `cn` comes from the `cn` package.
@@ -324,6 +374,21 @@ Lowest ratios: muted text on muted fills 5.49:1 (light); destructive text on its
   - Empty states use the `empty` primitive (`RecipesEmptyState` on the home page).
   - Loading states are skeletons that mirror the final layout (`RecipeCardSkeleton`). A `loading.tsx` goes only in segments that await data, never above a gated route, where it would turn a 404 into a soft 404.
 - **Theme:** `ThemeProvider` in `src/components/layout/` holds the next-themes configuration. `ThemeToggle` swaps its sun and moon icons with `dark:` classes so the server render never depends on the theme.
+- **Recipes:**
+  - `RecipeCard` takes a `RecipeSummaryDto`. A recipe without a photo keeps the same 4:3 box, in `bg-muted` with a muted cooking-pot icon, so every row lines up.
+  - Card photos are decorative (`alt=""`), because the card's link is named by its title. Cards in the first row load eagerly.
+  - `RecipeDetail` takes a `PublicRecipeDto` and a heading level: 1 on recipe pages, 4 under `/design`'s own headings.
+  - The detail shows the source, the dates added and edited (en-US, America/New_York, in `<time>`), a 3:2 cover that preloads and is hidden in print, ingredients and steps in `text-lg`, and notes.
+    - An ingredient line with an amount shows the amount and unit in bold, then the item and preparation; a line without one shows its original text.
+    - Step numbers restart in each section.
+  - `recipeTextStyles` in `recipe-detail.tsx` holds the recipe text hierarchy.
+  - `RecipePhoto` is the one fixed-aspect `next/image` box.
+  - The site's name has one home, `siteName` in `src/components/layout/site-name.ts`.
+- **Pagination:**
+  - `RecipePagination` shows Previous and Next only where they lead somewhere.
+  - It shows the first and last pages, the current page with one on each side, and an ellipsis for longer gaps (a gap of one page shows that page), plus a "Page 3 of 5" label.
+  - It wraps on narrow phones rather than scrolling sideways.
+- **Printing:** the header and the cover photo are hidden, and sections, steps, and notes avoid page breaks.
 
 ### 6.4 References
 
@@ -341,6 +406,7 @@ The owner likes [tanstack.com](https://tanstack.com/) and [mstone.ai](https://ms
 - `button.tsx` and `badge.tsx`, `default` variant: hover darkens the primary 10% toward the foreground instead of fading it to 80%. White text on faded Spruce is 4.26:1, which fails AA; on the darkened hover it is 7.48:1.
 - `button.tsx`, `destructive` variant: the focus border is full-strength `border-destructive` instead of 40 percent, so the focus indicator meets 3:1 like every other control.
 - `textarea.tsx`: `resize-y supports-[field-sizing:content]:resize-none`, so auto-growing textareas show no handle.
+- `pagination.tsx`, `PaginationLink`: renders `next/link` with `buttonVariants({ variant: isActive ? 'outline' : 'ghost', size })` instead of Base UI's `Button` with `render={<a />}`. Base UI's Button must not render links, and `next/link` keeps page changes client-side. Its props are `next/link`'s.
 
 ## 7. Decision log
 
@@ -389,6 +455,20 @@ The owner likes [tanstack.com](https://tanstack.com/) and [mstone.ai](https://ms
 | 2026-10-10 | Repository tests against PGlite inside `pnpm test` | Real Postgres 18.3 built by the real migrations, with no secrets, no branch quota, and no CI change. Replaces tests against a Neon branch. |
 | 2026-10-10 | Logger: console-backed JSON lines with no dependency | Vercel takes a line's level from the console method. pino writes every level to stdout, so the level filter would show everything as info; LogTape works but is more than the app needs. |
 | 2026-10-10 | `error.tsx` lands with Session 3's first data-reading page | Nothing in Session 2 renders data, so a boundary could not be exercised. |
+| 2026-10-11 | One private Blob store. Pathnames put visibility first, then the environment (`dish/<env>/...`, `scan/<env>/...`; seeds at `dish/seed/<slug>.jpg`), and the domain requires plain segments under the role's folder | Previews keep reading production's photos from copied rows, and the environment segment lets Session 6 keep preview writes and deletes away from production's. A store per environment would break those photos on previews, and a public store would make every URL permanent. Plain segments stop `..` from reaching `scan/` when the SDK builds the blob URL. |
+| 2026-10-11 | Blob authenticates with OIDC (`BLOB_STORE_ID`); the read-write token was removed, not made Sensitive | Short-lived, rotating credentials replace a readable long-lived secret that Vercel flagged. The SDK silently falls back to a token when OIDC fails, so none is kept. |
+| 2026-10-11 | Dish photos stream through `/api/images/[...path]` with year-long immutable caching (`s-maxage` for Vercel's CDN). Anything else, or any query string, gets 404 with `no-store`, and only image content types are served | Pathnames are never reused, so a response never changes, and a query string would bypass the CDN cache. |
+| 2026-10-11 | Vercel image optimization for dish photos through `images.localPatterns`, in fixed-aspect boxes (cards 4:3, the recipe cover 3:2); no image dimensions stored yet | Cropped boxes need no dimensions and cause no layout shift. The optimizer fetches without cookies, so scans never use it. About $0.05 per 1,000 transformations. |
+| 2026-10-11 | `pnpm db:seed` (tsx) seeds six synthetic recipes and four public-domain or CC0 photos through `RecipeService` and `BlobImageStore`: on `develop` on demand and in every preview build, never in production | Browsing works before authoring, with the real slug, tag, and validation rules. Production never holds synthetic recipes. |
+| 2026-10-11 | Samples moved from `src/domain/recipe/testing/` to `src/domain/recipe/samples/` | Tests, the seed, and the design reference share one copy of each recipe. |
+| 2026-10-11 | Recipe list at `/` with `?page=N`: 24 per page, newest first, numbered pagination from a total count; sorting moves to Session 4 | Numbered pages let readers jump, and a count is cheap at this scale. A title sort needs Session 4's unaccent-backed columns to order accented titles correctly. |
+| 2026-10-11 | Recipe pages show the source and the dates added and edited (en-US, America/New_York); contributor names wait for Session 5 | Owner's choice. Vercel renders in UTC, so a fixed zone keeps an evening edit on the right day. |
+| 2026-10-11 | `noindex, follow` through the root metadata; `robots.ts` allows everything; `sitemap.ts` waits for the indexing flip in Session 8 | Crawlers must reach a page to read its noindex, and link-preview bots must fetch Open Graph images. Google advises listing only URLs you want indexed. |
+| 2026-10-11 | `metadataBase` set now (moved from Session 8), from `VERCEL_PROJECT_PRODUCTION_URL`, with localhost when absent | Canonical URLs, `og:url`, and JSON-LD need absolute URLs, and Next's own fallback covers only Open Graph images. It matches Next's fallback and needs no configuration. |
+| 2026-10-11 | Open Graph fonts committed as Latin subsets: Fraunces instanced at SOFT 100, weight 500, optical size 72, plus Hanken Grotesk Regular | Satori needs static fonts, and upstream ships no weight-500 soft instance. Nothing is fetched at render time. |
+| 2026-10-11 | Cached reads and tag names in `src/app/_lib/recipe-cache.ts`, with `cacheLife('days')` | One home for the tags Session 6's Server Actions invalidate, outside the application layer, which may not import `next/cache`. Background revalidation after a day catches edits made outside the app. |
+| 2026-10-11 | `generateStaticParams` returns a placeholder slug while no recipes exist | Cache Components fails the build on an empty result, and production starts empty. The placeholder fails the slug schema and prerenders a 404. |
+| 2026-10-11 | Print uses the light tokens: the dark theme applies on screen only | Paper is light. |
 
 ## 8. Chronology and dependencies
 
@@ -396,7 +476,7 @@ The owner likes [tanstack.com](https://tanstack.com/) and [mstone.ai](https://ms
 flowchart LR
 	S0["0 Project setup (done)"] --> S1["1 Design system and app shell (done)"]
 	S0 --> S2["2 Architecture and data (done)"]
-	S1 --> S3["3 Public browsing"]
+	S1 --> S3["3 Public browsing (done)"]
 	S2 --> S3
 	S3 --> S4["4 Search"]
 	S1 --> S5["5 Auth and contributor access"]
@@ -408,9 +488,8 @@ flowchart LR
 	S7 --> S8
 ```
 
-- Session 3 is next.
-- Session 3 needs the design system and the data layer. It seeds synthetic recipes, so browsing works before authoring exists.
-- Session 4 builds on the browse UI and can run in parallel with Session 5.
+- Session 3 (done) seeded synthetic recipes, so browsing works before authoring exists.
+- Session 4 is next. It builds on the browse UI and can run in parallel with Session 5.
 - Session 5 needs the design system for its account pages and the data layer for Better Auth's tables.
 - Session 6 needs public pages to land on and authentication, so recipes are attributed from the first save.
 - Session 7 builds on the authoring form, which doubles as the review form. Semantic search with embeddings created at import is revisited after Session 7.
@@ -436,10 +515,7 @@ Delivered:
 Deferred, each to the session that needs it:
 
 - **Session 2:** the duration formatting in `recipe-card.tsx` moves to the duration value object, and an `error.tsx` boundary arrives with the first data reads.
-- **Session 3:**
-  - `MainNav` calls `usePathname`, so it needs a Suspense boundary once a route has dynamic params (`blocking-prerender-client-hook`).
-  - The recipe text styles in `src/components/design-reference/recipe-detail-excerpt.tsx` move into real recipe components, and the reference page renders those.
-  - A larger recipe card title, if wanted, becomes a card size variant.
+- **Session 3:** resolved there. `MainNav` renders inside Suspense, the recipe text styles live in the real recipe components that `/design` renders, and a larger card title was not needed.
 - **Session 5 or 6:** a mobile menu once the nav outgrows the header.
 - **Session 6:**
   - A compact textarea size variant for list inputs, which the demo currently sizes at the call site.
@@ -479,12 +555,7 @@ Delivered:
 
 Deferred, each to the session that needs it:
 
-- **Session 3:**
-  - The `error.tsx` boundary with the first data-reading page.
-  - Where seed data lives: the domain samples are test kits, which a seed script cannot import.
-  - Seeded recipes need a `contributorId` before any member exists.
-  - Paging is `limit` (at most 100) and `offset` today; revisit with the browse page's sorting.
-  - `RecipeCard` props versus `RecipeSummaryDto`.
+- **Session 3:** resolved there: the `error.tsx` boundary, where seed data lives, the seeded `contributorId`, paging with a total count, and `RecipeCard` taking `RecipeSummaryDto`.
 - **Session 4:**
   - The `tsvector` and filter columns are generated from `content`, plus a GIN index on `tags`.
   - `findTagLabels` reads every label in use; revisit at scale.
@@ -501,7 +572,7 @@ Deferred, each to the session that needs it:
   - Consider shared contract tests that both the in-memory and Drizzle repositories run.
 - **Session 7:** extractors drop an invalid amount but keep the line's text. The draft schemas convert to JSON Schema in both directions.
 
-### Session 3: Public browsing
+### Session 3: Public browsing (done 2026-10-11)
 
 **Goal:** anyone can browse and read recipes, and shared links preview well.
 
@@ -523,6 +594,60 @@ Deferred, each to the session that needs it:
 - **Open Graph fonts.** Recommendation: committed static TTF instances rather than fetching fonts at render time.
 
 **Done when:** a seeded recipe is readable signed out on a preview, its link previews with the right image in the deployment's Open Graph tab, and the services and mappers are tested.
+
+Delivered:
+
+- **Browse:** two public pages, read through cached functions tagged `recipes` and `recipe:<slug>`, with skeleton fallbacks and a root `error.tsx`.
+  - The recipe list at `/`: cards with a cover photo or a no-photo box, and numbered pagination from a total count, 24 per page.
+  - Recipe pages at `/recipes/[slug]`: the source, the dates added and edited, times and yield, the cover photo, ingredients, steps, notes, and print styles.
+- **Images:**
+  - The `ImageStore` port and `BlobImageStore` on the private store, authenticating with OIDC.
+  - `RecipeImageService`: dish photos and image content types only; scans are refused until Session 5.
+  - `/api/images/[...path]` with year-long immutable caching, and Vercel image optimization for dish photos.
+- **Sharing:** per-recipe Open Graph images (title, source, and dish photo, versioned by `updatedAt`), `Recipe` JSON-LD, canonical URLs, `metadataBase`, `robots.ts`, and `noindex` until launch.
+- **Domain and application:** the role-in-pathname rule with plain segments, the served image content types, `toIsoDuration`, `RecipeRepository.count()`, and `listRecipes` returning `{ recipes, total }`.
+- **Seeding:**
+  - Six synthetic recipes in `src/domain/recipe/samples/`, two of them new.
+  - Four public-domain or CC0 photos, with their sources in `scripts/seed/photos/SOURCES.md`.
+  - `pnpm db:seed`, which runs in preview builds and on demand locally.
+- **Design reference:** `/design` renders the real recipe components from DTOs built with the application's mappers, plus a pagination demo. The duplicated sample recipe is gone.
+- **Operations:** the Blob connection moved to OIDC and its read-write token was removed. `delete-branch-action` v3.2.1 is already the latest release.
+
+Deferred, each to the session that needs it:
+
+- **Session 4:**
+  - Sorting (relevance, newest, A to Z) for the list and search alike, on Session 4's unaccent-backed generated columns.
+  - A canonical URL for `/?page=1`, which duplicates `/`.
+  - A `RecipePagination` composition demo on `/design`, alongside search pagination.
+  - If rendering `?page` requests loads the database noticeably, consider `'use cache: remote'` (platform fees).
+- **Session 5:**
+  - Before the `contributor_id` foreign key, choose one: a placeholder member row for the seed member `00000000-0000-4000-8000-000000000001` in non-production branches, or reassigning seeded recipes and resetting `develop`.
+  - "Added by <display name>" on recipe pages, and `author` in the JSON-LD.
+  - The members-only branch of the image route for scans: served unoptimized, never cached publicly.
+- **Session 6:**
+  - Uploads write under `dish/<environment>/` and `scan/<environment>/`, with pathnames in the domain's plain-segment shape. Deletes refuse other environments' prefixes.
+  - Client uploads under OIDC use `handleUploadPresigned` (`handleUpload` needs a read-write token), restricted to `recipeImageContentTypes`.
+  - Open Graph images draw only JPEG or PNG. Either make a JPEG derivative at upload, with `sharp` as a direct dependency, or restrict upload types.
+  - Record image dimensions at upload if a screen shows a photo at its natural shape, and show more than the cover photo.
+  - Server Actions invalidate `recipes` and `recipe:<slug>` with `updateTag`.
+  - A recipe without a description publishes no meta or Open Graph description; consider a fallback with the form.
+  - The Open Graph image caches its photo by pathname with `cacheLife('max')`, a missing photo included. Upload before saving the recipe so a card never caches the no-photo layout for a pathname that later exists.
+- **Session 8:**
+  - `sitemap.ts` and the `sitemap` line in `robots.ts`, when noindex comes off.
+  - Open Graph caching:
+    - Consider explicit immutable headers through `ImageResponse`'s `headers`, since the URLs are versioned. The cost: a deleted recipe's card lingers on the CDN unless purged.
+    - Downscale the embedded photo; photo cards are 770 to 955 KB.
+  - Unknown slugs and invalid pages return the not-found page with status 200 and `noindex`. Revisit with a proxy existence check if real 404s matter.
+    - The server's HTML holds only the skeleton; the not-found UI arrives in the streamed payload, so clients without JavaScript see the skeleton alone.
+    - An invalid list page keeps the title "Recipe Hub"; an unknown slug gets "Page not found".
+  - Rich Results Test: recipes without a photo cannot qualify, and `recipeYield` is text ("Serves 8") where Google prefers a number for servings.
+  - Check that Flat Rate CDN is on in Billing.
+- **Operations:** `neondatabase/delete-branch-action` v3.2.1 is the latest release, a composite action. The Node 20 warning comes from the `setup-node@v4` it pins. Revisit when Neon updates it, or replace it with a `neonctl` step.
+- **Known quirks:**
+  - shadcn's `PaginationEllipsis` puts `aria-hidden` on the span holding its "More pages" text, so the text is never announced. The page links carry their own labels.
+  - `components.json` points `utils` at `@/lib/utils`, which does not exist. The CLI still writes `import { cn } from 'cn'`.
+  - Satori: `lineClamp` works only with `display: 'block'`, and adjacent JSX text children throw (use a template string).
+  - Cards in the first row load eagerly. On tall screens a photo in the second row can be the largest paint, which is accepted.
 
 ### Session 4: Search
 
@@ -616,7 +741,7 @@ Deferred, each to the session that needs it:
 
 - **Brand and sharing:**
   - A brand mark designed with the owner and the icon set from section 5.7: favicon, SVG icon with a dark variant, Apple touch icon, and manifest icons.
-  - The web app manifest, the site-wide Open Graph image, `metadataBase` from `env.ts`, and the Twitter card.
+  - The web app manifest, and the site-wide Open Graph image with its Twitter card (`metadataBase` landed in Session 3).
   - Verification with Meta's Sharing Debugger and Google's Rich Results Test.
 - **Tests and audits:**
   - Playwright end-to-end tests for browsing, search, the request and invite flow, manual entry, and import.
@@ -634,7 +759,6 @@ Deferred, each to the session that needs it:
 
 | Action | Needed by |
 | --- | --- |
-| Turn on Neon preview branching, create the `develop` branch with Development-scoped variables, and add the Neon API key and project ID to GitHub | Session 2's pull request |
 | Create a Resend account, add its sending-domain records in Route 53, and store the API key in Vercel | Session 5 |
 | Be the first admin and register a passkey | Session 5 |
 | Try real recipe cards by hand; decide on AI Gateway credits | Session 7 |
@@ -643,6 +767,7 @@ Deferred, each to the session that needs it:
 ## 11. Open questions and risks
 
 - **Public exposure:** browsing is public, so recipes, sources, contributor names, and photos can be scraped or indexed. Mitigation: member-chosen display names, members-only scans, `noindex` until launch, and no contact details on public pages.
+- **One Blob store for every environment:** preview and local code can write beside production's photos. Mitigation: environment prefixes, deletes limited to their own prefix (Session 6), and OIDC credentials instead of a long-lived token.
 - **Passkey familiarity:** some relatives may not know passkeys, and recovery depends on the admin. Mitigation: email one-time codes as the fallback, plain onboarding notes, and new invites for new devices.
 - **Sign-in on previews:** passkeys are bound to their domain. Mitigation: invites minted against each preview's Neon branch.
 - **Spam requests:** the request form is public. Mitigation: BotID, rate limits, and requests that create no account.
@@ -658,7 +783,7 @@ Deferred, each to the session that needs it:
 - [x] Session 0: Project setup
 - [x] Session 1: Design system and app shell
 - [x] Session 2: Architecture foundation, recipe domain, and data layer
-- [ ] Session 3: Public browsing
+- [x] Session 3: Public browsing
 - [ ] Session 4: Search
 - [ ] Session 5: Authentication and contributor access
 - [ ] Session 6: Recipe authoring

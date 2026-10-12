@@ -1,18 +1,15 @@
-import * as React from 'react';
-import { sampleRecipeCards } from '@/components/design-reference/fixtures';
-import { RecipeDetailExcerpt } from '@/components/design-reference/recipe-detail-excerpt';
 import { ReferenceSubsection, Specimen } from '@/components/design-reference/reference-section';
 import { SamplePhotoUpload } from '@/components/design-reference/sample-photo-upload';
+import {
+	sampleRecipeDetail,
+	sampleRecipeSummaries,
+} from '@/components/design-reference/sample-recipe-dtos';
 import { SampleRecipeForm } from '@/components/design-reference/sample-recipe-form';
 import { PageContainer } from '@/components/layout/page-container';
-import { RecipeCard, RecipeCardSkeleton } from '@/components/recipe/recipe-card';
+import { RecipeCard } from '@/components/recipe/recipe-card';
+import { RecipeDetail } from '@/components/recipe/recipe-detail';
+import { RecipeGrid, RecipeGridSkeleton } from '@/components/recipe/recipe-grid';
 import { RecipesEmptyState } from '@/components/recipe/recipes-empty-state';
-
-const skeletonCount = sampleRecipeCards.length;
-
-function RecipeGrid({ children }: { children: React.ReactNode }) {
-	return <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{children}</ul>;
-}
 
 function CompositionSpecimens() {
 	return (
@@ -20,12 +17,12 @@ function CompositionSpecimens() {
 			<ReferenceSubsection
 				id="recipe-grid"
 				title="Recipe grid"
-				description="One column on phones, two on tablets, three on desktop. Each card is a single link."
+				description="One column on phones, two on tablets, three on desktop. Each card is a single link to its recipe, and a recipe without a photo keeps the photo's box."
 			>
 				<RecipeGrid>
-					{sampleRecipeCards.map((recipe) => (
-						<li key={recipe.title}>
-							<RecipeCard {...recipe} />
+					{sampleRecipeSummaries.map((recipe) => (
+						<li key={recipe.id}>
+							<RecipeCard recipe={recipe} />
 						</li>
 					))}
 				</RecipeGrid>
@@ -35,24 +32,17 @@ function CompositionSpecimens() {
 				title="Recipe grid, loading"
 				description="Skeletons hold the same layout while recipes load."
 			>
-				<div role="status">
-					<span className="sr-only">Loading recipes</span>
-					<RecipeGrid>
-						{Array.from({ length: skeletonCount }, (_, index) => (
-							<li key={index}>
-								<RecipeCardSkeleton />
-							</li>
-						))}
-					</RecipeGrid>
-				</div>
+				<RecipeGridSkeleton />
 			</ReferenceSubsection>
 			<ReferenceSubsection
 				id="recipe-detail"
 				title="Recipe detail"
-				description="Reading width, with ingredients and steps in text-lg."
+				description="Reading width, with ingredients and steps in text-lg. Its headings start at h4 here, under this page's own."
 			>
 				<Specimen className="px-0 py-10 sm:py-14">
-					<RecipeDetailExcerpt />
+					<PageContainer width="reading">
+						<RecipeDetail recipe={sampleRecipeDetail} headingLevel={4} />
+					</PageContainer>
 				</Specimen>
 			</ReferenceSubsection>
 			<ReferenceSubsection

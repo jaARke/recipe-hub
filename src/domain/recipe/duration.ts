@@ -26,6 +26,22 @@ export function formatDuration(minutes: number): string {
 	return `${hours} hr ${remainder} min`;
 }
 
+// ISO 8601, the form schema.org Recipe times take.
+export function toIsoDuration(minutes: number): string {
+	const hours = Math.floor(minutes / 60);
+	const remainder = minutes % 60;
+
+	if (hours === 0) {
+		return `PT${remainder}M`;
+	}
+
+	if (remainder === 0) {
+		return `PT${hours}H`;
+	}
+
+	return `PT${hours}H${remainder}M`;
+}
+
 // The stated total wins, since it can include time that is neither prep nor cooking, such as chilling.
 export function totalMinutes(times: RecipeTimes): number | undefined {
 	if (times.totalMinutes !== undefined) {

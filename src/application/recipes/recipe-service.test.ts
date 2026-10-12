@@ -14,7 +14,7 @@ import {
 	sampleChickenSoup,
 	sampleLemonIceboxPie,
 	sampleTomatoSalad,
-} from '@/domain/recipe/testing/sample-recipes';
+} from '@/domain/recipe/samples/sample-recipes';
 
 const missingId = '0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e';
 const malformedId = 'not-a-recipe-id';
@@ -102,22 +102,27 @@ describe('getRecipe', () => {
 });
 
 describe('listRecipes', () => {
-	it('lists recipes newest first, a page at a time', async () => {
+	it('lists recipes newest first, a page at a time, with the total', async () => {
 		const { serviceFor } = createCatalog();
 		const member = serviceFor(memberActor());
 		for (const content of [sampleButtermilkBiscuits, sampleChickenSoup, sampleLemonIceboxPie]) {
 			await member.createRecipe(manualEntry(content));
 		}
 		const reader = serviceFor(anonymousActor());
-		const titles = async (page: RecipePage) =>
-			(await reader.listRecipes(page)).map(({ title }) => title);
+		const listed = async (page: RecipePage) => {
+			const { recipes, total } = await reader.listRecipes(page);
+			return { titles: recipes.map(({ title }) => title), total };
+		};
 
-		expect(await titles({ limit: 2, offset: 0 })).toEqual([
-			'Lemon icebox pie with a graham cracker crust',
-			'Weeknight chicken soup',
-		]);
-		expect(await titles({ limit: 2, offset: 2 })).toEqual(['Buttermilk biscuits']);
-		expect(await titles({ limit: 2, offset: 4 })).toEqual([]);
+		expect(await listed({ limit: 2, offset: 0 })).toEqual({
+			titles: ['Lemon icebox pie with a graham cracker crust', 'Weeknight chicken soup'],
+			total: 3,
+		});
+		expect(await listed({ limit: 2, offset: 2 })).toEqual({
+			titles: ['Buttermilk biscuits'],
+			total: 3,
+		});
+		expect(await listed({ limit: 2, offset: 4 })).toEqual({ titles: [], total: 3 });
 	});
 
 	it('summarizes each recipe for its card', async () => {
@@ -126,19 +131,22 @@ describe('listRecipes', () => {
 			manualEntry({ ...sampleChickenSoup, images: [scan, dishPhoto, secondDishPhoto] })
 		);
 
-		expect(await serviceFor(anonymousActor()).listRecipes({ limit: 10, offset: 0 })).toEqual([
-			{
-				id: ref.id,
-				slug: 'weeknight-chicken-soup',
-				title: 'Weeknight chicken soup',
-				source: 'Grandpa Lou',
-				totalMinutes: 50,
-				yield: { kind: 'servings', amount: { min: 6 } },
-				tags: ['Soup', 'Weeknight'],
-				coverImage: dishPhoto,
-				createdAt: expect.any(Date),
-			},
-		]);
+		expect(await serviceFor(anonymousActor()).listRecipes({ limit: 10, offset: 0 })).toEqual({
+			recipes: [
+				{
+					id: ref.id,
+					slug: 'weeknight-chicken-soup',
+					title: 'Weeknight chicken soup',
+					source: 'Grandpa Lou',
+					totalMinutes: 50,
+					yield: { kind: 'servings', amount: { min: 6 } },
+					tags: ['Soup', 'Weeknight'],
+					coverImage: dishPhoto,
+					createdAt: expect.any(Date),
+				},
+			],
+			total: 1,
+		});
 	});
 
 	it.each([
@@ -161,7 +169,7 @@ describe('createRecipe', () => {
 		await expect(reader.createRecipe(manualEntry(sampleChickenSoup))).rejects.toThrow(
 			SignInRequiredError
 		);
-		expect(await reader.listRecipes({ limit: 10, offset: 0 })).toEqual([]);
+		expect(await reader.listRecipes({ limit: 10, offset: 0 })).toEqual({ recipes: [], total: 0 });
 	});
 
 	it('records the acting member as the contributor', async () => {

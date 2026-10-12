@@ -1,11 +1,8 @@
 import { cn } from 'cn';
-import { sampleRecipe } from '@/components/design-reference/fixtures';
-import {
-	RecipeMetaRow,
-	recipeTextStyles,
-} from '@/components/design-reference/recipe-detail-excerpt';
 import { Specimen, SpecimenLabel } from '@/components/design-reference/reference-section';
+import { sampleRecipeDetail } from '@/components/design-reference/sample-recipe-dtos';
 import { TokenValue } from '@/components/design-reference/token-value';
+import { RecipeMetaRow, recipeTextStyles } from '@/components/recipe/recipe-detail';
 
 type FontFamily = {
 	utility: string;
@@ -135,10 +132,10 @@ function TypographySpecimens() {
 				</ul>
 			</Specimen>
 			<Specimen label="Body text at reading width: text-lg, max-w-2xl">
-				<p className="max-w-2xl text-lg">{sampleRecipe.note}</p>
+				<p className="max-w-2xl text-lg">{sampleRecipeDetail.notes}</p>
 			</Specimen>
 			<Specimen label={`Metadata: ${recipeTextStyles.meta}`}>
-				<RecipeMetaRow items={sampleRecipe.meta} />
+				<RecipeMetaRow recipe={sampleRecipeDetail} />
 			</Specimen>
 		</div>
 	);
