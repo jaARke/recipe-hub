@@ -1,12 +1,9 @@
-import type { RecipeProblem } from '@/domain/recipe/recipe-problem';
-import { AppError } from '@/lib/errors';
+import { InvalidInputError, type Problem } from '@/domain/problem';
 
-export class InvalidRecipeError extends AppError {
+export class InvalidRecipeError extends InvalidInputError {
 	readonly code = 'recipe.invalid';
-	readonly problems: readonly RecipeProblem[];
 
-	constructor(problems: readonly RecipeProblem[]) {
-		super('Recipe content is invalid');
-		this.problems = problems;
+	constructor(problems: readonly Problem[]) {
+		super('Recipe content is invalid', problems);
 	}
 }

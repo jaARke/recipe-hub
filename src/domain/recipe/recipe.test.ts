@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { problemsFromZodError } from '@/domain/problem';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
 import { parseRecipeContent, recipeContentSchema, recipeSchema } from '@/domain/recipe/recipe';
-import { recipeProblemsFromZodError } from '@/domain/recipe/recipe-problem';
 import {
 	sampleButtermilkBiscuits,
 	sampleChickenSoup,
@@ -10,7 +10,7 @@ import {
 
 function problemPaths(input: unknown): string[] {
 	const result = recipeContentSchema.safeParse(input);
-	return result.success ? [] : recipeProblemsFromZodError(result.error).map(({ path }) => path);
+	return result.success ? [] : problemsFromZodError(result.error).map(({ path }) => path);
 }
 
 function withLines(lines: unknown[]): unknown {

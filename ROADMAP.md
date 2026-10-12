@@ -66,6 +66,10 @@ Recipe Hub is one Next.js project organized as a layered, ports-and-adapters arc
 
 - Domain imports only `zod` and pure helpers from `src/lib`. Application imports domain and `src/lib`. Neither imports Next.js, React, Drizzle, or a vendor SDK.
 - Presentation never imports infrastructure. Route Handlers that mount a vendor handler (the Better Auth endpoint) obtain it from composition.
+- Vendor code reaches presentation in three places, each because the work runs in the browser or before routing:
+  - `src/components/auth/auth-client.ts`, Better Auth's React client, which only client components import. Email codes and passkey ceremonies go through its HTTP calls, which Better Auth rate-limits; its server API skips the limiter.
+  - BotID: `withBotId` in `next.config.ts`, `initBotId` in `src/instrumentation-client.ts`, and `checkBotId()` in the request form's Server Action.
+  - `src/proxy.ts`, which reads the session cookie with `better-auth/cookies`.
 - Only `src/lib/env.ts` reads `process.env`. Everything else receives configuration from it. The exceptions are entry points that run outside Next, where `env.ts`'s `server-only` import cannot resolve:
   - `drizzle.config.ts`, which drizzle-kit loads.
   - The scripts in `scripts/`, which tsx runs with `scripts/tsconfig.json`. It maps `@/` to `src/` and `server-only` to Next's empty module (the alias Vitest uses), so scripts can import server modules.
@@ -86,7 +90,7 @@ Recipe Hub is one Next.js project organized as a layered, ports-and-adapters arc
 
 | Pattern | Where | Why |
 | --- | --- | --- |
-| Repository | `RecipeRepository` and `MemberRepository` ports with Drizzle adapters | Services and tests do not depend on how data is stored. |
+| Repository | `RecipeRepository`, `MemberRepository`, `AccessRequestRepository`, and `InviteRepository` ports with Drizzle adapters | Services and tests do not depend on how data is stored. |
 | Query port | `RecipeSearch` with `DrizzleRecipeSearch` | Postgres matches, ranks, highlights, and counts facets; the service validates input and maps results to DTOs. |
 | Strategy | `RecipeExtractor` port with JSON-LD, AI text, and AI vision implementations | The entry modes differ only in how a draft is produced. |
 | Adapter | Every infrastructure class | Vendor APIs are translated into port contracts. |
@@ -101,10 +105,21 @@ Recipe Hub is one Next.js project organized as a layered, ports-and-adapters arc
 
 - Server Components by default; `'use client'` only at interactive leaves.
 - Mutations are Server Actions that validate input with the domain schema, call one application service, and then invalidate cache tags.
+- **Server Action forms** (since Session 5):
+  - An action takes `(state, formData)`, reads fields with `formText` and `optionalFormText` (a blank optional field is absent), calls one service, and returns `FormState` (`src/components/forms/form-state.ts`). After a success it calls `updateTag` or `refresh()`. It never redirects; the form navigates.
+  - `toFormError` (`src/app/_lib/form-errors.ts`) turns validation problems into field errors and expected error codes into copy. Anything else is rethrown, without the query parameters a database error carries, because Next logs it in full.
+  - Forms call their action through `useFormAction`, a client function. React replays a submit made before hydration through fetch, which BotID can check, and a call that fails in transport (a firewall 429, a lost connection) shows the form's failure message instead of the error page.
+  - React resets a form after its action, so error states return the submitted text (`FormError.values`), and a Base UI checkbox or select remounts with the submitted value.
 - Route Handlers only for HTTP-shaped needs: the auth endpoint, Blob client-upload tokens, and image delivery. Open Graph images, icons, the manifest, the sitemap, and robots use Next's metadata file conventions.
-- `proxy.ts` (Next 16's replacement for `middleware.ts`) makes optimistic redirects only on the contribute and admin routes; its matcher excludes metadata files. The authoritative check is the application layer, on every call.
+- `src/proxy.ts` (Next 16's replacement for `middleware.ts`) makes optimistic redirects only: a request to `/contribute`, `/admin`, or `/account` without a session cookie goes to `/sign-in?next=<path>`. Its matcher names those routes, so it never runs for public pages or metadata files. The authoritative check is the application layer, on every call.
+- **Sessions:**
+  - Server Components read the session only through `ActorProvider` (Better Auth's `getSession` with `disableRefresh`), only inside Suspense, and never inside a `'use cache'` function. A public use case never asks for the actor, so cached reads stay cacheable.
+  - The root layout's header account slot is the one session read on every page, so public pages are partial prerenders with a static shell.
+  - Server Components cannot set cookies, so a client leaf for signed-in members (`SessionRenewal`) reads the session through the auth endpoint on load and when the window regains focus, which renews the cookie at most once a day.
+  - A gated page sends a signed-out visitor to sign-in from inside Suspense, which is a client-side redirect. `authInterrupts` (`forbidden()`, `unauthorized()`) is still experimental and not used; a member without access sees an in-page message.
+  - A sign-in redirect accepts only a path on this site, checked as the browser parses it (`safeNextPath`).
 - Cache Components (`'use cache'`, `cacheTag`, `cacheLife`) for public pages, which are the same for every visitor. Session-dependent UI (sign-in state, an Edit button) streams in behind Suspense, following the bundled guide `authentication-with-cache-components.md`.
-- **Cached reads:** `src/app/_lib/recipe-cache.ts` is the one home for recipe cache tags (`recipes` for every list page, `recipe:<slug>` for a recipe) and for the cached reads pages use. Server Actions invalidate with `updateTag`, using `RecipeRef`'s slug. The application layer never imports `next/cache`.
+- **Cached reads:** `src/app/_lib/recipe-cache.ts` is the one home for recipe cache tags (`recipes` for every list page, `recipe:<slug>` for a recipe, and `member:<id>` on every recipe page showing that member's name, so a rename reaches them all) and for the cached reads pages use. Server Actions invalidate with `updateTag`, using `RecipeRef`'s slug. The application layer never imports `next/cache`.
   - The reads use `cacheLife('days')`, and writes invalidate the tags. A result consumed into a prerendered shell persists in Vercel's ISR cache and revalidates in the background, which catches edits made outside the app.
   - A runtime entry, such as a list page read after `searchParams`, lives in the instance's in-memory cache: it is not shared between instances, and a day after it was cached it counts as a miss and is rebuilt while the request waits.
   - List pages are cached per page and sort (`getCachedRecipePage(page, sort)`), which keeps the keys few.
@@ -118,7 +133,7 @@ Recipe Hub is one Next.js project organized as a layered, ports-and-adapters arc
 - **Metadata routes** inside a route group get a hash suffix (`/recipes/<slug>/opengraph-image-<hash>/<id>`). Every named export of a metadata file is re-exported into its route, so helpers stay unexported.
 - **URL state:** search state lives in the URL (`searchParams`) so results are shareable and work with the back button.
   - The list keeps its page and sort there (`/?sort=title&page=2`). Defaults are left out, so each view has one URL, and `generateMetadata` on `/` sets the canonical URL, so `/?page=1` names `/`.
-  - Search uses `q`, `tag` (repeated), `source`, `time`, `added`, `sort`, and `page`. `src/components/search/search-params.ts` is the one module that parses and builds them.
+  - Search uses `q`, `tag` (repeated), `source`, `contributor` (a member id), `time`, `added`, `sort`, and `page`. `src/components/search/search-params.ts` is the one module that parses and builds them.
   - An empty value means absent, because forms submit blank fields.
 - **Forms:** `next/form` for every GET form. It navigates client-side and still submits natively before hydration.
   - It drops a query string in `action`, so state travels in hidden inputs.
@@ -130,14 +145,14 @@ Recipe Hub is one Next.js project organized as a layered, ports-and-adapters arc
 
 ```text
 assets/fonts/             static TTF subsets for Open Graph images, with their licenses
-scripts/                  entry points run with tsx outside Next (seed)
+scripts/                  entry points run with tsx outside Next (seed, bootstrap)
   seed/photos/            seed photos and their sources
 src/
   app/                    presentation: routing, thin pages and actions
     _lib/                 cached reads and cache tags shared by routes
     (browse)/             public: recipe list and detail, search
     (contribute)/         approved members: add, edit, import
-    (account)/            request access, accept an invite, sign in, privacy
+    (account)/            request access, accept an invite, sign in, account, privacy
     admin/                access requests and members
     design/               design reference (development and previews only)
     api/
@@ -146,7 +161,7 @@ src/
       images/[...path]/   image delivery: public dish photos, members-only scans
   components/
     ui/                   shadcn primitives
-    <feature>/            feature compositions (recipe, search, layout)
+    <feature>/            feature compositions (recipe, search, layout, forms, auth, account, admin)
   domain/
     recipe/               schemas, value objects, pure functions, errors
     member/
@@ -155,15 +170,19 @@ src/
     recipes/
     ingestion/
     search/
-    access/
+    access/               access requests, invites, and the sign-up gate
+    members/
   infrastructure/
     db/                   Drizzle schema, client, migrations, repositories
     storage/
     ai/
     web/
-    auth/
+    auth/                 Better Auth, the actor provider
+    email/                Resend
   composition/            composition root
-  lib/                    env, logger, shared helpers
+  lib/                    env, logger, site name, dates, shared helpers
+  proxy.ts                optimistic sign-in redirects for gated routes
+  instrumentation-client.ts  BotID's browser check
 ```
 
 At the root, `drizzle.config.ts` configures drizzle-kit, `vercel.json` sets the build command that migrates and seeds before `next build`, and `.dependency-cruiser.ts` holds the boundary rules.
@@ -175,16 +194,21 @@ Files are kebab-case (`recipe-repository.ts`), classes and types PascalCase, fun
 - **Configuration:** `src/lib/env.ts` validates every variable with Zod once and exports a typed object, so later sessions add their variables there. Today it holds:
   - `NODE_ENV`, `VERCEL_ENV`, and the pooled `DATABASE_URL`;
   - `BLOB_STORE_ID`;
-  - `VERCEL_PROJECT_PRODUCTION_URL`, from which it derives `siteUrl` (production's origin on every deployment, `http://localhost:3000` when absent).
+  - `VERCEL_PROJECT_PRODUCTION_URL`, from which it derives `siteUrl` (production's origin on every deployment, `http://localhost:3000` when absent);
+  - `VERCEL_URL` and `VERCEL_BRANCH_URL`, the deployment's own hosts. With them it derives `appUrl`, the base for links in emails: production's domain, a preview's branch alias, or the dev server. Better Auth answers on those hosts only;
+  - `BETTER_AUTH_SECRET`, `RESEND_API_KEY`, and `RESEND_EMAIL_DOMAIN`. It refuses to start if `BETTER_AUTH_SECRETS` or `BETTER_AUTH_TRUSTED_ORIGINS` is set, because Better Auth reads both itself and would let them override the configured secret and hosts.
 
-  Vercel supplies the values; local development pulls them with `vercel env pull`. The Blob SDK reads and refreshes Vercel's OIDC token itself; there is no read-write token. `drizzle.config.ts` and the scripts read their own variables (section 4.2).
+  Vercel supplies the values; local development pulls them with `vercel env pull`. The Blob SDK reads and refreshes Vercel's OIDC token itself; there is no read-write token. `drizzle.config.ts` and the scripts read their own variables (section 4.2); `scripts/bootstrap.ts` reads `ADMIN_EMAIL`.
 
 - **Errors:**
-  - Expected failures are classes extending `AppError` (`src/lib/errors.ts`) with a stable `code`: `recipe.invalid`, `recipe.not-found`, `recipe.invalid-page`, `recipe.invalid-search`, `access.sign-in-required`, `access.forbidden`.
+  - Expected failures are classes extending `AppError` (`src/lib/errors.ts`) with a stable `code`: `recipe.invalid`, `recipe.not-found`, `recipe.invalid-page`, `recipe.invalid-search`, `access.sign-in-required`, `access.forbidden`, `access.invalid-request`, `access.invalid-invite`, `access.invalid-email`, `access.invite-unavailable`, `access.invite-not-found`, `access.request-not-found`, `member.invalid-profile`, `member.not-found`, `email.delivery-failed`.
+  - Validation errors extend `InvalidInputError` (`src/domain/problem.ts`), which carries the problems, so every form maps them to fields one way.
   - Reads return `null` when nothing is found; writes throw. Validation failures carry problems with dotted paths (`ingredientSections.0.lines.2.item`), the same shape drafts use, so the form renders both alike.
   - Server Actions return expected errors as values and rethrow anything else, as the bundled error-handling guide says. Production masks thrown server errors to a digest, so a code never reaches the client by being thrown.
   - Presentation maps codes to user-facing messages, and unexpected errors reach Next.js error boundaries.
-- **Logging:** `getLogger(name)` in `src/lib/logger.ts` writes one JSON line per event (`level`, `logger`, `message`, camelCase fields, and `err` serialized with its code and cause) through the console method matching the level, because Vercel takes a line's level from the console method, not from the JSON. It has no dependency. Messages are constant (ESLint enforces it), with values in the fields. Lifecycle events (recipe created, import started or failed, access requested or granted, invite issued) log at info with the acting `memberId`, recoverable problems at warn, failures at error. Never log tokens or family members' contact details.
+- **Logging:** `getLogger(name)` in `src/lib/logger.ts` writes one JSON line per event (`level`, `logger`, `message`, camelCase fields, and `err` serialized with its code and cause) through the console method matching the level, because Vercel takes a line's level from the console method, not from the JSON. It has no dependency. Messages are constant (ESLint enforces it), with values in the fields. Lifecycle events (recipe created, import started or failed, access requested, request declined, invite issued or revoked, access granted, member renamed, admin bootstrapped) log at info with the acting `memberId`, recoverable problems at warn, failures at error. Never log tokens, codes, email addresses, or names; access events carry ids only.
+  - Drizzle's query errors end with the query's parameters, so the logger cuts them from every logged message and stack.
+  - Better Auth's own warnings and errors go through the logger as `auth`.
 - **Validation:** Zod at every boundary: form input, AI output, scraped data, and every database read of a recipe document.
 - **Testing:**
   - Vitest for domain and application code, with in-memory fakes for ports. Vitest aliases `server-only` to Next's own empty module, so server modules import in tests.
@@ -194,6 +218,7 @@ Files are kebab-case (`recipe-repository.ts`), classes and types PascalCase, fun
   - Playwright for a few end-to-end flows once the core flows exist.
   - Fixtures are synthetic or public-domain recipes, never real family data.
   - Infrastructure adapters are tested against real engines, never module mocks. `BlobImageStore` is a thin pass-through with no local engine, so the seed run and the preview verify it.
+  - Better Auth runs for real on PGlite through `src/infrastructure/auth/testing/`, with rate limiting on. `ResendEmailSender` runs the real SDK against a local HTTP server through its `RESEND_BASE_URL`.
   - Presentation logic that is pure (JSON-LD mapping, page numbering) is tested beside its component.
 
 ## 5. Specifications and constraints
@@ -212,7 +237,7 @@ The normalized shape every entry mode produces, finalized in Session 2 in `src/d
   - Only JPEG, PNG, WebP, and AVIF are served (`recipeImageContentTypes`).
   - No dimensions are stored yet: every screen shows photos in fixed-aspect boxes.
 - **Provenance**, set at creation: the entry mode (`manual`, `url` with its source URL, or `photo`) and which model produced an AI draft.
-- **Identity:** uuidv7 ids generated by Postgres 18, a slug assigned once from the title (ASCII, at most 60 characters, `-2` and up on a collision) and never rewritten, so shared links keep working, the contributor, and timestamps.
+- **Identity:** uuidv7 ids generated by Postgres 18, a slug assigned once from the title (ASCII, at most 60 characters, `-2` and up on a collision) and never rewritten, so shared links keep working, the contributor (a foreign key to `users`, with no cascade), and timestamps.
 - **`RecipeDraft`:** the same content with every field optional, plus provenance and problems. Drafts are never saved; members review them in the recipe form.
 
 **Storage.** One `recipes` row per recipe: `content` (a jsonb document), `provenance` (jsonb), `tags` (`text[]`), and columns for id, slug, contributor, and timestamps. The mapper validates every read with the domain schema, which keeps schema changes small:
@@ -263,8 +288,8 @@ Public, at `/search`, with Postgres full-text search, `pg_trgm`, and `unaccent` 
   - Source compares ignoring case.
   - Total time is "or less" (15, 30, 60, or 120 minutes), and recipes without a time drop out.
   - Date added is a rolling past week, month, or year.
-  - A contributor filter waits for Session 5's display names.
-- **Facets:** tags are counted within the results, so a count is what adding that tag would leave. Sources are counted with every filter but the source, so another source can be chosen.
+  - Contributor compares the member id in the `contributor` parameter. A well-formed id that names no member gets the soft 404, like an unknown slug.
+- **Facets:** tags are counted within the results, so a count is what adding that tag would leave. Sources are counted with every filter but the source, so another source can be chosen. Contributors are counted the same way, labeled by display name, and the chosen one is listed even at zero. Display names are not unique, so two members with one name show as two choices told apart by their counts.
 - **Sorting:**
   - Best match is offered only with a query and is then the default. It ranks with `ts_rank_cd` (default weights, no length normalization), or by similarity for close matches.
   - Newest is the default otherwise.
@@ -276,19 +301,35 @@ Public, at `/search`, with Postgres full-text search, `pg_trgm`, and `unaccent` 
 - **Pages:** 24 results a page, numbered with the shared `RecipePagination`.
 - **Input:** the service bounds what a public URL supplies: a query of at most 200 characters, at most 20 tags, and no NUL characters, which Postgres text cannot hold. A source is unbounded, because the filters offer every source recipes use. Invalid input gets the soft 404.
 - **Later:**
-  - BM25 with Neon's `lakebase_text`: the storage is ready, but it is 0.1.x, cannot run in PGlite, and Free-plan support is unconfirmed.
+  - BM25 with Neon's `lakebase_text`: the storage is ready, but it is 0.1.x, cannot run in PGlite, and support on Neon's Launch plan is unconfirmed.
   - Semantic search with `pgvector` after Session 7: embedding every public query clashes with members-only AI.
   - "Did you mean" corrections from a words list.
 
 ### 5.4 Access control
 
-- **Public:** browsing, recipe pages, search, and dish photos need no account. Public pages never show contact details or access-request data.
-- **Members:** adding, editing, and importing recipes, and every AI feature, require an approved member. Two roles, `member` and `admin`, live in the database, never in code. Authorization stays in the application layer; Better Auth's admin plugin is not used, so there is one authorization path.
-- **Requesting access:** a public form (name, how they know the family, an optional email) creates a request, not an account. It is protected by Vercel BotID and a rate limit. The admin gets an email (section 5.5) and sees a pending count on the admin page.
-- **Reviewing:** the admin approves or denies on the admin page, through Server Actions that re-check authorization. Notification emails link to the request page. One-click approve links are not planned (a Session 5 fork), because mail scanners follow links and such tokens would be a second way to authenticate.
-- **Invites:** approval produces a single-use, expiring invite link, stored only as a hash, which the admin sends by text or email. Accepting it creates the member's account in one of two ways: register a passkey through Better Auth's passkey plugin (passkey-first registration that consumes the invite), or, on a device that cannot hold a passkey, enter an email address and confirm it with a one-time code. Adding a device or recovering access means a new invite.
-- **Sign-in:** passkeys are the main method. Members who joined with an email sign in with Better Auth's email one-time codes, with the plugin's own sign-up disabled, so codes work only for accounts created through an invite. No social sign-in.
-- **Previews:** passkeys are bound to their domain, so production passkeys do not work on preview URLs. A script mints an invite against the preview's Neon branch.
+- **Public:** browsing, recipe pages, search, and dish photos need no account. Public pages never show contact details or access-request data. A recipe page names its contributor by display name.
+- **Members:** adding, editing, and importing recipes, and every AI feature, require an approved member. Two roles, `member` and `admin`, live in the database (`users.role`), never in code. Authorization stays in the application layer; Better Auth's admin plugin is not used, so there is one authorization path. Original scans are served to members only, never cached publicly.
+- **Requesting access:** a public form at `/request-access` (name, how they know us, an optional email) creates a request, not an account. Vercel BotID checks the submission first, and a WAF rule allows 5 posts per 10 minutes per IP (section 5.5). Every admin gets an email linking to `/admin`, which shows the pending count.
+- **Reviewing:** admins approve or decline on `/admin` through Server Actions that re-check authorization. Declining deletes the request, and an invite left naming it (one whose approval failed partway) loses the link; an approved request is kept as a record of who was invited. Notification emails link to the admin page and act on nothing, because mail scanners follow links.
+- **Invites:**
+  - Approving a request, or inviting someone directly, creates a single-use invite that lasts 7 days. Only a SHA-256 hash of its 256-bit token is stored.
+  - The admin copies the link (`/invite#<token>`; the fragment never reaches a server) or has it emailed, and sees whether the email went out. Admins see open invites and can revoke them.
+  - The invite is created before the request is marked approved, so a failure leaves the request pending.
+- **Accepting an invite, email first:**
+  - The invitee confirms an email address with a one-time code. That creates the account, with the invite's display name, and signs them in. The page then offers a passkey.
+  - Better Auth's email-code sign-up stays on, and a hook before user creation refuses every address without an open invite bound to it. `users.invite_id` is unique, so an invite creates one account.
+  - Every member has a verified email.
+  - A revocation or rebinding that lands between the hook's check and the insert, milliseconds apart, does not stop that account. The unique key still prevents a second.
+- **Sign-in:**
+  - The page leads with the email field and "Email me a code". The field has `autocomplete="username webauthn"`, so autofill offers saved passkeys, and "Sign in with a passkey" sits below.
+  - Codes are 6 digits, last 10 minutes, allow 3 attempts, and are stored encrypted. A code is emailed only to a member's address or one bound to an open invite, and every address gets the same response.
+  - A new device or a lost passkey means signing in with a code and adding a passkey on `/account`. Adding one needs a sign-in from the last day.
+  - Sessions last 180 days and renew on the first visit each day (section 4.4). No social sign-in.
+- **Better Auth's surface:** it serves only the routes the flows use (session read, sign-out, email code send and sign-in, and passkeys). `disabledPaths` turns off the rest, including `/update-user`, so names change only through `/account`. `/callback/:id` and `/reset-password/:token` cannot be named there and stay mounted, inert without social providers or password resets; a test pins that set. Its database rate limiter covers every route in every environment, with passkey routes at 10 a minute.
+- **First admin:** a build step, `pnpm db:bootstrap`, makes the account at `ADMIN_EMAIL` an admin whenever the database has none, creating a verified account named "Admin" if needed. The admin signs in with a code, renames themselves on `/account`, and adds a passkey.
+- **Previews:**
+  - Passkeys are bound to their host, so production's do not work on previews, and one made on a branch alias does not work on that deployment's own URL.
+  - Previews copy production's members, and the bootstrap covers a branch with no admin, so the owner signs in on a preview with an email code and tests invites from its `/admin`.
 
 ### 5.5 Hosting and environments
 
@@ -297,32 +338,39 @@ Public, at `/search`, with Postgres full-text search, `pg_trgm`, and `unaccent` 
 - The Route 53 zone is in the owner's personal AWS account: use `--profile personal`. The default AWS profile is a work account and is never used for this project.
 - No staging environment. Pull requests get preview deployments behind Vercel Authentication, and each gets its own Neon branch, `preview/<git-branch>`, created by the integration and deleted by `.github/workflows/preview-branch-cleanup.yml` when the pull request closes.
 - Local development uses the Neon branch `develop` through Development-scoped variables, never production.
+- **Backups:** Neon keeps a 7-day restore window and takes a snapshot daily, keeping each for 35 days. The production branch, `main`, is protected. Neither covers deleting the database through Vercel, nor Blob photos (Session 8's off-Neon backup).
 - Every build migrates its database before `next build` (`vercel.json`'s `buildCommand`). The previous deployment keeps serving during and after a production build, and Skew Protection keeps old Server Actions alive for 12 hours, so migrations are expand then contract: additive first, removals in a later deployment.
-- Every build then runs `pnpm db:seed`, which seeds preview branches with 30 synthetic recipes (four with photos) and refuses production, so production never holds synthetic recipes. The recipes double as search's expected-result corpus, so search can be checked on every preview.
+- Every build then runs `pnpm db:bootstrap` (section 5.4) and `pnpm db:seed`, which seeds preview branches with 30 synthetic recipes (four with photos) and refuses production, so production never holds synthetic recipes. The recipes double as search's expected-result corpus, so search can be checked on every preview.
   - The seed is idempotent: it skips recipes whose slug exists and uploads only missing photos. A Postgres advisory lock serializes concurrent builds of one pull request, which would otherwise both create a recipe (the second as `-2`).
   - Locally, `pnpm db:seed` seeds `develop` on demand.
-  - Seeded recipes belong to a fixed synthetic member id, `00000000-0000-4000-8000-000000000001`, which has no account.
+  - Seeded recipes belong to a "Sample contributor" member (`sample-contributor@recipes.invalid`), which the seed finds or creates before its recipes; it can never receive a code.
 - **Rate limits:** a Vercel WAF rate-limit rule on the path `/search` (fixed 60-second window, 100 requests per IP), created in the dashboard. Blocked requests never reach a function or the database.
   - Pro has 40 such rules, at $0.50 per million allowed requests drawn from the monthly credit.
   - Counters are per region, and prefetches count too, which is why the limit is generous.
-  - Start with the Log action and switch to 429 once the logs look right.
-- Environment variables are managed in Vercel and pulled locally with `vercel env pull`. The AI Gateway and Blob authenticate with Vercel's OIDC token, so no provider keys or Blob tokens exist. Locally, the Blob SDK refreshes an expired development token with the Vercel CLI's credentials.
+  - It was published returning 429 rather than logging first.
+  - A second rule, "Rate limit access requests", allows 5 POSTs to `/request-access` per 10 minutes per IP (fixed 600-second window), returning 429. The form shows its own failure message. `@vercel/firewall`'s `checkRateLimit` could name the limit but fails open when its rule is missing, so the WAF rule was preferred.
+- Environment variables are managed in Vercel and pulled locally with `vercel env pull`. The AI Gateway and Blob authenticate with Vercel's OIDC token, so no provider keys or Blob tokens exist for them. Locally, the Blob SDK refreshes an expired development token with the Vercel CLI's credentials.
+  - Vercel now calls Sensitive variables Secret. `BETTER_AUTH_SECRET` is a Secret in Production and Preview, with a separate readable value in Development, each generated and piped into `vercel env add` so it never appears on a command line.
+  - `ADMIN_EMAIL` (Config, every environment) names the first admin.
   - The Neon integration also adds `PG*`, `POSTGRES_*`, and `NEON_PROJECT_ID` variables. The app reads none of them; they are the integration's to manage and harmless to keep.
 - **Blob layout:** one private store, `recipe-hub-images`, serves every environment, since Blob has no branches.
   - Pathnames put visibility first, then the environment: `dish/production/...`, `dish/preview/...`, `dish/development/...`, `scan/<environment>/...`, and seed photos at `dish/seed/<slug>.jpg`.
   - Preview branches copy production's rows, so previews read production's photos.
   - Writes and deletes stay inside their own environment's prefix, so a preview never deletes a photo production uses.
   - Seed photos are reachable through production's image route too. They are public-domain or CC0, so that is harmless.
-- Email (access-request notifications, invites when sent by email, and sign-in codes) goes through Resend's free plan, with SPF and DKIM records for a sending domain in Route 53.
+- **Email** (access-request notifications, invites when sent by email, and sign-in codes) goes through Resend's free plan:
+  - Resend is installed through the Vercel Marketplace as the resource `recipe-hub-email`, billed through Vercel. It provisions `RESEND_API_KEY` (full access) and `RESEND_EMAIL_DOMAIN` as readable Config variables in all three environments, so local development sends real email.
+  - The sending domain is `recipes.jakerichard.tech`. Its records sit beside the site's CNAME, not on it: MX and SPF at `send.recipes`, and DKIM at `resend._domainkey.recipes`, all in Route 53. The apex's DMARC policy (`p=reject`) covers the subdomain. Open and click tracking are off.
+  - Mail comes from `Recipe Hub <recipes@recipes.jakerichard.tech>` as plain text; invites reply to the inviting admin.
 
 ### 5.6 Platform limits that shape the design
 
 - Function request bodies are capped at 4.5 MB, so every image upload goes from the browser directly to Blob.
-- Neon Free plan: 1 GB storage, 100 compute-hours a month, 10 branches (production, `develop`, and one per open pull request). Preview deployments fail at the branch cap.
-  - The compute suspends after 5 idle minutes, and each wake costs at least 5 minutes of compute. Uncached search reaches the database on every request, so a crawler sending unique queries could keep it awake and reach the monthly cap in about two weeks. The WAF rule on `/search` guards against that.
+- Neon Launch plan, billed through Vercel with no monthly minimum: $0.106 per CU-hour, $0.35 per GB-month of storage, $0.20 per GB-month of history, and $0.09 per GB-month of snapshots. Ten branches are included (production, `develop`, and one per open pull request), then $1.50 per branch-month.
+  - The compute suspends after 5 idle minutes, and each wake costs at least 5 minutes of compute. Uncached search reaches the database on every request, so a crawler sending unique queries could keep it awake around the clock: about 180 CU-hours, roughly $19 a month at 0.25 CU, and more if it scales up. The WAF rule on `/search` guards against that.
 - AI Gateway free tier: $5 a month, a subset of models, and lower rate limits. Buying credits unlocks every model at provider list price.
 - Functions run up to 800 seconds on Pro. Import actions set `maxDuration` explicitly.
-- Resend free plan: 3,000 emails a month and 100 a day, from a verified domain only.
+- Resend free plan: 3,000 emails a month and 100 a day (every sign-in code counts), up to 3 verified domains, sending from a verified domain only.
 - `ImageResponse` (Open Graph images):
   - Flexbox and a CSS subset only, no CSS variables or oklch. Static TTF, OTF, or WOFF fonts only: not WOFF2, and not variable fonts.
   - `<img>` sources must be JPEG or PNG: WebP renders blank and AVIF throws.
@@ -346,7 +394,7 @@ Recipes are meant to be shared, so links need good previews before the site is u
   - The card's colors are constants that mirror the light theme tokens in sRGB, because Satori reads neither CSS variables nor oklch.
 - **Structured data:** schema.org `Recipe` JSON-LD on recipe pages (bundled guide `json-ld.md`), typed with `schema-dts`.
   - Fields: ISO 8601 times (prep and cook only as a pair), ingredients as written, `HowToStep`s with named `HowToSection`s for headed sections, yield, keywords from tags, and every dish photo as an absolute URL.
-  - It omits `author` until contributors have public names (Session 5), since a source can be a cookbook rather than a person.
+  - `author` is the contributor's display name, as a `Person`; the source stays out of it, since a source can be a cookbook.
   - It powers rich results only if pages are indexed (Google requires an image), and helps recipe apps import our pages.
 - **Crawling:** pages carry `noindex, follow` through the root layout's metadata until launch, not a robots.txt rule, which Google cannot see past.
   - `robots.ts` allows everything, so crawlers can read each noindex and link-preview bots can fetch Open Graph images.
@@ -422,14 +470,18 @@ Lowest ratios: muted text on muted fills 5.49:1 (light); destructive text on its
 
 **Layout.**
 
-- **Header:** a sticky, compact top bar (`h-14`) holding the wordmark, the main nav, search, and the theme toggle. On phones, search is an icon link to `/search`; from `sm` it is a field in a `<search>` landmark (`w-56`, `w-72` from `lg`), and it is left out on `/search`, whose own field is the only one there. The bar has room for one more 36 px control at 390 px but not at 360 or 375, so the next one brings the mobile menu.
+- **Header:** a sticky, compact top bar (`h-14`).
+  - Below `sm`: the wordmark, the search icon link to `/search`, and a menu button. The menu holds Recipes, the account items (Sign in and Request access, or the member's name, Account, Admin for admins, and Sign out), and Theme.
+  - From `sm`: the wordmark, the main nav, the search field in a `<search>` landmark (`w-56`, `w-72` from `lg`), the theme toggle, and "Sign in" or the member's initial, which opens Account, Admin, and Sign out.
+  - Search is left out on `/search`, whose own field is the only one there.
+  - The account controls stream in behind Suspense in a frame as wide as "Sign in", so nothing in the bar moves and no state flashes.
 - **Containers:** `PageContainer` sets the width: `wide` (`max-w-6xl`) for browsing and `reading` (`max-w-2xl`) for recipe content.
 - **Browse grid:** one column on phones, two on tablets, three on desktop.
 
 ### 6.3 Components and patterns
 
 - **Library:** shadcn/ui on Base UI primitives, Vega style, Lucide icons.
-  - Installed primitives: attachment, badge, button, card, checkbox, dialog, dropdown-menu, empty, field, input, input-group, label, pagination, select, separator, skeleton, spinner, tabs, textarea, toast, tooltip.
+  - Installed primitives: alert, attachment, badge, button, card, checkbox, dialog, dropdown-menu, empty, field, input, input-group, label, pagination, select, separator, skeleton, spinner, tabs, textarea, toast, tooltip.
   - Add more with `pnpm shadcn add <name>`, then `pnpm format` and `pnpm exec eslint . --fix`, plus a demo on `/design`.
   - When the CLI offers to overwrite a primitive listed in 6.5, decline and keep the customized version.
 - **Composition:** Base UI composes through the `render` prop, not `asChild`. A link styled as a button takes `buttonVariants()` on the link itself, because Base UI's Button must not render links. `cn` comes from the `cn` package.
@@ -437,9 +489,19 @@ Lowest ratios: muted text on muted fills 5.49:1 (light); destructive text on its
   - Every control sits in a `Field` with a `FieldLabel`, helper text, and `FieldError`. A disabled field sets `data-disabled` on `Field` so its label dims; `peer-disabled` never matches Base UI controls.
   - Textareas grow with their content (`field-sizing: content`) and fall back to a vertical resize handle where that is unsupported.
   - List-shaped input (ingredients, steps) is a list of separate growing fields, with "Add ingredient" or "Add step", a remove button per item, numbering for steps, and optional sections with headings. Focus moves into a new item and to a neighbor when one is removed. Free-form "one per line" fields are not used.
+  - Shared pieces in `src/components/forms/`:
+    - `TextField` wires the label, description, and error.
+    - `FormErrorAlert` is a destructive `Alert` with the toast's error icon.
+    - `FormStatusMessage` is a live region that is always present.
+    - `useFocusOnChange` moves focus when a step changes.
+  - Pending buttons stay focusable (`focusableWhenDisabled`).
+  - Multi-step forms (sign-in, accepting an invite) move focus to each step's field or heading.
+  - A one-time code is one pasteable field (`autocomplete="one-time-code"`, `inputmode="numeric"`), never a box per digit, so it meets WCAG 2.2's accessible authentication criterion.
 - **File input:** never the bare native control. A dashed drop area with an icon and a "Choose photos" button opens the hidden native input; chosen files appear below as attachments with thumbnails, size, a remove action, and upload states. Changes are announced politely.
 - **Feedback:**
   - Toasts use Base UI's toast, mounted once in the root layout. No action buttons in auto-dismissing toasts, because they cannot be reached in time (WCAG 2.2.1).
+  - A form's overall result is an `Alert`: destructive for failures (`role="alert"`), default for success, which takes focus when it replaces the form.
+  - Destructive actions (declining a request, revoking an invite) confirm in a `Dialog`. When the item disappears, a toast reports it, and focus moves to its section's heading.
   - Empty states use the `empty` primitive (`RecipesEmptyState` on the home page).
   - Loading states are skeletons that mirror the final layout (`RecipeCardSkeleton`). A `loading.tsx` goes only in segments that await data, never above a gated route, where it would turn a 404 into a soft 404.
 - **Theme:** `ThemeProvider` in `src/components/layout/` holds the next-themes configuration. `ThemeToggle` swaps its sun and moon icons with `dark:` classes so the server render never depends on the theme.
@@ -447,13 +509,13 @@ Lowest ratios: muted text on muted fills 5.49:1 (light); destructive text on its
   - `RecipeCard` takes a `RecipeSummaryDto`. A recipe without a photo keeps the same 4:3 box, in `bg-muted` with a muted cooking-pot icon, so every row lines up.
   - Card photos are decorative (`alt=""`). A card's or result row's link is named by its title (`aria-labelledby`) and described by its source, snippet, and details (`aria-describedby`), so a screen reader does not read the whole card as the link's name. Cards in the first row and the first three search results load eagerly.
   - `recipe-summary.tsx` holds what the card and the result row share: the 4:3 cover or no-photo box (`RecipeCover`), the facts, and the tags.
-  - `RecipeDetail` takes a `PublicRecipeDto` and a heading level: 1 on recipe pages, 4 under `/design`'s own headings.
-  - The detail shows the source, the dates added and edited (en-US, America/New_York, in `<time>`), a 3:2 cover that preloads and is hidden in print, ingredients and steps in `text-lg`, and notes.
+  - `RecipeDetail` takes a `PublicRecipeDto` and a heading level: 1 on recipe pages, 4 under `/design`'s own headings. `RecipeSearch`, `AdminDashboard`, and the invite steps take a heading level the same way.
+  - The detail shows the source, "Added by <display name> on <date>" and the date edited (en-US, America/New_York, in `<time>`, through `formatDate` in `src/lib/dates.ts`), a 3:2 cover that preloads and is hidden in print, ingredients and steps in `text-lg`, and notes.
     - An ingredient line with an amount shows the amount and unit in bold, then the item and preparation; a line without one shows its original text.
     - Step numbers restart in each section.
   - `recipeTextStyles` in `recipe-detail.tsx` holds the recipe text hierarchy.
   - `RecipePhoto` is the one fixed-aspect `next/image` box.
-  - The site's name has one home, `siteName` in `src/components/layout/site-name.ts`.
+  - The site's name has one home, `siteName` in `src/lib/site.ts`, shared by pages, emails, and the passkey prompt.
 - **Pagination:**
   - `RecipePagination` shows Previous and Next only where they lead somewhere.
   - It shows the first and last pages, the current page with one on each side, and an ellipsis for longer gaps (a gap of one page shows that page), plus a "Page 3 of 5" label.
@@ -463,12 +525,17 @@ Lowest ratios: muted text on muted fills 5.49:1 (light); destructive text on its
 - **Search results:**
   - `/search` holds the query form (field, "Search" button, a hint about phrases and exclusions), the filters, and the results.
   - Filters sit in a sidebar from `lg` and in a native `<details>` "Filters" disclosure below it, both rendered from one component, each in its own form. They apply with an "Apply filters" button, never on each change, so choosing several loads once.
+  - Filters are tags, Source, "Added by" (the contributor), total time, and date added.
   - Above the results are the active filters as removable chips, "Clear filters", the count in a polite status (`<p role="status">`, with an sr-only note of the query, close matches, order, and page, so a new search or page is announced even when the count is the same), and the sort.
   - Results are `RecipeSearchResult` rows in a divided list: a small 4:3 cover, the title as a heading, the source, a two-line snippet, the facts, and the tags.
   - `HighlightedSegments` renders highlighted text as text and `<mark>`. A base rule styles `<mark>` with the highlight tokens and bolder weight, the cue that does not rely on color.
   - No-result states use the `empty` primitive, with a way forward (clear the filters, or shorten the search). Close matches carry a line above them.
 - **Disclosures:** native `<details>` with a `<summary>` styled by `buttonVariants` and a rotating chevron. A base rule hides the browser's marker.
 - **Printing:** the header and the cover photo are hidden, and sections, steps, and notes avoid page breaks.
+- **Accounts and admin:**
+  - Account pages use the reading container. Passkeys are described plainly: "Use your face, fingerprint, or screen lock." The copy warns against adding one on a shared device, and notes that in-app browsers in some email apps cannot save one.
+  - `/admin` lists access requests (with a pending count), the invite form, open invites, and members, in that order. An issued invite's link shows once, in a status region with "Copy link".
+  - `/design`'s "Accounts and admin" section renders these components with fixtures and stand-in actions. Sections jump between subsections with `ReferenceSubsectionNav`.
 
 ### 6.4 References
 
@@ -494,7 +561,7 @@ The owner likes [tanstack.com](https://tanstack.com/) and [mstone.ai](https://ms
 | Date | Decision | Rationale |
 | --- | --- | --- |
 | 2026-10-10 | Next.js 16 (App Router), TypeScript end to end, one Vercel project | One Zod recipe schema serves the form, AI output, and database. Zero-config on Vercel. FastAPI with Vite needs Vercel Services (beta) and two copies of the schema; TanStack Start is still a release candidate. |
-| 2026-10-10 | Neon Postgres via the Vercel Marketplace (Free plan, `iad1`, Postgres 18, Neon Auth off) | Postgres handles the search. Fast scale-to-zero, billed through Vercel, per-preview branches. Aurora resumes in about 15 seconds and needs IAM setup; Supabase's free tier pauses after a week idle. |
+| 2026-10-10 | Neon Postgres via the Vercel Marketplace (Free plan, `iad1`, Postgres 18, Neon Auth off; plan superseded below) | Postgres handles the search. Fast scale-to-zero, billed through Vercel, per-preview branches. Aurora resumes in about 15 seconds and needs IAM setup; Supabase's free tier pauses after a week idle. |
 | 2026-10-10 | Private Vercel Blob store `recipe-hub-images` (`iad1`) | Scans stay behind the login, and client uploads avoid the 4.5 MB body limit. Access mode cannot change after creation. |
 | 2026-10-10 | Better Auth with the Facebook provider; allowlist in the database (sign-in method superseded below) | Auth.js v5 never went stable and its maintainers recommend Better Auth. A hook before user creation gates sign-up. |
 | 2026-10-10 | Drizzle ORM, version chosen in Session 2 | Close to SQL (needed for search) and supported by Better Auth. 1.0 was a release candidate at the time. |
@@ -564,6 +631,28 @@ The owner likes [tanstack.com](https://tanstack.com/) and [mstone.ai](https://ms
 | 2026-10-11 | 30 synthetic samples, seeded on previews, double as the search corpus | Search can be checked on every preview against the recipes the tests use. |
 | 2026-10-11 | Forms promise "works before hydration", not "works without JavaScript" | Suspense content arrives hidden and is revealed by an inline script, so with JavaScript off results never appear, and Base UI controls need hydration. |
 | 2026-10-12 | The image route allows one query parameter, `_vercel_system`, and logs a warning for every query it refuses | Vercel's image optimizer adds it when fetching a source image, so every optimized dish photo had failed with "Bad status code from upstream image" since Session 3, on previews and, once photos exist, production. The platform passes the parameter through from outside requests too, so it can bypass the CDN cache; Session 8 reviews that. |
+| 2026-10-12 | Neon Launch plan, with the restore window and scheduled snapshots configured and the production branch, `main`, protected | A daily recoverable backup needs a paid plan: Free keeps 6 hours of history and one manual snapshot. Launch has no minimum and costs a few dollars a month at this size. The restore window recovers what is noticed quickly, to the second; snapshots reach back 35 days for what is noticed late. Neither survives deleting the database through Vercel, which Neon calls permanent, and neither covers Blob photos. |
+| 2026-10-12 | Self-hosted Better Auth, not Neon's Managed Better Auth (Neon Auth) | It exposes no passkeys, documents no invite-only sign-up or hooks before user creation, and asks Server Components that read the session to set `dynamic = 'force-dynamic'`, which Cache Components replaces. It documents no exit to self-hosting. Familiar sign-in methods (Google, passwords) are Better Auth options either way. |
+| 2026-10-12 | Better Auth 1.7.7 with its Drizzle adapter (joins off, no `relations()`), uuid ids filled by Postgres's `uuidv7()`, and a hand-written schema; its `users` table is the member model, with `role` and `invite_id` fields clients cannot set | 1.7.7 fixes a database rate-limit race on Postgres through Drizzle. One table avoids keeping two rows in step and a lookup per authorization check. Its generated schema emits `relations()`, v4 ids, and timestamps without zones. |
+| 2026-10-12 | Email-first accounts: an invite is accepted by confirming an email with a code, which creates the account, then a passkey is offered; replaces passkey-first registration | Owner's choice. Every member has a verified email, so a new device or a lost passkey needs a code, not a new invite, and previews and the first admin need no tokens. Passkey-first needed placeholder emails, a cookie for the token, and transactional writes. |
+| 2026-10-12 | Invite-only sign-up through Better Auth's create hook, with email-code sign-up left on; `users.invite_id` unique; Better Auth's unused routes disabled by allowlist | One gate covers every way to create an account, and Postgres enforces single use. The plugin's own `disableSignUp` would also refuse invitees. |
+| 2026-10-12 | Sign-in page leads with the email code, with passkey autofill on the email field and a passkey button below | Owner's choice, for relatives who don't know passkeys; members with a passkey are offered it as soon as they focus the field. |
+| 2026-10-12 | Sessions of 180 days, renewed on the first visit each day, from the browser | Owner's choice: easy for relatives. Below every browser's cookie cap (Chrome clamps at 400 days). Server Components cannot set cookies, so server reads never renew and a client leaf does. |
+| 2026-10-12 | First admin by a build step, `pnpm db:bootstrap`, from `ADMIN_EMAIL`, in every environment; no invite-minting scripts | Owner's choice. No token or connection string reaches a laptop, previews and `develop` get an admin the same way, and the owner signs in with a code. |
+| 2026-10-12 | Requests ask for a name, how they know us, and an optional email; declining deletes; invites last 7 days, single use and revocable | Owner's choice. A week lets relatives act when they get to it; deleting keeps nothing about people who were turned away. |
+| 2026-10-12 | Request form protected by BotID Basic and a second WAF rule, 5 posts per 10 minutes per IP; not `checkRateLimit`, not Deep Analysis | Owner's choice, consistent with the search rule. It blocks before a function runs and cannot fail open; the form shows a generic failure. Deep Analysis costs $1 per 1,000 checks. |
+| 2026-10-12 | Notification emails link to `/admin` only | As planned: mail scanners follow links, and a token in an email would be a second way to authenticate. |
+| 2026-10-12 | Header: a menu below `sm` with Recipes, the account items, and Theme; "Sign in" or an initial menu from `sm` | Owner's choice. An account control did not fit at 360 or 375 px beside the existing controls, and the menu has room for Session 6's Add recipe. |
+| 2026-10-12 | Display names are Better Auth's `name`, set by the admin on the invite and changed by members on `/account`; a rename invalidates a `member:<id>` tag on recipe pages; Better Auth's `/update-user` is disabled | Owner's choice. Names appear on cached pages, so every rename goes through the one action that invalidates them. |
+| 2026-10-12 | The seed creates a "Sample contributor" member outside production; `develop` was reset from `main` once before migration 0003 | Owner's choice. No migration carries synthetic data, and previews show "Added by" and the contributor filter. |
+| 2026-10-12 | Resend through the Vercel Marketplace (`recipe-hub-email`), sending from `recipes.jakerichard.tech`; its full-access key stays a readable Config variable in all three environments | Owner's choices: integrations kept in Vercel, and a subdomain keeps sending reputation apart from the owner's own mail. Readable keys let local development send real email. |
+| 2026-10-12 | pg's `enableChannelBinding` not adopted | Owner's choice. Neon offers SCRAM-SHA-256-PLUS on both endpoints and verify-full TLS already guards the connection; pg 8 ignores the URL's `channel_binding`, and a pending pg change would honor it. |
+| 2026-10-12 | No Google sign-in | Owner's choice: a Google Cloud project, a consent screen, and fixed redirect URIs (no previews) for little gain; with verified emails it can link to accounts later. |
+| 2026-10-12 | Server Action forms return `FormState`, call actions through `useFormAction`, and map errors with `toFormError`; forms promise "works before hydration" | One way for every form. React replays early submits through fetch, which BotID needs, and a failed call shows the form's message instead of the error page. |
+| 2026-10-12 | Query parameters are cut from logged errors and from errors that form actions rethrow; text fields refuse NUL | Drizzle's query errors carry their parameters, which held what visitors typed, and Next logs a rethrown error in full. Postgres cannot store NUL, which surfaced the leak. |
+| 2026-10-12 | `authInterrupts` not used: gated pages redirect to sign-in and show an in-page message to members without access | It is still experimental, and inside Suspense both give status 200 anyway; the proxy gives the real redirect status. |
+| 2026-10-12 | Contributor search filter keyed by member id (`contributor`), counted like sources | Names are mutable and not unique, so the URL names the member and the label comes from the join. |
+| 2026-10-12 | Scans served to members through the image route's own branch, never cached publicly or optimized | Resolves the Session 3 deferral; dish photos stay cacheable because their branch never reads the session. |
 
 ## 8. Chronology and dependencies
 
@@ -574,7 +663,7 @@ flowchart LR
 	S1 --> S3["3 Public browsing (done)"]
 	S2 --> S3
 	S3 --> S4["4 Search (done)"]
-	S1 --> S5["5 Auth and contributor access"]
+	S1 --> S5["5 Auth and contributor access (done)"]
 	S2 --> S5
 	S3 --> S6["6 Authoring"]
 	S5 --> S6
@@ -585,11 +674,10 @@ flowchart LR
 
 - Session 3 (done) seeded synthetic recipes, so browsing works before authoring exists.
 - Session 4 (done) added search and grew the seeded samples to 30, which double as its expected-result corpus.
-- Session 5 is next. If another session's migration merges first, the later branch regenerates its migration after rebasing, so its timestamp is newest (section 5.8).
-- Session 5 needs the design system for its account pages and the data layer for Better Auth's tables.
-- Session 6 needs public pages to land on and authentication, so recipes are attributed from the first save.
+- Session 5 (done) added accounts, invites, sign-in, and the admin page.
+- Session 6 is next. It needs public pages to land on and authentication, so recipes are attributed from the first save. If another session's migration merges first, the later branch regenerates its migration after rebasing, so its timestamp is newest (section 5.8).
 - Session 7 builds on the authoring form, which doubles as the review form. Semantic search with embeddings created at import is revisited after Session 7.
-- Owner actions (section 10) have their own lead times: set up the Resend sending domain before Session 5.
+- Owner actions (section 10) have their own lead times: decide on AI Gateway credits before Session 7.
 
 ## 9. Sessions
 
@@ -612,7 +700,7 @@ Deferred, each to the session that needs it:
 
 - **Session 2:** the duration formatting in `recipe-card.tsx` moves to the duration value object, and an `error.tsx` boundary arrives with the first data reads.
 - **Session 3:** resolved there. `MainNav` renders inside Suspense, the recipe text styles live in the real recipe components that `/design` renders, and a larger card title was not needed.
-- **Session 5 or 6:** a mobile menu once the nav outgrows the header.
+- **Session 5:** resolved there: the header's phone menu arrived with the account control.
 - **Session 6:**
   - A compact textarea size variant for list inputs, which the demo currently sizes at the call site.
   - The reordering interaction for list items.
@@ -657,15 +745,15 @@ Deferred, each to the session that needs it:
   - The GIN index went on `tag_keys`, since filters compare keys.
   - `findTagLabels` now narrows rows through that index.
   - BM25 with `lakebase_text` was evaluated and deferred.
-- **Session 5:**
-  - Configure Better Auth to use uuid ids, because `recipes.contributor_id` is a uuid. Then add its foreign key.
-  - Replace `AnonymousActorProvider`.
-  - Add a members-only read for scans; the public DTO drops them.
-  - Add contributor display names to public DTOs.
-  - Decide on pg's `enableChannelBinding` after testing it on a preview branch.
+- **Session 5:** resolved there.
+  - Better Auth uses uuid ids filled by Postgres, and `recipes.contributor_id` has its foreign key.
+  - `BetterAuthActorProvider` replaced `AnonymousActorProvider`.
+  - Scans are served to members through the image route; a members-only recipe read that lists them waits for its first screen (Session 6).
+  - Public recipe DTOs carry the contributor's display name.
+  - `enableChannelBinding` was tested on `develop` and not adopted (decision log).
 - **Session 6:**
   - Form mapping omits blank optional fields, because the domain rejects blank text.
-  - Server Actions map `AppError` codes to messages, and problem paths to fields.
+  - Server Actions map `AppError` codes to messages, and problem paths to fields: resolved in Session 5 (`toFormError`, section 4.4).
   - Consider shared contract tests that both the in-memory and Drizzle repositories run.
 - **Session 7:** extractors drop an invalid amount but keep the line's text. The draft schemas convert to JSON Schema in both directions.
 
@@ -717,10 +805,7 @@ Deferred, each to the session that needs it:
   - The canonical URL for `/?page=1`.
   - The `RecipePagination` demo.
   - `'use cache: remote'`: not needed yet. Session 8 revisits it if Neon's compute-hours climb.
-- **Session 5:**
-  - Before the `contributor_id` foreign key, choose one: a placeholder member row for the seed member `00000000-0000-4000-8000-000000000001` in non-production branches, or reassigning seeded recipes and resetting `develop`.
-  - "Added by <display name>" on recipe pages, and `author` in the JSON-LD.
-  - The members-only branch of the image route for scans: served unoptimized, never cached publicly.
+- **Session 5:** resolved there: the seed's "Sample contributor" member (with `develop` reset from `main`), "Added by" and the JSON-LD `author`, and the image route's members-only branch for scans.
 - **Session 6:**
   - Uploads write under `dish/<environment>/` and `scan/<environment>/`, with pathnames in the domain's plain-segment shape. Deletes refuse other environments' prefixes.
   - Client uploads under OIDC use `handleUploadPresigned` (`handleUpload` needs a read-write token), restricted to `recipeImageContentTypes`.
@@ -794,12 +879,7 @@ Delivered:
 
 Deferred, each to the session that needs it:
 
-- **Session 5:**
-  - The contributor filter, once display names exist, counted like sources.
-  - The header has room for one more 36 px control at 390 px, but not at 360 or 375. The next one brings the mobile menu deferred from Session 1.
-  - Rate-limit the access-request form. Either add a second WAF rule on the form's POST (the CLI's `server_action` condition), or call `checkRateLimit` from `@vercel/firewall` in the Server Action, which lets the form show an inline error.
-    - `checkRateLimit` fails open on an unknown rule id, does nothing in development, and needs Protection Bypass for Automation on previews.
-    - Call BotID's `checkBotId()` first.
+- **Session 5:** resolved there: the contributor filter, the header's phone menu, the request form's WAF rule after BotID, and previews reached by email-code sign-in with a bootstrapped admin instead of a minting script.
 - **Session 6:**
   - Strip C0 control characters in the domain's text schema. Highlights mark matches with `\u0002` and `\u0003`, so those characters in a recipe would misplace its highlights (never markup). Session 7's imports make them likelier.
   - Link recipe-page tags to `/search?tag=...` for browsing by tag. Cards cannot, because the whole card is a link.
@@ -813,7 +893,7 @@ Deferred, each to the session that needs it:
     - After a client-side page change, focus stays on the clicked page link while the page scrolls to the top.
   - **Indexing.** Search pages keep `noindex` when indexing turns on.
   - **Image route cache bypass.** Any request can add `_vercel_system` to skip the CDN cache, costing a function run and a Blob read. Consider a WAF rate limit on `/api/images`, keyed so the optimizer's own fetches are not throttled.
-  - **`/design` navigation.** The Compositions section has no in-section navigation and now holds about ten subsections.
+  - **`/design` navigation.** The Compositions section has no in-section navigation and now holds about ten subsections. Session 5 added `ReferenceSubsectionNav`, so the fix is one line.
 - **Known quirks:**
   - **`next/form` prefetch.** Its docs list `prefetch` as a boolean defaulting to true, but the source accepts only `false` or `null`, and it prefetches only the shell.
   - **Soft 404 in development.** It emits two robots meta tags: the root's and the injected `noindex`.
@@ -821,10 +901,11 @@ Deferred, each to the session that needs it:
   - **drizzle-kit.** Its `out` must be relative to the working directory, and `--custom` rewrites the previous snapshot with its keys reordered.
   - **The close-match parser.** It takes words as runs of letters and numbers, so a script whose vowel signs never combine into one character (Devanagari) would split mid-word.
   - **Vercel docs.** They disagree on the Runtime Cache's tags per item (128 or 64) and on the Pro rate-limit window cap (10 minutes or 3,600 seconds).
+  - **Neon SQL Editor.** A 9 KB paste of 13 `EXPLAIN ANALYZE` statements failed with `can't access property "map", Q.fields is undefined`. Runs of 2 to 5 KB worked, each statement in its own result tab.
   - **Vercel's image optimizer.** It fetches a local source with an undocumented `_vercel_system` query parameter, and request logs omit query strings, so the route's refusal warning is the way to see it.
   - **Source counts with close matches.** In close-match mode, source counts use close matching, but choosing a source that has exact matches shows those instead, so a count can differ from the results it leads to.
 
-### Session 5: Authentication and contributor access
+### Session 5: Authentication and contributor access (done 2026-10-12)
 
 **Goal:** approved members can sign in to contribute, and the admin reviews requests easily.
 
@@ -848,7 +929,79 @@ Deferred, each to the session that needs it:
 
 **Owner actions:** create a Resend account, add its SPF and DKIM records for a sending domain in Route 53, and store the API key in Vercel; be the first admin.
 
-**Done when:** the owner registers a passkey on production through an invite, a member signs in with an email code, a request can be submitted, reviewed, and turned into an invite, and contribute routes refuse anonymous visitors.
+**Done when:** the owner registers a passkey on production through an invite, a member signs in with an email code, a request can be submitted, reviewed, and turned into an invite, and contribute routes refuse anonymous visitors. With email-first accounts, the owner instead signs in on production with a code as the bootstrapped admin and then registers a passkey (section 10).
+
+Delivered:
+
+- **Data:** migration `0003` with Better Auth's tables (`users` as the member model, with `role` and `invite_id`; `sessions`, `accounts`, `verifications`, `passkeys`, `rate_limits`), `access_requests`, `invites`, and the foreign key from `recipes.contributor_id`; `0004` lets declining delete a request an invite still names. Drizzle repositories for members, requests, and invites, tested on PGlite.
+- **Domain and application:**
+  - Member, request, and invite models with their validation, errors extending a shared `InvalidInputError`, and the text and problem helpers moved to `src/domain/`.
+  - `AccessRequestService`, `InviteService`, `AccountService` (the sign-up gate and code emails, called only by the auth adapter), and `MemberService`.
+  - `requireAdmin`, and the `EmailSender` port.
+- **Auth:**
+  - Better Auth 1.7.7 with email codes and passkeys, sign-up gated by invite, database rate limiting in every environment, allowlisted routes, and 180-day sessions renewed from the browser.
+  - `BetterAuthActorProvider`, the handler at `/api/auth/[...all]`, and the optimistic gate in `src/proxy.ts`.
+- **Email:** `ResendEmailSender`, through the Vercel Marketplace integration, sends request notifications, invites, and sign-in codes from `recipes.jakerichard.tech`.
+- **Pages:**
+  - `/request-access`, protected by BotID and a WAF rule.
+  - `/sign-in`, `/invite`, `/account` (name, email, passkeys, sign out), and `/privacy`.
+  - `/admin` for requests, invites, and members.
+  - `/contribute`, a members-only placeholder.
+- **Header:** the phone menu, the account menu, and session renewal.
+- **Contributors:** "Added by" on recipe pages, the JSON-LD `author`, the contributor search filter and facet, and the `member:<id>` cache tag. Scans are served to members only.
+- **Operations:**
+  - `pnpm db:bootstrap` in the build, and the seed's sample contributor.
+  - In Vercel: `BETTER_AUTH_SECRET` and `ADMIN_EMAIL`, and the second WAF rule.
+  - Resend's records in Route 53.
+- **Fixes:**
+  - Logged errors, and errors that form actions rethrow, lose their query parameters, and text fields refuse NUL. Both came out of the first external review.
+  - Declining deletes a request that an invite still names (migration `0004`), from the second.
+  - The session read awaits the request before building Better Auth, which reads the clock, so prerendering stops first.
+- **Design reference:** the `alert` primitive, and an "Accounts and admin" section rendering the real components.
+- **Tests:** 674, including Better Auth's flows end to end on PGlite.
+- **Preview checks:**
+  - Signed out: public pages unchanged, with "Added by Sample contributor" and its JSON-LD `author`; the contributor filter; `/contribute`, `/admin`, and `/account` redirecting to sign-in with a 307; and `/design`'s new section.
+  - Signed in: the bootstrapped admin by email code; two requests sent from a browser, each notifying the admin by email, one approved with its invite emailed and one declined; a direct invite revoked; the invite accepted with a code, a passkey created and listed, a rename, `/admin` refused to the member, and passkey sign-in after signing out.
+  - The build created and connected `preview/session-5-auth`, the first preview since `main` was protected. Vercel's Git integration missed both pushes during its incident that day, so the deployment was created from the Git ref through Vercel's API.
+
+Deferred, each to the session that needs it:
+
+- **Session 6:**
+  - Replace `/contribute`'s placeholder; the form's actions follow section 4.4.
+  - A members-only recipe read that lists scans, with the screen that shows them.
+  - `recipe-list-params.ts` imports a value from a server-only port, so client code cannot reuse its pure helpers (`singleParam`, `hrefWithParams`). Move them if the form needs them.
+- **Session 8:**
+  - **Security review:**
+    - The race between the sign-up hook's check and the insert (section 5.4).
+    - The two parameterized Better Auth routes that stay mounted. An `onRequest` plugin enforcing the allowlist would close them if a version adds more.
+    - Better Auth's server API skips its rate limiter, so server code never sends codes.
+    - Resend's 100 a day are shared with sign-in codes. Consider BotID on code requests if they are abused.
+    - Confirm the cleanup workflow's `NEON_API_KEY` is project-scoped.
+  - **Resilience:** a session read that throws in the header, as in a database outage, reaches the global error page for signed-in members. Catch it with `unstable_rethrow`, or wrap the slot in a boundary.
+  - **Performance:**
+    - The admin page reads the session once per service call; deduplicate with React `cache()`.
+    - Index `recipes.contributor_id` as the catalog grows, since the contributor filter and facet scan recipes.
+  - **Accessibility audit:**
+    - `AlertDialog` (`role="alertdialog"`) for confirmations.
+    - The signed-in flows by keyboard and screen reader, including focus after approving, declining, and revoking.
+  - **Passkeys:**
+    - Name them from the authenticator or browser; today every one shows as "Passkey" with its date.
+    - Call `PublicKeyCredential.signalUnknownCredential` when sign-in finds no matching passkey.
+  - **Indexing:** `noindex` on the sign-in, invite, account, request, and admin pages when indexing turns on.
+  - **Operations:**
+    - Expired session rows appear to be deleted only when next read (unconfirmed); consider a periodic cleanup.
+    - Two bootstraps running at once on a database with no admin would fail the second on the unique email.
+    - `BLOB_WEBHOOK_PUBLIC_KEY`, from the Blob integration, has no consumer.
+  - **Copy:** an invitee who enters an existing member's address signs in as that member, and the invite stays open; "Your account is ready" then reads slightly off.
+- **Known quirks:**
+  - Better Auth's client types omit `catchAllError`, so `settleAuthCall` turns a thrown network failure into a status.
+  - The bundled `proxy.md` names `unstable_doesProxyMatch`, but Next 16.4.0 exports `unstable_doesMiddlewareMatch`.
+  - Outside production, Resend's SDK prints refused requests to the console, which can quote an address; only a local dev server shows them.
+  - Display names are not unique, so two members with one name appear as two "Added by" choices.
+  - Reloading `/invite` after its fragment is removed shows "This invite can't be used".
+  - Migration `0003` fails on a database whose recipes name a contributor without an account; only `develop` had one, and it was reset from `main` on 2026-10-12 before migrating.
+  - `/design` logs a preload warning for the buttermilk biscuits photo.
+  - BotID refuses a headless browser on previews, so a scripted check of `/request-access` needs a person to send the request.
 
 ### Session 6: Recipe authoring
 
@@ -905,7 +1058,8 @@ Deferred, each to the session that needs it:
   - An accessibility audit: automated with axe, plus keyboard, VoiceOver, and TalkBack passes. Fixes follow.
   - A performance pass: Core Web Vitals, image sizing, caching.
   - A security review: authorization on every write and AI use case, public endpoints and their rate limits, BotID, upload limits, SSRF, and response headers.
-- **Operations:** log review, an error alerting decision, a backup and restore approach for Neon (consider a periodic export), and a runbook in the README.
+- **Operations:** log review, an error alerting decision, the off-Neon backup, and a runbook in the README.
+  - The off-Neon backup is a nightly `pg_dump` (a Postgres 18 client over the unpooled URL) stored outside Neon, plus a copy of Blob photos. It is the only defense against deleting the database through Vercel. Consider landing it with Session 6, when real recipes arrive.
 - **Launch decisions:** the indexing decision revisited, invites sent, and onboarding notes for members.
 
 **Owner actions:** review the brand mark; send invites; announce the site.
@@ -916,24 +1070,24 @@ Deferred, each to the session that needs it:
 
 | Action | Needed by |
 | --- | --- |
-| Create a Resend account, add its sending-domain records in Route 53, and store the API key in Vercel | Session 5 |
-| Be the first admin and register a passkey | Session 5 |
+| Sign in on production with a code as `ADMIN_EMAIL`, set your display name on `/account`, and register a passkey | After Session 5 merges |
 | Try real recipe cards by hand; decide on AI Gateway credits | Session 7 |
 | Review the brand mark; send invites; announce the site | Session 8 |
 
 ## 11. Open questions and risks
 
-- **Public exposure:** browsing is public, so recipes, sources, contributor names, and photos can be scraped or indexed. Mitigation: member-chosen display names, members-only scans, `noindex` until launch, and no contact details on public pages.
+- **Public exposure:** browsing is public, so recipes, sources, contributor names, and photos can be scraped or indexed. Mitigation: display names members choose, members-only scans, `noindex` until launch, and no contact details on public pages.
 - **One Blob store for every environment:** preview and local code can write beside production's photos. Mitigation: environment prefixes, deletes limited to their own prefix (Session 6), and OIDC credentials instead of a long-lived token.
-- **Passkey familiarity:** some relatives may not know passkeys, and recovery depends on the admin. Mitigation: email one-time codes as the fallback, plain onboarding notes, and new invites for new devices.
-- **Sign-in on previews:** passkeys are bound to their domain. Mitigation: invites minted against each preview's Neon branch.
-- **Spam requests:** the request form is public. Mitigation: BotID, rate limits, and requests that create no account.
-- **Uncached public search:** every search reaches Neon, so a crawler sending unique queries could spend the monthly compute-hours. Mitigation: the WAF rate-limit rule on `/search`, which blocks before a function runs.
-- **Free tiers:** Resend allows 100 emails a day, and Neon Free has storage, compute, and branch caps. Both are fine at this scale; revisit if usage grows. A preview fails to deploy at the branch cap, so the cleanup workflow must keep running.
+- **Passkey familiarity:** some relatives may not know passkeys. Mitigation: email-first accounts, so a code always works; the sign-in page leads with the code; plain copy around every passkey prompt; and onboarding notes in Session 8.
+- **Sign-in on previews:** passkeys are bound to their host. Mitigation: email-code sign-in with production's copied members or the bootstrapped admin.
+- **Spam requests and code floods:** the request form and code requests are public. Mitigation: BotID and a WAF rule on the form, requests that create no account, Better Auth's limit of 3 code requests a minute per IP, and codes sent only to members and invited addresses. Resend's 100 emails a day are shared with codes.
+- **Readable email key:** Resend's full-access key is a readable Config variable in every environment, by choice. Mitigation: the Resend account holds only this site's domain.
+- **Uncached public search:** every search reaches Neon, so a crawler sending unique queries could run up compute charges. Mitigation: the WAF rate-limit rule on `/search`, which blocks before a function runs.
+- **Plan limits:** Resend's free plan allows 100 emails a day, which is fine at this scale; revisit if usage grows. Neon's Launch plan bills every branch beyond ten at $1.50 a month, so the cleanup workflow must keep running.
 - **Schema changes under live traffic:** builds migrate before the new deployment serves, and old deployments keep serving. Mitigation: expand-then-contract migrations.
 - **Drizzle 1.0:** a later upgrade rewrites the migrations folder and the client setup. Mitigation: no APIs that 1.0 removes.
 - **AI accuracy and cost:** handwritten cards vary widely. Mitigation: mandatory review, an evaluation set, budgets, and rate limits.
-- **Cache Components with authentication:** session-derived UI must follow the bundled guide so one member's view is never cached for everyone.
+- **Cache Components with authentication:** session-derived UI must follow the bundled guide so one member's view is never cached for everyone. Mitigation: the session is read only inside Suspense through `ActorProvider`, public use cases never ask for the actor, and tests prove it (section 4.4).
 - **Young primitives and stale theming:** Base UI is less than a year past 1.0, with open mobile screen-reader bugs, and next-themes has not shipped since March 2025. Mitigation: screen-reader passes in Session 8, and the Next.js guide's inline script if next-themes breaks.
 
 ## 12. Status
@@ -943,7 +1097,7 @@ Deferred, each to the session that needs it:
 - [x] Session 2: Architecture foundation, recipe domain, and data layer
 - [x] Session 3: Public browsing
 - [x] Session 4: Search
-- [ ] Session 5: Authentication and contributor access
+- [x] Session 5: Authentication and contributor access
 - [ ] Session 6: Recipe authoring
 - [ ] Session 7: AI import from photos and URLs
 - [ ] Session 8: Launch hardening and onboarding

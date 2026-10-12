@@ -1,6 +1,7 @@
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from 'cn';
 import * as React from 'react';
+import { buttonVariants } from '@/components/ui/button';
 
 const specimenVariants = cva('min-w-0', {
 	variants: {
@@ -65,6 +66,32 @@ function ReferenceSubsection({
 	);
 }
 
+// Links to a section's subsections, so a long section stays easy to move around.
+function ReferenceSubsectionNav({
+	label,
+	subsections,
+}: {
+	label: string;
+	subsections: readonly { id: string; title: string }[];
+}) {
+	return (
+		<nav aria-label={label}>
+			<ul className="flex flex-wrap gap-1">
+				{subsections.map((subsection) => (
+					<li key={subsection.id}>
+						<a
+							href={`#${subsection.id}`}
+							className={buttonVariants({ variant: 'ghost', size: 'xs' })}
+						>
+							{subsection.title}
+						</a>
+					</li>
+				))}
+			</ul>
+		</nav>
+	);
+}
+
 function Specimen({
 	label,
 	frame,
@@ -94,4 +121,4 @@ function SpecimenLabel({ className, ...props }: React.ComponentProps<'span'>) {
 	return <span className={cn('font-mono text-xs text-muted-foreground', className)} {...props} />;
 }
 
-export { ReferenceSection, ReferenceSubsection, Specimen, SpecimenLabel };
+export { ReferenceSection, ReferenceSubsection, ReferenceSubsectionNav, Specimen, SpecimenLabel };

@@ -1,12 +1,16 @@
 import { cn } from 'cn';
 import type { Metadata } from 'next';
 import { Fraunces, Hanken_Grotesk, JetBrains_Mono } from 'next/font/google';
+import { Suspense } from 'react';
+import { SessionRenewal } from '@/components/auth/session-renewal';
+import { HeaderAccount, HeaderAccountPlaceholder } from '@/components/layout/header-account';
 import { SiteHeader } from '@/components/layout/site-header';
-import { siteName } from '@/components/layout/site-name';
 import { ThemeProvider } from '@/components/layout/theme-provider';
 import { Toaster } from '@/components/ui/toast';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { getMemberService } from '@/composition/services';
 import { siteUrl } from '@/lib/env';
+import { siteName } from '@/lib/site';
 import './globals.css';
 
 const fraunces = Fraunces({
@@ -33,6 +37,19 @@ export const metadata: Metadata = {
 	robots: { index: false, follow: true },
 };
 
+// Reads the session, so it streams in behind its own boundary instead of holding up the page.
+async function SiteHeaderAccount() {
+	const member = await getMemberService().getCurrentMember();
+	return (
+		<>
+			<HeaderAccount
+				member={member === null ? null : { displayName: member.displayName, role: member.role }}
+			/>
+			{member !== null && <SessionRenewal />}
+		</>
+	);
+}
+
 export default function RootLayout({ children }: LayoutProps<'/'>) {
 	return (
 		<html
@@ -56,7 +73,13 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
 				<ThemeProvider>
 					<TooltipProvider>
 						<Toaster>
-							<SiteHeader />
+							<SiteHeader
+								account={
+									<Suspense fallback={<HeaderAccountPlaceholder />}>
+										<SiteHeaderAccount />
+									</Suspense>
+								}
+							/>
 							<main id="main" className="flex-1">
 								{children}
 							</main>

@@ -4,6 +4,7 @@ import {
 	PaginationSpecimen,
 } from '@/components/design-reference/action-specimens';
 import {
+	AlertSpecimen,
 	AttachmentSpecimen,
 	CardSpecimen,
 	EmptySpecimen,
@@ -26,9 +27,11 @@ import {
 	TabsSpecimen,
 	TooltipSpecimen,
 } from '@/components/design-reference/overlay-specimens';
-import { ReferenceSubsection } from '@/components/design-reference/reference-section';
+import {
+	ReferenceSubsection,
+	ReferenceSubsectionNav,
+} from '@/components/design-reference/reference-section';
 import { ToastSpecimen } from '@/components/design-reference/toast-specimen';
-import { buttonVariants } from '@/components/ui/button';
 
 // One entry per file in src/components/ui.
 const primitives = [
@@ -48,6 +51,7 @@ const primitives = [
 	{ id: 'dialog', title: 'Dialog', Content: DialogSpecimen },
 	{ id: 'dropdown-menu', title: 'Dropdown menu', Content: DropdownMenuSpecimen },
 	{ id: 'tooltip', title: 'Tooltip', Content: TooltipSpecimen },
+	{ id: 'alert', title: 'Alert', Content: AlertSpecimen },
 	{ id: 'toast', title: 'Toast', Content: ToastSpecimen },
 	{ id: 'skeleton', title: 'Skeleton', Content: SkeletonSpecimen },
 	{ id: 'spinner', title: 'Spinner', Content: SpinnerSpecimen },
@@ -58,20 +62,7 @@ const primitives = [
 function PrimitiveSpecimens() {
 	return (
 		<div className="flex flex-col gap-16">
-			<nav aria-label="Primitives">
-				<ul className="flex flex-wrap gap-1">
-					{primitives.map((primitive) => (
-						<li key={primitive.id}>
-							<a
-								href={`#${primitive.id}`}
-								className={buttonVariants({ variant: 'ghost', size: 'xs' })}
-							>
-								{primitive.title}
-							</a>
-						</li>
-					))}
-				</ul>
-			</nav>
+			<ReferenceSubsectionNav label="Primitives" subsections={primitives} />
 			{primitives.map(({ id, title, Content }) => (
 				<ReferenceSubsection key={id} id={id} title={title}>
 					<Content />

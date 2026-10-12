@@ -20,9 +20,23 @@ const themeOptions: readonly ThemeOption[] = [
 	{ value: 'system', label: 'System' },
 ];
 
-function ThemeToggle() {
+// The theme choices, shared by this toggle and the phone menu.
+function ThemeRadioGroup() {
 	const { theme, setTheme } = useTheme();
 
+	return (
+		<DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
+			<DropdownMenuLabel>Theme</DropdownMenuLabel>
+			{themeOptions.map((option) => (
+				<DropdownMenuRadioItem key={option.value} value={option.value} closeOnClick>
+					{option.label}
+				</DropdownMenuRadioItem>
+			))}
+		</DropdownMenuRadioGroup>
+	);
+}
+
+function ThemeToggle() {
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
@@ -33,17 +47,10 @@ function ThemeToggle() {
 				<MoonIcon className="hidden dark:block" aria-hidden="true" />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end">
-				<DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
-					<DropdownMenuLabel>Theme</DropdownMenuLabel>
-					{themeOptions.map((option) => (
-						<DropdownMenuRadioItem key={option.value} value={option.value} closeOnClick>
-							{option.label}
-						</DropdownMenuRadioItem>
-					))}
-				</DropdownMenuRadioGroup>
+				<ThemeRadioGroup />
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);
 }
 
-export { ThemeToggle };
+export { ThemeRadioGroup, ThemeToggle };

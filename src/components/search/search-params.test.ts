@@ -25,10 +25,13 @@ function parse(query: string): RecipeSearchState | null {
 	return parseRecipeSearchParams(routeParams(query));
 }
 
+const adaId = '0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e';
+
 const fullState: RecipeSearchState = {
 	text: 'brown butter',
 	tags: ['Baking', 'Make ahead'],
 	source: 'Aunt June',
+	contributorId: adaId,
 	maxTotalMinutes: 60,
 	addedWithin: 'month',
 	sort: 'title',
@@ -47,13 +50,13 @@ describe('parseRecipeSearchParams', () => {
 	it('reads every parameter', () => {
 		expect(
 			parse(
-				'q=brown+butter&tag=Baking&tag=Make+ahead&source=Aunt+June&time=60&added=month&sort=title&page=2'
+				`q=brown+butter&tag=Baking&tag=Make+ahead&source=Aunt+June&contributor=${adaId}&time=60&added=month&sort=title&page=2`
 			)
 		).toEqual(fullState);
 	});
 
 	it('treats the empty values a form submits as absent', () => {
-		expect(parse('q=&tag=&source=&time=&added=&sort=&page=')).toEqual({
+		expect(parse('q=&tag=&source=&contributor=&time=&added=&sort=&page=')).toEqual({
 			tags: [],
 			sort: 'newest',
 			page: 1,
@@ -66,6 +69,10 @@ describe('parseRecipeSearchParams', () => {
 			source: 'Aunt June',
 		});
 		expect(parse('q=+++')).toEqual({ tags: [], sort: 'newest', page: 1 });
+	});
+
+	it('lowercases the contributor id, as the filters list it', () => {
+		expect(parse(`contributor=+${adaId.toUpperCase()}+`)?.contributorId).toBe(adaId);
 	});
 
 	it('keeps the first spelling of a repeated tag and drops blank ones', () => {
@@ -97,6 +104,7 @@ describe('parseRecipeSearchParams', () => {
 		['an invalid page', 'page=0'],
 		['a repeated query', 'q=soup&q=stew'],
 		['a repeated source', 'source=Aunt+June&source=Grandpa+Lou'],
+		['a repeated contributor', `contributor=${adaId}&contributor=${adaId}`],
 	])('refuses %s', (_case, query) => {
 		expect(parse(query)).toBeNull();
 	});
@@ -109,7 +117,7 @@ describe('recipeSearchHref', () => {
 
 	it('lists parameters in a fixed order and leaves out the default order and first page', () => {
 		expect(recipeSearchHref({ ...fullState, sort: 'relevance', page: 1 })).toBe(
-			'/search?q=brown+butter&tag=Baking&tag=Make+ahead&source=Aunt+June&time=60&added=month'
+			`/search?q=brown+butter&tag=Baking&tag=Make+ahead&source=Aunt+June&contributor=${adaId}&time=60&added=month`
 		);
 	});
 
@@ -132,7 +140,13 @@ describe('recipeSearchHref', () => {
 describe('carriedSearchParams', () => {
 	it('carries everything but the edited fields, and never the page', () => {
 		expect(
-			carriedSearchParams(fullState, ['tags', 'source', 'maxTotalMinutes', 'addedWithin'])
+			carriedSearchParams(fullState, [
+				'tags',
+				'source',
+				'contributorId',
+				'maxTotalMinutes',
+				'addedWithin',
+			])
 		).toEqual([
 			{ name: 'q', value: 'brown butter' },
 			{ name: 'sort', value: 'title' },
@@ -155,7 +169,7 @@ describe('recipeSearchSortsFor', () => {
 
 describe('appliedFilterCount', () => {
 	it('counts each tag and each chosen filter, but not the query or the order', () => {
-		expect(appliedFilterCount(fullState)).toBe(5);
+		expect(appliedFilterCount(fullState)).toBe(6);
 		expect(appliedFilterCount({ text: 'soup', tags: [], sort: 'title', page: 1 })).toBe(0);
 	});
 });
@@ -177,6 +191,7 @@ describe('toRecipeSearchInput', () => {
 			text: 'brown butter',
 			tags: ['Baking', 'Make ahead'],
 			source: 'Aunt June',
+			contributorId: adaId,
 			maxTotalMinutes: 60,
 			addedWithin: 'month',
 			sort: 'title',

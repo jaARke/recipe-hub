@@ -24,6 +24,7 @@ export const recipeSearchParamNames = {
 	text: 'q',
 	tags: 'tag',
 	source: 'source',
+	contributorId: 'contributor',
 	maxTotalMinutes: 'time',
 	addedWithin: 'added',
 	sort: recipeListParamNames.sort,
@@ -36,6 +37,8 @@ export type RecipeSearchState = {
 	text?: string;
 	tags: string[];
 	source?: string;
+	// A member's id; the filters show the name.
+	contributorId?: string;
 	maxTotalMinutes?: RecipeTotalTimeChoice;
 	addedWithin?: RecipeAddedWithin;
 	sort: RecipeSearchSort;
@@ -70,6 +73,12 @@ function parseTextParam(value: string | string[] | undefined): string | undefine
 	return text === '' ? undefined : text;
 }
 
+// Lowercased, as the filters list ids, so a capital typed into the URL still chooses the member.
+function parseIdParam(value: string | string[] | undefined): string | undefined | null {
+	const param = parseTextParam(value);
+	return typeof param === 'string' ? param.toLowerCase() : param;
+}
+
 // Blank tags are dropped and repeats keep their first spelling, as recipes store them.
 function parseTagParams(value: string | string[] | undefined): string[] {
 	const labels = value === undefined ? [] : [value].flat();
@@ -79,6 +88,7 @@ function parseTagParams(value: string | string[] | undefined): string[] {
 export function parseRecipeSearchParams(params: RouteSearchParams): RecipeSearchState | null {
 	const text = parseTextParam(params[recipeSearchParamNames.text]);
 	const source = parseTextParam(params[recipeSearchParamNames.source]);
+	const contributorId = parseIdParam(params[recipeSearchParamNames.contributorId]);
 	const maxTotalMinutes = parseOptionParam(
 		params[recipeSearchParamNames.maxTotalMinutes],
 		recipeTotalTimeChoices
@@ -91,6 +101,7 @@ export function parseRecipeSearchParams(params: RouteSearchParams): RecipeSearch
 	if (
 		text === null ||
 		source === null ||
+		contributorId === null ||
 		maxTotalMinutes === null ||
 		addedWithin === null ||
 		page === null
@@ -107,6 +118,7 @@ export function parseRecipeSearchParams(params: RouteSearchParams): RecipeSearch
 		text,
 		tags: parseTagParams(params[recipeSearchParamNames.tags]),
 		source,
+		contributorId,
 		maxTotalMinutes,
 		addedWithin,
 		sort: sort ?? defaultSearchSort(text),
@@ -128,6 +140,9 @@ export function recipeSearchParams(state: RecipeSearchState): RecipeSearchParam[
 	}
 	if (state.source !== undefined) {
 		add('source', state.source);
+	}
+	if (state.contributorId !== undefined) {
+		add('contributorId', state.contributorId);
 	}
 	if (state.maxTotalMinutes !== undefined) {
 		add('maxTotalMinutes', String(state.maxTotalMinutes));
@@ -166,7 +181,7 @@ export function carriedSearchParams(
 }
 
 export function appliedFilterCount(state: RecipeSearchState): number {
-	const choices = [state.source, state.maxTotalMinutes, state.addedWithin];
+	const choices = [state.source, state.contributorId, state.maxTotalMinutes, state.addedWithin];
 	return state.tags.length + choices.filter((choice) => choice !== undefined).length;
 }
 
@@ -180,6 +195,7 @@ export function toRecipeSearchInput(state: RecipeSearchState, pageSize: number):
 		text: state.text,
 		tags: state.tags,
 		source: state.source,
+		contributorId: state.contributorId,
 		maxTotalMinutes: state.maxTotalMinutes,
 		addedWithin: state.addedWithin,
 		sort: state.sort,

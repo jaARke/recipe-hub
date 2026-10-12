@@ -3,12 +3,12 @@ import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { getCachedRecipe, getCachedRecipePage } from '@/app/_lib/recipe-cache';
 import { PageContainer } from '@/components/layout/page-container';
-import { siteName } from '@/components/layout/site-name';
 import { RecipeDetail, RecipeDetailSkeleton } from '@/components/recipe/recipe-detail';
 import { RecipeJsonLd } from '@/components/recipe/recipe-json-ld';
 import { defaultListSort } from '@/components/recipe/recipe-list-params';
 import { recipePath } from '@/components/recipe/recipe-paths';
 import { siteUrl } from '@/lib/env';
+import { siteName } from '@/lib/site';
 
 export async function generateStaticParams(): Promise<{ slug: string }[]> {
 	const { recipes } = await getCachedRecipePage(1, defaultListSort);

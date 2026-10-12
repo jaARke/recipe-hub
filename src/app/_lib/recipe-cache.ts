@@ -3,11 +3,14 @@ import { cacheLife, cacheTag } from 'next/cache';
 import type { RecipeSort } from '@/application/ports/recipe-repository';
 import type { PublicRecipeDto, RecipeSummaryPage } from '@/application/recipes/recipe-dtos';
 import { getRecipeService } from '@/composition/services';
+import type { MemberId } from '@/domain/member/member';
 
 // The one home for recipe cache tags: Server Actions invalidate these names after a write.
 export const recipeCacheTags = {
 	list: 'recipes',
 	recipe: (slug: string) => `recipe:${slug}`,
+	// Every recipe page showing the member's name, so a rename reaches them all.
+	member: (id: MemberId) => `member:${id}`,
 };
 
 export const recipesPerPage = 24;
@@ -17,7 +20,11 @@ export async function getCachedRecipe(slug: string): Promise<PublicRecipeDto | n
 	'use cache';
 	cacheTag(recipeCacheTags.recipe(slug));
 	cacheLife('days');
-	return getRecipeService().getRecipe(slug);
+	const recipe = await getRecipeService().getRecipe(slug);
+	if (recipe !== null) {
+		cacheTag(recipeCacheTags.member(recipe.contributor.id));
+	}
+	return recipe;
 }
 
 // Pages count from 1; each page in each order is its own entry.

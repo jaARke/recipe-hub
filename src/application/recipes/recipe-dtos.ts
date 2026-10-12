@@ -1,13 +1,17 @@
 import 'server-only';
+import { toPublicMemberDto, type PublicMemberDto } from '@/application/members/member-dtos';
+import type { Member } from '@/domain/member/member';
 import { totalMinutes } from '@/domain/recipe/duration';
 import type { Recipe, RecipeContent, RecipeId } from '@/domain/recipe/recipe';
 import { coverImage, dishImages, type RecipeImage } from '@/domain/recipe/recipe-image';
 import type { RecipeYield } from '@/domain/recipe/recipe-yield';
 
-// What anyone may see: no contributor, no provenance beyond the source URL, and no scans.
+// What anyone may see: the contributor's public name, no provenance beyond the source URL, and no
+// scans.
 export type PublicRecipeDto = Omit<RecipeContent, 'images'> & {
 	id: RecipeId;
 	slug: string;
+	contributor: PublicMemberDto;
 	// Dish photos only; scans are for members.
 	images: RecipeImage[];
 	sourceUrl?: string;
@@ -39,10 +43,11 @@ export type RecipeRef = {
 	slug: string;
 };
 
-export function toPublicRecipeDto(recipe: Recipe): PublicRecipeDto {
+export function toPublicRecipeDto(recipe: Recipe, contributor: Member): PublicRecipeDto {
 	return {
 		id: recipe.id,
 		slug: recipe.slug,
+		contributor: toPublicMemberDto(contributor),
 		title: recipe.title,
 		description: recipe.description,
 		notes: recipe.notes,

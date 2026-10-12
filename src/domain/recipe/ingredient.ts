@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { amountSchema } from '@/domain/recipe/amount';
-import { nonEmptyTextSchema } from '@/domain/recipe/text';
+import { nonEmptyTextSchema } from '@/domain/text';
 
 export const ingredientLineSchema = z.object({
 	// The line as originally written, kept verbatim apart from surrounding whitespace.

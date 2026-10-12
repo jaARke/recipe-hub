@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { nonEmptyTextSchema } from '@/domain/recipe/text';
+import { nonEmptyTextSchema } from '@/domain/text';
 
 // An object rather than a string, so a step can gain fields without reshaping stored recipes.
 export const instructionStepSchema = z.object({

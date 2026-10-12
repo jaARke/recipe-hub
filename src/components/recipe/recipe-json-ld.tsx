@@ -29,7 +29,6 @@ function toRecipeInstructions(
 	);
 }
 
-// No author until contributors have public names; a source can be a cookbook rather than a person.
 function toRecipeJsonLd(recipe: PublicRecipeDto, siteUrl: URL): WithContext<Recipe> {
 	const { prepMinutes, cookMinutes } = recipe.times;
 	// Google reads prep and cook times only as a pair.
@@ -43,6 +42,8 @@ function toRecipeJsonLd(recipe: PublicRecipeDto, siteUrl: URL): WithContext<Reci
 		url: absoluteUrl(recipePath(recipe.slug), siteUrl),
 		name: recipe.title,
 		description: recipe.description,
+		// The member who added the recipe; the source can be a cookbook rather than a person.
+		author: { '@type': 'Person', name: recipe.contributor.displayName },
 		image: images.length > 0 ? images : undefined,
 		datePublished: recipe.createdAt.toISOString(),
 		dateModified: recipe.updatedAt.toISOString(),

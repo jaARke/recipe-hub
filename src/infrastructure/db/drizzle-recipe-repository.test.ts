@@ -1,8 +1,9 @@
 import { eq, sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ZodError } from 'zod';
+import type { NewMember } from '@/application/ports/member-repository';
 import type { NewRecipe } from '@/application/ports/recipe-repository';
-import { memberIdSchema } from '@/domain/member/member';
+import { memberIdSchema, type MemberId } from '@/domain/member/member';
 import type { Provenance } from '@/domain/recipe/provenance';
 import {
 	recipeContentSchema,
@@ -19,11 +20,17 @@ import {
 } from '@/domain/recipe/samples/sample-recipes';
 import { slugCandidate, slugify } from '@/domain/recipe/slug';
 import { tagKey } from '@/domain/recipe/tag';
+import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { recipes } from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 
-const contributorId = memberIdSchema.parse('3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b');
+const contributor: NewMember = {
+	email: 'contributor@example.com',
+	displayName: 'Contributor',
+	role: 'member',
+};
+const unknownMemberId = memberIdSchema.parse('3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b');
 const missingId = recipeIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e');
 const backdated = new Date('2026-01-01T00:00:00Z');
 
@@ -42,10 +49,12 @@ function newRecipe(input: RecipeContentInput, overrides: Partial<NewRecipe> = {}
 
 let db: TestDatabase;
 let repository: DrizzleRecipeRepository;
+let contributorId: MemberId;
 
 beforeEach(async () => {
 	db = await createTestDatabase();
 	repository = new DrizzleRecipeRepository(db);
+	contributorId = (await new DrizzleMemberRepository(db).create(contributor)).id;
 });
 
 afterEach(async () => {
@@ -132,6 +141,16 @@ describe('create', () => {
 		const created = await repository.create(newRecipe(sampleChickenSoup, { slugBase }));
 
 		expect(created.slug).toBe(slugCandidate(slugBase, 3));
+	});
+
+	it('refuses a contributor who is not a member', async () => {
+		const recipe = newRecipe(sampleChickenSoup, { contributorId: unknownMemberId });
+
+		await expect(repository.create(recipe)).rejects.toThrow(
+			expect.objectContaining({
+				cause: expect.objectContaining({ constraint: 'recipes_contributor_id_users_id_fk' }),
+			})
+		);
 	});
 });
 

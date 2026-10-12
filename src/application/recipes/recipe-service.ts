@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireMember } from '@/application/authorization';
 import { paginationSchema } from '@/application/pagination';
 import type { ActorProvider } from '@/application/ports/actor-provider';
+import type { MemberRepository } from '@/application/ports/member-repository';
 import {
 	recipeSorts,
 	type RecipePage,
@@ -18,6 +19,7 @@ import {
 	type RecipeSummaryPage,
 } from '@/application/recipes/recipe-dtos';
 import { assertCanModifyRecipe } from '@/application/recipes/recipe-policy';
+import { problemsFromZodError } from '@/domain/problem';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
 import { provenanceSchema, type Provenance } from '@/domain/recipe/provenance';
 import {
@@ -28,7 +30,6 @@ import {
 	type RecipeContentInput,
 	type RecipeId,
 } from '@/domain/recipe/recipe';
-import { recipeProblemsFromZodError } from '@/domain/recipe/recipe-problem';
 import { slugify, slugSchema } from '@/domain/recipe/slug';
 import { tagKey } from '@/domain/recipe/tag';
 import { getLogger } from '@/lib/logger';
@@ -47,7 +48,7 @@ function parseProvenance(input: unknown): Provenance {
 	const result = provenanceSchema.safeParse(input);
 	if (!result.success) {
 		throw new InvalidRecipeError(
-			recipeProblemsFromZodError(result.error).map((problem) => ({
+			problemsFromZodError(result.error).map((problem) => ({
 				...problem,
 				path: problem.path === '' ? 'provenance' : `provenance.${problem.path}`,
 			}))
@@ -59,10 +60,12 @@ function parseProvenance(input: unknown): Provenance {
 
 export class RecipeService {
 	private readonly recipes: RecipeRepository;
+	private readonly members: MemberRepository;
 	private readonly actors: ActorProvider;
 
-	constructor(recipes: RecipeRepository, actors: ActorProvider) {
+	constructor(recipes: RecipeRepository, members: MemberRepository, actors: ActorProvider) {
 		this.recipes = recipes;
+		this.members = members;
 		this.actors = actors;
 	}
 
@@ -73,7 +76,17 @@ export class RecipeService {
 		}
 
 		const recipe = await this.recipes.findBySlug(slug);
-		return recipe === null ? null : toPublicRecipeDto(recipe);
+		if (recipe === null) {
+			return null;
+		}
+
+		// A foreign key keeps every contributor, so a missing one is broken data, not a missing recipe.
+		const contributor = await this.members.findById(recipe.contributorId);
+		if (contributor === null) {
+			throw new Error('Recipe contributor was not found');
+		}
+
+		return toPublicRecipeDto(recipe, contributor);
 	}
 
 	async listRecipes(page: RecipePage): Promise<RecipeSummaryPage> {

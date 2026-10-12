@@ -1,5 +1,6 @@
 import 'server-only';
 import { recipeSorts } from '@/application/ports/recipe-repository';
+import type { MemberId } from '@/domain/member/member';
 import type { Recipe } from '@/domain/recipe/recipe';
 
 // Relevance ranks by the text query; without one, results come newest first.
@@ -25,6 +26,7 @@ export type RecipeSearchQuery = {
 	tags: string[];
 	// Compared ignoring case.
 	source?: string;
+	contributorId?: MemberId;
 	maxTotalMinutes?: number;
 	addedWithin?: RecipeAddedWithin;
 	sort: RecipeSearchSort;
@@ -51,11 +53,21 @@ export type RecipeFacetCount = {
 	count: number;
 };
 
+// A choice keyed by the member's id and labeled with their display name.
+export type RecipeContributorCount = {
+	memberId: MemberId;
+	displayName: string;
+	count: number;
+};
+
 export type RecipeSearchFacets = {
 	// Counted within the results, so each count is what adding that tag would leave.
 	tags: RecipeFacetCount[];
 	// Counted with every filter but the source, so the count shows what choosing it would give.
 	sources: RecipeFacetCount[];
+	// Counted like sources. The chosen member is listed even at zero, because a URL holds only
+	// the id and the filters need the name; a chosen id missing here names no member.
+	contributors: RecipeContributorCount[];
 };
 
 // Close matches compare words by similarity and are returned only when nothing matches exactly.

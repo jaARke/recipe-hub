@@ -1,5 +1,5 @@
 import 'server-only';
-import { AppError } from '@/lib/errors';
+import { AppError, withoutQueryParameters } from '@/lib/errors';
 
 type LogLevel = 'info' | 'warn' | 'error';
 
@@ -13,11 +13,13 @@ function serializeError(error: unknown): unknown {
 		return error;
 	}
 
+	// Query parameters can hold personal data. The stack starts with the message, so it loses them too.
+	const message = withoutQueryParameters(error.message);
 	return {
 		name: error.name,
-		message: error.message,
+		message,
 		...(error instanceof AppError && { code: error.code }),
-		stack: error.stack,
+		stack: error.stack?.replace(error.message, message),
 		...(error.cause !== undefined && { cause: serializeError(error.cause) }),
 	};
 }

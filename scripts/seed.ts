@@ -6,11 +6,13 @@ import { Pool } from 'pg';
 import { z } from 'zod';
 import type { Actor, ActorProvider, MemberActor } from '@/application/ports/actor-provider';
 import type { ImageStore } from '@/application/ports/image-store';
+import type { MemberRepository, NewMember } from '@/application/ports/member-repository';
 import { RecipeService } from '@/application/recipes/recipe-service';
-import { memberIdSchema } from '@/domain/member/member';
+import type { Member } from '@/domain/member/member';
 import { sampleRecipeContents } from '@/domain/recipe/samples/sample-recipes';
 import { slugify } from '@/domain/recipe/slug';
 import { pinFullSslVerification } from '@/infrastructure/db/connection-string';
+import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
 import { getLogger } from '@/lib/logger';
@@ -21,10 +23,10 @@ const photosFolder = path.join(import.meta.dirname, 'seed/photos');
 // Every seed photo is a JPEG, as scripts/seed/photos/SOURCES.md lists.
 const photoContentType = 'image/jpeg';
 
-// A member with no account; Session 5's foreign key on contributor_id must account for it.
-const seedActor: MemberActor = {
-	kind: 'member',
-	memberId: memberIdSchema.parse('00000000-0000-4000-8000-000000000001'),
+// Every sample's contributor. No one signs in as it: its address can never receive a code.
+const sampleContributor: NewMember = {
+	email: 'sample-contributor@recipes.invalid',
+	displayName: 'Sample contributor',
 	role: 'member',
 };
 
@@ -34,9 +36,26 @@ const seedLockKey = 'recipe-hub:seed';
 const logger = getLogger('seed');
 
 class SeedActorProvider implements ActorProvider {
-	async currentActor(): Promise<Actor> {
-		return seedActor;
+	private readonly actor: MemberActor;
+
+	constructor(contributor: Member) {
+		this.actor = { kind: 'member', memberId: contributor.id, role: contributor.role };
 	}
+
+	async currentActor(): Promise<Actor> {
+		return this.actor;
+	}
+}
+
+async function findOrCreateSampleContributor(members: MemberRepository): Promise<Member> {
+	const existing = await members.findByEmail(sampleContributor.email);
+	if (existing !== null) {
+		return existing;
+	}
+
+	const created = await members.create(sampleContributor);
+	logger.info('Sample contributor created', { memberId: created.id });
+	return created;
 }
 
 async function withSeedLock(pool: Pool, run: () => Promise<void>): Promise<void> {
@@ -103,15 +122,19 @@ if (env.VERCEL_ENV === 'production') {
 } else {
 	const pool = new Pool({ connectionString: pinFullSslVerification(env.DATABASE_URL_UNPOOLED) });
 	try {
-		await withSeedLock(pool, () =>
-			seed(
+		await withSeedLock(pool, async () => {
+			const db = drizzle({ client: pool });
+			const members = new DrizzleMemberRepository(db);
+			const contributor = await findOrCreateSampleContributor(members);
+			await seed(
 				new RecipeService(
-					new DrizzleRecipeRepository(drizzle({ client: pool })),
-					new SeedActorProvider()
+					new DrizzleRecipeRepository(db),
+					members,
+					new SeedActorProvider(contributor)
 				),
 				new BlobImageStore({ storeId: env.BLOB_STORE_ID })
-			)
-		);
+			);
+		});
 	} catch (err) {
 		logger.error('Seeding failed', { err });
 		process.exitCode = 1;

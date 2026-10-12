@@ -1,13 +1,17 @@
 import { sql, type SQL } from 'drizzle-orm';
 import {
 	bigint,
+	boolean,
+	check,
 	customType,
 	index,
+	integer,
 	jsonb,
 	pgTable,
 	text,
 	timestamp,
 	uuid,
+	type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 
 // English stemming that ignores accents, shared by the search vector and every text search query.
@@ -26,8 +30,10 @@ export const recipes = pgTable(
 			.primaryKey()
 			.default(sql`uuidv7()`),
 		slug: text('slug').notNull().unique(),
-		// No foreign key until the member table exists.
-		contributorId: uuid('contributor_id').notNull(),
+		// No cascade: removing a member must not remove their recipes.
+		contributorId: uuid('contributor_id')
+			.notNull()
+			.references(() => users.id),
 		// The JSON columns are untyped because the mapper validates every read. Content excludes tags.
 		content: jsonb('content').notNull(),
 		provenance: jsonb('provenance').notNull(),
@@ -76,4 +82,162 @@ export const recipes = pgTable(
 		index('recipes_search_vector_idx').using('gin', table.searchVector),
 		index('recipes_tag_keys_idx').using('gin', table.tagKeys),
 	]
+);
+
+// Better Auth reads the tables below by their JS keys, so the keys keep its field names. Its
+// user name maps to displayName.
+
+export const users = pgTable(
+	'users',
+	{
+		id: uuid('id')
+			.primaryKey()
+			.default(sql`uuidv7()`),
+		displayName: text('display_name').notNull(),
+		email: text('email').notNull().unique(),
+		emailVerified: boolean('email_verified').notNull().default(false),
+		image: text('image'),
+		role: text('role', { enum: ['member', 'admin'] })
+			.notNull()
+			.default('member'),
+		// The invite that created the account. Unique, so an invite creates one account.
+		inviteId: uuid('invite_id')
+			.unique()
+			.references((): AnyPgColumn => invites.id),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+	},
+	(table) => [check('users_role_check', sql`${table.role} in ('member', 'admin')`)]
+);
+
+export const sessions = pgTable(
+	'sessions',
+	{
+		id: uuid('id')
+			.primaryKey()
+			.default(sql`uuidv7()`),
+		expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+		token: text('token').notNull().unique(),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+		ipAddress: text('ip_address'),
+		userAgent: text('user_agent'),
+		userId: uuid('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+	},
+	(table) => [index('sessions_user_id_idx').on(table.userId)]
+);
+
+// Better Auth requires the table; passkeys and email codes never write to it.
+export const accounts = pgTable(
+	'accounts',
+	{
+		id: uuid('id')
+			.primaryKey()
+			.default(sql`uuidv7()`),
+		accountId: text('account_id').notNull(),
+		providerId: text('provider_id').notNull(),
+		userId: uuid('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		accessToken: text('access_token'),
+		refreshToken: text('refresh_token'),
+		idToken: text('id_token'),
+		accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
+		refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
+		scope: text('scope'),
+		password: text('password'),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+	},
+	(table) => [index('accounts_user_id_idx').on(table.userId)]
+);
+
+export const verifications = pgTable(
+	'verifications',
+	{
+		id: uuid('id')
+			.primaryKey()
+			.default(sql`uuidv7()`),
+		identifier: text('identifier').notNull(),
+		value: text('value').notNull(),
+		expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+	},
+	(table) => [index('verifications_identifier_idx').on(table.identifier)]
+);
+
+export const passkeys = pgTable(
+	'passkeys',
+	{
+		id: uuid('id')
+			.primaryKey()
+			.default(sql`uuidv7()`),
+		name: text('name'),
+		publicKey: text('public_key').notNull(),
+		userId: uuid('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		credentialID: text('credential_id').notNull().unique(),
+		counter: integer('counter').notNull(),
+		deviceType: text('device_type').notNull(),
+		backedUp: boolean('backed_up').notNull(),
+		transports: text('transports'),
+		createdAt: timestamp('created_at', { withTimezone: true }),
+		aaguid: text('aaguid'),
+	},
+	(table) => [index('passkeys_user_id_idx').on(table.userId)]
+);
+
+export const rateLimits = pgTable('rate_limits', {
+	id: uuid('id')
+		.primaryKey()
+		.default(sql`uuidv7()`),
+	key: text('key').notNull().unique(),
+	count: integer('count').notNull(),
+	lastRequest: bigint('last_request', { mode: 'number' }).notNull(),
+});
+
+export const accessRequests = pgTable(
+	'access_requests',
+	{
+		id: uuid('id')
+			.primaryKey()
+			.default(sql`uuidv7()`),
+		name: text('name').notNull(),
+		relationship: text('relationship').notNull(),
+		email: text('email'),
+		status: text('status', { enum: ['pending', 'approved'] })
+			.notNull()
+			.default('pending'),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+	},
+	(table) => [
+		check('access_requests_status_check', sql`${table.status} in ('pending', 'approved')`),
+	]
+);
+
+// An invite is accepted when an account's invite_id points at it.
+export const invites = pgTable(
+	'invites',
+	{
+		id: uuid('id')
+			.primaryKey()
+			.default(sql`uuidv7()`),
+		tokenHash: text('token_hash').notNull().unique(),
+		// Declining deletes the request, even when an invite whose approval failed still names it.
+		requestId: uuid('request_id').references(() => accessRequests.id, { onDelete: 'set null' }),
+		displayName: text('display_name').notNull(),
+		role: text('role', { enum: ['member', 'admin'] }).notNull(),
+		email: text('email'),
+		createdBy: uuid('created_by')
+			.notNull()
+			.references(() => users.id),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+		expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+		revokedAt: timestamp('revoked_at', { withTimezone: true }),
+	},
+	(table) => [check('invites_role_check', sql`${table.role} in ('member', 'admin')`)]
 );

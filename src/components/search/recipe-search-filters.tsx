@@ -4,6 +4,7 @@ import Form from 'next/form';
 import {
 	recipeAddedWithin,
 	type RecipeAddedWithin,
+	type RecipeContributorCount,
 	type RecipeFacetCount,
 	type RecipeSearchFacets,
 } from '@/application/ports/recipe-search';
@@ -56,6 +57,7 @@ const addedWithinLabels: Record<RecipeAddedWithin, string> = {
 const filterFields: readonly RecipeSearchField[] = [
 	'tags',
 	'source',
+	'contributorId',
 	'maxTotalMinutes',
 	'addedWithin',
 ];
@@ -104,6 +106,15 @@ function sourceChoice(state: RecipeSearchState, facetSources: readonly RecipeFac
 	return match === undefined
 		? { items: [...facetSources, { label: chosen, count: 0 }], value: chosen }
 		: { items: facetSources, value: match.label };
+}
+
+// A contributor's value is an id and its label a name, which only the facet knows. Unlike a
+// source, a chosen member missing from the facet cannot be added here, so the facet always lists it.
+function chosenContributor(
+	state: RecipeSearchState,
+	facetContributors: readonly RecipeContributorCount[]
+): RecipeContributorCount | undefined {
+	return facetContributors.find((contributor) => contributor.memberId === state.contributorId);
 }
 
 function ChoiceSelect({
@@ -226,6 +237,22 @@ function RecipeSearchFilters({
 					/>
 				</Field>
 				<Field>
+					<FieldLabel htmlFor={`${idPrefix}-contributor`}>Added by</FieldLabel>
+					<ChoiceSelect
+						id={`${idPrefix}-contributor`}
+						name={recipeSearchParamNames.contributorId}
+						items={[
+							{ value: null, label: 'Anyone' },
+							...facets.contributors.map(({ memberId, displayName, count }) => ({
+								value: memberId,
+								label: displayName,
+								count,
+							})),
+						]}
+						defaultValue={chosenContributor(state, facets.contributors)?.memberId ?? null}
+					/>
+				</Field>
+				<Field>
 					<FieldLabel htmlFor={`${idPrefix}-time`}>Total time</FieldLabel>
 					<ChoiceSelect
 						id={`${idPrefix}-time`}
@@ -337,6 +364,7 @@ function RecipeSearchFiltersDisclosure({
 
 export {
 	addedWithinLabels,
+	chosenContributor,
 	RecipeSearchFilters,
 	RecipeSearchFiltersDisclosure,
 	RecipeSearchFiltersSidebar,

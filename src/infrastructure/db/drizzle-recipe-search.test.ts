@@ -1,27 +1,40 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { NewMember } from '@/application/ports/member-repository';
 import type {
 	HighlightedText,
 	RecipeSearchQuery,
 	RecipeSearchResults,
 	RecipeTextQuery,
 } from '@/application/ports/recipe-search';
-import { memberIdSchema } from '@/domain/member/member';
+import { memberIdSchema, type MemberId } from '@/domain/member/member';
 import type { RecipeTimes } from '@/domain/recipe/duration';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
 import { recipeContentSchema, type RecipeContentInput } from '@/domain/recipe/recipe';
 import { slugify } from '@/domain/recipe/slug';
+import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { DrizzleRecipeSearch } from '@/infrastructure/db/drizzle-recipe-search';
 import { recipes } from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 
-const contributorId = memberIdSchema.parse('3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b');
+// Robin joins first, so on a tie in the contributor facet only the name puts Robin second. Ada
+// adds no recipes.
+const members = {
+	robin: { email: 'robin@example.com', displayName: 'Robin', role: 'member' },
+	contributor: { email: 'contributor@example.com', displayName: 'Contributor', role: 'member' },
+	ada: { email: 'ada@example.com', displayName: 'Ada', role: 'member' },
+} satisfies Record<string, NewMember>;
+type MemberName = keyof typeof members;
+
+const unknownMemberId = memberIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e');
 const dayInMilliseconds = 24 * 60 * 60 * 1000;
 
 type Fixture = {
 	title: string;
 	daysAgo: number;
+	// The contributor unless given.
+	addedBy?: MemberName;
 	description?: string;
 	notes?: string;
 	source?: string;
@@ -66,6 +79,7 @@ const fixtures: Fixture[] = [
 	{
 		title: 'Chicken noodle soup',
 		daysAgo: 60,
+		addedBy: 'robin',
 		source: 'Grandpa Lou',
 		lines: [
 			{ text: '2 cups shredded chicken', item: 'chicken' },
@@ -88,6 +102,7 @@ const fixtures: Fixture[] = [
 	{
 		title: 'Tomato soup',
 		daysAgo: 40,
+		addedBy: 'robin',
 		description: 'Bright and quick, with a swirl of cream.',
 		lines: [
 			{ text: '2 cans whole tomatoes', item: 'whole tomatoes' },
@@ -120,6 +135,7 @@ const fixtures: Fixture[] = [
 	{
 		title: 'Rice bowl',
 		daysAgo: 20,
+		addedBy: 'robin',
 		description: 'A weeknight bowl built on leftovers.',
 		source: 'grandma rose',
 		lines: [
@@ -170,17 +186,24 @@ function toContent(fixture: Fixture): RecipeContentInput {
 // The searches share one database, since none of them writes.
 let db: TestDatabase;
 let search: DrizzleRecipeSearch;
+let memberIds: Record<MemberName, MemberId>;
 
 beforeAll(async () => {
 	db = await createTestDatabase();
 	search = new DrizzleRecipeSearch(db);
+	const memberRepository = new DrizzleMemberRepository(db);
+	memberIds = {
+		robin: (await memberRepository.create(members.robin)).id,
+		contributor: (await memberRepository.create(members.contributor)).id,
+		ada: (await memberRepository.create(members.ada)).id,
+	};
 	const repository = new DrizzleRecipeRepository(db);
 	for (const fixture of fixtures) {
 		const content = recipeContentSchema.parse(toContent(fixture));
 		const created = await repository.create({
 			content,
 			provenance: { entryMode: 'manual' },
-			contributorId,
+			contributorId: memberIds[fixture.addedBy ?? 'contributor'],
 			slugBase: slugify(content.title),
 		});
 		const createdAt = new Date(Date.now() - fixture.daysAgo * dayInMilliseconds);
@@ -313,6 +336,16 @@ describe('filters', () => {
 		expect(titles(results)).toEqual(['Rice bowl', 'Chicken pot pie']);
 	});
 
+	it('keeps the recipes the member added', async () => {
+		const results = await searchFor(undefined, { contributorId: memberIds.robin });
+
+		expect(titles(results)).toEqual(['Rice bowl', 'Tomato soup', 'Chicken noodle soup']);
+		expect(results.facets.sources).toEqual([
+			{ label: 'grandma rose', count: 1 },
+			{ label: 'Grandpa Lou', count: 1 },
+		]);
+	});
+
 	it('keeps recipes whose total time fits, and leaves out those without times', async () => {
 		const results = await searchFor(undefined, { maxTotalMinutes: 35 });
 
@@ -373,6 +406,48 @@ describe('facets', () => {
 		expect(results.facets.sources).toEqual([
 			{ label: 'Grandma Rose', count: 2 },
 			{ label: 'Grandpa Lou', count: 2 },
+		]);
+	});
+
+	it('counts contributors with every filter but the contributor, leaving out members with none', async () => {
+		const results = await searchFor(textQuery('soup', ['soup']), {
+			contributorId: memberIds.contributor,
+		});
+
+		expect(titles(results)).toEqual(['Chicken and rice soup']);
+		expect(results.facets.contributors).toEqual([
+			{ memberId: memberIds.robin, displayName: 'Robin', count: 2 },
+			{ memberId: memberIds.contributor, displayName: 'Contributor', count: 1 },
+		]);
+	});
+
+	it('orders contributors with the same count by name', async () => {
+		const results = await searchFor(textQuery('chicken', ['chicken']));
+
+		expect(results.facets.contributors).toEqual([
+			{ memberId: memberIds.contributor, displayName: 'Contributor', count: 2 },
+			{ memberId: memberIds.robin, displayName: 'Robin', count: 2 },
+		]);
+	});
+
+	it('lists the chosen member at zero when no result is left', async () => {
+		const results = await searchFor(undefined, { tags: ['Soup'], contributorId: memberIds.ada });
+
+		expect(results.total).toBe(0);
+		expect(results.facets.contributors).toEqual([
+			{ memberId: memberIds.robin, displayName: 'Robin', count: 2 },
+			{ memberId: memberIds.contributor, displayName: 'Contributor', count: 1 },
+			{ memberId: memberIds.ada, displayName: 'Ada', count: 0 },
+		]);
+	});
+
+	it('lists no one for a chosen id that names no member', async () => {
+		const results = await searchFor(undefined, { tags: ['Soup'], contributorId: unknownMemberId });
+
+		expect(results.total).toBe(0);
+		expect(results.facets.contributors.map(({ memberId }) => memberId)).toEqual([
+			memberIds.robin,
+			memberIds.contributor,
 		]);
 	});
 

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { nonEmptyTextSchema } from '@/domain/recipe/text';
+import { nonEmptyTextSchema } from '@/domain/text';
 
 // Plain segments only: in a URL, `..`, `%2e%2e`, or `\` would climb out of the role's folder.
 const imagePathnameSchema = z
@@ -64,4 +64,9 @@ export function isRecipeImageContentType(contentType: string): boolean {
 // Whether a requested pathname names a dish photo, which anyone may see.
 export function isPublicImagePathname(pathname: string): boolean {
 	return recipeImageSchema.safeParse({ role: 'dish', pathname }).success;
+}
+
+// Whether a requested pathname names a scan, which only members may see.
+export function isScanImagePathname(pathname: string): boolean {
+	return recipeImageSchema.safeParse({ role: 'scan', pathname }).success;
 }
