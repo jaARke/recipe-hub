@@ -157,6 +157,28 @@ describe('issueInvite', () => {
 		expect(await adminService.listOpenInvites()).toHaveLength(1);
 	});
 
+	it('leaves the request pending when the invite cannot be stored', async () => {
+		const { invites, requests, adminService } = await invitesWithAdmin();
+		const request = await requests.create({ name: 'Ada', relationship: 'A neighbor.' });
+		vi.spyOn(invites, 'create').mockRejectedValueOnce(new Error('Database unavailable'));
+
+		await expect(
+			adminService.issueInvite({ displayName: 'Ada', requestId: request.id })
+		).rejects.toThrow('Database unavailable');
+		expect(await requests.findById(request.id)).toMatchObject({ status: 'pending' });
+	});
+
+	it('revokes its invite when another admin approved the request first', async () => {
+		const { requests, adminService } = await invitesWithAdmin();
+		const request = await requests.create({ name: 'Ada', relationship: 'A neighbor.' });
+		vi.spyOn(requests, 'markApproved').mockResolvedValueOnce(null);
+
+		await expect(
+			adminService.issueInvite({ displayName: 'Ada', requestId: request.id })
+		).rejects.toThrow(AccessRequestNotFoundError);
+		expect(await adminService.listOpenInvites()).toEqual([]);
+	});
+
 	it.each([missingId, malformedId])('reports the request id %s as not found', async (id) => {
 		const { adminService } = await invitesWithAdmin();
 

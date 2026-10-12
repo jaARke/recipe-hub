@@ -103,7 +103,7 @@ export class InviteService {
 		const actor = requireAdmin(await this.actors.currentActor());
 		const fields = parseInviteFields(input);
 		const requestId =
-			input.requestId === undefined ? undefined : await this.approveRequest(input.requestId);
+			input.requestId === undefined ? undefined : await this.findPendingRequest(input.requestId);
 
 		const token = createInviteToken();
 		const invite = await this.invites.create({
@@ -114,6 +114,9 @@ export class InviteService {
 			createdBy: actor.memberId,
 			expiresAt: inviteExpiry(new Date()),
 		});
+		if (requestId !== undefined) {
+			await this.approveRequest(requestId, invite);
+		}
 		const link = inviteLink(this.appUrl, token);
 		const delivery: InviteDelivery =
 			fields.sendTo === undefined
@@ -174,15 +177,23 @@ export class InviteService {
 		return address;
 	}
 
-	// Approving before creating the invite means a request yields at most one invite.
-	private async approveRequest(id: string): Promise<AccessRequestId> {
+	private async findPendingRequest(id: string): Promise<AccessRequestId> {
 		const parsed = accessRequestIdSchema.safeParse(id);
-		const request = parsed.success ? await this.requests.markApproved(parsed.data) : null;
-		if (request === null) {
+		const request = parsed.success ? await this.requests.findById(parsed.data) : null;
+		if (request === null || request.status !== 'pending') {
 			throw new AccessRequestNotFoundError();
 		}
 
 		return request.id;
+	}
+
+	// The invite exists before its request is approved, so a failure leaves the request pending. When
+	// another admin approved it in between, this invite is revoked, so a request yields one invite.
+	private async approveRequest(id: AccessRequestId, invite: Invite): Promise<void> {
+		if ((await this.requests.markApproved(id)) === null) {
+			await this.invites.revoke(invite.id, new Date());
+			throw new AccessRequestNotFoundError();
+		}
 	}
 
 	private async sendInvite(invite: Invite, to: string, link: string): Promise<boolean> {
