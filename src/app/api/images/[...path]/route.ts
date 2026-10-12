@@ -1,6 +1,5 @@
 import type { NextRequest } from 'next/server';
 import { getRecipeImageService } from '@/composition/services';
-import { env } from '@/lib/env';
 import { getLogger } from '@/lib/logger';
 
 const logger = getLogger('images');
@@ -8,19 +7,17 @@ const logger = getLogger('images');
 // Pathnames are never reused, so a stored image never changes.
 const cacheMaxAgeSeconds = 365 * 24 * 60 * 60;
 
+// Vercel's image optimizer adds this parameter when it fetches a source image.
+const optimizerParameter = '_vercel_system';
+
 function notFoundResponse(): Response {
 	return new Response(null, { status: 404, headers: { 'Cache-Control': 'no-store' } });
 }
 
-// The CDN keys on the query string, so only the optimizer's one value per deployment is allowed.
+// The CDN keys on the query string, so any other query would bypass the cache.
 function isAllowedQuery(params: URLSearchParams): boolean {
 	const names = [...params.keys()];
-	return (
-		names.length === 0 ||
-		(names.length === 1 &&
-			env.VERCEL_DEPLOYMENT_ID !== undefined &&
-			params.get('dpl') === env.VERCEL_DEPLOYMENT_ID)
-	);
+	return names.length === 0 || (names.length === 1 && names[0] === optimizerParameter);
 }
 
 export async function GET(request: NextRequest, context: RouteContext<'/api/images/[...path]'>) {
