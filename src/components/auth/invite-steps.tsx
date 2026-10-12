@@ -16,11 +16,27 @@ import { siteName } from '@/lib/site';
 // One step shows at a time, and focus moves to its heading when the step changes.
 const inviteStepHeadingId = 'invite-step-heading';
 
-function InviteStepHeading({ children }: { children: React.ReactNode }) {
+// Keyed by the step heading's level; level 4 nests a step under the design reference's own headings.
+const inviteHeadingTags = {
+	2: 'h2',
+	4: 'h4',
+} as const;
+
+type InviteHeadingLevel = keyof typeof inviteHeadingTags;
+
+function InviteStepHeading({
+	headingLevel,
+	children,
+}: {
+	headingLevel: InviteHeadingLevel;
+	children: React.ReactNode;
+}) {
+	const Heading = inviteHeadingTags[headingLevel];
+
 	return (
-		<h2 id={inviteStepHeadingId} tabIndex={-1} className="font-heading text-2xl font-medium">
+		<Heading id={inviteStepHeadingId} tabIndex={-1} className="font-heading text-2xl font-medium">
 			{children}
-		</h2>
+		</Heading>
 	);
 }
 
@@ -34,15 +50,19 @@ function InviteActions({ children }: { children: React.ReactNode }) {
 
 function InviteWelcome({
 	preview,
+	headingLevel,
 	onContinue,
 }: {
 	preview: InvitePreviewDto;
+	headingLevel: InviteHeadingLevel;
 	onContinue: () => void;
 }) {
 	return (
 		<InviteStep>
 			<div className="flex flex-col gap-3">
-				<InviteStepHeading>Welcome, {preview.displayName}</InviteStepHeading>
+				<InviteStepHeading headingLevel={headingLevel}>
+					Welcome, {preview.displayName}
+				</InviteStepHeading>
 				<p>
 					You&apos;re invited to {siteName}, where members add recipes to the shared collection.
 					Confirm your email address to create your account.
@@ -62,19 +82,31 @@ function InviteWelcome({
 }
 
 // The form inside comes from the flow, which knows how to send the code.
-function InviteEmailStep({ children }: { children: React.ReactNode }) {
+function InviteEmailStep({
+	headingLevel,
+	children,
+}: {
+	headingLevel: InviteHeadingLevel;
+	children: React.ReactNode;
+}) {
 	return (
 		<InviteStep>
-			<InviteStepHeading>Confirm your email</InviteStepHeading>
+			<InviteStepHeading headingLevel={headingLevel}>Confirm your email</InviteStepHeading>
 			{children}
 		</InviteStep>
 	);
 }
 
-function InviteCodeStep({ children }: { children: React.ReactNode }) {
+function InviteCodeStep({
+	headingLevel,
+	children,
+}: {
+	headingLevel: InviteHeadingLevel;
+	children: React.ReactNode;
+}) {
 	return (
 		<InviteStep>
-			<InviteStepHeading>Check your email</InviteStepHeading>
+			<InviteStepHeading headingLevel={headingLevel}>Check your email</InviteStepHeading>
 			{children}
 		</InviteStep>
 	);
@@ -84,15 +116,22 @@ type InvitePasskeyOfferProps = {
 	// Set after the dialog was closed or the passkey couldn't be saved.
 	failed: boolean;
 	pending: boolean;
+	headingLevel: InviteHeadingLevel;
 	onCreate: () => void;
 	onSkip: () => void;
 };
 
-function InvitePasskeyOffer({ failed, pending, onCreate, onSkip }: InvitePasskeyOfferProps) {
+function InvitePasskeyOffer({
+	failed,
+	pending,
+	headingLevel,
+	onCreate,
+	onSkip,
+}: InvitePasskeyOfferProps) {
 	return (
 		<InviteStep>
 			<div className="flex flex-col gap-3">
-				<InviteStepHeading>Create a passkey</InviteStepHeading>
+				<InviteStepHeading headingLevel={headingLevel}>Create a passkey</InviteStepHeading>
 				<p>Your account is ready, and you&apos;re signed in.</p>
 				<p>
 					{siteName} uses a passkey instead of a password. Your phone or computer keeps it for you,
@@ -131,11 +170,17 @@ function InvitePasskeyOffer({ failed, pending, onCreate, onSkip }: InvitePasskey
 	);
 }
 
-function InviteDone({ passkeyCreated }: { passkeyCreated: boolean }) {
+function InviteDone({
+	passkeyCreated,
+	headingLevel,
+}: {
+	passkeyCreated: boolean;
+	headingLevel: InviteHeadingLevel;
+}) {
 	return (
 		<InviteStep>
 			<div className="flex flex-col gap-3">
-				<InviteStepHeading>You&apos;re all set</InviteStepHeading>
+				<InviteStepHeading headingLevel={headingLevel}>You&apos;re all set</InviteStepHeading>
 				<p>
 					{passkeyCreated
 						? 'Your account and passkey are ready. Next time, sign in with your passkey.'
@@ -154,11 +199,13 @@ function InviteDone({ passkeyCreated }: { passkeyCreated: boolean }) {
 	);
 }
 
-function InviteUnavailable() {
+function InviteUnavailable({ headingLevel }: { headingLevel: InviteHeadingLevel }) {
 	return (
 		<InviteStep>
 			<div className="flex flex-col gap-3">
-				<InviteStepHeading>This invite can&apos;t be used</InviteStepHeading>
+				<InviteStepHeading headingLevel={headingLevel}>
+					This invite can&apos;t be used
+				</InviteStepHeading>
 				<p>
 					The link may have expired, been used already, or been copied only in part. Ask the person
 					who invited you for a new one, or request access.
@@ -173,11 +220,19 @@ function InviteUnavailable() {
 	);
 }
 
-function InviteLoadFailed({ onRetry }: { onRetry: () => void }) {
+function InviteLoadFailed({
+	headingLevel,
+	onRetry,
+}: {
+	headingLevel: InviteHeadingLevel;
+	onRetry: () => void;
+}) {
 	return (
 		<InviteStep>
 			<div className="flex flex-col gap-3">
-				<InviteStepHeading>We couldn&apos;t load your invite</InviteStepHeading>
+				<InviteStepHeading headingLevel={headingLevel}>
+					We couldn&apos;t load your invite
+				</InviteStepHeading>
 				<p>Check your connection and try again.</p>
 			</div>
 			<InviteActions>
@@ -192,15 +247,19 @@ function InviteLoadFailed({ onRetry }: { onRetry: () => void }) {
 // An invite creates a new account, so a signed-in visitor signs out first.
 function InviteSignedIn({
 	displayName,
+	headingLevel,
 	signOutButton,
 }: {
 	displayName: string;
+	headingLevel: InviteHeadingLevel;
 	signOutButton: React.ReactNode;
 }) {
 	return (
 		<InviteStep>
 			<div className="flex flex-col gap-3">
-				<InviteStepHeading>You&apos;re already signed in</InviteStepHeading>
+				<InviteStepHeading headingLevel={headingLevel}>
+					You&apos;re already signed in
+				</InviteStepHeading>
 				<p>
 					You&apos;re signed in as {displayName}. This invite creates a new account, so sign out
 					first to use it.
@@ -230,6 +289,7 @@ export {
 	InviteDone,
 	InviteEmailStep,
 	InviteFlowSkeleton,
+	type InviteHeadingLevel,
 	inviteStepHeadingId,
 	InviteLoadFailed,
 	InvitePasskeyOffer,

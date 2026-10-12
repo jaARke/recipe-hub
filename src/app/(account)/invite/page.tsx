@@ -18,6 +18,7 @@ async function InviteForVisitor() {
 		<InviteFlow
 			signedInAs={member?.displayName ?? null}
 			codeLifetimeMinutes={signInCodeLifetimeMinutes}
+			headingLevel={2}
 			getPreview={getInvitePreview}
 			bindEmail={bindInviteEmail}
 		/>

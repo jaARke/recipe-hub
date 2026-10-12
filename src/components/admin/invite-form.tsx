@@ -24,12 +24,12 @@ function InviteForm({ issueInvite }: { issueInvite: FormAction<IssuedInvite> }) 
 			<form action={formAction} noValidate className="flex flex-col gap-6">
 				<FieldGroup>
 					<DisplayNameField
-						id="invite-name"
+						id="admin-invite-name"
 						defaultValue={failed?.values?.[adminFieldNames.displayName]}
 						error={failed?.fieldErrors[adminFieldNames.displayName]}
 					/>
 					<TextField
-						id="invite-email"
+						id="admin-invite-email"
 						name={adminFieldNames.sendTo}
 						type="email"
 						label="Email"

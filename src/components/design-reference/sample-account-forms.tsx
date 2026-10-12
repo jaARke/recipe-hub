@@ -1,17 +1,13 @@
 'use client';
 
-import { InfoIcon } from 'lucide-react';
 import { useState, type ComponentProps } from 'react';
 import { accessRequestFieldNames, profileFieldNames } from '@/components/account/account-forms';
 import { DisplayNameForm } from '@/components/account/display-name-form';
 import { PasskeyList } from '@/components/account/passkey-list';
 import { RequestAccessForm } from '@/components/account/request-access-form';
-import { accountPath, signInHref } from '@/components/auth/auth-paths';
 import { inputProblems, standIn } from '@/components/design-reference/stand-in-actions';
 import { formText, optionalFormText } from '@/components/forms/form-data';
 import type { FormAction, FormState } from '@/components/forms/form-state';
-import { TextLink } from '@/components/layout/text-link';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { toast } from '@/components/ui/toast';
 import { parseAccessRequestFields } from '@/domain/member/access-request';
 import { inviteLifetimeDays } from '@/domain/member/invite';
@@ -73,27 +69,4 @@ function SamplePasskeyList({
 	return <PasskeyList passkeys={passkeys} removingId={removingId} onRemove={removePasskey} />;
 }
 
-// Mirrors the alert PasskeyManager shows when adding a passkey needs a fresh sign-in; the manager
-// lists and changes passkeys through the auth client itself.
-function SampleStaleSessionAlert() {
-	return (
-		<Alert>
-			<InfoIcon aria-hidden="true" />
-			<AlertTitle>Sign in again to add a passkey</AlertTitle>
-			<AlertDescription>
-				<p>
-					For your security, adding a passkey needs a sign-in from the last day.{' '}
-					<TextLink href={signInHref(accountPath)}>Sign in with an email code</TextLink>, and
-					you&apos;ll come back here.
-				</p>
-			</AlertDescription>
-		</Alert>
-	);
-}
-
-export {
-	SampleDisplayNameForm,
-	SamplePasskeyList,
-	SampleRequestAccessForm,
-	SampleStaleSessionAlert,
-};
+export { SampleDisplayNameForm, SamplePasskeyList, SampleRequestAccessForm };

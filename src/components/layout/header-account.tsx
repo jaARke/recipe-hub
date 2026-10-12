@@ -2,7 +2,6 @@ import { cn } from 'cn';
 import Link from 'next/link';
 import * as React from 'react';
 import { signInPath } from '@/components/auth/auth-paths';
-import { SessionRenewal } from '@/components/auth/session-renewal';
 import { AccountMenu } from '@/components/layout/account-menu';
 import type { HeaderMember } from '@/components/layout/header-member';
 import { SiteMenu } from '@/components/layout/site-menu';
@@ -25,7 +24,7 @@ function AccountControlFrame({ children }: { children?: React.ReactNode }) {
 function HeaderAccount({ member }: { member: HeaderMember | null }) {
 	return (
 		<>
-			<SiteMenu member={member} />
+			<SiteMenu member={member} className="sm:hidden" />
 			<AccountControlFrame>
 				{member === null ? (
 					<Link href={signInPath} className={buttonVariants({ variant: 'ghost' })}>
@@ -35,7 +34,6 @@ function HeaderAccount({ member }: { member: HeaderMember | null }) {
 					<AccountMenu member={member} />
 				)}
 			</AccountControlFrame>
-			{member !== null && <SessionRenewal />}
 		</>
 	);
 }

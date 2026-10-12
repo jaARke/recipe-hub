@@ -34,6 +34,13 @@ type SignInFormProps = {
 	codeLifetimeMinutes: number;
 };
 
+type SignInPasskeyOptionProps = {
+	noteId: string;
+	error: string | undefined;
+	pending: boolean;
+	onSignIn: () => void;
+};
+
 async function canAutofillPasskeys(): Promise<boolean> {
 	return (
 		typeof PublicKeyCredential !== 'undefined' &&
@@ -52,6 +59,35 @@ async function signInWithPasskeyAutofill(): Promise<PasskeyAutofillResult> {
 		return null;
 	}
 	return settleAuthCall(authClient.signIn.passkey({ autoFill: true }));
+}
+
+// The passkey alternative below the email code; the caller makes the passkey request.
+function SignInPasskeyOption({ noteId, error, pending, onSignIn }: SignInPasskeyOptionProps) {
+	return (
+		<div className="flex flex-col gap-4">
+			<FormErrorAlert message={error} />
+			<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+				<p id={noteId} className="text-sm text-muted-foreground">
+					Use your face, fingerprint, or screen lock.
+				</p>
+				<Button
+					type="button"
+					variant="outline"
+					disabled={pending}
+					focusableWhenDisabled
+					aria-describedby={noteId}
+					onClick={onSignIn}
+				>
+					{pending ? (
+						<Spinner data-icon="inline-start" />
+					) : (
+						<KeyRoundIcon data-icon="inline-start" aria-hidden="true" />
+					)}
+					{pending ? 'Signing in' : 'Sign in with a passkey'}
+				</Button>
+			</div>
+		</div>
+	);
 }
 
 // An email code first, with a passkey offered below and in the email field's autofill.
@@ -148,29 +184,12 @@ function SignInForm({ next, codeLifetimeMinutes }: SignInFormProps) {
 				/>
 			)}
 			<FieldSeparator>or</FieldSeparator>
-			<div className="flex flex-col gap-4">
-				<FormErrorAlert message={passkeyError} />
-				<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-					<p id={fieldIds.passkeyNote} className="text-sm text-muted-foreground">
-						Use your face, fingerprint, or screen lock.
-					</p>
-					<Button
-						type="button"
-						variant="outline"
-						disabled={passkeyPending}
-						focusableWhenDisabled
-						aria-describedby={fieldIds.passkeyNote}
-						onClick={signInWithPasskey}
-					>
-						{passkeyPending ? (
-							<Spinner data-icon="inline-start" />
-						) : (
-							<KeyRoundIcon data-icon="inline-start" aria-hidden="true" />
-						)}
-						{passkeyPending ? 'Signing in' : 'Sign in with a passkey'}
-					</Button>
-				</div>
-			</div>
+			<SignInPasskeyOption
+				noteId={fieldIds.passkeyNote}
+				error={passkeyError}
+				pending={passkeyPending}
+				onSignIn={signInWithPasskey}
+			/>
 		</div>
 	);
 }
@@ -190,4 +209,4 @@ function SignInFormSkeleton() {
 	);
 }
 
-export { SignInForm, SignInFormSkeleton };
+export { SignInForm, SignInFormSkeleton, SignInPasskeyOption };

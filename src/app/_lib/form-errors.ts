@@ -1,6 +1,7 @@
 import 'server-only';
-import type { FieldErrors, FormError } from '@/components/forms/form-state';
-import { InvalidInputError, type Problem } from '@/domain/problem';
+import { fieldErrorsFrom } from '@/components/forms/field-errors';
+import type { FormError } from '@/components/forms/form-state';
+import { InvalidInputError } from '@/domain/problem';
 import { AppError, findQueryError, withoutQueryParameters } from '@/lib/errors';
 
 // The copy for each expected failure a form can meet, keyed by error code.
@@ -13,15 +14,6 @@ const errorMessages: Partial<Record<string, string>> = {
 	'access.request-not-found':
 		'That request was already handled. Reload the page to see the latest.',
 };
-
-// The first problem for each field, since Zod reports the most basic one first.
-function fieldErrorsFrom(problems: readonly Problem[]): FieldErrors {
-	const fieldErrors: FieldErrors = {};
-	for (const { path, message } of problems) {
-		fieldErrors[path] ??= message;
-	}
-	return fieldErrors;
-}
 
 // Next logs a rethrown error in full, causes included, so a database error is replaced by one that
 // names the failed query without its parameters, which hold what the visitor typed.

@@ -19,6 +19,7 @@ import {
 	inviteStepHeadingId,
 	InviteUnavailable,
 	InviteWelcome,
+	type InviteHeadingLevel,
 } from '@/components/auth/invite-steps';
 import { SignOutButton } from '@/components/auth/sign-out-button';
 import { formText } from '@/components/forms/form-data';
@@ -46,6 +47,7 @@ type InviteFlowProps = {
 	// it, so the page refreshing after the invitee signs in leaves the flow where it is.
 	signedInAs: string | null;
 	codeLifetimeMinutes: number;
+	headingLevel: InviteHeadingLevel;
 	getPreview: (token: string) => Promise<InvitePreviewDto | null>;
 	bindEmail: (token: string, email: string) => Promise<FormState<{ email: string }>>;
 };
@@ -71,7 +73,13 @@ function takeInviteToken(): string | null {
 
 // Accepting an invite: confirm an email address with a code, which creates the account and signs
 // the invitee in, then offer a passkey.
-function InviteFlow({ signedInAs, codeLifetimeMinutes, getPreview, bindEmail }: InviteFlowProps) {
+function InviteFlow({
+	signedInAs,
+	codeLifetimeMinutes,
+	headingLevel,
+	getPreview,
+	bindEmail,
+}: InviteFlowProps) {
 	const router = useRouter();
 	// Undefined until read on mount; null when the link carried none.
 	const token = React.useRef<string | null>(undefined);
@@ -153,21 +161,28 @@ function InviteFlow({ signedInAs, codeLifetimeMinutes, getPreview, bindEmail }: 
 		case 'loading':
 			return <InviteFlowSkeleton />;
 		case 'load-failed':
-			return <InviteLoadFailed onRetry={loadPreview} />;
+			return <InviteLoadFailed headingLevel={headingLevel} onRetry={loadPreview} />;
 		case 'unavailable':
-			return <InviteUnavailable />;
+			return <InviteUnavailable headingLevel={headingLevel} />;
 		case 'signed-in':
 			return (
 				<InviteSignedIn
 					displayName={step.displayName}
+					headingLevel={headingLevel}
 					signOutButton={<SignOutButton onSignedOut={loadPreview} />}
 				/>
 			);
 		case 'welcome':
-			return <InviteWelcome preview={step.preview} onContinue={() => setStep({ kind: 'email' })} />;
+			return (
+				<InviteWelcome
+					preview={step.preview}
+					headingLevel={headingLevel}
+					onContinue={() => setStep({ kind: 'email' })}
+				/>
+			);
 		case 'email':
 			return (
-				<InviteEmailStep>
+				<InviteEmailStep headingLevel={headingLevel}>
 					<RequestCodeForm
 						id={fieldIds.email}
 						autoComplete="email"
@@ -179,7 +194,7 @@ function InviteFlow({ signedInAs, codeLifetimeMinutes, getPreview, bindEmail }: 
 			);
 		case 'code':
 			return (
-				<InviteCodeStep>
+				<InviteCodeStep headingLevel={headingLevel}>
 					<ConfirmCodeForm
 						id={fieldIds.code}
 						description={`We sent a code to ${step.email}. It works for ${codeLifetimeMinutes} minutes.`}
@@ -196,12 +211,13 @@ function InviteFlow({ signedInAs, codeLifetimeMinutes, getPreview, bindEmail }: 
 				<InvitePasskeyOffer
 					failed={step.failed}
 					pending={creatingPasskey}
+					headingLevel={headingLevel}
 					onCreate={createPasskey}
 					onSkip={() => setStep({ kind: 'done', passkeyCreated: false })}
 				/>
 			);
 		case 'done':
-			return <InviteDone passkeyCreated={step.passkeyCreated} />;
+			return <InviteDone passkeyCreated={step.passkeyCreated} headingLevel={headingLevel} />;
 	}
 }
 

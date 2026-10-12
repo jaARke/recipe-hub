@@ -1,6 +1,5 @@
 'use client';
 
-import { KeyRoundIcon } from 'lucide-react';
 import { useState, useTransition } from 'react';
 import type { InvitePreviewDto } from '@/application/access/access-dtos';
 import {
@@ -22,10 +21,10 @@ import {
 	InviteUnavailable,
 	InviteWelcome,
 } from '@/components/auth/invite-steps';
+import { SignInPasskeyOption } from '@/components/auth/sign-in-form';
 import { Specimen } from '@/components/design-reference/reference-section';
 import { inputProblems, standIn } from '@/components/design-reference/stand-in-actions';
 import { formText } from '@/components/forms/form-data';
-import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction, FormError, FormState } from '@/components/forms/form-state';
 import { useFocusOnChange } from '@/components/forms/use-focus-on-change';
 import { PageContainer } from '@/components/layout/page-container';
@@ -38,7 +37,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select';
-import { Spinner } from '@/components/ui/spinner';
 import { parseInviteEmail } from '@/domain/member/invite';
 import { signInCodeLifetimeMinutes } from '@/domain/member/member';
 
@@ -75,6 +73,9 @@ const inviteFieldIds = {
 	code: 'design-invite-code',
 };
 
+// Nests each step under the design reference's own headings.
+const inviteHeadingLevel = 4;
+
 const sendNewCode = () => standIn<FormState>({ status: 'success' });
 
 // Refuses a blank or malformed address with the domain's copy, as the invite page does; the sign-in
@@ -92,42 +93,6 @@ function focusTargetId(step: SampleInviteStep): string {
 		default:
 			return inviteStepHeadingId;
 	}
-}
-
-type SamplePasskeySignInProps = {
-	noteId: string;
-	error: string | undefined;
-	pending: boolean;
-	onSignIn: () => void;
-};
-
-// Mirrors SignInForm's passkey option, which signs in through the auth client itself.
-function SamplePasskeySignIn({ noteId, error, pending, onSignIn }: SamplePasskeySignInProps) {
-	return (
-		<div className="flex flex-col gap-4">
-			<FormErrorAlert message={error} />
-			<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-				<p id={noteId} className="text-sm text-muted-foreground">
-					Use your face, fingerprint, or screen lock.
-				</p>
-				<Button
-					type="button"
-					variant="outline"
-					disabled={pending}
-					focusableWhenDisabled
-					aria-describedby={noteId}
-					onClick={onSignIn}
-				>
-					{pending ? (
-						<Spinner data-icon="inline-start" />
-					) : (
-						<KeyRoundIcon data-icon="inline-start" aria-hidden="true" />
-					)}
-					{pending ? 'Signing in' : 'Sign in with a passkey'}
-				</Button>
-			</div>
-		</div>
-	);
 }
 
 type SampleSignInProps = {
@@ -194,7 +159,7 @@ function SampleSignIn({ idPrefix, codeSentTo, passkeyDialogClosed = false }: Sam
 				/>
 			)}
 			<FieldSeparator>or</FieldSeparator>
-			<SamplePasskeySignIn
+			<SignInPasskeyOption
 				noteId={ids.passkeyNote}
 				error={passkeyError}
 				pending={passkeyPending}
@@ -251,10 +216,16 @@ function SampleInviteSteps({ preview, inviteeEmail, signedInAs }: SampleInviteSt
 			case 'loading':
 				return <InviteFlowSkeleton />;
 			case 'welcome':
-				return <InviteWelcome preview={preview} onContinue={() => moveTo('email')} />;
+				return (
+					<InviteWelcome
+						preview={preview}
+						headingLevel={inviteHeadingLevel}
+						onContinue={() => moveTo('email')}
+					/>
+				);
 			case 'email':
 				return (
-					<InviteEmailStep>
+					<InviteEmailStep headingLevel={inviteHeadingLevel}>
 						<RequestCodeForm
 							id={inviteFieldIds.email}
 							autoComplete="email"
@@ -266,7 +237,7 @@ function SampleInviteSteps({ preview, inviteeEmail, signedInAs }: SampleInviteSt
 				);
 			case 'code':
 				return (
-					<InviteCodeStep>
+					<InviteCodeStep headingLevel={inviteHeadingLevel}>
 						<ConfirmCodeForm
 							id={inviteFieldIds.code}
 							description={`We sent a code to ${email ?? inviteeEmail}. It works for ${signInCodeLifetimeMinutes} minutes.`}
@@ -284,22 +255,26 @@ function SampleInviteSteps({ preview, inviteeEmail, signedInAs }: SampleInviteSt
 					<InvitePasskeyOffer
 						failed={view.step === 'passkey-failed'}
 						pending={creatingPasskey}
+						headingLevel={inviteHeadingLevel}
 						onCreate={createPasskey}
 						onSkip={() => moveTo('done')}
 					/>
 				);
 			case 'done-with-passkey':
-				return <InviteDone passkeyCreated />;
+				return <InviteDone passkeyCreated headingLevel={inviteHeadingLevel} />;
 			case 'done':
-				return <InviteDone passkeyCreated={false} />;
+				return <InviteDone passkeyCreated={false} headingLevel={inviteHeadingLevel} />;
 			case 'load-failed':
-				return <InviteLoadFailed onRetry={() => moveTo('welcome')} />;
+				return (
+					<InviteLoadFailed headingLevel={inviteHeadingLevel} onRetry={() => moveTo('welcome')} />
+				);
 			case 'unavailable':
-				return <InviteUnavailable />;
+				return <InviteUnavailable headingLevel={inviteHeadingLevel} />;
 			case 'signed-in':
 				return (
 					<InviteSignedIn
 						displayName={signedInAs}
+						headingLevel={inviteHeadingLevel}
 						// Stands in for SignOutButton, which signs out through the auth client.
 						signOutButton={
 							<Button type="button" variant="outline" onClick={() => moveTo('welcome')}>

@@ -2,6 +2,7 @@ import { cn } from 'cn';
 import type { Metadata } from 'next';
 import { Fraunces, Hanken_Grotesk, JetBrains_Mono } from 'next/font/google';
 import { Suspense } from 'react';
+import { SessionRenewal } from '@/components/auth/session-renewal';
 import { HeaderAccount, HeaderAccountPlaceholder } from '@/components/layout/header-account';
 import { SiteHeader } from '@/components/layout/site-header';
 import { ThemeProvider } from '@/components/layout/theme-provider';
@@ -40,9 +41,12 @@ export const metadata: Metadata = {
 async function SiteHeaderAccount() {
 	const member = await getMemberService().getCurrentMember();
 	return (
-		<HeaderAccount
-			member={member === null ? null : { displayName: member.displayName, role: member.role }}
-		/>
+		<>
+			<HeaderAccount
+				member={member === null ? null : { displayName: member.displayName, role: member.role }}
+			/>
+			{member !== null && <SessionRenewal />}
+		</>
 	);
 }
 

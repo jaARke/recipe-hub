@@ -1,5 +1,6 @@
 import { AccountDetailsSkeleton } from '@/components/account/account-details';
 import { PasskeyListSkeleton } from '@/components/account/passkey-list';
+import { StaleSessionAlert } from '@/components/account/passkey-manager';
 import { AdminDashboardSkeleton } from '@/components/admin/admin-dashboard';
 import type { IssuedInvite } from '@/components/admin/admin-forms';
 import { AdminOnlyEmptyState } from '@/components/admin/admin-only-empty-state';
@@ -25,7 +26,6 @@ import {
 	SampleDisplayNameForm,
 	SamplePasskeyList,
 	SampleRequestAccessForm,
-	SampleStaleSessionAlert,
 } from '@/components/design-reference/sample-account-forms';
 import { SampleAdminDashboard } from '@/components/design-reference/sample-admin-dashboard';
 import { SampleInviteSteps, SampleSignIn } from '@/components/design-reference/sample-auth-flows';
@@ -33,7 +33,6 @@ import { sampleContributor } from '@/components/design-reference/sample-recipe-d
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import { FormStatusMessage } from '@/components/forms/form-status-message';
 import { TextField } from '@/components/forms/text-field';
-import { AccountMenu } from '@/components/layout/account-menu';
 import { HeaderAccount } from '@/components/layout/header-account';
 import { PageContainer } from '@/components/layout/page-container';
 import { SiteMenu } from '@/components/layout/site-menu';
@@ -96,7 +95,7 @@ const subsections = [
 		id: 'invite',
 		title: 'Accept an invite',
 		description:
-			"One step at a time. Choose a step, or move through them with each step's buttons: here any well-formed address gets a code, any code creates the account, and creating a passkey succeeds.",
+			"One step at a time. Choose a step, or move through them with each step's buttons: here any well-formed address gets a code, any code creates the account, and creating a passkey succeeds. Each step's heading is an h4 here.",
 		Content: InviteStepsSpecimen,
 	},
 	{
@@ -146,10 +145,10 @@ function HeaderAccountSpecimen() {
 				<HeaderAccount member={null} />
 			</Specimen>
 			<Specimen label="Member">
-				<AccountMenu member={sampleHeaderMember} />
+				<HeaderAccount member={sampleHeaderMember} />
 			</Specimen>
 			<Specimen label="Admin">
-				<AccountMenu member={sampleHeaderAdmin} />
+				<HeaderAccount member={sampleHeaderAdmin} />
 			</Specimen>
 			<Specimen
 				label="Below sm, the phone menu: signed out, member, and admin"
@@ -227,7 +226,7 @@ function AccountDetailsSpecimen() {
 				<SamplePasskeyList passkeys={[]} />
 			</Specimen>
 			<Specimen label="Adding a passkey a day or more after signing in">
-				<SampleStaleSessionAlert />
+				<StaleSessionAlert />
 			</Specimen>
 			<Specimen label="Passkeys, loading">
 				<PasskeyListSkeleton />

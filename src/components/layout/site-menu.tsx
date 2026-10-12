@@ -18,11 +18,11 @@ import {
 
 // Phones have no room for the nav, the theme toggle, and the account control, so this one menu
 // holds them below sm.
-function SiteMenu({ member }: { member: HeaderMember | null }) {
+function SiteMenu({ member, className }: { member: HeaderMember | null; className?: string }) {
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
-				render={<Button variant="ghost" size="icon" className="sm:hidden" aria-label="Menu" />}
+				render={<Button variant="ghost" size="icon" className={className} aria-label="Menu" />}
 			>
 				<MenuIcon aria-hidden="true" />
 			</DropdownMenuTrigger>

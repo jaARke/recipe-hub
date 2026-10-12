@@ -32,6 +32,22 @@ const outcomeMessages = {
 	removed: 'Passkey removed.',
 } as const;
 
+function StaleSessionAlert() {
+	return (
+		<Alert>
+			<InfoIcon aria-hidden="true" />
+			<AlertTitle>Sign in again to add a passkey</AlertTitle>
+			<AlertDescription>
+				<p>
+					For your security, adding a passkey needs a sign-in from the last day.{' '}
+					<TextLink href={signInHref(accountPath)}>Sign in with an email code</TextLink>, and
+					you&apos;ll come back here.
+				</p>
+			</AlertDescription>
+		</Alert>
+	);
+}
+
 // Lists, adds, and removes the member's passkeys through the auth endpoint.
 function PasskeyManager() {
 	const { data: passkeys, error: listError, isPending, refetch } = authClient.useListPasskeys();
@@ -90,19 +106,7 @@ function PasskeyManager() {
 	return (
 		<div className="flex flex-col gap-4">
 			{list}
-			{outcome?.kind === 'stale-session' && (
-				<Alert>
-					<InfoIcon aria-hidden="true" />
-					<AlertTitle>Sign in again to add a passkey</AlertTitle>
-					<AlertDescription>
-						<p>
-							For your security, adding a passkey needs a sign-in from the last day.{' '}
-							<TextLink href={signInHref(accountPath)}>Sign in with an email code</TextLink>, and
-							you&apos;ll come back here.
-						</p>
-					</AlertDescription>
-				</Alert>
-			)}
+			{outcome?.kind === 'stale-session' && <StaleSessionAlert />}
 			<FormErrorAlert message={outcome?.kind === 'failed' ? outcome.message : undefined} />
 			<FormStatusMessage
 				message={
@@ -132,4 +136,4 @@ function PasskeyManager() {
 	);
 }
 
-export { PasskeyManager };
+export { PasskeyManager, StaleSessionAlert };
