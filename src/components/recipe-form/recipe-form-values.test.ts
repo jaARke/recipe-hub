@@ -478,12 +478,6 @@ describe('editRecipeForm', () => {
 			added.photos.dish
 		);
 	});
-
-	it('loads new values whole', () => {
-		const next = recipeFormValues();
-
-		expect(edited(lemonBarsForm(), { type: 'load', values: next })).toBe(next);
-	});
 });
 
 describe('recipeFormProblems', () => {

@@ -1272,6 +1272,7 @@ Delivered:
   - Section headings: "Heading (optional)", with a hint on the first section; removing back to one section without a heading returns to the flat list, a heading with an error keeps its field, and focus after removing a section goes to a field that still exists.
   - "Mark as checked" for a draft's warnings (`ProblemCheck`, `FieldProblem`, and an optional `errorCheck` on `TextField` and `TextareaField`), in the summary and beside each field.
   - "Imported from <host>" on recipe pages, with `rel="nofollow noopener noreferrer"`.
+  - The recipe form's `load` edit, which no code used once imports stopped streaming into the form, is removed (the owner's choice).
   - `/admin`: Make admin and Remove admin on member rows; `ConfirmActionDialog`'s `variant` is now required.
   - The privacy page's "Importing recipes" section, and copy for every new error code.
   - The `progress` primitive's indeterminate look, and `/design` specimens: the entry tabs with stand-in imports, import progress, the drafts tab with and without drafts, the checked warnings, the indeterminate bar, and the admin role actions.
@@ -1316,7 +1317,7 @@ Deferred, each to the session that needs it:
   - **Tag autofill,** before invites go out (decision log).
   - **Tests:** `form-errors.test.ts` has no cases for the import and member role codes.
   - **Operations:** the Gateway's Logs show no user, and Custom Reporting's retention is undocumented. Confirm both before relying on per-member spend reports.
-  - **Small:** `member.not-found` and `image.invalid-upload` have no copy in `errorMessages` (only a crafted request reaches a form with either); `AppError` subclasses do not set `name`, so logs show them as `Error`; the recipe form's `load` edit has no consumer now that streaming was not built (kept or removed on the owner's say).
+  - **Small:** `member.not-found` and `image.invalid-upload` have no copy in `errorMessages` (only a crafted request reaches a form with either); `AppError` subclasses do not set `name`, so logs show them as `Error`.
 - **After Session 7:** semantic search with embeddings (decision log).
 - **Known quirks:**
   - The Gateway's response names no model, so `aiModel` is the model asked, which is the one that answered while no fallbacks are configured.

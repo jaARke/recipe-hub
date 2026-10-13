@@ -175,8 +175,7 @@ export type RecipeFormEdit =
 	| { type: 'removeTag'; tagId: number }
 	| PhotoEdit
 	| { type: 'attachErrors'; fieldErrors: FieldErrors; targets: ProblemTargets }
-	| { type: 'setProblemChecked'; target: ProblemTarget | { kind: 'form' }; checked: boolean }
-	| { type: 'load'; values: RecipeFormValues };
+	| { type: 'setProblemChecked'; target: ProblemTarget | { kind: 'form' }; checked: boolean };
 
 // Each list's items, under the name the recipe content gives them.
 const itemKeys = {
@@ -900,7 +899,5 @@ export function editRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): 
 			}
 			return { ...values, checkedProblems };
 		}
-		case 'load':
-			return edit.values;
 	}
 }
