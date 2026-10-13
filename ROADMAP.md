@@ -75,7 +75,7 @@ Recipe Hub is one Next.js project organized as a layered, ports-and-adapters arc
   - `drizzle.config.ts`, which drizzle-kit loads.
   - The scripts in `scripts/`, which tsx runs with `scripts/tsconfig.json`. It maps `@/` to `src/` and `server-only` to Next's empty module (the alias Vitest uses), so scripts can import server modules.
   - Each loads `.env.local` with `@next/env` and reads its own variables with Zod. Under tsx, `@next/env` is imported whole, because it is bundled CommonJS.
-- Server modules begin with `import 'server-only'`. Client components (`'use client'`) import only components, domain types, and pure helpers. Pure helpers that client code imports live in domain modules that define no Zod schema (`amount-format.ts`, `ingredient-parser.ts`, `ingredient-limits.ts`), so Zod stays out of the browser bundle; type-only imports from schema modules are fine.
+- Server modules begin with `import 'server-only'`. Client components (`'use client'`) import only components, domain types, and pure helpers. Pure helpers and constants that client code imports live in domain modules that define no Zod schema (`amount-format.ts`, `ingredient-parser.ts`, `ingredient-limits.ts`, `import-limits.ts`), so Zod stays out of the browser bundle; type-only imports from schema modules are fine. `import-limits.ts` holds the scan limits the import service enforces and the browser encodes and words its copy by (`maxImportScans`, `maxImportScanSizeInBytes`).
 - **Enforcement.** `pnpm lint:boundaries` runs dependency-cruiser with `.dependency-cruiser.ts` (the owner's precedent from sage, kept to a short hand-written rule list). Type-only imports count. It checks that:
   - domain imports only domain, pure `src/lib` helpers (not `env.ts` or `logger.ts`), `zod`, and `parse-ingredient`;
   - application imports only application, domain, `src/lib` without `env.ts`, `zod`, and `server-only`;
@@ -91,14 +91,15 @@ Recipe Hub is one Next.js project organized as a layered, ports-and-adapters arc
 
 | Pattern | Where | Why |
 | --- | --- | --- |
-| Repository | `RecipeRepository`, `MemberRepository`, `AccessRequestRepository`, and `InviteRepository` ports with Drizzle adapters | Services and tests do not depend on how data is stored. One contract suite (`recipe-repository-contract.ts`) holds the in-memory recipe repository to the Drizzle one. |
+| Repository | `RecipeRepository`, `RecipeImportRepository`, `MemberRepository`, `AccessRequestRepository`, and `InviteRepository` ports with Drizzle adapters | Services and tests do not depend on how data is stored. Contract suites (`recipe-repository-contract.ts`, `recipe-import-repository-contract.ts`) hold the in-memory recipe and import repositories to the Drizzle ones. |
 | Query port | `RecipeSearch` with `DrizzleRecipeSearch` | Postgres matches, ranks, highlights, and counts facets; the service validates input and maps results to DTOs. |
-| Strategy | `RecipeExtractor` port with JSON-LD, AI text, and AI vision implementations | The entry modes differ only in how a draft is produced. |
+| Strategy | `PageRecipeExtractor` (`JsonLdPageRecipeExtractor`, then `AiPageRecipeExtractor` reading the page's text) and `ScanRecipeExtractor` (`AiScanRecipeExtractor`), behind a `WebPageFetcher` for pages | The entry modes differ only in how a recipe is read. Every extractor returns an `ExtractedRecipe`, which one domain function turns into a draft. Each call names its `ExtractionRequester` (member id and email), so a model call is attributed to one member. |
+| Transaction lock | `lockForTransaction` (`src/infrastructure/db/transaction-lock.ts`) | The one way to take a transaction-scoped advisory lock: slug allocation, member role changes, and each member's import count each take one, so racing writers take turns. |
 | Adapter | Every infrastructure class | Vendor APIs are translated into port contracts. |
 | Composition root with constructor injection | `src/composition/` | Explicit wiring without a DI framework, and fakes injected in tests. |
 | Value object | Amounts, durations, yields, slugs, tags | Each invariant lives in one place. |
 | Mapper | Infrastructure (row to domain) and application (domain to DTO) | Each boundary owns its translation. |
-| Draft, review, save | All three entry modes | AI output is never saved unreviewed: every mode produces a `RecipeDraft` that the member reviews in the same form before saving. |
+| Draft, review, save | Every import | AI output is never saved unreviewed: an import stores its draft, which the member reviews in the recipe form before saving, and the saved recipe takes its provenance from the import. |
 
 **OOP where it earns its keep.** Services, adapters, and extractors are classes that implement interfaces and receive dependencies through their constructors. Domain data is immutable plain objects described by Zod schemas, because data crossing the Server and Client Component boundary must be serializable. Behavior on that data lives in small pure modules beside its schema.
 
@@ -109,13 +110,16 @@ Recipe Hub is one Next.js project organized as a layered, ports-and-adapters arc
 - **Server Action forms** (since Session 5):
   - An action takes `(state, formData)`, reads fields with `formText` and `optionalFormText` (a blank optional field is absent), calls one service, and returns `FormState` (`src/components/forms/form-state.ts`). After a success it calls `updateTag` or `refresh()`; `updateTag` already re-renders the current route, so `refresh()` is only for reads that are not cached.
   - An action that leads to another page (creating or editing a recipe) redirects after its `updateTag` calls, so the destination renders fresh in the action's own response: a client navigation afterwards can get the CDN's copy from before the write for a few seconds. `useFormAction` lets Next's redirect through (`unstable_rethrow`). Deleting a recipe still navigates from its dialog, so the dialog's toast can show; the list may show the deleted recipe for those few seconds.
+  - The import actions (`importFromUrl`, `importFromScans` in `src/app/(contribute)/contribute/actions.ts`) store the draft, then redirect to its review page, `/contribute/imports/<id>`. Nothing cached changes until a recipe is saved from it, so they update no tag.
+  - A Server Action runs as long as the page that renders its form allows, so `/contribute` exports `maxDuration = 120` for its import actions; each model call times out at 90 seconds within it.
   - `toFormError` (`src/app/_lib/form-errors.ts`) turns validation problems into field errors and expected error codes into copy. Anything else is rethrown, without the query parameters a database error carries, because Next logs it in full.
   - Forms call their action through `useFormAction`, a client function. React replays a submit made before hydration through fetch, which BotID can check, and a call that fails in transport (a firewall 429, a lost connection) shows the form's failure message instead of the error page.
   - React resets a form after its action, so error states return the submitted text (`FormError.values`), and a Base UI checkbox or select remounts with the submitted value.
   - The recipe form (`src/components/recipe-form/`) keeps its value in a reducer with stable item ids and sends it as JSON in one hidden field, which `recipeContentFromForm` maps on the server. Errors attach to the items their paths name, so they follow moves. The form needs JavaScript for list editing and uploads, so Save stays disabled until hydration: it is the one form that does not work before hydration.
+  - The review page loads a draft into the recipe form on the server with `recipeFormValues(content, problems)`, the one load path create and edit use, and the form posts the import's id in a hidden field. The browser never names a recipe's provenance: the service takes it from the import.
   - Next keeps recent pages alive (Activity), with their state. The create form starts over because its redirect remounts it, and the edit form is keyed by the recipe's `updatedAt`, so a recipe changed elsewhere starts it again.
 - Route Handlers only for HTTP-shaped needs: the auth endpoint, Blob client-upload tokens, and image delivery. Open Graph images, icons, the manifest, the sitemap, and robots use Next's metadata file conventions.
-- `src/proxy.ts` (Next 16's replacement for `middleware.ts`) makes optimistic redirects only: a request to `/contribute`, `/recipes/<slug>/edit`, `/admin`, or `/account` without a session cookie goes to `/sign-in?next=<path>`. Its matcher names those routes, so it never runs for public pages or metadata files. The authoritative check is the application layer, on every call.
+- `src/proxy.ts` (Next 16's replacement for `middleware.ts`) makes optimistic redirects only: a request to `/contribute` (the import review pages included), `/recipes/<slug>/edit`, `/admin`, or `/account` without a session cookie goes to `/sign-in?next=<path>`. Its matcher names those routes, so it never runs for public pages or metadata files. The authoritative check is the application layer, on every call.
 - **Sessions:**
   - Server Components read the session only through `ActorProvider` (Better Auth's `getSession` with `disableRefresh`), only inside Suspense, and never inside a `'use cache'` function. A public use case never asks for the actor, so cached reads stay cacheable.
   - The composition root's request reader awaits `connection()` before `headers()`. With partial prefetching, headers resolve while the page's shell still prerenders, so the session read would run there: the dev server logs it as reading the clock while prerendering, and production discards the queries.
@@ -152,13 +156,15 @@ Recipe Hub is one Next.js project organized as a layered, ports-and-adapters arc
 
 ```text
 assets/fonts/             static TTF subsets for Open Graph images, with their licenses
-scripts/                  entry points run with tsx outside Next (seed, bootstrap)
-  seed/photos/            seed photos and their sources
+scripts/                  entry points run with tsx outside Next, one folder per script
+  bootstrap/              the first admin
+  seed/                   sample recipes; photos/ holds seed photos and their sources
+  evaluate/               the import evaluation; cases/ holds its inputs and expected drafts
 src/
   app/                    presentation: routing, thin pages and actions
     _lib/                 cached reads and cache tags shared by routes
     (browse)/             public: recipe list and detail, search
-    (contribute)/         approved members: add, edit, import
+    (contribute)/         approved members: add, edit, import, review an import's draft
     (account)/            request access, accept an invite, sign in, account, privacy
     admin/                access requests and members
     design/               design reference (development and previews only)
@@ -168,22 +174,22 @@ src/
       images/[...path]/   image delivery: public dish photos, members-only scans
   components/
     ui/                   shadcn primitives
-    <feature>/            feature compositions (recipe, recipe-form, search, layout, forms, auth, account, admin)
+    <feature>/            feature compositions (recipe, recipe-form, recipe-import, search, layout, forms, auth, account, admin)
   domain/
     recipe/               schemas, value objects, pure functions, errors
     member/
   application/
     ports/                interfaces the use cases depend on
     recipes/
-    ingestion/
+    ingestion/            imports: the import service, its errors and DTOs
     search/
     access/               access requests, invites, and the sign-up gate
     members/
   infrastructure/
     db/                   Drizzle schema, client, migrations, repositories
     storage/
-    ai/
-    web/
+    ai/                   AI Gateway extractors, prompts, and the model output schema
+    web/                  the guarded page fetcher, JSON-LD extractor, and page text
     auth/                 Better Auth, the actor provider
     email/                Resend
   composition/            composition root
@@ -206,18 +212,30 @@ Files are kebab-case (`recipe-repository.ts`), classes and types PascalCase, fun
   - `VERCEL_GIT_COMMIT_REF`, required on previews, from which it derives `imageEnvironment`, the folder this deployment writes images to (section 5.5);
   - `BETTER_AUTH_SECRET`, `RESEND_API_KEY`, and `RESEND_EMAIL_DOMAIN`. It refuses to start if `BETTER_AUTH_SECRETS` or `BETTER_AUTH_TRUSTED_ORIGINS` is set, because Better Auth reads both itself and would let them override the configured secret and hosts.
 
-  Vercel supplies the values; local development pulls them with `vercel env pull`. The Blob SDK reads and refreshes Vercel's OIDC token itself; there is no read-write token. `drizzle.config.ts` and the scripts read their own variables (section 4.2); `scripts/bootstrap.ts` reads `ADMIN_EMAIL`.
+  Vercel supplies the values; local development pulls them with `vercel env pull`. The Blob SDK and the AI SDK's Gateway provider read Vercel's OIDC token themselves, and locally both refresh an expired one with the Vercel CLI's login (the AI SDK through `@vercel/oidc`). There is no Blob read-write token and no `AI_GATEWAY_API_KEY`, which would win over OIDC. `drizzle.config.ts` and the scripts read their own variables (section 4.2): `scripts/bootstrap/bootstrap.ts` reads `ADMIN_EMAIL`, and `scripts/evaluate/evaluate.ts` stops before any call without `VERCEL_OIDC_TOKEN`.
 
 - **Errors:**
-  - Expected failures are classes extending `AppError` (`src/lib/errors.ts`) with a stable `code`: `recipe.invalid`, `recipe.not-found`, `recipe.edit-conflict`, `recipe.invalid-page`, `recipe.invalid-search`, `image.invalid-upload`, `access.sign-in-required`, `access.forbidden`, `access.invalid-request`, `access.invalid-invite`, `access.invalid-email`, `access.invite-unavailable`, `access.invite-not-found`, `access.request-not-found`, `member.invalid-profile`, `member.not-found`, `email.delivery-failed`, and in the browser `photo.unreadable`.
+  - Expected failures are classes extending `AppError` (`src/lib/errors.ts`) with a stable `code`: `recipe.invalid`, `recipe.not-found`, `recipe.edit-conflict`, `recipe.invalid-page`, `recipe.invalid-search`, `image.invalid-upload`, `import.invalid`, `import.page-refused`, `import.page-unavailable`, `import.paused`, `import.failed`, `import.no-recipe`, `import.rate-limited`, `import.unavailable`, `access.sign-in-required`, `access.forbidden`, `access.invalid-request`, `access.invalid-invite`, `access.invalid-email`, `access.invite-unavailable`, `access.invite-not-found`, `access.request-not-found`, `member.invalid-profile`, `member.not-found`, `member.role-conflict`, `member.last-admin`, `email.delivery-failed`, and in the browser `photo.unreadable`.
+  - A code a form can receive needs its copy in `errorMessages` (`src/app/_lib/form-errors.ts`), or `toFormError` rethrows it as unexpected.
+  - The import errors live in `src/application/ingestion/errors.ts`. `import.page-unavailable` carries a reason for logs (`not-found`, `unreachable`, `timed-out`, `not-html`, `too-large`, `not-public`) and `import.page-refused` the site's status; members see one message for each.
   - Validation errors extend `InvalidInputError` (`src/domain/problem.ts`), which carries the problems, so every form maps them to fields one way.
   - Reads return `null` when nothing is found; writes throw. Validation failures carry problems with dotted paths (`ingredientSections.0.lines.2.item`), the same shape drafts use, so the form renders both alike.
   - Server Actions return expected errors as values and rethrow anything else, as the bundled error-handling guide says. Production masks thrown server errors to a digest, so a code never reaches the client by being thrown.
   - Presentation maps codes to user-facing messages, and unexpected errors reach Next.js error boundaries.
-- **Logging:** `getLogger(name)` in `src/lib/logger.ts` writes one JSON line per event (`level`, `logger`, `message`, camelCase fields, and `err` serialized with its code and cause) through the console method matching the level, because Vercel takes a line's level from the console method, not from the JSON. It has no dependency. Messages are constant (ESLint enforces it), with values in the fields. Lifecycle events (recipe created, updated, or deleted, recipe images deleted, image upload authorized, import started or failed, access requested, request declined, invite issued or revoked, access granted, member renamed, admin bootstrapped) log at info with the acting `memberId`, recoverable problems at warn (a recipe save refused as stale, an image delete that failed, an upload refused), failures at error. Never log tokens, codes, email addresses, or names; access events carry ids only.
+- **Logging:** `getLogger(name)` in `src/lib/logger.ts` writes one JSON line per event (`level`, `logger`, `message`, camelCase fields, and `err` serialized with its code and cause) through the console method matching the level, because Vercel takes a line's level from the console method, not from the JSON. It has no dependency. Messages are constant (ESLint enforces it), with values in the fields. Lifecycle events (recipe created, updated, or deleted, recipe images deleted, image upload authorized, import started, finished, or failed, expired import drafts cleared, access requested, request declined, invite issued or revoked, access granted, member renamed, admin role granted or removed, admin bootstrapped) log at info with the acting `memberId`, recoverable problems at warn (a recipe save refused as stale or for an unavailable import, an image delete that failed, an upload refused, an import refused at the daily limit, an import draft that could not be cleared, an admin role removal refused), failures at error. Never log tokens, codes, email addresses, or names; access events carry ids only.
+  - Import events carry ids, error codes, the mode, the model, and the cost, never the page's address, its text, or the model's output. The fetcher's and the AI adapter's error causes keep codes only, since their messages can quote the address or the output.
+  - A member's email leaves the app only as the AI Gateway's reporting `user` (section 5.5); providers get a SHA-256 of the member id instead.
   - Drizzle's query errors end with the query's parameters, so the logger cuts them from every logged message and stack.
   - Better Auth's own warnings and errors go through the logger as `auth`.
-- **Validation:** Zod at every boundary: form input, AI output, scraped data, and every database read of a recipe document.
+- **Validation:** Zod at every boundary: form input, AI output, scraped data, and every database read of a recipe document or an import's draft.
+- **AI calls:** `extractWithModel` (`src/infrastructure/ai/model-extraction.ts`) is the one way to call a model.
+  - It calls `generateText` with `Output.object` against the flat output schema in `recipe-output.ts`, the instructions as the system prompt, and a 90-second timeout. Reasoning stays at each model's default.
+  - It never sets sampling parameters: Claude Sonnet and Haiku 5.5 refuse non-default `temperature`, `top_p`, and `top_k`, and Gemini 3 deprecated them. Sonnet 5.5 also refuses forced tool use; `Output.object` through the Gateway works with it, as the evaluation showed.
+  - Every call asks for zero data retention and names the member: their email as the Gateway's `user`, and a SHA-256 of their member id as `safetyIdentifier`.
+  - A 402 from the Gateway (credits or budget exhausted, which `@ai-sdk/gateway` raises as `GatewayInternalServerError` with `statusCode: 402`) becomes `import.paused`; any other failure, a timeout, a refusal, or output that fails the schema becomes `import.failed`.
+  - Prompts treat the photo or page as data only and tell the model never to follow instructions written in it.
+  - The cost comes from `providerMetadata.gateway.cost`. The model comes from the SDK's response, which reports the model asked for, since the Gateway names none; that is the model that answered only while no Gateway fallbacks are configured.
+- **Fetching pages:** `GuardedWebPageFetcher` is the only code that fetches an address a member gives. It uses `guarded-fetch`'s own undici fetch, so page fetches bypass Next's fetch caching and instrumentation.
 - **Testing:**
   - Vitest for domain and application code, with in-memory fakes for ports. Vitest aliases `server-only` to Next's own empty module, so server modules import in tests.
   - Repository tests run against PGlite (Postgres 18.3 in WASM, loading `pg_trgm` and `unaccent` from its contrib modules) built by the real migrations, inside `pnpm test`, with no secrets or branch quota. `pgvector` ships separately, as `@electric-sql/pglite-pgvector`.
@@ -228,6 +246,10 @@ Files are kebab-case (`recipe-repository.ts`), classes and types PascalCase, fun
   - Infrastructure adapters are tested against real engines, never module mocks. `BlobImageStore` is a thin pass-through with no local engine, so the seed run and the preview verify it; a test covers its refusal to delete outside its folders. `BlobUploadHandler` runs the real SDK against a local fake of Blob's API through `VERCEL_BLOB_API_URL`.
   - A PL/pgSQL trigger on PGlite proves that every slug write holds the slug allocation lock.
   - Better Auth runs for real on PGlite through `src/infrastructure/auth/testing/`, with rate limiting on. `ResendEmailSender` runs the real SDK against a local HTTP server through its `RESEND_BASE_URL`.
+  - The AI extractors run against the AI SDK's `MockLanguageModelV4` (`ai/test`), and against a real `createGateway` given an injected `fetch` with canned answers, which checks the request body the Gateway receives and how its errors map. No test calls a model.
+  - `GuardedWebPageFetcher` runs `guarded-fetch` for real through its `fetch` option, which sends a public test origin to a local HTTP server, so every address check still runs. Its tests of DNS-based blocks resolve `localtest.me`, so they need DNS.
+  - Import services run against `FixedWebPageFetcher`, `FixedPageRecipeExtractor`, and `FixedScanRecipeExtractor` in `src/application/testing/`.
+  - The evaluation's scoring (`scripts/evaluate/score.ts`) is tested beside it, inside `pnpm test`; the evaluation itself makes paid calls and runs by hand (section 7).
   - Presentation logic that is pure (JSON-LD mapping, page numbering) is tested beside its component.
 
 ## 5. Specifications and constraints
@@ -248,14 +270,19 @@ The normalized shape every entry mode produces, finalized in Session 2 in `src/d
   - Each image is a Blob pathname plus optional alt text. A pathname starts with its role (`dish/` or `scan/`) and has only plain segments (letters, numbers, `_`, `-`, `.`), because `..` or `%2e%2e` would climb from `dish/` into `scan/` once the SDK builds the blob URL.
   - Only JPEG, PNG, WebP, and AVIF are served (`recipeImageContentTypes`).
   - Uploads are JPEG, re-encoded in the browser: dish photos at most 2400 px on the long edge at quality 0.85, scans 3072 px at 0.9, in sRGB with the rotation applied and no metadata (no location). A file the browser cannot read, such as HEIC outside Safari, is refused with guidance.
+  - Scans also have a byte budget, 3,750,000 bytes (`maxImportScanSizeInBytes`): one over it is encoded again at quality 0.8, 0.7, 0.6, then 0.5, then drawn at long edges of 2304, 1728, then 1600 px at 0.5, never enlarged, until it fits. It keeps the last attempt if nothing does, and imports refuse a larger one. Claude through Bedrock or Vertex refuses an image over 5 MB of base64, which grows a file by a third.
   - No dimensions are stored yet: every screen shows photos in fixed-aspect boxes.
-- **Provenance**, set at creation: the entry mode (`manual`, `url` with its source URL, or `photo`) and which model produced an AI draft.
+- **Provenance**, set at creation: the entry mode (`manual`, `url` with its source URL, or `photo`) and which model produced an AI draft. A recipe saved from an import takes the import's provenance, never one the browser names; the source URL is the address the member gave, not where the site redirected.
 - **Identity:** uuidv7 ids generated by Postgres 18, a slug from the title (ASCII, at most 60 characters, `-2` and up on a collision) that follows the title when it changes, the contributor (a foreign key to `users`, with no cascade), and timestamps.
   - Old slugs stay in `old_recipe_slugs`, reserved for their recipe: they keep finding it, so shared links keep working, a recipe renamed back gets its old slug again, and deleting the recipe frees them. Every slug candidate is checked exactly against current and old slugs, under one transaction-scoped advisory lock that creates and renames share, so they never race.
   - `updatedAt` is the version an edit starts from: a save from an older version is refused (`recipe.edit-conflict`), and every save moves it forward at least a millisecond.
-- **`RecipeDraft`:** the same content with every field optional, plus provenance and problems. Drafts are never saved; members review them in the recipe form.
+- **`RecipeDraft`:** the same content with every field optional, plus provenance and problems. Drafts are never saved as recipes; members review them in the recipe form.
+- **Imports** (Session 7, `src/domain/recipe/recipe-import.ts`): an import records the member, its mode (`url` or `photo`), its status (`running`, `succeeded`, or `failed`), the source URL, the model that answered, the cost in US dollars, a failed import's error code, and its `ImportDraft` (draft content and problems).
+  - Only the member who started an import can review its draft and save it, once, within 7 days (`importDraftLifetimeDays`, `reviewableDraft`). The draft and source URL are cleared when the recipe is saved, or after the 7 days; the rest stays as a record of use and cost.
+  - Extractors return an `ExtractedRecipe` (text as written, ingredient lines unparsed), and `importDraftFromExtractedRecipe` turns it into the draft: `parseIngredientLine` reads every line, a line over 500 characters keeps its first 500 with a problem, a yield or time the domain refuses is left out with a problem quoting the original, and sections with only a heading are dropped.
+  - The form joins a draft's distinct problems for each field in order (a failed save still shows one per field), so they come as: what the draft could not keep as read, then the model's review notes, then what the recipe lacks (a title, ingredients, steps), then notes whose item was dropped, on its section or list. A note on the times as a whole sits on the total time.
 
-**Storage.** One `recipes` row per recipe: `content` (a jsonb document), `provenance` (jsonb), `tags` (`text[]`), and columns for id, slug, contributor, and timestamps; old slugs in `old_recipe_slugs`. The mapper validates every read with the domain schema, which keeps schema changes small:
+**Storage.** One `recipes` row per recipe: `content` (a jsonb document), `provenance` (jsonb), `tags` (`text[]`), and columns for id, slug, contributor, the import it was saved from (`import_id`, unique, so an import saves one recipe), and timestamps; old slugs in `old_recipe_slugs`; one `recipe_imports` row per import, with its draft as jsonb (migration `0006`). The mapper validates every read with the domain schema, which keeps schema changes small:
 
 - An added optional field needs no migration.
 - A new required field needs a default or a one-statement backfill.
@@ -282,10 +309,18 @@ Unknown keys are dropped on read, so older code that re-saves a recipe would dro
 
 ### 5.2 Entry modes
 
-- **Manual entry:** the recipe form at `/contribute`, which is also the review form for the other two modes. Recipes are edited at `/recipes/<slug>/edit`, where they are also deleted.
-- **URL import:** server-side fetch with SSRF protection (public HTTP(S) addresses only, size and time limits), schema.org `Recipe` JSON-LD parsed first, AI filling gaps or handling pages without structured data, and the result opened as a draft for review.
-- **Photo import:** one or more images uploaded from the browser straight to Blob. AI vision transcribes and structures them into a draft, and the originals stay attached to the recipe.
-- AI output is validated against the domain schema. A failure produces a partial draft with the problems flagged, never a silent save.
+`/contribute` offers the three modes as tabs, "Manual", "Link", and "Photos", beside a fourth, "Drafts", for imports not yet saved. Both imports store a draft and open it at `/contribute/imports/<id>` in the recipe form, where the member reviews and saves it. Recipes are edited at `/recipes/<slug>/edit`, where they are also deleted.
+
+- **Manual entry:** the recipe form, which is also the review form for imports.
+- **URL import** (`RecipeImportService.importFromUrl`):
+  - **Fetch:** `GuardedWebPageFetcher`, through `guarded-fetch`, takes public HTTP(S) addresses on the web's ports without credentials, checks each of up to 5 redirects again, allows 10 seconds and 5 MB (after decompression) for the whole fetch, takes HTML only, decodes it with the charset the browser rules give (byte-order mark, then header, then `<meta>`, through `encoding-sniffer`), and names the site in an honest User-Agent (`RecipeHub/1.0 (+<site>)`).
+  - **Refusals:** a site that answers 401, 402, 403, 429, or 451, or with a Cloudflare challenge, gets "This website doesn't support importing recipes."; any other failure gets "We couldn't open that page. Check the link and try again." No paste box and no spoofed browser.
+  - **Reading:** the page's schema.org `Recipe` JSON-LD first (`JsonLdPageRecipeExtractor`): `@graph`, top-level arrays, `@id` references, `ItemList` and `PropertyValue` ingredients, `HowToSection` step groups, and ISO 8601 or written-out durations ("PT0S" is no time). A page with several recipes uses the one its URL's fragment names, then its `mainEntity`, then the one whose `url` is the page, then the first with ingredients. Structured data it cannot read, such as references that form a cycle, leaves the page to the model.
+  - **AI reading:** when the JSON-LD lacks a title, an ingredient, or a step, the model reads the page's text instead (`pageText`): the whole body through `html-to-text`, starting at the element the URL's fragment names, without links' addresses or images, cut at the last line within 100,000 characters. No site-specific selectors.
+- **Photo import** (`importFromScans`): up to 6 photos (`maxImportScans`) of one recipe's pages, uploaded from the browser straight to Blob in the recipe form's "Original recipe" field and ordered with Move up and Move down. The service accepts only new upload names in this environment's scan folder, each listed once, stored as a JPEG within the byte budget. The model reads every page in one call, each after a "Page 1 of 2" label, writes a verbatim transcription first (with `[illegible]` and `[?]` markers), then the draft. The scans stay attached to the recipe.
+- **What the model returns:** text as written, never filled in or converted; a source with more than one recipe yields its most prominent one with a note naming what was left out; and review notes on what to check, each naming a field (and a section and line for an ingredient or step), which become the draft's problems. A reading with neither an ingredient nor a step fails with "We couldn't find a recipe to import."
+- **Limits:** 50 imports per member in any rolling 24 hours, counted under a lock per member; admins have no limit. When the Gateway's credits run out, imports pause ("Imports are paused. You can still enter the recipe manually.").
+- AI output is validated against its own schema, the draft is built by the domain's rules and validated again on every read, and the recipe saved from it passes the recipe schema like any other. The draft is never saved unreviewed, and a save checks that the import is the member's, succeeded, holds a draft under 7 days old, and saved no recipe yet.
 
 ### 5.3 Search
 
@@ -323,7 +358,7 @@ Public, at `/search`, with Postgres full-text search, `pg_trgm`, and `unaccent` 
 ### 5.4 Access control
 
 - **Public:** browsing, recipe pages, search, and dish photos need no account. Public pages never show contact details or access-request data. A recipe page names its contributor by display name.
-- **Members:** adding, editing, and importing recipes, and every AI feature, require an approved member. Two roles, `member` and `admin`, live in the database (`users.role`), never in code. Authorization stays in the application layer; Better Auth's admin plugin is not used, so there is one authorization path. Original scans are served to members only, never cached publicly. A recipe is edited and deleted by its contributor or an admin, and any member sees its scans on the recipe page.
+- **Members:** adding, editing, and importing recipes, and every AI feature, require an approved member. An import's draft is visible only to the member who started it. Two roles, `member` and `admin`, live in the database (`users.role`), never in code. Authorization stays in the application layer; Better Auth's admin plugin is not used, so there is one authorization path. Original scans are served to members only, never cached publicly. A recipe is edited and deleted by its contributor or an admin, and any member sees its scans on the recipe page.
 - **Requesting access:** a public form at `/request-access` (name, how they know us, an optional email) creates a request, not an account. Vercel BotID checks the submission first, and a WAF rule allows 5 posts per 10 minutes per IP (section 5.5). Every admin gets an email linking to `/admin`, which shows the pending count.
 - **Reviewing:** admins approve or decline on `/admin` through Server Actions that re-check authorization. Declining deletes the request, and an invite left naming it (one whose approval failed partway) loses the link; an approved request is kept as a record of who was invited. Notification emails link to the admin page and act on nothing, because mail scanners follow links.
 - **Invites:**
@@ -342,6 +377,7 @@ Public, at `/search`, with Postgres full-text search, `pg_trgm`, and `unaccent` 
   - Sessions last 180 days and renew on the first visit each day (section 4.4). No social sign-in.
 - **Better Auth's surface:** it serves only the routes the flows use (session read, sign-out, email code send and sign-in, and passkeys). `disabledPaths` turns off the rest, including `/update-user`, so names change only through `/account`. `/callback/:id` and `/reset-password/:token` cannot be named there and stay mounted, inert without social providers or password resets; a test pins that set. Its database rate limiter covers every route in every environment, with passkey routes at 10 a minute.
 - **First admin:** a build step, `pnpm db:bootstrap`, makes the account at `ADMIN_EMAIL` an admin whenever the database has none, creating a verified account named "Admin" if needed. The admin signs in with a code, renames themselves on `/account`, and adds a passkey.
+- **More admins:** an admin makes a member an admin, or removes admin from an admin, themselves included, on `/admin`. Each change is confirmed in a dialog, re-checked in the service, and logged with both ids. Role changes take one advisory lock, and removing the last admin is refused (`member.last-admin`), so two admins removing each other at once leave one of them an admin. A change another admin already made is refused as `member.role-conflict`.
 - **Previews:**
   - Passkeys are bound to their host, so production's do not work on previews, and one made on a branch alias does not work on that deployment's own URL.
   - Previews copy production's members, and the bootstrap covers a branch with no admin, so the owner signs in on a preview with an email code and tests invites from its `/admin`.
@@ -364,8 +400,8 @@ Public, at `/search`, with Postgres full-text search, `pg_trgm`, and `unaccent` 
   - Pro has 40 such rules, at $0.50 per million allowed requests drawn from the monthly credit.
   - Counters are per region, and prefetches count too, which is why the limit is generous.
   - It was published returning 429 rather than logging first.
-  - A second rule, "Rate limit access requests", allows 5 POSTs to `/request-access` per 10 minutes per IP (fixed 600-second window), returning 429. The form shows its own failure message. `@vercel/firewall`'s `checkRateLimit` could name the limit but fails open when its rule is missing, so the WAF rule was preferred.
-- Environment variables are managed in Vercel and pulled locally with `vercel env pull`. The AI Gateway and Blob authenticate with Vercel's OIDC token, so no provider keys or Blob tokens exist for them. Locally, the Blob SDK refreshes an expired development token with the Vercel CLI's credentials.
+  - A second rule, "Rate limit access requests", allows 5 POSTs to `/request-access` per 10 minutes per IP (fixed 600-second window), returning 429. The form shows its own failure message. `@vercel/firewall`'s `checkRateLimit` could name the limit, but a missing rule returns not limited with an error of `not-found`, which each caller would have to treat as a refusal; in development without `firewallHostForDevelopment` it passes silently, and previews need Protection Bypass for Automation. So the WAF rule was preferred. Pro's rate-limit windows run from 10 seconds to 10 minutes, so a daily cap, such as imports', lives in the app.
+- Environment variables are managed in Vercel and pulled locally with `vercel env pull`. The AI Gateway and Blob authenticate with Vercel's OIDC token, so no provider keys or Blob tokens exist for them. Locally, the Blob SDK and the AI SDK (through `@vercel/oidc`) refresh an expired development token with the Vercel CLI's credentials, although Vercel's Gateway docs still say to pull again every 12 hours.
   - Vercel now calls Sensitive variables Secret. `BETTER_AUTH_SECRET` is a Secret in Production and Preview, with a separate readable value in Development, each generated and piped into `vercel env add` so it never appears on a command line.
   - `ADMIN_EMAIL` (Config, every environment) names the first admin.
   - The Neon integration also adds `PG*`, `POSTGRES_*`, and `NEON_PROJECT_ID` variables. The app reads none of them; they are the integration's to manage and harmless to keep.
@@ -373,10 +409,16 @@ Public, at `/search`, with Postgres full-text search, `pg_trgm`, and `unaccent` 
   - Pathnames put visibility first, then the environment: `dish/production/`, `dish/preview/<branch>/`, `dish/development/`, the same under `scan/`, and seed photos at `dish/seed/<slug>.jpg`. Uploads are named `<folder><uuid>.jpg`.
   - A preview's `<branch>` is its Git branch lowercased, with every run of other characters as one hyphen, then a hyphen and the first 8 hex digits of the SHA-256 of the exact branch name (only the hash for a branch with no letters or digits). So every branch has its own folder, which Session 8 can delete when its pull request closes.
   - Preview branches copy production's rows, so previews read production's photos.
-  - Writes and deletes stay inside their own environment's folders, so a preview never deletes a photo production uses: `BlobImageStore` refuses to delete outside them, and nothing deletes a photo another recipe still lists. Seed photos sit outside every environment's folders, so nothing deletes them.
+  - Writes and deletes stay inside their own environment's folders, so a preview never deletes a photo production uses: `BlobImageStore` refuses to delete outside them, and nothing deletes a photo another recipe still lists (`findImagesInUse`) or an unsaved import's draft names (`findImagesInUnsavedImports`), as importing the same scans twice does. Seed photos sit outside every environment's folders, so nothing deletes them.
   - **Uploads:** the browser asks `/api/uploads` for a presigned URL (`handleUploadPresigned` under OIDC), then uploads straight to Blob. The token covers exactly one upload name in this environment's folder for a signed-in member, JPEG only, at most 8 MB, valid for 10 minutes, never overwriting. No completion callback is requested, because Blob cannot reach a dev server or a protected preview, so saving a recipe checks that each new photo is in this environment's folders and stored.
   - **Deletes:** removing a recipe or a photo deletes its blobs after the database write commits, then purges Vercel's CDN (the image route tags dish photos `image:<pathname>`) and the image optimizer (by source image). The image route reads past Blob's own cache, so a just-deleted photo is not cached again. A failed delete is logged and left for Session 8's sweep.
   - Seed photos are reachable through production's image route too. They are public-domain or CC0, so that is harmless.
+- **AI Gateway** (imports) is paid for with credits on the team, at provider list prices:
+  - The owner bought $30 of credits on 2026-10-12, with auto-reload back to $30 whenever the balance falls below $5, at most $100 a month. That cap is the budget: once reloads stop and the credits run out, the Gateway answers 402 and imports pause until it is topped up. The app keeps no money cap of its own; each import stores its cost.
+  - Local development, previews, and production spend the same credits.
+  - Every call asks for zero data retention, so neither the Gateway nor the provider keeps the photos or page text; the Gateway keeps metadata only.
+  - Each call's `user` is the member's email, which Custom Reporting (beta) uses to group spend by member, billed at $0.075 per 1,000 writes and $5 per 1,000 report queries. Its retention is undocumented, the Logs dashboard shows no user, and per-member Gateway budgets never apply to OIDC calls, so the import limit lives in the app.
+  - The models are set in the composition root (`pageModelId`, `scanModelId`), both Claude Sonnet 5.5 (decision log). `pnpm evaluate` (`scripts/evaluate/`) scores any Gateway model against the evaluation set; run it with `pnpm --silent evaluate` to capture its report, since pnpm prints the command first.
 - **Email** (access-request notifications, invites when sent by email, and sign-in codes) goes through Resend's free plan:
   - Resend is installed through the Vercel Marketplace as the resource `recipe-hub-email`, billed through Vercel. It provisions `RESEND_API_KEY` (full access) and `RESEND_EMAIL_DOMAIN` as readable Config variables in all three environments, so local development sends real email.
   - The sending domain is `recipes.jakerichard.tech`. Its records sit beside the site's CNAME, not on it: MX and SPF at `send.recipes`, and DKIM at `resend._domainkey.recipes`, all in Route 53. The apex's DMARC policy (`p=reject`) covers the subdomain. Open and click tracking are off.
@@ -384,12 +426,13 @@ Public, at `/search`, with Postgres full-text search, `pg_trgm`, and `unaccent` 
 
 ### 5.6 Platform limits that shape the design
 
-- Function request bodies are capped at 4.5 MB, so every image upload goes from the browser directly to Blob. Server Action bodies are capped at 1 MB by default (`serverActions.bodySizeLimit`); a recipe's JSON is a few kilobytes because photos never pass through it.
+- Function request bodies are capped at 4.5 MB, so every image upload goes from the browser directly to Blob. Server Action bodies are capped at 1 MB by default (`experimental.serverActions.bodySizeLimit` in `next.config.ts`); a recipe's JSON is a few kilobytes, and an import posts a link or a few scan names, because photos never pass through them.
 - Vercel's CDN caches a streamed response only up to 20 MB, and the image optimizer takes sources up to 8192 px a side, which the upload cap and the browser's resizing keep well inside.
 - Neon Launch plan, billed through Vercel with no monthly minimum: $0.106 per CU-hour, $0.35 per GB-month of storage, $0.20 per GB-month of history, and $0.09 per GB-month of snapshots. Ten branches are included (production, `develop`, and one per open pull request), then $1.50 per branch-month.
   - The compute suspends after 5 idle minutes, and each wake costs at least 5 minutes of compute. Uncached search reaches the database on every request, so a crawler sending unique queries could keep it awake around the clock: about 180 CU-hours, roughly $19 a month at 0.25 CU, and more if it scales up. The WAF rule on `/search` guards against that.
-- AI Gateway free tier: $5 a month, a subset of models, and lower rate limits. Buying credits unlocks every model at provider list price.
-- Functions run up to 800 seconds on Pro. Import actions set `maxDuration` explicitly.
+- AI Gateway: the free tier's monthly credit (its amount is no longer documented) covers a subset of models with lower rate limits, and none of them is a current Claude or Gemini 3 model. Buying credits unlocks every model at provider list price and ends the free credit; bought credits expire a year after purchase. Gemini 3.8 Flash's prices double on 2027-01-01.
+- Model inputs and outputs: Claude through Bedrock or Vertex refuses an image over 5 MB of base64, which sets the scan byte budget (section 5.1). Anthropic's strict schemas allow at most 24 optional and 16 union-typed parameters per request and no length or numeric bounds, OpenAI's strict mode requires every key, and Gemini refuses `oneOf`, which together shape the flat output schema.
+- Functions run 300 seconds by default and up to 800 on Pro. `/contribute` sets `maxDuration` to 120 seconds for its import actions.
 - Resend free plan: 3,000 emails a month and 100 a day (every sign-in code counts), up to 3 verified domains, sending from a verified domain only.
 - `ImageResponse` (Open Graph images):
   - Flexbox and a CSS subset only, no CSS variables or oklch. Static TTF, OTF, or WOFF fonts only: not WOFF2, and not variable fonts.
@@ -426,13 +469,16 @@ Recipes are meant to be shared, so links need good previews before the site is u
 ### 5.8 Project conventions
 
 - **Formatting:** the owner's shared scheme from the Vispero/sage project: Prettier with tabs, single quotes, width 100, `es5` trailing commas, LF line endings, and perfectionist import sorting. Run `pnpm format`; never hand-format against it.
-- **Scripts:** `lint` runs every `lint:*` script, so new checks are added as `lint:*`. Scripts that run app code outside Next live in `scripts/` and run with `tsx --tsconfig scripts/tsconfig.json` (section 4.2).
+- **Scripts:** `lint` runs every `lint:*` script, so new checks are added as `lint:*`. Scripts that run app code outside Next live in `scripts/`, one folder per script: `scripts/<name>/<name>.ts`, with the files it reads beside it (`seed/photos/`, `evaluate/cases/`). They run with `tsx --tsconfig scripts/tsconfig.json`, which stays at `scripts/` (section 4.2).
 - **Commits:** a plain imperative sentence describing the change, without prefixes.
 - **Dependencies:** added with their first consumer, chosen against current documentation, installed with pnpm. pnpm blocks dependency build scripts, so each package that has one is listed in `pnpm-workspace.yaml`'s `allowBuilds` deliberately (`esbuild: false`: drizzle-kit's bundler runs from its platform package without the script).
+  - pnpm refuses a version published within its minimum release age (`minimumReleaseAge`). Choose a version older than the window rather than adding an exemption, as Session 7 did with `ai` 7.0.137 when 7.0.138 was too new.
+  - `npm view` fails in this pnpm-only project (`EBADDEVENGINES`); use `pnpm view`.
 - **Migrations:** change `src/infrastructure/db/schema.ts`, run `pnpm db:generate --name <change>`, and commit the generated files. Never edit an applied migration. drizzle-kit 0.31 applies only migrations newer than the last one applied, so an older migration merged late would be skipped silently. `drizzle-kit check` (`pnpm lint:migrations`) only warns about that, so a test fails when the journal is out of timestamp order.
   - Extensions, functions, and text search configurations, which drizzle-kit does not model, go in a custom migration (`pnpm db:generate --custom --name <change>`), journaled before anything that uses them. Put `--> statement-breakpoint` after every statement: PGlite rejects a chunk holding two.
   - The migrator applies every pending migration in one transaction, so `CREATE INDEX CONCURRENTLY` cannot be used.
   - Adding a STORED generated column rewrites the table under an exclusive lock, held until that transaction commits, which blocks the previous deployment's reads. At today's size this takes milliseconds. Once the table is large, combine additions into one `ALTER TABLE` and set `lock_timeout` first.
+  - `ADD CONSTRAINT ... UNIQUE` builds its index under the same exclusive lock (migration `0006`'s `recipes_import_id_unique`), so the same applies.
   - Never interpolate a JavaScript value into a generated or index expression: drizzle-kit writes it as `$1`. Write constants literally, or through one `sql.raw` constant (`recipeSearchConfiguration`).
   - Changing a generated column's expression: drizzle-kit 0.31 drops and re-adds the column without its indexes (drizzle-orm issue 4929). Rewrite the generated statement to `ALTER TABLE ... ALTER COLUMN ... SET EXPRESSION AS (...)`, which keeps them.
   - An immutable SQL wrapper uses a SQL-standard `RETURN` body with schema-qualified names, because Postgres 17 and later run index builds and maintenance with a restricted `search_path`.
@@ -510,7 +556,7 @@ Lowest ratios: muted text on muted fills 5.49:1 (light); destructive text on its
 - **Forms:**
   - Every control sits in a `Field` with a `FieldLabel`, helper text, and `FieldError`. A disabled field sets `data-disabled` on `Field` so its label dims; `peer-disabled` never matches Base UI controls.
   - Textareas grow with their content (`field-sizing: content`) and fall back to a vertical resize handle where that is unsupported.
-  - List-shaped input (ingredients, steps) is a list of separate growing fields (the textarea's `compact` size), with "Add ingredient" or "Add step" and optional sections with headings; every section shows a heading field once there is more than one. Free-form "one per line" fields are not used.
+  - List-shaped input (ingredients, steps) is a list of separate growing fields (the textarea's `compact` size), with "Add ingredient" or "Add step" and optional sections with headings. Flat lists and sections are one model, sections with optional headings: every section shows a heading field, "Heading (optional)", once there is more than one or any has a heading, and the first section's field explains that a blank heading holds what comes before any section ("Leave blank for ingredients that come before any section."). Removing sections back to one without a heading returns to the flat list, and a heading with an error keeps its field. Free-form "one per line" fields are not used.
     - Each item has an actions menu (⋮) with Move up, Move down, Move to another section, and Remove. Moves are announced in one polite status per list ("Moved “2 cups flour” from position 4 to 3 of 9.").
     - Focus moves into a new item, to a neighbor when one is removed, and stays with an item that moves.
     - Steps are numbered, restarting in each section, and their labels name the section ("Step 2, For the glaze"), so every label is unique.
@@ -520,18 +566,21 @@ Lowest ratios: muted text on muted fills 5.49:1 (light); destructive text on its
     - `FormErrorAlert` is a destructive `Alert` with the toast's error icon.
     - `FormStatusMessage` is a live region that is always present.
     - `useFocusOnChange` moves focus when a step changes.
-    - `ConfirmActionDialog` confirms a destructive action in a dialog, with an optional `onSuccess` for actions whose item takes the page with it.
+    - `useFocusOnFailure` moves focus after each failed result, once, to the form's alert or else its first invalid field. The recipe form and both import forms use it.
+    - `ProblemSummary` lists a form's problems in a destructive `Alert` ("Check 3 things"), each naming where it is ("Step 2, For the glaze") and linking to that field, which the link focuses and centers. The recipe form shows it over a loaded draft until the first save. It is the seam failed saves will use too (Session 8).
+    - A draft's warnings each have a "Mark as checked" toggle, in the summary and beside the field. Checked warnings dim, and the summary counts them ("1 of 3 checked"). The state lives in the page only, and checking never blocks a save.
+    - `ConfirmActionDialog` confirms a destructive or consequential action in a dialog, with an optional `onSuccess` for actions whose item takes the page with it. Its `variant` is required: `destructive`, or `default` for an action that takes nothing away, such as making someone an admin, whose trigger is an outline button.
   - Pending buttons stay focusable (`focusableWhenDisabled`).
   - Multi-step forms (sign-in, accepting an invite) move focus to each step's field or heading.
   - A one-time code is one pasteable field (`autocomplete="one-time-code"`, `inputmode="numeric"`), never a box per digit, so it meets WCAG 2.2's accessible authentication criterion.
 - **File input:** never the bare native control. A dashed drop area with an icon and a "Choose photos" button opens the hidden native input; chosen photos appear below as attachment rows with a thumbnail, progress (`Progress`, with `locale="en-US"` so the server and browser format alike), and states (preparing, uploading, uploaded, failed). Changes are announced politely.
-  - Each photo has an actions menu: "Use as cover photo" for dish photos, and Remove. Dish photos take optional alt text.
+  - Each photo has an actions menu: "Use as cover photo" for dish photos, Move up and Move down for scans (pages are read in order, and moves are announced like list moves), and Remove. Dish photos take optional alt text.
   - The recipe form has two such fields: "Photos" (dish photos, public, the first is the cover) and "Original recipe" (scans, members only, named by page).
   - Save waits, with its reason shown, while any photo is preparing or uploading.
 - **Feedback:**
   - Toasts use Base UI's toast, mounted once in the root layout. No action buttons in auto-dismissing toasts, because they cannot be reached in time (WCAG 2.2.1).
   - A form's overall result is an `Alert`: destructive for failures (`role="alert"`), default for success, which takes focus when it replaces the form.
-  - Destructive actions (declining a request, revoking an invite, deleting a recipe) confirm in a `Dialog`. When the item disappears, a toast reports it, and focus moves to its section's heading. Deleting a recipe goes to the list, replacing the edit page's history entry.
+  - Destructive actions (declining a request, revoking an invite, deleting a recipe, removing admin) confirm in a `Dialog`, and so does making someone an admin. When the item disappears, a toast reports it, and focus moves to its section's heading. Deleting a recipe goes to the list, replacing the edit page's history entry.
   - Empty states use the `empty` primitive (`RecipesEmptyState` on the home page).
   - Loading states are skeletons that mirror the final layout (`RecipeCardSkeleton`). A `loading.tsx` goes only in segments that await data, never above a gated route, where it would turn a 404 into a soft 404.
 - **Theme:** `ThemeProvider` in `src/components/layout/` holds the next-themes configuration. `ThemeToggle` swaps its sun and moon icons with `dark:` classes so the server render never depends on the theme.
@@ -540,7 +589,7 @@ Lowest ratios: muted text on muted fills 5.49:1 (light); destructive text on its
   - Card photos are decorative (`alt=""`). A card's or result row's link is named by its title (`aria-labelledby`) and described by its source, snippet, and details (`aria-describedby`), so a screen reader does not read the whole card as the link's name. Cards in the first row and the first three search results load eagerly.
   - `recipe-summary.tsx` holds what the card and the result row share: the 4:3 cover or no-photo box (`RecipeCover`), the facts, and the tags.
   - `RecipeDetail` takes a `PublicRecipeDto` and a heading level: 1 on recipe pages, 4 under `/design`'s own headings. `RecipeSearch`, `AdminDashboard`, and the invite steps take a heading level the same way.
-  - The detail shows the source, "Added by <display name> on <date>" and the date edited (en-US, America/New_York, in `<time>`, through `formatDate` in `src/lib/dates.ts`), a 3:2 cover that preloads and is hidden in print, ingredients and steps in `text-lg`, and notes.
+  - The detail shows the source, a URL import's "Imported from <host>" (`RecipeImportedFrom`, linked with `rel="nofollow noopener noreferrer"`, since a saved site can change hands), "Added by <display name> on <date>" and the date edited (en-US, America/New_York, in `<time>`, through `formatDate` in `src/lib/dates.ts`), a 3:2 cover that preloads and is hidden in print, ingredients and steps in `text-lg`, and notes.
     - An ingredient line with an amount shows the amount and unit in bold, then the item and preparation; a line without one shows its original text.
     - Step numbers restart in each section.
     - Tags link to `/search?tag=`; cards and result rows keep plain badges, because the whole card is a link.
@@ -566,9 +615,16 @@ Lowest ratios: muted text on muted fills 5.49:1 (light); destructive text on its
   - No-result states use the `empty` primitive, with a way forward (clear the filters, or shorten the search). Close matches carry a line above them.
 - **Disclosures:** native `<details>` with a `<summary>` styled by `buttonVariants` and a rotating chevron. A base rule hides the browser's marker.
 - **Printing:** the header and the cover photo are hidden, and sections, steps, and notes avoid page breaks.
+- **Adding and importing:**
+  - `/contribute` opens on `RecipeEntryTabs`: "Manual" (the recipe form), "Link", "Photos", and "Drafts". The labels are short so four tabs fit a 320 px screen. Hidden panels stay mounted, so switching keeps what was entered and lets uploads finish. A tab shows its panel as the arrow keys reach it, and panels take no tab stop, since each opens with a field.
+  - "Link" is one URL field. "Photos" reuses the recipe form's "Original recipe" photo field, up to 6 pages in order, and its button waits, with its reason shown, while a photo uploads.
+  - While an import runs, `RecipeImportSubmit` shows a spinner in the button, an indeterminate `Progress`, the stage ("Reading the page…", "Reading the photos…") in a polite status announced once, and the seconds elapsed, shown but not announced. An import takes up to a minute or two.
+  - "Drafts" always shows, with a count badge that is part of the tab's name when there are drafts. Its panel (`UnsavedImportList`) lists the member's unexpired drafts, newest first, at most 10, each with its title (or "Untitled"), its mode, and its age, linking to its review page, or the `empty` primitive ("No drafts").
+  - The review page, "Review the import" at `/contribute/imports/<id>`, says where the draft came from ("Imported from <host>", or "Read from your photos") above the recipe form. The draft's `ProblemSummary` takes focus as the page loads. A draft already saved redirects to its recipe; one that is not the member's, failed, or expired shows one empty state, "This draft isn't available", so an id never tells another member which.
 - **Accounts and admin:**
   - Account pages use the reading container. Passkeys are described plainly: "Use your face, fingerprint, or screen lock." The copy warns against adding one on a shared device, and notes that in-app browsers in some email apps cannot save one.
   - `/admin` lists access requests (with a pending count), the invite form, open invites, and members, in that order. An issued invite's link shows once, in a status region with "Copy link".
+  - Each member row offers "Make admin" or "Remove admin", named for the member for screen readers and confirmed in a `ConfirmActionDialog`; the admin's own row asks "Remove your admin access?". After a role change, focus moves to the member's name, beside the new role's badge; after admins remove their own role, the page no longer shows the list, and focus falls to the page (Session 8).
   - `/design`'s "Accounts and admin" section renders these components with fixtures and stand-in actions. Sections jump between subsections with `ReferenceSubsectionNav`.
 
 ### 6.4 References
@@ -590,6 +646,7 @@ The owner likes [tanstack.com](https://tanstack.com/) and [mstone.ai](https://ms
 - `carousel.tsx`: Embla's slide animation runs in script, out of reach of the global reduced-motion rule, so a default breakpoint sets its duration to 0 under `prefers-reduced-motion`. An `eslint-disable-next-line react-hooks/set-state-in-effect`, with its reason, covers upstream's first `onSelect(api)`.
 - `button.tsx`: `aria-disabled:pointer-events-none aria-disabled:opacity-50`, so a pending button rendered with `focusableWhenDisabled`, which sets `aria-disabled` rather than `disabled`, dims like a disabled one.
 - `pagination.tsx`, `PaginationLink`: renders `next/link` with `buttonVariants({ variant: isActive ? 'outline' : 'ghost', size })` instead of Base UI's `Button` with `render={<a />}`. Base UI's Button must not render links, and `next/link` keeps page changes client-side. Its props are `next/link`'s.
+- `progress.tsx`, `ProgressIndicator`: `data-indeterminate:w-full data-indeterminate:animate-pulse`, so a bar with `value={null}`, for work with no measurable progress such as an import, fills its track and pulses instead of showing nothing. The global reduced-motion rule stops the pulse.
 - `select.tsx`, `SelectContent`: `alignItemWithTrigger` defaults to `false`, so the popup opens below its trigger at the trigger's width. Base UI's default lays the selected item over the trigger, offset a few pixels so the popup overhangs it, and only for mouse input, so touch already opened below.
 
 ## 7. Decision log
@@ -709,6 +766,34 @@ The owner likes [tanstack.com](https://tanstack.com/) and [mstone.ai](https://ms
 | 2026-10-12 | The edit control is a pencil icon button beside the recipe title | Owner's choice over a separate row: it sits with the content, in a reserved box so nothing shifts as it streams in. |
 | 2026-10-12 | Creating and editing a recipe redirect from the Server Action after `updateTag` (supersedes "never redirects"); deleting still navigates from its dialog | Found on the preview: a client navigation after a save could get Vercel's CDN copy from before it for a few seconds, while a redirect renders the destination in the action's own response, the bundled docs' read-your-own-writes pattern. Delete keeps its toast. |
 | 2026-10-12 | Domain text strips control characters, NUL included, rather than refusing NUL | Highlights mark matches with control characters, and imports make stray ones likelier; members never see them. |
+| 2026-10-12 | Scans are read in one multimodal call whose output starts with a verbatim transcription (`[illegible]` and `[?]` markers), then the draft; no OCR stage and no second pass | Two 2026 benchmarks found dedicated OCR models and OCR-then-LLM pipelines less accurate on handwriting than frontier vision models reading the image: in WildHandBench every OCR model scored below the generalists, and in OCR-Robust GPT-5.1 scored 52.90 through an OCR stage against 60.58 end to end. The Gateway lists no OCR models, so one would add a vendor. A second text pass cannot fix misreadings. Transcribing first follows all three vendors' guidance for about 500 output tokens. The transcription is not stored. |
+| 2026-10-12 | Scans are sent as stored, with no resizing, deskewing, or contrast changes on the server; the browser keeps each scan within 3.75 MB, and imports refuse larger ones; scans move up and down in the form | Claude through Bedrock or Vertex refuses an image over 5 MB of base64, and a byte budget keeps every provider open, where pinning Claude to Anthropic's own endpoint would not. No study shows deskewing or binarization helping frontier models, and binarization can erase faint pencil. Full size costs no more, except OpenAI's `original` detail, so OpenAI reads at `high`. Pages are read in the order the member gives. |
+| 2026-10-12 | URL imports read the page's schema.org `Recipe` JSON-LD first, through a hand-written mapper over `cheerio`, `schema-dts`, and `iso8601-duration`, and leave the page to the model only when the JSON-LD lacks a title, an ingredient, or a step | Exact and free where sites publish structured data. The mapper read 12 of 12 real pages and 7 of 7 edge fixtures. `recipe-scrapers` 3.2.0, the one maintained TypeScript library, read the 12 pages but failed 7 of 8 fixtures, ignores `ItemList` ingredients, throws on "PT", rewrote yields lossily ("2 dozen cookies" became "2 cookies"), and has one maintainer and 7 stars. No microdata library: 1 of 13 sites used microdata alone, without instructions. |
+| 2026-10-12 | The model reads the whole page body as plain text through `html-to-text`, starting at the element the URL's fragment names and cut at 100,000 characters, with no site-specific selectors and no noise stripping beyond its defaults | Owner's choice: selectors for recipe-card plugins need upkeep as the plugins change. Readability, `@extractus/article-extractor`, and `defuddle` each dropped the ingredient list on 3 or 4 of 17 pages, and `defuddle` is broken with jsdom 30 and fetches third-party resources on Node by default. Plain text had the same recall as Markdown (1.4 to 2.6 times the tokens) and trimmed HTML (about 3 times), and the recipe ended within the first 3,263 tokens of every single-recipe page measured. |
+| 2026-10-12 | JSON-LD stays first after the evaluation, although the model's reading recovers what it drops | Owner's choice. On the two evaluation pages with complete JSON-LD it scored 0.93 and 0.95 against about 1.0 for the model: WP Recipe Maker's JSON-LD carries no ingredient group headings, and neither page's JSON-LD holds the notes. JSON-LD costs nothing and answers at once. |
+| 2026-10-12 | Pages are fetched with `guarded-fetch` 0.1.5 plus our own redirect loop and port, credential, and content-type checks, with an honest User-Agent | It blocked all 34 SSRF cases tried (literal, encoded, DNS-based, redirect, and simulated rebinding), and it checks the address it connects to. Agent-based libraries do not work with Node's `fetch`; `ssrf-guard` 1.0.0, or about 110 lines on `undici` and `ipaddr.js`, are the fallbacks. Its own redirects skip the port check, so each hop is its own guarded request. A spoofed browser User-Agent drew Cloudflare challenges where the honest one did not. |
+| 2026-10-12 | A site that refuses the fetch gets one message, "This website doesn't support importing recipes.", with no paste box and no screenshot suggestion | Owner's choice. From a residential address, People Inc.'s sites (Allrecipes, Serious Eats, Simply Recipes, EatingWell, Food & Wine, Martha Stewart) answered 402 to every User-Agent, Food52 a Vercel bot checkpoint, and two blogs 403. Pasted text would be a fourth entry mode to build and test. |
+| 2026-10-12 | The model answers in a flat output schema in `src/infrastructure/ai/recipe-output.ts`, and a domain function, `importDraftFromExtractedRecipe`, builds the draft with `parseIngredientLine` and problems | Converting the draft schemas to JSON Schema drops their refinements and turns unions into `oneOf`, which Gemini refuses. One schema fits every provider: every key required with null for absent (OpenAI's strict mode), no bounds, and 13 nullable fields where Anthropic allows 16 union-typed ones. Lines arrive as text, so the parser stays the only source of a line's structure. |
+| 2026-10-12 | The model's review notes become the draft's problems, each naming a field, plus a section and line for an ingredient or step; no confidence scores | Numeric confidence and log probabilities discriminate poorly for extraction, and Claude and Gemini 3 give no log probabilities. Inline markers and notes are what transcription practice and Mealie use, and the form already shows problems beside their fields. A note without a place shows on the form. |
+| 2026-10-12 | No streaming: an import shows its stage, an indeterminate bar, and the seconds elapsed, then opens its review page (supersedes streaming into the review form) | A partial object is not a draft. Streaming would add a Route Handler, `@ai-sdk/react`, Zod in the browser bundle, and a second load path, and an error after a stream starts arrives only as an incomplete object. |
+| 2026-10-12 | Imports are synchronous Server Actions: `/contribute` sets `maxDuration` to 120 seconds, each model call times out at 90, and the action stores the draft before redirecting to it | A call of 10 to 60 seconds needs no background job. Queues is beta, and Workflow would add a compiler plugin, polling, and a second copy of family content in its run storage for 7 days. A member who navigates away mid-import finds the finished draft in their list. |
+| 2026-10-12 | `/contribute` holds four tabs (Manual, Link, Photos, and Drafts, which replaced a list under the tabs at the owner's request), short so they fit a phone; a draft opens at `/contribute/imports/<id>`, which loads it into the recipe form on the server | Owner's choice. "Add recipe" in the menus leads to every mode. The review page loads a draft the way create and edit load, so the form keeps one load path, and its URL survives a reload. |
+| 2026-10-12 | Imports are recorded in `recipe_imports` (migration `0006`), which limits each member to 50 imports in any rolling 24 hours under a lock per member; admins have no limit | Owner's choice of 50 and the exemption, over a proposed 20 a day for everyone. The table is also the record of use and cost and the source of provenance, and it fails closed with the database the session already needs. WAF windows end at 10 minutes, `@upstash/ratelimit` allows requests when its store times out, and the Gateway's per-user reporting sets no limits. |
+| 2026-10-12 | The budget is the Gateway's credits: $30 bought, auto-reload back to $30 below $5, at most $100 a month; a 402 pauses imports with a message, and each import stores its cost | Owner's choice of credits over the free tier, which has no current Claude or Gemini 3 model. The reload cap is a hard ceiling, so a Gateway project budget or a money cap in the app would duplicate it. Previews and production share it. |
+| 2026-10-12 | A recipe saved from an import takes the import's provenance: the review form posts the import's id, the save checks it, and `recipes.import_id` (unique) names it | The browser never names a provenance, and an import saves one recipe, as `users.invite_id` lets an invite create one account. A signed token or encrypted closure would carry the same facts with more machinery and no record. |
+| 2026-10-12 | An import's draft and source URL are cleared when its recipe is saved, or after 7 days, lazily before each new import; the row stays as a record of member, mode, model, cost, status, and times; raw model output is not kept | Owner's choice over keeping drafts and raw output 30 days. Nothing reviews raw output, the Gateway keeps metadata only, and clearing before each import needs no scheduled job. |
+| 2026-10-12 | A loaded draft opens with a problem summary at the top of the recipe form, which takes focus and links to each problem; it is built as a seam failed saves can use | Field errors render `role="alert"`, so a draft with many problems would announce none on load. The owner wants failed saves to use the same summary eventually (Session 8). |
+| 2026-10-12 | An imported recipe's byline reads "Imported from <host>", linked with `rel="nofollow noopener noreferrer"`; the scans section keeps "Original recipe" | "Original recipe at <host>" sat beside the scans heading. A saved link can change hands (one 2013 recipe blog now redirects to a casino), so the link passes no ranking, opener, or referrer. |
+| 2026-10-12 | An evaluation set of 16 cases in `scripts/evaluate/`: 7 handwritten and 4 printed public-domain or CC0 cards in 14 images, 2 federal pages, and 3 synthetic pages built from the samples; copies committed at the production scan setting (about 11 MB) with their sources in `SOURCES.md`; one script scores them | The owner will not handwrite cards, so cards come from NARA and the Smithsonian with rights checked at the source. Archive image links are not stable, so copies are committed, and encoding them as members' scans are encoded makes the evaluation's input production's. Scores stay simple: ingredient lines matched by similarity, steps and notes by character error rate, and exact or numeric checks for the rest. |
+| 2026-10-12 | Claude Sonnet 5.5 reads pages and scans; the owner keeps `pageModelId` and `scanModelId` separate in the composition root, so either can change without the other | Owner's choice from the evaluation (16 cases, 2 runs, $3.37). Handwritten, printed, and page scores: Sonnet 5.5 0.932, 0.971, 0.990, with the smallest spread between runs (0.008), 7.0 s mean (12.6 s p90), no invented yields or times, $0.022 an import. GPT-6.1 Sol 0.927, 0.942, 0.978 at 19.8 s and $0.013, with 3 invented. Claude Haiku 5.5 0.867, 0.932, 0.975 at 14.5 s and $0.0019. Gemini 3.8 Flash 0.858, 0.963, 0.998 at 30.6 s, with a timeout. GPT-6 Luna 0.823, 0.912, 0.998 at $0.0011, with 16 misread numbers (1½ as 1/2, ¾ as 1/3). Gemini 3.1 Pro Preview 0.773, 0.940, 0.989 at $0.052, with two timeouts. Later changes can follow the owner's judgment or published results. |
+| 2026-10-12 | Each model call names the member: their email as the Gateway's `user`, and a SHA-256 of their member id as `safetyIdentifier` | Owner's choice. Custom Reporting groups spend by `user` for $0.075 per 1,000 writes and $5 per 1,000 report queries, accepted; no free per-member field is reportable. Providers get the hash, as Vercel advises, so misuse traces to one account without its email. The privacy page says so, and logs still carry ids only. |
+| 2026-10-12 | Admins grant and remove admin on `/admin`, confirmed in a dialog and logged with ids; removing the last admin is refused under a lock | Owner's addition to scope. `setRole` existed for the bootstrap only. One lock for every role change means two admins removing each other leave one, and admins may remove their own role while another remains. |
+| 2026-10-12 | Scripts live one folder per script, `scripts/<name>/<name>.ts`, with their files beside them | Each script's data (seed photos, evaluation cases) sits with it. `bootstrap` and `seed` moved; `scripts/tsconfig.json` stays at the root of `scripts/`. |
+| 2026-10-12 | The planned comparison of the transcription field against a direct call and two passes was not run | Owner's choice. The research basis for one call with a transcription field stands, and the committed evaluation compares models only. |
+| 2026-10-12 | Semantic search with embeddings created at import is not added now; it stays after Session 7 | Embedding at import is not nearly free: recipes typed in or edited need embeddings too, and search would still embed every public query, which clashes with members-only AI (section 5.3). |
+| 2026-10-12 | Flat lists and sections stay one model, sections with optional headings; the heading field reads "Heading (optional)", the first section's says "Leave blank for ingredients that come before any section.", removing back to one section without a heading returns to the flat list, and a heading with an error keeps its field | Owner's choice, after finding that removing a section never recomputed whether headings show. One shape keeps moves between sections and stored recipes as they are; the copy says what a blank heading means. |
+| 2026-10-12 | A draft's warnings each get a "Mark as checked" toggle, in the summary and beside the field; checked warnings dim, the summary counts "1 of 3 checked", the state stays in the page, and checking never blocks a save | Owner's choice. A member working through a long draft can see what is left. A warning is advice about the source, not a validation error, so it never stops a save, and page state needs no storage. |
+| 2026-10-12 | Tag autofill is specified for Session 8, before invites go out: a combobox (shadcn's Base UI combobox) suggesting tag labels already in use from one cached query tagged `recipes`, still allowing new tags | Owner's choice. Suggestions steer members toward labels already in use before the catalog grows, and the cached query, cleared by every recipe write, keeps typing off the database. |
 
 ## 8. Chronology and dependencies
 
@@ -732,8 +817,9 @@ flowchart LR
 - Session 4 (done) added search and grew the seeded samples to 30, which double as its expected-result corpus.
 - Session 5 (done) added accounts, invites, sign-in, and the admin page.
 - Session 6 (done) added recipe authoring: the recipe form, photo uploads, editing, deleting, and slugs that follow titles.
-- Session 7 is next. It builds on the authoring form, which doubles as the review form. If another session's migration merges first, the later branch regenerates its migration after rebasing, so its timestamp is newest (section 5.8). Semantic search with embeddings created at import is revisited after Session 7.
-- Owner actions (section 10) have their own lead times: decide on AI Gateway credits before Session 7.
+- Session 7 added recipe import from links and photos, read by Claude Sonnet 5.5 through the AI Gateway into drafts reviewed in the authoring form, an evaluation set, and admins granting and removing admin. Its migration is `0006`; if another session's migration merges first, the later branch regenerates its migration after rebasing, so its timestamp is newest (section 5.8).
+- Session 8 is next. Semantic search with embeddings is revisited after Session 7, not at import (decision log).
+- Owner actions (section 10) have their own lead times: AI Gateway credits were bought on 2026-10-12, and trying real recipe cards in the import UI remains.
 
 ## 9. Sessions
 
@@ -805,7 +891,7 @@ Deferred, each to the session that needs it:
   - Public recipe DTOs carry the contributor's display name.
   - `enableChannelBinding` was tested on `develop` and not adopted (decision log).
 - **Session 6:** resolved there: the form mapping omits blank optional fields, and the in-memory and Drizzle recipe repositories run one contract suite. Error mapping was resolved in Session 5 (`toFormError`).
-- **Session 7:** extractors drop an invalid amount but keep the line's text. The draft schemas convert to JSON Schema in both directions.
+- **Session 7:** resolved there: extractors return ingredient lines as text, which the parser reads, keeping a line's text when its amount is invalid. Converting the draft schemas to JSON Schema proved lossy, so the model answers in its own flat schema.
 
 ### Session 3: Public browsing (done 2026-10-11)
 
@@ -1033,7 +1119,7 @@ Deferred, each to the session that needs it:
   - **Indexing:** `noindex` on the sign-in, invite, account, request, and admin pages when indexing turns on.
   - **Operations:**
     - Expired session rows appear to be deleted only when next read (unconfirmed); consider a periodic cleanup.
-    - Two bootstraps running at once on a database with no admin would fail the second on the unique email.
+    - Two bootstraps running at once on a database with no admin would fail the second: on the unique email when they create the account, or, since Session 7, with `member.role-conflict` when they promote an existing one.
     - `BLOB_WEBHOOK_PUBLIC_KEY` gained a consumer in Session 6: the presigned upload handler requires it.
     - `neondatabase/delete-branch-action@v3` (v3.2.1, still the latest) is a composite action pinning `actions/setup-node@v4`, which targets Node 20 and GitHub now runs on Node 24 with a warning. Move when Neon releases an update, or replace it with a `neonctl` step (Session 3's Operations note).
   - **End-to-end tests:** this session's preview checks ran in Playwright with a Vercel share link past preview protection, Chromium's virtual authenticator for passkeys, and codes read from the inbox. BotID refuses a headless browser, so the suites need a way past it on `/request-access`.
@@ -1110,12 +1196,12 @@ Delivered:
 
 Deferred, each to the session that needs it:
 
-- **Session 7:**
-  - The parser is the only source of a line's structure, so extractors can return ingredient lines as text. schema.org's `recipeIngredient` may hold `ItemList` or `PropertyValue` items, not only strings.
-  - Stream an import into a read-only preview, then load the finished draft into the form, which has one load path.
-  - Field errors render `role="alert"`, so a draft with many problems would announce none on load and a failed save announces many at once. Consider an error summary for drafts.
-  - Scans are 3072 px JPEGs, within every vision model's limits (Claude through Bedrock or Vertex takes at most 5 MB of base64). Revisit their order for multi-page imports.
-  - The scans heading "Original recipe" sits beside the byline "Original recipe at <host>" on a URL import with scans.
+- **Session 7:** resolved there.
+  - Extractors return ingredient lines as text, and the JSON-LD extractor reads `ItemList` and `PropertyValue` ingredients.
+  - Streaming was not built (decision log); drafts load into the form through its one load path.
+  - Drafts open with a problem summary. A failed save still announces many errors at once, which Session 8 takes up.
+  - Scans keep within a 3.75 MB byte budget, under Claude's 5 MB of base64 on Bedrock and Vertex, and move up and down for multi-page imports.
+  - The byline reads "Imported from <host>".
 - **Session 8:**
   - **Blob cleanup**, so Blob holds only what is in use (the owner's rule): a production cron that deletes this environment's blobs no recipe lists, older than a day (abandoned uploads, photos removed before saving, failed deletes); a script for `development`; and deleting a closed preview's folders when its pull request closes (folder rule in 5.5; it needs Blob credentials outside Vercel, such as a production endpoint that verifies GitHub's OIDC token).
   - **Accessibility audit:**
@@ -1161,6 +1247,87 @@ Deferred, each to the session that needs it:
 
 **Done when:** a handwritten card photo and three different recipe sites each produce an accurate draft that saves after review.
 
+Forks: resolved with the owner on 2026-10-12 (decision log): one multimodal call with a transcription field and no OCR stage, scans sent as stored within a browser byte budget, JSON-LD first with the model reading the whole page otherwise, one message for sites that refuse, a flat output schema and a domain draft builder, review notes as problems, no streaming, synchronous Server Actions, four entry tabs (Manual, Link, Photos, Drafts) with a review route, `recipe_imports` with 50 imports a day and admins exempt, purchased credits with the auto-reload cap as the budget, provenance by import id, drafts cleared on save or after 7 days with no raw output kept, the problem summary, the byline, the evaluation set, Claude Sonnet 5.5 for both modes, the member as the Gateway's `user` and `safetyIdentifier`, admins granting and removing admin, a folder per script, flat lists and sections as one model, "Mark as checked" for warnings, and tag autofill in Session 8.
+
+Delivered:
+
+- **Domain:**
+  - `ExtractedRecipe` and `importDraftFromExtractedRecipe` (`extracted-recipe.ts`): what every extractor returns, and the one function that turns it into a draft with parsed lines and problems.
+  - The import model (`recipe-import.ts`): `RecipeImport`, `ImportDraft`, `reviewableDraft`, and the 7-day draft lifetime; and the Zod-free `import-limits.ts`.
+- **Data:** migration `0006` adds `recipe_imports`, indexed by member and start time, and `recipes.import_id`, unique, with its foreign key. `DrizzleRecipeImportRepository` counts and starts imports under a lock per member, lists unsaved drafts, finds the images they name, and clears drafts. `lockForTransaction` replaces three copies of the advisory lock (slugs, roles, imports). `setRole` refuses a role the member already has and removing the last admin. A second contract suite holds the in-memory import repository to the Drizzle one.
+- **Application:**
+  - `RecipeImportService`: `importFromUrl`, `importFromScans`, `getImportReview`, and `listUnsavedImports`, with the daily limit, the scan checks, every outcome recorded with its cost, and expired drafts cleared before each import.
+  - The `WebPageFetcher`, `PageRecipeExtractor`, `ScanRecipeExtractor`, and `RecipeImportRepository` ports, `ExtractionRequester`, the import errors, and the import DTOs.
+  - `RecipeService.createRecipe` takes an import id instead of a provenance, checks the import, takes its provenance, and clears its draft after the save. Deleting keeps images an unsaved draft names.
+  - `MemberService.makeAdmin` and `removeAdmin`.
+  - Test kits: `InMemoryRecipeImportRepository`, `FixedWebPageFetcher`, `FixedPageRecipeExtractor`, and `FixedScanRecipeExtractor`.
+- **Infrastructure:**
+  - `GuardedWebPageFetcher` on `guarded-fetch`, `JsonLdPageRecipeExtractor`, and `pageText`.
+  - `AiPageRecipeExtractor` and `AiScanRecipeExtractor` over `extractWithModel`, with the prompts and the flat output schema: zero data retention, the member's email and hashed id, and the cost on every call.
+- **Composition:** `getRecipeImportService()`, with `pageModelId` and `scanModelId`, both `anthropic/claude-sonnet-5.5`.
+- **Presentation:**
+  - `/contribute`: four tabs (Manual, Link, Photos, Drafts), the link and photo import forms with their progress, and the drafts panel with its count and empty state; `maxDuration` of 120 seconds for the import actions.
+  - `/contribute/imports/<id>`: the review page, with where the draft came from and an empty state for drafts that are not available.
+  - The recipe form: the problem summary for drafts, the import's id, Move up and Move down for scans, the scan byte budget, and ids for every problem's place. `useFocusOnFailure`, shared by the recipe form and the import forms.
+  - Section headings: "Heading (optional)", with a hint on the first section; removing back to one section without a heading returns to the flat list, a heading with an error keeps its field, and focus after removing a section goes to a field that still exists.
+  - "Mark as checked" for a draft's warnings (`ProblemCheck`, `FieldProblem`, and an optional `errorCheck` on `TextField` and `TextareaField`), in the summary and beside each field.
+  - "Imported from <host>" on recipe pages, with `rel="nofollow noopener noreferrer"`.
+  - `/admin`: Make admin and Remove admin on member rows; `ConfirmActionDialog`'s `variant` is now required.
+  - The privacy page's "Importing recipes" section, and copy for every new error code.
+  - The `progress` primitive's indeterminate look, and `/design` specimens: the entry tabs with stand-in imports, import progress, the drafts tab with and without drafts, the checked warnings, the indeterminate bar, and the admin role actions.
+- **Evaluation:** `scripts/evaluate/` with 16 cases, `pnpm evaluate`, and a tested scorer. Six models, two runs each, cost $3.37 (decision log).
+- **Operations:**
+  - Dependencies: `ai` 7.0.137, `cheerio` 1.2.0, `html-to-text` 10.0.1 with `@types/html-to-text` 9.0.4 (10.x ships no types), `iso8601-duration` 2.2.0, `guarded-fetch` 0.1.5, `encoding-sniffer` 1.0.2, and `leven` 4.1.0 for development.
+  - AI Gateway credits bought, with auto-reload capped at $100 a month (section 5.5).
+  - `bootstrap` and `seed` moved into `scripts/bootstrap/` and `scripts/seed/`.
+- **Fixes:**
+  - From the first external review: JSON-LD reference cycles are detected, and structured data that cannot be read falls back to the model; pages are decoded with their declared charset through `encoding-sniffer` (byte-order mark, header, then `<meta>`, ignoring one inside a comment); yield amounts take the longest prefix the parser reads, so "1 1/2 to 2 servings" is no longer misread; images an unsaved import's draft names count as in use when a recipe or photo is deleted (`findImagesInUnsavedImports`), since importing the same scans twice makes drafts share them; a draft joins every distinct message for a field, while a failed save still shows one per field; and scans over the size limit at every quality are redrawn at long edges of 2304, 1728, and 1600 px.
+  - From the second external review: lines split from a JSON-LD string count toward the walk's bound, so a page whose one string holds thousands of lines falls back to the model instead of failing.
+  - The review page's form is keyed by the import, so moving from one draft's page to another starts the form again.
+  - Found by the owner: removing a section never recomputed whether headings show (Session 6 code), so removing back to one section without a heading kept the heading fields.
+- **Tests:** 1595 in 72 files.
+- **Preview checks:** PLACEHOLDER (orchestrator): the checks on the preview, including whether the sites that refused imports from a residential address also refuse Vercel's.
+
+Deferred, each to the session that needs it:
+
+- **Session 8:**
+  - **Blob cleanup** (Session 6's item): the sweep must count images an unexpired draft names as in use, through `findImagesInUnsavedImports` as well as `findImagesInUse`, or it would delete a draft's scans. Until it exists, an unsaved import's scans stay in Blob after its draft expires; the privacy page promises only that the draft is deleted.
+  - **Security review:**
+    - A Server Action request without an `Origin` header is allowed through with a warning (bundled `serverActions.md`).
+    - No row records which member received an upload grant, so a member who knows another's stored upload name can attach it to a recipe or an import.
+    - `recipeImageListSchema` has no maximum count: imports take at most 6 scans, saves any number.
+    - `RecipeImageService.getMemberImage` does not check the environment folder, so a member can read any scan path, other environments' included (previews read production's rows by design).
+    - Whether the Gateway forwards `user`, a member's email, to providers is unconfirmed.
+    - The JSON-LD walk bounds how many values it reads, not how much text: up to 2000 references to one multi-megabyte string would each pass through html-to-text, and parsing is outside the fetch's 10-second limit. Decode each distinct string once, or count characters.
+  - **Accessibility audit:**
+    - Failed saves adopt the problem summary, as the owner asked: a failed save still announces every field error at once (`role="alert"`).
+    - The tabs primitive gives an open panel a tab stop with no visible focus (`outline-none`), as `/design`'s tabs specimen shows; the entry tabs set `tabIndex={-1}` on their panels instead.
+    - After admins remove their own admin role, focus falls to the page.
+  - **Tag autofill,** before invites go out (decision log).
+  - **Tests:** `form-errors.test.ts` has no cases for the import and member role codes.
+  - **Operations:** the Gateway's Logs show no user, and Custom Reporting's retention is undocumented. Confirm both before relying on per-member spend reports.
+  - **Small:** `member.not-found` and `image.invalid-upload` have no copy in `errorMessages` (only a crafted request reaches a form with either); `AppError` subclasses do not set `name`, so logs show them as `Error`; the recipe form's `load` edit has no consumer now that streaming was not built (kept or removed on the owner's say).
+- **After Session 7:** semantic search with embeddings (decision log).
+- **Known quirks:**
+  - The Gateway's response names no model, so `aiModel` is the model asked, which is the one that answered while no fallbacks are configured.
+  - A model answer that fails the output schema ends as `import.failed` with no cost recorded, though the call was paid.
+  - When the JSON-LD is partial and the model finds no recipe, the import fails with `import.no-recipe` instead of keeping the partial structured data.
+  - WP Recipe Maker's JSON-LD has no ingredient group headings, and neither tested page's JSON-LD has notes, so imports that use it lose them (the owner's choice).
+  - JSON-LD and the visible recipe can disagree: WP Recipe Maker adds metric amounts, and one site writes "3 c." where its page says "3 cups".
+  - JSON-LD section headings keep trailing colons ("Ragu:"), and the legacy `ingredients` property is not read.
+  - Some sites fail TLS from some networks (myplate.gov served an `*.azureedge.us` certificate over IPv4 and hung over IPv6) and get "We couldn't open that page."
+  - A draft stored in the moment between a photo's in-use checks and its delete can name a deleted scan, the same class as Session 6's crafted-save race. `findImagesInUnsavedImports` reads drafts' jsonb without an index.
+  - `@vercel/functions` exports `getDeadline()`, which could bound a model call by the function's remaining time; the fixed 90-second timeout is simpler.
+  - `itemKeys` is defined twice, in `recipe-form-values.ts` and `extracted-recipe.ts`, since client code cannot import a domain module that imports Zod.
+  - The bundled `route.md` streams with `StreamingTextResponse` and `toAIStream`, which AI SDK 7 removed.
+  - **Evaluation sources:** some Wikimedia Commons public-domain tags are wrong (a Newberry card credits an author who died in 1999), so rights are checked at the source. loc.gov, crowd.loc.gov, DPLA, and si.edu refuse automated fetches, while NARA's catalog and the Smithsonian Open Access API work, and NARA's image URLs come in two forms (`medialz`, `medialive`). `sharp` is only a transitive dependency, through Next.
+  - **Evaluation runner:** the chili card's dashes are hyphens in its expected draft, and the scorer treats dashes alike. A JSON import widens `yield.kind` to a string, so the runner validates expected drafts at runtime.
+  - Agent editing tools can write `\uXXXX` escapes as literal characters; check regexes in diffs.
+  - A yield written "about 4 servings" with no label reads as "makes", since the servings check looks only at the start of the unit.
+  - Pages in encodings browsers refuse (ISO-2022-KR, HZ-GB-2312) are turned away as not HTML.
+  - Chrome names the Drafts tab "Drafts , 3", a space before the comma, because the badge is its own flex item; speech is the same.
+  - The first section's heading placeholder ("For the glaze") sits just above its "Leave blank" hint.
+
 ### Session 8: Launch hardening and onboarding
 
 **Goal:** the site is ready to share and members contribute in production.
@@ -1180,6 +1347,7 @@ Deferred, each to the session that needs it:
   - A security review: authorization on every write and AI use case, public endpoints and their rate limits, BotID, upload limits, SSRF, and response headers.
 - **Operations:** log review, an error alerting decision, the off-Neon backup, and a runbook in the README.
   - The off-Neon backup is a nightly `pg_dump` (a Postgres 18 client over the unpooled URL) stored outside Neon, plus a copy of Blob photos. It is the only defense against deleting the database through Vercel, and, since Session 6 deletes photos for real, the only way back from a deleted photo. The owner kept it here as this session's first item, before invites go out.
+- **Contributing:** tag autofill before invites go out: a combobox (shadcn's Base UI combobox) on the recipe form's tags that suggests labels already in use, read through one cached query tagged `recipes`, and still allows new tags.
 - **Launch decisions:** the indexing decision revisited, invites sent, and onboarding notes for members.
 
 **Owner actions:** review the brand mark; send invites; announce the site.
@@ -1188,26 +1356,29 @@ Deferred, each to the session that needs it:
 
 ## 10. Owner action items
 
-| Action                                                      | Needed by |
-| ----------------------------------------------------------- | --------- |
-| Try real recipe cards by hand; decide on AI Gateway credits | Session 7 |
-| Review the brand mark; send invites; announce the site      | Session 8 |
+| Action | Needed by |
+| --- | --- |
+| Try real recipe cards in the import UI, on `develop` or a preview, never committed (AI Gateway credits were bought on 2026-10-12) | Session 7 |
+| Review the brand mark; send invites; announce the site | Session 8 |
 
 ## 11. Open questions and risks
 
 - **Public exposure:** browsing is public, so recipes, sources, contributor names, and photos can be scraped or indexed. Mitigation: display names members choose, members-only scans, `noindex` until launch, and no contact details on public pages.
 - **One Blob store for every environment:** preview and local code can write beside production's photos. Mitigation: environment folders (one per branch for previews), deletes refused outside them, and OIDC credentials instead of a long-lived token.
-- **Irreversible photo deletes:** removing a recipe or a photo deletes its blobs, and Blob keeps no history. Mitigation: deletes run only after the database write commits, only in this environment's folders, and never for a photo another recipe lists; the off-Neon backup with a photo copy is Session 8's first item.
+- **Irreversible photo deletes:** removing a recipe or a photo deletes its blobs, and Blob keeps no history. Mitigation: deletes run only after the database write commits, only in this environment's folders, and never for a photo another recipe lists or an unsaved import's draft names; the off-Neon backup with a photo copy is Session 8's first item.
 - **Ingredient parsing:** `parse-ingredient` is a young, single-maintainer library inside the domain. Mitigation: our adapter's guards, a test over every sample line, and the text kept verbatim, so a misparse still reads as written; replacing it touches one module.
 - **Passkey familiarity:** some relatives may not know passkeys. Mitigation: email-first accounts, so a code always works; the sign-in page leads with the code; plain copy around every passkey prompt; and onboarding notes in Session 8.
 - **Sign-in on previews:** passkeys are bound to their host. Mitigation: email-code sign-in with production's copied members or the bootstrapped admin.
 - **Spam requests and code floods:** the request form and code requests are public. Mitigation: BotID and a WAF rule on the form, requests that create no account, Better Auth's limit of 3 code requests a minute per IP, and codes sent only to members and invited addresses. Resend's 100 emails a day are shared with codes.
 - **Readable email key:** Resend's full-access key is a readable Config variable in every environment, by choice. Mitigation: the Resend account holds only this site's domain.
 - **Uncached public search:** every search reaches Neon, so a crawler sending unique queries could run up compute charges. Mitigation: the WAF rate-limit rule on `/search`, which blocks before a function runs.
-- **Plan limits:** Resend's free plan allows 100 emails a day, which is fine at this scale; revisit if usage grows. Neon's Launch plan bills every branch beyond ten at $1.50 a month, so the cleanup workflow must keep running.
+- **Plan limits:** Resend's free plan allows 100 emails a day, which is fine at this scale; revisit if usage grows. Neon's Launch plan bills every branch beyond ten at $1.50 a month, so the cleanup workflow must keep running. The Gateway's credits are shared by previews, local development, and production, so testing imports spends production's allowance.
 - **Schema changes under live traffic:** builds migrate before the new deployment serves, and old deployments keep serving. Mitigation: expand-then-contract migrations.
 - **Drizzle 1.0:** a later upgrade rewrites the migrations folder and the client setup. Mitigation: no APIs that 1.0 removes.
-- **AI accuracy and cost:** handwritten cards vary widely. Mitigation: mandatory review, an evaluation set, budgets, and rate limits.
+- **AI accuracy and cost:** handwritten cards vary widely, and models drift toward typical text over what is written: in the evaluation, Sonnet 5.5 read a "15-oz" can as "10-oz" in both runs and scored 0.932 on handwriting. Mitigation: every draft is reviewed before it saves, with its problems summarized and focused; prompts copy what is written, never fill in a missing value, and send doubt to review notes; `pnpm evaluate` measures any model change against the 16 cases; and spending stops at the Gateway's $100 monthly reload cap, with 50 imports a day per member.
+- **Email sent to the Gateway:** each model call labels the member by email in the Gateway's usage reports, whose retention Vercel does not document, and whether the Gateway forwards `user` to providers is unconfirmed. Mitigation: providers get a hash of the member id, every call asks for zero data retention, the privacy page says so, and logs still carry ids only.
+- **Sites refusing imports:** large publishers (People Inc.'s Allrecipes and Serious Eats, Food52) refuse server fetches, measured from a residential address; Vercel's addresses may fare worse. Mitigation: one clear message and manual entry, and never a spoofed browser.
+- **`guarded-fetch` is 0.x** with one maintainer at Vercel Labs, and it guards every address a member gives. Mitigation: our own tests pin its blocks (private, encoded, DNS-based, and redirected addresses), our redirect loop checks every hop, and `ssrf-guard` or about 110 lines on `undici` and `ipaddr.js` can replace it in one adapter.
 - **Cache Components with authentication:** session-derived UI must follow the bundled guide so one member's view is never cached for everyone. Mitigation: the session is read only inside Suspense through `ActorProvider`, public use cases never ask for the actor, and tests prove it (section 4.4).
 - **Young primitives and stale theming:** Base UI is less than a year past 1.0, with open mobile screen-reader bugs, and next-themes has not shipped since March 2025. Mitigation: screen-reader passes in Session 8, and the Next.js guide's inline script if next-themes breaks.
 
