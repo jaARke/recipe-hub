@@ -1,0 +1,59 @@
+{
+	"title": "Sunday pot roast",
+	"description": "Beef chuck braised low and slow with onions, carrots, and potatoes until it yields to a fork. Ray put it in the oven after breakfast, and by noon the whole house smelled of it.",
+	"notes": "Ray seared the roast longer than anyone thought he should, because the dark crust is where the gravy gets its flavor. He saved every drop of leftover gravy for hot roast beef sandwiches on Monday.",
+	"source": "Uncle Ray",
+	"yield": { "kind": "servings", "amount": "8" },
+	"times": { "prepMinutes": 25, "cookMinutes": 200, "totalMinutes": 225 },
+	"ingredientSections": [
+		{
+			"heading": "For the roast",
+			"lines": [
+				"3½ to 4 pounds beef chuck roast",
+				"2 teaspoons kosher salt",
+				"1 teaspoon black pepper",
+				"2 tablespoons vegetable oil",
+				"2 yellow onions, cut into wedges",
+				"4 garlic cloves, smashed",
+				"2 tablespoons tomato paste",
+				"1 cup dry red wine",
+				"2 cups beef broth",
+				"3 sprigs fresh thyme",
+				"2 bay leaves",
+				"1 pound carrots, cut into 2-inch pieces",
+				"1½ pounds small yellow potatoes, halved"
+			]
+		},
+		{
+			"heading": "For the gravy",
+			"lines": [
+				"2 tablespoons butter, softened",
+				"2 tablespoons all-purpose flour",
+				"Salt and black pepper to taste"
+			]
+		}
+	],
+	"instructionSections": [
+		{
+			"heading": "For the roast",
+			"steps": [
+				"Heat the oven to 300°F. Pat the roast dry and season it all over with the salt and pepper.",
+				"Warm the oil in a large Dutch oven over medium-high heat and sear the roast until deeply browned on every side, about 15 minutes. Set it on a plate.",
+				"Lower the heat to medium and cook the onions until they start to brown, about 5 minutes. Stir in the garlic and tomato paste and cook 1 minute more.",
+				"Pour in the wine and scrape up the browned bits, then add the broth, thyme, and bay leaves. Return the roast and its juices to the pot.",
+				"Cover and braise in the oven for 2 hours.",
+				"Tuck the carrots and potatoes around the roast, cover, and braise until the meat is fork-tender, about 1 hour more.",
+				"Lift the roast and vegetables onto a platter, cover loosely with foil, and let rest while you make the gravy."
+			]
+		},
+		{
+			"heading": "For the gravy",
+			"steps": [
+				"Discard the thyme and bay leaves and skim the fat from the braising liquid.",
+				"Mash the butter and flour into a paste. Bring the liquid to a simmer and whisk in the paste a little at a time until the gravy coats a spoon, about 5 minutes.",
+				"Season with salt and pepper. Slice the roast across the grain and serve with the vegetables and gravy."
+			]
+		}
+	],
+	"reviewNotes": []
+}

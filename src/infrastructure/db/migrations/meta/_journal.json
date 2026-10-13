@@ -43,6 +43,13 @@
       "when": 1791827558586,
       "tag": "0005_add-old-recipe-slugs",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791845325736,
+      "tag": "0006_add-recipe-imports",
+      "breakpoints": true
     }
   ]
 }

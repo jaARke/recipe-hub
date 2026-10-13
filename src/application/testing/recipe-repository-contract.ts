@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { ImportUnavailableError } from '@/application/ingestion/errors';
+import type { RecipeImportRepository } from '@/application/ports/recipe-import-repository';
 import type {
 	NewRecipe,
 	RecipeRepository,
@@ -27,6 +29,8 @@ import { tagKey } from '@/domain/recipe/tag';
 
 export type RecipeRepositoryFixture = {
 	repository: RecipeRepository;
+	// Stores the imports a recipe can be saved from.
+	imports: RecipeImportRepository;
 	// A member the repository accepts as a contributor.
 	contributorId: MemberId;
 };
@@ -132,6 +136,20 @@ export function describeRecipeRepositoryContract(fixture: () => RecipeRepository
 				'buttermilk-biscuits-2',
 				'buttermilk-biscuits-3',
 			]);
+		});
+
+		it('saves one recipe from an import and refuses a second, which takes no slug', async () => {
+			const { repository, imports, contributorId } = fixture();
+			const started = await imports.start({ memberId: contributorId, mode: 'photo' });
+			const provenance: Provenance = { entryMode: 'photo', aiModel: 'example/model' };
+			const created = await create(sampleChickenSoup, { provenance, importId: started?.id });
+
+			await expect(
+				create(sampleTomatoSalad, { provenance, importId: started?.id })
+			).rejects.toThrow(ImportUnavailableError);
+			expect(await repository.findById(created.id)).toMatchObject({ provenance });
+			expect(await repository.count()).toBe(1);
+			expect((await create(sampleTomatoSalad)).slug).toBe('garden-tomato-salad');
 		});
 
 		it("never takes another recipe's old slug", async () => {

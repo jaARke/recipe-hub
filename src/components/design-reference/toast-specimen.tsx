@@ -26,8 +26,8 @@ const toastExamples = [
 		raise: () =>
 			toast.add({
 				type: 'info',
-				title: 'Import started',
-				description: 'The draft opens for review when it is ready.',
+				title: 'Reading the page…',
+				description: "You'll check what's read before saving it.",
 			}),
 	},
 	{

@@ -108,6 +108,7 @@ function AccessRequestCard({
 					<FormErrorAlert message={failed?.message} />
 					<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
 						<ConfirmActionDialog
+							variant="destructive"
 							trigger={<>Decline{whichRequest}</>}
 							title={`Decline the request from ${request.name}?`}
 							description="The request is deleted."

@@ -1,0 +1,42 @@
+{
+	"title": "Columbia Drop Cakes",
+	"source": "Mrs. Davis",
+	"yield": { "kind": "makes", "amount": "30", "unit": "2 in cookies" },
+	"times": {},
+	"ingredientSections": [
+		{
+			"lines": [
+				"¾ c brown sugar",
+				"½ c butter",
+				"2 eggs",
+				"1½ c bread flour",
+				"½ teas soda",
+				"1 teas cinnamon",
+				"½ teas cloves",
+				"¼ teas alspice",
+				"⅛ teas salt",
+				"¼ c water",
+				"1 cup broken nut meats",
+				"1 cup raisins, chpd dates or figs"
+			]
+		}
+	],
+	"instructionSections": [
+		{
+			"steps": [
+				"Sift: ¾ c brown sugar",
+				"Beat until soft. ½ c butter",
+				"Add sugar gradually. Blend these ingredients until they are very light and creamy.",
+				"Beat in one at a time; 2 eggs",
+				"Sift before measuring: 1½ c bread flour",
+				"Resift with ½ teas soda, 1 teas cinnamon, ½ teas cloves, ¼ teas alspice, ⅛ teas salt",
+				"Add the sifted ingredients in 3 parts to the butter mixture alternately with thirds of ¼ c water.",
+				"Beat the batter til it's smooth after each addition.",
+				"Stir: 1 cup broken nut meats, 1 cup raisins, chpd dates or figs",
+				"Drop batter from a teas. onto a greased tin.",
+				"Bake cookies in a moderate oven 375 for about 12 min."
+			]
+		}
+	],
+	"reviewNotes": []
+}

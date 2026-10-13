@@ -101,20 +101,30 @@ function RecipeDate({ label, date }: { label: string; date: Date }) {
 	);
 }
 
+// The page a recipe was imported from, named by its host. Search engines don't follow the link, and
+// the page isn't told which recipe sent the reader.
+function RecipeImportedFrom({ sourceUrl }: { sourceUrl: string }) {
+	return (
+		<p className="text-sm text-muted-foreground">
+			Imported from{' '}
+			<a
+				href={sourceUrl}
+				rel="nofollow noopener noreferrer"
+				className="text-primary underline underline-offset-4"
+			>
+				{new URL(sourceUrl).hostname}
+			</a>
+		</p>
+	);
+}
+
 function RecipeByline({ recipe }: { recipe: PublicRecipeDto }) {
 	return (
 		<div className="flex flex-col gap-1">
 			{recipe.source !== undefined && (
 				<p className={recipeTextStyles.supporting}>From {recipe.source}</p>
 			)}
-			{recipe.sourceUrl !== undefined && (
-				<p className="text-sm text-muted-foreground">
-					Original recipe at{' '}
-					<a href={recipe.sourceUrl} className="text-primary underline underline-offset-4">
-						{new URL(recipe.sourceUrl).hostname}
-					</a>
-				</p>
-			)}
+			{recipe.sourceUrl !== undefined && <RecipeImportedFrom sourceUrl={recipe.sourceUrl} />}
 			<div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
 				<RecipeDate
 					label={`Added by ${recipe.contributor.displayName} on`}
@@ -316,4 +326,4 @@ function RecipeDetailSkeleton() {
 	);
 }
 
-export { RecipeDetail, RecipeDetailSkeleton, RecipeMetaRow, recipeTextStyles };
+export { RecipeDetail, RecipeDetailSkeleton, RecipeImportedFrom, RecipeMetaRow, recipeTextStyles };

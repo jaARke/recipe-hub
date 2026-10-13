@@ -1,7 +1,13 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
-import { declineRequest, issueInvite, revokeInvite } from '@/app/admin/actions';
+import {
+	declineRequest,
+	issueInvite,
+	makeAdmin,
+	removeAdmin,
+	revokeInvite,
+} from '@/app/admin/actions';
 import type { AccessRequestDto, InviteDto } from '@/application/access/access-dtos';
 import { ForbiddenError, SignInRequiredError } from '@/application/authorization';
 import type { MemberDto } from '@/application/members/member-dtos';
@@ -20,7 +26,13 @@ export const metadata: Metadata = {
 	title: 'Admin',
 };
 
-const adminActions: AdminActions = { issueInvite, declineRequest, revokeInvite };
+const adminActions: AdminActions = {
+	issueInvite,
+	declineRequest,
+	revokeInvite,
+	makeAdmin,
+	removeAdmin,
+};
 
 type AdminData = {
 	requests: AccessRequestDto[];

@@ -11,13 +11,16 @@ import {
 import * as React from 'react';
 import { flushSync } from 'react-dom';
 import { describedBy } from '@/components/forms/described-by';
+import { FieldProblem, type ProblemCheck } from '@/components/forms/problem-summary';
 import { ItemActionsMenu } from '@/components/recipe-form/item-actions-menu';
-import type {
-	RecipeFormEdit,
-	RecipeFormItem,
-	RecipeFormList,
-	RecipeFormListName,
-	RecipeFormSection,
+import {
+	sectionsShowHeadings,
+	type ProblemTarget,
+	type RecipeFormEdit,
+	type RecipeFormItem,
+	type RecipeFormList,
+	type RecipeFormListName,
+	type RecipeFormSection,
 } from '@/components/recipe-form/recipe-form-values';
 import {
 	describeMove,
@@ -28,14 +31,7 @@ import {
 	type ItemPlace,
 } from '@/components/recipe-form/sectioned-list';
 import { Button } from '@/components/ui/button';
-import {
-	Field,
-	FieldDescription,
-	FieldError,
-	FieldLabel,
-	FieldLegend,
-	FieldSet,
-} from '@/components/ui/field';
+import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -46,6 +42,8 @@ const moveIcons: Record<ItemMoveKind, LucideIcon> = {
 };
 
 type SectionedListFieldProps = {
+	// Starts every id in the field, so the form can link to its problems.
+	idPrefix: string;
 	name: RecipeFormListName;
 	list: RecipeFormList;
 	// The id the form gives the next section or item it adds.
@@ -63,7 +61,27 @@ type SectionedListFieldProps = {
 	// Shown under an item's field and read with it, such as how an ingredient reads on the recipe
 	// page; nothing shows where it returns undefined.
 	itemPreview?: (text: string) => React.ReactNode;
+	// Each problem's check while the member reviews a draft, and none otherwise.
+	problemCheck?: (target: ProblemTarget) => ProblemCheck | undefined;
 };
+
+// The ids of the field's parts, which the form's problem summary links to.
+function sectionedListFieldIds(prefix: string) {
+	return {
+		description: `${prefix}-description`,
+		error: `${prefix}-error`,
+		addSection: `${prefix}-add-section`,
+		item: (itemId: number) => `${prefix}-item-${itemId}`,
+		itemPreview: (itemId: number) => `${prefix}-item-${itemId}-preview`,
+		itemError: (itemId: number) => `${prefix}-item-${itemId}-error`,
+		itemActions: (itemId: number) => `${prefix}-item-${itemId}-actions`,
+		heading: (sectionId: number) => `${prefix}-heading-${sectionId}`,
+		headingDescription: (sectionId: number) => `${prefix}-heading-${sectionId}-description`,
+		headingError: (sectionId: number) => `${prefix}-heading-${sectionId}-error`,
+		sectionError: (sectionId: number) => `${prefix}-section-${sectionId}-error`,
+		addItem: (sectionId: number) => `${prefix}-add-${sectionId}`,
+	};
+}
 
 function focusElement(id: string) {
 	document.getElementById(id)?.focus();
@@ -72,6 +90,7 @@ function focusElement(id: string) {
 // A list of growing fields in sections, such as a recipe's ingredients. Each item's menu moves or
 // removes it, and a section can have a heading.
 function SectionedListField({
+	idPrefix,
 	name,
 	list,
 	nextId,
@@ -84,24 +103,12 @@ function SectionedListField({
 	numbered = false,
 	maxItemLength,
 	itemPreview,
+	problemCheck,
 }: SectionedListFieldProps) {
-	const baseId = React.useId();
 	const [announcement, setAnnouncement] = React.useState('');
 	const { sections, showsHeadings } = list;
 	const ItemList = numbered ? 'ol' : 'ul';
-	const ids = {
-		description: `${baseId}-description`,
-		error: `${baseId}-error`,
-		addSection: `${baseId}-add-section`,
-		item: (itemId: number) => `${baseId}-item-${itemId}`,
-		itemPreview: (itemId: number) => `${baseId}-item-${itemId}-preview`,
-		itemError: (itemId: number) => `${baseId}-item-${itemId}-error`,
-		itemActions: (itemId: number) => `${baseId}-item-${itemId}-actions`,
-		heading: (sectionId: number) => `${baseId}-heading-${sectionId}`,
-		headingError: (sectionId: number) => `${baseId}-heading-${sectionId}-error`,
-		sectionError: (sectionId: number) => `${baseId}-section-${sectionId}-error`,
-		addItem: (sectionId: number) => `${baseId}-add-${sectionId}`,
-	};
+	const ids = sectionedListFieldIds(idPrefix);
 
 	// Structural edits commit at once, so focus can move to what they render.
 	function commit(edit: RecipeFormEdit) {
@@ -149,11 +156,16 @@ function SectionedListField({
 		}
 		const previous = sections[sectionIndex - 1];
 		const next = sections[sectionIndex + 1];
+		const headingsStay = sectionsShowHeadings(sections.toSpliced(sectionIndex, 1));
 		commit({ type: 'removeSection', list: name, sectionId: section.id });
 		if (previous !== undefined) {
 			focusElement(ids.addItem(previous.id));
-		} else if (next !== undefined) {
+		} else if (next !== undefined && headingsStay) {
 			focusElement(ids.heading(next.id));
+		} else if (next !== undefined) {
+			// Without headings, the section left starts with its first item, or its add button.
+			const [firstItem] = next.items;
+			focusElement(firstItem === undefined ? ids.addItem(next.id) : ids.item(firstItem.id));
 		}
 	}
 
@@ -212,7 +224,14 @@ function SectionedListField({
 					{hasPreview && (
 						<FieldDescription id={ids.itemPreview(item.id)}>{preview}</FieldDescription>
 					)}
-					{invalid && <FieldError id={ids.itemError(item.id)}>{item.error}</FieldError>}
+					{invalid && (
+						<FieldProblem
+							id={ids.itemError(item.id)}
+							check={problemCheck?.({ kind: 'item', id: item.id })}
+						>
+							{item.error}
+						</FieldProblem>
+					)}
 				</Field>
 				<ItemActionsMenu
 					triggerId={ids.itemActions(item.id)}
@@ -234,9 +253,13 @@ function SectionedListField({
 				)}
 				{section.error !== undefined && (
 					// Takes focus after a failed save in place of a field.
-					<FieldError id={ids.sectionError(section.id)} tabIndex={-1}>
+					<FieldProblem
+						id={ids.sectionError(section.id)}
+						tabIndex={-1}
+						check={problemCheck?.({ kind: 'section', id: section.id })}
+					>
 						{section.error}
-					</FieldError>
+					</FieldProblem>
 				)}
 			</>
 		);
@@ -263,6 +286,8 @@ function SectionedListField({
 
 	function renderHeadedSection(section: RecipeFormSection, sectionIndex: number) {
 		const headingInvalid = section.headingError !== undefined;
+		// Only the first section can hold items that come before any heading.
+		const headingHint = sectionIndex === 0;
 
 		return (
 			<FieldSet
@@ -272,13 +297,16 @@ function SectionedListField({
 			>
 				<FieldLegend className="sr-only">Section {sectionIndex + 1}</FieldLegend>
 				<Field data-invalid={headingInvalid ? 'true' : undefined}>
-					<FieldLabel htmlFor={ids.heading(section.id)}>Section heading</FieldLabel>
+					<FieldLabel htmlFor={ids.heading(section.id)}>Heading (optional)</FieldLabel>
 					<Input
 						id={ids.heading(section.id)}
 						value={section.heading}
 						placeholder={headingPlaceholder}
 						aria-invalid={headingInvalid ? 'true' : undefined}
-						aria-describedby={headingInvalid ? ids.headingError(section.id) : undefined}
+						aria-describedby={describedBy(
+							headingHint && ids.headingDescription(section.id),
+							headingInvalid && ids.headingError(section.id)
+						)}
 						onChange={(event) =>
 							dispatch({
 								type: 'setHeading',
@@ -288,8 +316,18 @@ function SectionedListField({
 							})
 						}
 					/>
+					{headingHint && (
+						<FieldDescription id={ids.headingDescription(section.id)}>
+							Leave blank for {legend.toLowerCase()} that come before any section.
+						</FieldDescription>
+					)}
 					{headingInvalid && (
-						<FieldError id={ids.headingError(section.id)}>{section.headingError}</FieldError>
+						<FieldProblem
+							id={ids.headingError(section.id)}
+							check={problemCheck?.({ kind: 'heading', id: section.id })}
+						>
+							{section.headingError}
+						</FieldProblem>
 					)}
 				</Field>
 				{renderSectionBody(section, sectionIndex)}
@@ -328,9 +366,13 @@ function SectionedListField({
 			<FieldDescription id={ids.description}>{description}</FieldDescription>
 			{list.error !== undefined && (
 				// Takes focus after a failed save in place of a field.
-				<FieldError id={ids.error} tabIndex={-1}>
+				<FieldProblem
+					id={ids.error}
+					tabIndex={-1}
+					check={problemCheck?.({ kind: 'list', list: name })}
+				>
 					{list.error}
-				</FieldError>
+				</FieldProblem>
 			)}
 			{showsHeadings
 				? sections.map((section, sectionIndex) => renderHeadedSection(section, sectionIndex))
@@ -358,4 +400,4 @@ function SectionedListField({
 	);
 }
 
-export { SectionedListField };
+export { SectionedListField, sectionedListFieldIds };

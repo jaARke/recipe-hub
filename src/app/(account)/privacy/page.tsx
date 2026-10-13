@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageSection } from '@/components/layout/page-section';
 import { sessionLifetimeDays, signInCodeLifetimeMinutes } from '@/domain/member/member';
+import { importDraftLifetimeDays } from '@/domain/recipe/recipe-import';
 import { siteName } from '@/lib/site';
 
 export const metadata: Metadata = {
@@ -39,7 +40,8 @@ export default function PrivacyPage() {
 				<ul className={listClassName}>
 					<li>Your display name is public. It appears beside recipes you add.</li>
 					<li>
-						Your email address is private. Sign-in codes are sent to it, and admins can see it.
+						Your email address is private. Sign-in codes are sent to it, admins can see it, and it
+						labels your import requests in the AI Gateway&apos;s usage reports.
 					</li>
 					<li>
 						A sign-in code is stored encrypted until it&apos;s used, or for{' '}
@@ -55,6 +57,28 @@ export default function PrivacyPage() {
 					</li>
 					<li>
 						To slow down guessing, the site briefly counts sign-in attempts from each IP address.
+					</li>
+				</ul>
+			</PageSection>
+			<PageSection id="privacy-imports" title="Importing recipes">
+				<ul className={listClassName}>
+					<li>
+						To read a recipe you import, the site may send its photos or the text of its web page to
+						an AI model through Vercel&apos;s AI Gateway. Neither the Gateway nor the model&apos;s
+						provider keeps them after answering.
+					</li>
+					<li>
+						Each request an import makes is labeled with your email address in the AI Gateway&apos;s
+						usage reports. The model&apos;s provider gets a coded form of your account id instead,
+						so it can trace misuse to an account without knowing who you are.
+					</li>
+					<li>
+						An import&apos;s draft is kept until you save it as a recipe, or for{' '}
+						{importDraftLifetimeDays} days at most.
+					</li>
+					<li>
+						A record of each import is kept: who started it, when, which AI model read it, and what
+						it cost.
 					</li>
 				</ul>
 			</PageSection>
@@ -80,6 +104,7 @@ export default function PrivacyPage() {
 						The site is hosted by Vercel. Its database is hosted by Neon, and photos are stored in
 						Vercel Blob.
 					</li>
+					<li>Imports are read by AI models through Vercel&apos;s AI Gateway.</li>
 					<li>
 						Changes are tried on test versions of the site before they go live. Test versions use a
 						copy of the database, so they may hold copies of this data too. They aren&apos;t public.

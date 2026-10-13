@@ -1,0 +1,103 @@
+[
+	{
+		"id": "canned-corn",
+		"kind": "scan",
+		"files": ["page-1.jpg"],
+		"tags": ["handwritten", "cursive"]
+	},
+	{
+		"id": "tomato-mince-meat",
+		"kind": "scan",
+		"files": ["page-1.jpg", "page-2.jpg"],
+		"tags": ["handwritten", "cursive", "faint", "multi-page", "ditto"]
+	},
+	{
+		"id": "oatmeal-drop-cookies",
+		"kind": "scan",
+		"files": ["page-1.jpg"],
+		"tags": ["handwritten", "cursive", "prose"]
+	},
+	{
+		"id": "frosted-cream-cake",
+		"kind": "scan",
+		"files": ["page-1.jpg"],
+		"tags": ["handwritten", "cursive", "faint", "stained", "ditto"]
+	},
+	{
+		"id": "columbia-drop-cakes",
+		"kind": "scan",
+		"files": ["page-1.jpg", "page-2.jpg"],
+		"tags": ["handwritten", "cursive", "multi-page", "ditto", "distractors"]
+	},
+	{
+		"id": "anise-cakes",
+		"kind": "scan",
+		"files": ["page-1.jpg", "page-2.jpg"],
+		"tags": ["handwritten", "cursive", "multi-page", "distractors"]
+	},
+	{
+		"id": "hot-fudge-sauce",
+		"kind": "scan",
+		"files": ["page-1.jpg"],
+		"tags": ["handwritten", "print-script", "ditto", "distractors"]
+	},
+	{
+		"id": "pedernales-river-chili",
+		"kind": "scan",
+		"files": ["page-1.jpg"],
+		"tags": ["printed", "two-column", "distractors"]
+	},
+	{
+		"id": "chocolate-brownies",
+		"kind": "scan",
+		"files": ["page-1.jpg"],
+		"tags": ["printed", "two-column"]
+	},
+	{
+		"id": "graham-rolls",
+		"kind": "scan",
+		"files": ["page-1.jpg"],
+		"tags": ["printed"]
+	},
+	{
+		"id": "one-crust-apple-pie",
+		"kind": "scan",
+		"files": ["page-1.jpg"],
+		"tags": ["printed", "stained", "distractors"]
+	},
+	{
+		"id": "chicken-creole",
+		"kind": "page",
+		"files": ["page.html"],
+		"url": "https://www.nhlbi.nih.gov/health/heart-healthy-living/healthy-foods/healthy-eating-recipes/20-minute-chicken-creole",
+		"tags": ["no-json-ld"]
+	},
+	{
+		"id": "5-a-day-salad",
+		"kind": "page",
+		"files": ["page.html"],
+		"url": "https://www.myplate.gov/recipes/5-day-salad",
+		"tags": ["partial-json-ld"]
+	},
+	{
+		"id": "sunday-pot-roast",
+		"kind": "page",
+		"files": ["page.html"],
+		"url": "https://sunday-suppers.example/sunday-pot-roast/",
+		"tags": ["json-ld", "synthetic"]
+	},
+	{
+		"id": "peach-cobbler",
+		"kind": "page",
+		"files": ["page.html"],
+		"url": "https://orchard-table.example/peach-cobbler-with-biscuit-topping/",
+		"tags": ["no-json-ld", "synthetic"]
+	},
+	{
+		"id": "lemon-garlic-roast-chicken",
+		"kind": "page",
+		"files": ["page.html"],
+		"url": "https://weeknight-kitchen.example/recipes/lemon-garlic-roast-chicken",
+		"tags": ["json-ld", "synthetic"]
+	}
+]

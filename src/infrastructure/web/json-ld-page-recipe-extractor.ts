@@ -1,0 +1,562 @@
+import 'server-only';
+import { load } from 'cheerio/slim';
+import { compile } from 'html-to-text';
+import { parse as parseIsoDuration } from 'iso8601-duration';
+import type {
+	CreativeWork,
+	HowToSection,
+	HowToStep,
+	ItemList,
+	ListItem,
+	Organization,
+	Person,
+	PropertyValue,
+	QuantitativeValue,
+	Recipe,
+} from 'schema-dts';
+import type { Extraction, PageRecipeExtractor } from '@/application/ports/recipe-extractors';
+import type { WebPage } from '@/application/ports/web-page-fetcher';
+import type {
+	ExtractedIngredientSection,
+	ExtractedInstructionSection,
+	ExtractedRecipe,
+	ExtractedYield,
+} from '@/domain/recipe/extracted-recipe';
+import { maxIngredientLineLength } from '@/domain/recipe/ingredient-limits';
+import { parseAmountText } from '@/domain/recipe/ingredient-parser';
+
+type JsonObject = { readonly [key: string]: unknown };
+
+// A node read through schema-dts's property names. Pages bend schema.org's value types, so every
+// value is read as unknown.
+type SchemaNode<T> = { readonly [Property in keyof Exclude<T, string>]?: unknown };
+
+// Every node on the page, in document order, and the nodes that others reference by @id.
+type JsonLdGraph = {
+	nodes: readonly JsonObject[];
+	definitions: ReadonlyMap<string, JsonObject>;
+};
+
+// One recipe's read through its ingredient and step lists: the lists it is inside, and how many
+// elements it has read from them all.
+type ListWalk = {
+	graph: JsonLdGraph;
+	inside: Set<JsonObject>;
+	elementsRead: number;
+};
+
+// A recipe's ingredients and steps, read in one walk.
+type RecipeLists = Pick<ExtractedRecipe, 'ingredientSections' | 'instructionSections'>;
+
+// How deep into nested elements a string's text reaches. Real strings nest far less, and deeper
+// nesting is cut short rather than overflowing the stack.
+const maxHtmlDepth = 500;
+
+// Text inside JSON-LD strings: entities decoded, tags dropped, and every line break kept, so a list
+// written as one string still comes apart into its items.
+const stringText = compile({
+	wordwrap: false,
+	preserveNewlines: true,
+	limits: { maxDepth: maxHtmlDepth },
+	// The defaults and the no-break space, which entities like &nbsp; leave inside lines.
+	whitespaceCharacters: ' \t\r\n\f\u200b\u00a0',
+	selectors: [
+		{ selector: 'a', options: { ignoreHref: true } },
+		{ selector: 'img', format: 'skip' },
+		{ selector: 'ol', format: 'block' },
+		{ selector: 'ul', format: 'block' },
+		{ selector: 'li', format: 'block' },
+	],
+});
+
+// Some sites encode entities twice, so one decoding still leaves one.
+const htmlEntity = /&(?:#\d+|#x[\da-f]+|[a-z]+\d*);/i;
+
+// A step numbered in its own text, which the recipe form numbers again.
+const stepNumber = /^(?:step\s*)?\d+[.):]\s+/i;
+
+// A yield can open with a label: "Serves 4", "Servings: 4", "Makes 12", "Yield: 2 loaves".
+const yieldLabel = /^(serves|servings?|makes|yields?)\b\s*:?\s*/i;
+
+// Units that count servings rather than name what a recipe makes: "4 servings", "4 serving(s)".
+const servingUnit = /^(?:servings?|serving\(s\)|people|persons?|portions?)(?:\s|$)/i;
+
+// ISO 8601, as schema.org asks for times: "PT1H20M".
+const isoDuration = /^P[\dT]/i;
+
+// Times written out, as some sites do instead of ISO 8601: "1 hour 20 minutes".
+const writtenDuration = /(\d+(?:\.\d+)?)\s*(hours?|hrs?|minutes?|mins?)\b/gi;
+
+const secondsPerMinute = 60;
+const minutesPerHour = 60;
+const minutesPerDay = 24 * minutesPerHour;
+const minutesPerWeek = 7 * minutesPerDay;
+
+const authorNames = new Intl.ListFormat('en', { type: 'conjunction' });
+
+// How deep lists nest in lists, and how many elements and lines of text one recipe's lists hold in
+// all, counting a list again each time a reference reaches it. Real recipes nest two or three deep and
+// hold a few hundred.
+const maxListDepth = 16;
+const maxListElements = 2000;
+
+// A recipe's lists contain themselves or pass the bounds above, so the page is left to the model.
+class UnreadableListsError extends Error {}
+
+function isObject(value: unknown): value is JsonObject {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function list(value: unknown): readonly unknown[] {
+	if (value === undefined || value === null) {
+		return [];
+	}
+	return Array.isArray(value) ? value : [value];
+}
+
+// Types come bare or prefixed: "Recipe", "schema:Recipe", or "https://schema.org/Recipe".
+function hasType(node: JsonObject, type: string): boolean {
+	return list(node['@type']).some(
+		(written) =>
+			typeof written === 'string' &&
+			(written === type || written.endsWith(`/${type}`) || written.endsWith(`:${type}`))
+	);
+}
+
+function isRecipe(node: JsonObject): boolean {
+	return hasType(node, 'Recipe');
+}
+
+// Pages wrap JSON-LD in comments or CDATA, and leave raw line breaks and trailing commas in it.
+function parseJsonLd(source: string): unknown {
+	try {
+		return JSON.parse(source);
+	} catch {
+		const repaired = source
+			.replace(/^\s*(?:<!--|\/\/\s*<!\[CDATA\[)/, '')
+			.replace(/(?:-->|\/\/\s*\]\]>)\s*$/, '')
+			.replace(/[\u0000-\u001F]+/g, ' ')
+			.replace(/,\s*([}\]])/g, '$1');
+		try {
+			return JSON.parse(repaired);
+		} catch {
+			return undefined;
+		}
+	}
+}
+
+// Walked with a stack rather than recursion, so no page nests deeply enough to overflow it.
+function graphOf(html: string): JsonLdGraph {
+	const $ = load(html);
+	const pending = $('script[type="application/ld+json" i]')
+		.toArray()
+		.map((script) => parseJsonLd($(script).text()))
+		.reverse();
+	const nodes: JsonObject[] = [];
+	const definitions = new Map<string, JsonObject>();
+	while (pending.length > 0) {
+		const value = pending.pop();
+		const children = Array.isArray(value) ? value : isObject(value) ? Object.values(value) : [];
+		if (isObject(value)) {
+			nodes.push(value);
+			const id = value['@id'];
+			// A node holding only its @id refers to another.
+			if (typeof id === 'string' && Object.keys(value).length > 1 && !definitions.has(id)) {
+				definitions.set(id, value);
+			}
+		}
+		for (let index = children.length - 1; index >= 0; index -= 1) {
+			pending.push(children[index]);
+		}
+	}
+	return { nodes, definitions };
+}
+
+function resolved(value: unknown, graph: JsonLdGraph): unknown {
+	if (isObject(value) && typeof value['@id'] === 'string' && Object.keys(value).length === 1) {
+		return graph.definitions.get(value['@id']) ?? value;
+	}
+	return value;
+}
+
+function decodedText(html: string): string {
+	const text = stringText(html);
+	return htmlEntity.test(text) ? stringText(text) : text;
+}
+
+// The value's lines as text, without blank ones.
+function textLines(value: unknown): string[] {
+	if (typeof value === 'number') {
+		return [String(value)];
+	}
+	if (typeof value !== 'string') {
+		return [];
+	}
+	return decodedText(value)
+		.split('\n')
+		.map((line) => line.trim())
+		.filter((line) => line !== '');
+}
+
+// The first value as one line of text, or undefined when there is none.
+function singleLine(value: unknown): string | undefined {
+	const text = textLines(list(value)[0]).join(' ');
+	return text === '' ? undefined : text;
+}
+
+function addressOf(value: unknown, page: URL): URL | undefined {
+	if (typeof value !== 'string') {
+		return undefined;
+	}
+	try {
+		return new URL(value, page);
+	} catch {
+		return undefined;
+	}
+}
+
+// The page a URL names, whatever its scheme, query, or fragment.
+function pageKey(address: URL): string {
+	return `${address.host}${address.pathname.replace(/\/$/, '')}`;
+}
+
+function namesFragment(recipe: SchemaNode<Recipe>, page: URL): boolean {
+	return [recipe['@id'], recipe.url].some((value) => addressOf(value, page)?.hash === page.hash);
+}
+
+function isMainEntity(recipe: JsonObject, graph: JsonLdGraph): boolean {
+	return graph.nodes.some((node) =>
+		list((node as SchemaNode<CreativeWork>).mainEntity)
+			.map((entity) => resolved(entity, graph))
+			.includes(recipe)
+	);
+}
+
+function describesPage(recipe: SchemaNode<Recipe>, page: URL): boolean {
+	const address = addressOf(recipe.url, page);
+	return address !== undefined && pageKey(address) === pageKey(page);
+}
+
+// A page with several recipes names the one it is about in its address's fragment, its mainEntity,
+// or the recipe's url.
+function mainRecipe(graph: JsonLdGraph, page: URL): JsonObject | undefined {
+	const recipes = graph.nodes.filter(isRecipe);
+	return (
+		(page.hash === '' ? undefined : recipes.find((recipe) => namesFragment(recipe, page))) ??
+		recipes.find((recipe) => isMainEntity(recipe, graph)) ??
+		recipes.find((recipe) => describesPage(recipe, page)) ??
+		recipes.find((recipe) => list((recipe as SchemaNode<Recipe>).recipeIngredient).length > 0) ??
+		recipes[0]
+	);
+}
+
+// The elements or lines, each counting toward the walk's bound before any is read.
+function counted<Elements extends readonly unknown[]>(
+	elements: Elements,
+	walk: ListWalk
+): Elements {
+	walk.elementsRead += elements.length;
+	if (walk.elementsRead > maxListElements) {
+		throw new UnreadableListsError();
+	}
+	return elements;
+}
+
+// An ItemList's elements in position order, each ListItem unwrapped to its item.
+function listElements(itemList: SchemaNode<ItemList>, walk: ListWalk): unknown[] {
+	const elements = counted(list(itemList.itemListElement), walk).map((element) =>
+		resolved(element, walk.graph)
+	);
+	const position = (element: unknown) =>
+		Number(isObject(element) ? (element as SchemaNode<ListItem>).position : undefined);
+	const ordered = elements.every((element) => Number.isFinite(position(element)))
+		? elements.toSorted((first, second) => position(first) - position(second))
+		: elements;
+	return ordered.map((element) =>
+		isObject(element) && hasType(element, 'ListItem')
+			? (resolved((element as SchemaNode<ListItem>).item, walk.graph) ?? element)
+			: element
+	);
+}
+
+// What `read` makes of each element of a list nested in the walk. A list inside itself, or nested
+// past the bound, leaves the recipe's lists unread.
+function nestedLines(
+	itemList: JsonObject,
+	walk: ListWalk,
+	read: (element: unknown, walk: ListWalk) => string[]
+): string[] {
+	if (walk.inside.has(itemList) || walk.inside.size === maxListDepth) {
+		throw new UnreadableListsError();
+	}
+	walk.inside.add(itemList);
+	const lines = listElements(itemList, walk).flatMap((element) => read(element, walk));
+	walk.inside.delete(itemList);
+	return lines;
+}
+
+function propertyValueLine(value: SchemaNode<PropertyValue>): string {
+	return [value.value, value.unitText, value.name]
+		.map(singleLine)
+		.filter((part) => part !== undefined)
+		.join(' ');
+}
+
+function ingredientLines(value: unknown, walk: ListWalk): string[] {
+	const item = resolved(value, walk.graph);
+	if (!isObject(item)) {
+		return counted(textLines(item), walk);
+	}
+	if (hasType(item, 'ItemList')) {
+		return nestedLines(item, walk, ingredientLines);
+	}
+	if (hasType(item, 'PropertyValue')) {
+		return [propertyValueLine(item)].filter((line) => line !== '');
+	}
+	return counted(textLines((item as SchemaNode<ListItem>).name), walk);
+}
+
+function ingredientSections(
+	recipe: SchemaNode<Recipe>,
+	walk: ListWalk
+): ExtractedIngredientSection[] {
+	const lines = counted(list(recipe.recipeIngredient), walk).flatMap((item) =>
+		ingredientLines(item, walk)
+	);
+	return lines.length === 0 ? [] : [{ lines }];
+}
+
+function withoutStepNumber(step: string): string {
+	return step.replace(stepNumber, '');
+}
+
+// One step for each HowToStep, even when its text runs over several lines, and one for each line of
+// plain text.
+function steps(value: unknown, walk: ListWalk): string[] {
+	const item = resolved(value, walk.graph);
+	if (!isObject(item)) {
+		return counted(textLines(item), walk).map(withoutStepNumber);
+	}
+	if (hasType(item, 'ItemList') || hasType(item, 'HowToSection')) {
+		return nestedLines(item, walk, steps);
+	}
+	const step = item as SchemaNode<HowToStep>;
+	// A step can hold its directions and tips as a list rather than as text.
+	const text =
+		singleLine(step.text) ??
+		listElements(step, walk)
+			.flatMap((element) =>
+				isObject(element) ? counted(textLines((element as SchemaNode<HowToStep>).text), walk) : []
+			)
+			.join(' ');
+	const written = text === '' ? singleLine(step.name) : text;
+	return written === undefined ? [] : [withoutStepNumber(written)];
+}
+
+// Steps outside a HowToSection gather in a section without a heading, before and after the others.
+function instructionSections(
+	recipe: SchemaNode<Recipe>,
+	walk: ListWalk
+): ExtractedInstructionSection[] {
+	const instructions = resolved(recipe.recipeInstructions, walk.graph);
+	const items =
+		isObject(instructions) && hasType(instructions, 'ItemList')
+			? listElements(instructions, walk)
+			: counted(list(instructions), walk);
+	const sections: ExtractedInstructionSection[] = [];
+	let loose: string[] = [];
+	const closeLoose = () => {
+		if (loose.length > 0) {
+			sections.push({ steps: loose });
+			loose = [];
+		}
+	};
+	for (const value of items) {
+		const item = resolved(value, walk.graph);
+		if (isObject(item) && hasType(item, 'HowToSection')) {
+			closeLoose();
+			const sectionSteps = steps(item, walk);
+			if (sectionSteps.length > 0) {
+				sections.push({
+					heading: singleLine((item as SchemaNode<HowToSection>).name),
+					steps: sectionSteps,
+				});
+			}
+		} else {
+			loose = loose.concat(steps(item, walk));
+		}
+	}
+	closeLoose();
+	return sections;
+}
+
+// The recipe's ingredients and steps, or null when its lists cannot be read.
+function recipeLists(recipe: SchemaNode<Recipe>, graph: JsonLdGraph): RecipeLists | null {
+	const walk: ListWalk = { graph, inside: new Set(), elementsRead: 0 };
+	try {
+		return {
+			ingredientSections: ingredientSections(recipe, walk),
+			instructionSections: instructionSections(recipe, walk),
+		};
+	} catch (error) {
+		if (error instanceof UnreadableListsError) {
+			return null;
+		}
+		throw error;
+	}
+}
+
+function yieldText(value: unknown): string | undefined {
+	if (isObject(value) && hasType(value, 'QuantitativeValue')) {
+		const quantity = value as SchemaNode<QuantitativeValue>;
+		const text = [singleLine(quantity.value), singleLine(quantity.unitText)]
+			.filter((part) => part !== undefined)
+			.join(' ');
+		return text === '' ? undefined : text;
+	}
+	return singleLine(value);
+}
+
+// Servings when the label or unit says so, or when a number stands alone after no label or "Yield".
+function yieldKind(labelWord: string | undefined, unit: string): ExtractedYield['kind'] {
+	if (labelWord?.startsWith('serv') || servingUnit.test(unit)) {
+		return 'servings';
+	}
+	return unit === '' && labelWord !== 'makes' ? 'servings' : 'makes';
+}
+
+// How many words the opening amount takes: the longest run the parser reads, four in "1 1/2 to 2
+// servings". The parser reads no amount longer than an ingredient line.
+function amountWordCount(words: readonly string[]): number {
+	let count = 0;
+	let amount = '';
+	for (const [index, word] of words.entries()) {
+		amount = index === 0 ? word : `${amount} ${word}`;
+		if (amount.length > maxIngredientLineLength) {
+			break;
+		}
+		if (parseAmountText(amount) !== undefined) {
+			count = index + 1;
+		}
+	}
+	return count;
+}
+
+// A yield as written, split where its amount ends: "36 cookies" makes 36 cookies, and a bare number
+// counts servings. Without an amount up front, the whole text stands as the amount for the member to
+// read.
+function yieldFromText(text: string): ExtractedYield {
+	const label = yieldLabel.exec(text);
+	const labelWord = label?.[1]?.toLowerCase();
+	const rest = text.slice(label?.[0].length ?? 0);
+	const words = rest.split(/\s+/);
+	const count = amountWordCount(words);
+	if (count === 0) {
+		return { kind: yieldKind(labelWord, rest), amount: rest === '' ? text : rest };
+	}
+	const amount = words.slice(0, count).join(' ');
+	const unit = words.slice(count).join(' ');
+	if (yieldKind(labelWord, unit) === 'servings') {
+		return { kind: 'servings', amount };
+	}
+	return unit === '' ? { kind: 'makes', amount } : { kind: 'makes', amount, unit };
+}
+
+// WP Recipe Maker and Tasty Recipes write ["4", "4 servings"]; the entry with words says more.
+function recipeYield(recipe: SchemaNode<Recipe>, graph: JsonLdGraph): ExtractedYield | undefined {
+	const texts = list(recipe.recipeYield)
+		.map((value) => yieldText(resolved(value, graph)))
+		.filter((text) => text !== undefined);
+	const hasWords = (text: string) => /\p{L}/u.test(text);
+	const [text] = texts.toSorted(
+		(first, second) =>
+			Number(hasWords(second)) - Number(hasWords(first)) || second.length - first.length
+	);
+	return text === undefined ? undefined : yieldFromText(text);
+}
+
+function isoMinutes(text: string): number | undefined {
+	try {
+		const duration = parseIsoDuration(text.toUpperCase());
+		// A year or month has no fixed length.
+		if (duration.years || duration.months) {
+			return undefined;
+		}
+		return (
+			(duration.weeks ?? 0) * minutesPerWeek +
+			(duration.days ?? 0) * minutesPerDay +
+			(duration.hours ?? 0) * minutesPerHour +
+			(duration.minutes ?? 0) +
+			(duration.seconds ?? 0) / secondsPerMinute
+		);
+	} catch {
+		return undefined;
+	}
+}
+
+function writtenMinutes(text: string): number {
+	let total = 0;
+	for (const [, amount, unit] of text.matchAll(writtenDuration)) {
+		total += Number(amount) * (unit?.toLowerCase().startsWith('h') ? minutesPerHour : 1);
+	}
+	return total;
+}
+
+// Whole minutes, or undefined when the time is missing, unreadable, or zero, as in "PT0S".
+function minutes(value: unknown): number | undefined {
+	const text = singleLine(value);
+	if (text === undefined) {
+		return undefined;
+	}
+	const total = Math.round((isoDuration.test(text) ? isoMinutes(text) : writtenMinutes(text)) ?? 0);
+	return total > 0 ? total : undefined;
+}
+
+// Everyone the value names, as "A, B, and C".
+function names(value: unknown, graph: JsonLdGraph): string | undefined {
+	const written = list(value)
+		.map((entry) => resolved(entry, graph))
+		.map((entry) =>
+			isObject(entry)
+				? singleLine((entry as SchemaNode<Person | Organization>).name)
+				: singleLine(entry)
+		)
+		.filter((name) => name !== undefined);
+	return written.length === 0 ? undefined : authorNames.format([...new Set(written)]);
+}
+
+// Reads a recipe from the page's schema.org Recipe JSON-LD, which recipe plugins and publishers emit
+// for search engines.
+export class JsonLdPageRecipeExtractor implements PageRecipeExtractor {
+	async extract(page: WebPage): Promise<Extraction | null> {
+		const graph = graphOf(page.html);
+		const node = mainRecipe(graph, new URL(page.url));
+		if (node === undefined) {
+			return null;
+		}
+
+		const recipe: SchemaNode<Recipe> = node;
+		const lists = recipeLists(recipe, graph);
+		if (
+			lists === null ||
+			(lists.ingredientSections.length === 0 && lists.instructionSections.length === 0)
+		) {
+			return null;
+		}
+
+		const extracted: ExtractedRecipe = {
+			title: singleLine(recipe.name),
+			description: singleLine(recipe.description),
+			source: names(recipe.author, graph) ?? names(recipe.publisher, graph),
+			yield: recipeYield(recipe, graph),
+			times: {
+				prepMinutes: minutes(recipe.prepTime),
+				cookMinutes: minutes(recipe.cookTime),
+				totalMinutes: minutes(recipe.totalTime),
+			},
+			...lists,
+			reviewNotes: [],
+		};
+		return { recipe: extracted };
+	}
+}

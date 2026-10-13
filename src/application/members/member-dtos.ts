@@ -13,9 +13,10 @@ export type CurrentMemberDto = PublicMemberDto & {
 	role: MemberRole;
 };
 
-// For admins only: every member's email and role.
+// For admins only: every member's email and role, and which member is the admin reading them.
 export type MemberDto = CurrentMemberDto & {
 	createdAt: Date;
+	isCurrentMember: boolean;
 };
 
 // Returned by writes, so callers can invalidate the member's cache tag.
@@ -31,6 +32,6 @@ export function toCurrentMemberDto(member: Member): CurrentMemberDto {
 	return { ...toPublicMemberDto(member), email: member.email, role: member.role };
 }
 
-export function toMemberDto(member: Member): MemberDto {
-	return { ...toCurrentMemberDto(member), createdAt: member.createdAt };
+export function toMemberDto(member: Member, isCurrentMember: boolean): MemberDto {
+	return { ...toCurrentMemberDto(member), createdAt: member.createdAt, isCurrentMember };
 }

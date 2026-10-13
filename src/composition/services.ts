@@ -5,22 +5,28 @@ import { connection } from 'next/server';
 import { AccessRequestService } from '@/application/access/access-request-service';
 import { AccountService } from '@/application/access/account-service';
 import { InviteService } from '@/application/access/invite-service';
+import { RecipeImportService } from '@/application/ingestion/recipe-import-service';
 import { MemberService } from '@/application/members/member-service';
 import { ImageFolders } from '@/application/recipes/image-folders';
 import { RecipeImageService } from '@/application/recipes/recipe-image-service';
 import { RecipeService } from '@/application/recipes/recipe-service';
 import { RecipeSearchService } from '@/application/search/recipe-search-service';
+import { AiPageRecipeExtractor } from '@/infrastructure/ai/ai-page-recipe-extractor';
+import { AiScanRecipeExtractor } from '@/infrastructure/ai/ai-scan-recipe-extractor';
 import { createAuth, type Auth } from '@/infrastructure/auth/better-auth';
 import { BetterAuthActorProvider } from '@/infrastructure/auth/better-auth-actor-provider';
 import { db } from '@/infrastructure/db/client';
 import { DrizzleAccessRequestRepository } from '@/infrastructure/db/drizzle-access-request-repository';
 import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
+import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { DrizzleRecipeSearch } from '@/infrastructure/db/drizzle-recipe-search';
 import { ResendEmailSender } from '@/infrastructure/email/resend-email-sender';
 import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
 import { BlobUploadHandler } from '@/infrastructure/storage/blob-upload-handler';
+import { GuardedWebPageFetcher } from '@/infrastructure/web/guarded-web-page-fetcher';
+import { JsonLdPageRecipeExtractor } from '@/infrastructure/web/json-ld-page-recipe-extractor';
 import { appUrl, env, imageEnvironment, siteUrl } from '@/lib/env';
 
 const emails = new ResendEmailSender({
@@ -31,6 +37,11 @@ const emails = new ResendEmailSender({
 const imageFolders = new ImageFolders(imageEnvironment);
 
 const images = new BlobImageStore({ storeId: env.BLOB_STORE_ID, folders: imageFolders });
+
+// AI Gateway model ids for reading a page's text and photos of a written recipe, chosen by
+// scripts/evaluate and tuned independently.
+const pageModelId = 'anthropic/claude-sonnet-5.5';
+const scanModelId = 'anthropic/claude-sonnet-5.5';
 
 // The hosts a deployment answers on: the one its links name, and its own Vercel hosts.
 const authHosts = [
@@ -70,6 +81,7 @@ const actors = new BetterAuthActorProvider(getAuth, requestHeaders);
 export function getRecipeService(): RecipeService {
 	return new RecipeService(
 		new DrizzleRecipeRepository(db),
+		new DrizzleRecipeImportRepository(db),
 		new DrizzleMemberRepository(db),
 		images,
 		actors,
@@ -83,6 +95,20 @@ export function getRecipeSearchService(): RecipeSearchService {
 
 export function getRecipeImageService(): RecipeImageService {
 	return new RecipeImageService(images, actors, imageFolders);
+}
+
+export function getRecipeImportService(): RecipeImportService {
+	return new RecipeImportService(
+		new DrizzleRecipeImportRepository(db),
+		new DrizzleMemberRepository(db),
+		new GuardedWebPageFetcher({ siteUrl }),
+		new JsonLdPageRecipeExtractor(),
+		new AiPageRecipeExtractor(pageModelId),
+		new AiScanRecipeExtractor(scanModelId),
+		images,
+		actors,
+		imageFolders
+	);
 }
 
 export function getAccessRequestService(): AccessRequestService {

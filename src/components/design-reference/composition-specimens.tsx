@@ -1,18 +1,27 @@
+import type { UnsavedImportDto } from '@/application/ingestion/recipe-import-dtos';
 import { ReferenceSubsection, Specimen } from '@/components/design-reference/reference-section';
 import {
 	sampleCatalogFacets,
 	sampleContributor,
+	sampleImportsNow,
 	sampleRecipeDetail,
 	sampleRecipeSummaries,
 	sampleSearchPage,
+	sampleUnsavedImports,
 } from '@/components/design-reference/sample-recipe-dtos';
 import { SampleRecipeForm } from '@/components/design-reference/sample-recipe-form';
+import {
+	SampleScanImportForm,
+	SampleUrlImportForm,
+} from '@/components/design-reference/sample-recipe-import';
 import { PageContainer } from '@/components/layout/page-container';
 import type { EditedRecipe } from '@/components/recipe-form/recipe-form-fields';
 import {
 	recipeFormValues,
 	type RecipeFormValues,
 } from '@/components/recipe-form/recipe-form-values';
+import { RecipeEntryTabs } from '@/components/recipe-import/recipe-entry-tabs';
+import { RecipeImportSubmit } from '@/components/recipe-import/recipe-import-submit';
 import { RecipeCard } from '@/components/recipe/recipe-card';
 import { RecipeDetail } from '@/components/recipe/recipe-detail';
 import { RecipeGrid, RecipeGridSkeleton } from '@/components/recipe/recipe-grid';
@@ -148,6 +157,12 @@ const recipeFormSamples: readonly {
 	},
 ];
 
+// The entry tabs with the member's drafts, and with none, whose tab then shows no count.
+const entryDraftSamples: readonly { label: string; imports: readonly UnsavedImportDto[] }[] = [
+	{ label: 'With drafts', imports: sampleUnsavedImports },
+	{ label: 'With no drafts', imports: [] },
+];
+
 function CompositionSpecimens() {
 	return (
 		<div className="flex flex-col gap-16">
@@ -274,7 +289,7 @@ function CompositionSpecimens() {
 			<ReferenceSubsection
 				id="recipe-form"
 				title="Recipe form"
-				description="For adding and editing a recipe, and for reviewing an import. Ingredients and steps are lists of growing fields in sections, and each item's menu moves or removes it; each ingredient shows how it will read. Chosen photos are resized and upload at once. Here uploads are simulated, and saving checks the recipe as the site does but saves nothing."
+				description="For adding and editing a recipe, and for reviewing an import, whose problems a summary at the top lists and links to until the first save; on the review page it takes focus. The member can mark each problem as checked, in the summary or beside its field, which dims it and counts it but never holds up saving. Ingredients and steps are lists of growing fields in sections, and each item's menu moves or removes it; each ingredient shows how it will read. Chosen photos are resized and upload at once, and pages of the original recipe move up and down. Here uploads are simulated, and saving checks the recipe as the site does but saves nothing."
 			>
 				{recipeFormSamples.map(({ label, initial, editing }) => (
 					<Specimen key={label} label={label} className="px-0 py-10 sm:py-14">
@@ -283,6 +298,46 @@ function CompositionSpecimens() {
 						</PageContainer>
 					</Specimen>
 				))}
+			</ReferenceSubsection>
+			<ReferenceSubsection
+				id="recipe-entry"
+				title="Adding a recipe"
+				description="Three ways in, one tab each, and a fourth for the member's unsaved drafts, counted in its label; hidden tabs keep what was entered. A link or photos of the pages, which upload as they're chosen, are read into a draft that opens in the recipe form for review. Reading takes up to a minute or two, so the form shows what it's reading and for how long, announcing the stage once and not each second. Here each import waits four seconds and then shows its error, since nothing is imported."
+			>
+				{entryDraftSamples.map(({ label, imports }) => (
+					<Specimen key={label} label={label} className="px-0 py-10 sm:py-14">
+						<PageContainer width="reading">
+							<RecipeEntryTabs
+								forms={{
+									manual: <SampleRecipeForm initial={recipeFormValues()} />,
+									url: <SampleUrlImportForm />,
+									photo: <SampleScanImportForm />,
+								}}
+								unsavedImports={imports}
+								now={sampleImportsNow}
+							/>
+						</PageContainer>
+					</Specimen>
+				))}
+				<div className="grid gap-6 md:grid-cols-2">
+					<Specimen label="While a link is read">
+						<RecipeImportSubmit
+							pending
+							label="Import recipe"
+							pendingLabel="Importing recipe"
+							stage="Reading the page…"
+						/>
+					</Specimen>
+					<Specimen label="While photos upload">
+						<RecipeImportSubmit
+							pending={false}
+							label="Read recipe"
+							pendingLabel="Reading recipe"
+							stage="Reading the photos…"
+							waitNote="Wait for the photos to finish uploading."
+						/>
+					</Specimen>
+				</div>
 			</ReferenceSubsection>
 		</div>
 	);

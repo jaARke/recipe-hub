@@ -1,4 +1,3 @@
-import { fieldErrorsFrom } from '@/components/forms/field-errors';
 import type { FieldErrors } from '@/components/forms/form-state';
 import type { RecipeFormPayload } from '@/components/recipe-form/recipe-form-fields';
 import type { ItemPlace } from '@/components/recipe-form/sectioned-list';
@@ -35,8 +34,9 @@ export type RecipeFormSection = {
 
 export type RecipeFormList = {
 	sections: readonly RecipeFormSection[];
-	// Set once a section has a heading or a second section is added, and never cleared, so a heading
-	// field never disappears while it holds text or has focus.
+	// Set once a section has a heading or a heading error, or a second section is added. Typing never
+	// clears it, so a heading field never disappears while it holds text or has focus; removing
+	// sections can.
 	showsHeadings: boolean;
 	// About the list as a whole, such as having no ingredients at all.
 	error?: string;
@@ -98,15 +98,43 @@ export type RecipeFormValues = {
 	fieldErrors: Partial<Record<RecipeFormErrorField, string>>;
 	// About the recipe as a whole, or a problem that names nothing in the form.
 	formError?: string;
+	// The problems the member has marked as checked while reviewing a draft, by where each shows, so
+	// a mark follows its item. A removed item's mark matches nothing again, since ids are never
+	// reused, and new errors clear every mark.
+	checkedProblems: ReadonlySet<ProblemKey>;
 	// Sections, items, tags, and photos all take the next id, so ids are unique within the form.
 	nextId: number;
 };
 
+// The photo fields' part of the value, which the photo import keeps on its own.
+export type RecipeFormPhotoValues = Pick<RecipeFormValues, 'photos' | 'nextId'>;
+
 // Where a problem shows: a field, a whole list, a section or its heading, an item, or a photo.
-type ProblemTarget =
+export type ProblemTarget =
 	| { kind: 'field'; field: RecipeFormErrorField }
 	| { kind: 'list'; list: RecipeFormListName }
 	| { kind: 'section' | 'heading' | 'item' | 'photo'; id: number };
+
+// One for each place a problem can show, the whole recipe included.
+type ProblemKey =
+	| 'form'
+	| `field:${RecipeFormErrorField}`
+	| `list:${RecipeFormListName}`
+	| `${'section' | 'heading' | 'item' | 'photo'}:${number}`;
+
+// A problem the form shows, with where it shows: the places carry what the form names them by.
+export type RecipeFormProblem = {
+	message: string;
+	// Marked as checked by the member, which changes nothing else about it.
+	checked: boolean;
+	target:
+		| { kind: 'form' }
+		| { kind: 'field'; field: RecipeFormErrorField }
+		| { kind: 'list'; list: RecipeFormListName }
+		| { kind: 'section' | 'heading'; list: RecipeFormListName; sectionIndex: number; id: number }
+		| { kind: 'item'; list: RecipeFormListName; place: ItemPlace; id: number }
+		| { kind: 'photo'; role: RecipeImageRole; index: number; id: number };
+};
 
 // Keyed by the path a problem takes in the recipe content, such as ingredientSections.0.lines.2.
 export type ProblemTargets = ReadonlyMap<string, ProblemTarget>;
@@ -116,6 +144,20 @@ export type RecipeFormSubmission = {
 	payload: RecipeFormPayload;
 	targets: ProblemTargets;
 };
+
+// The edits a photo field makes, which the photo import makes too.
+export type PhotoEdit =
+	// The photos take the next ids, in order.
+	| { type: 'addPhotos'; role: RecipeImageRole; fileNames: readonly string[] }
+	| { type: 'startPhotoUpload'; photoId: number; pathname: string; file: File }
+	| { type: 'setPhotoProgress'; photoId: number; fraction: number }
+	| { type: 'finishPhotoUpload'; photoId: number }
+	| { type: 'failPhoto'; photoId: number; failure: PhotoFailure }
+	| { type: 'removePhoto'; photoId: number }
+	| { type: 'makeCoverPhoto'; photoId: number }
+	// Within the photo's own field.
+	| { type: 'movePhoto'; photoId: number; toIndex: number }
+	| { type: 'setPhotoAlt'; photoId: number; alt: string };
 
 export type RecipeFormEdit =
 	| { type: 'setText'; field: RecipeFormTextField; text: string }
@@ -131,16 +173,9 @@ export type RecipeFormEdit =
 	// Adds each comma-separated tag in the text and clears the tag field.
 	| { type: 'addTags'; text: string }
 	| { type: 'removeTag'; tagId: number }
-	// The photos take the next ids, in order.
-	| { type: 'addPhotos'; role: RecipeImageRole; fileNames: readonly string[] }
-	| { type: 'startPhotoUpload'; photoId: number; pathname: string; file: File }
-	| { type: 'setPhotoProgress'; photoId: number; fraction: number }
-	| { type: 'finishPhotoUpload'; photoId: number }
-	| { type: 'failPhoto'; photoId: number; failure: PhotoFailure }
-	| { type: 'removePhoto'; photoId: number }
-	| { type: 'makeCoverPhoto'; photoId: number }
-	| { type: 'setPhotoAlt'; photoId: number; alt: string }
+	| PhotoEdit
 	| { type: 'attachErrors'; fieldErrors: FieldErrors; targets: ProblemTargets }
+	| { type: 'setProblemChecked'; target: ProblemTarget | { kind: 'form' }; checked: boolean }
 	| { type: 'load'; values: RecipeFormValues };
 
 // Each list's items, under the name the recipe content gives them.
@@ -150,6 +185,19 @@ const itemKeys = {
 } as const satisfies Record<RecipeFormListName, string>;
 
 const photoRoles = ['dish', 'scan'] as const satisfies readonly RecipeImageRole[];
+
+// Text fields in the order the form shows them, around the lists and the tags.
+const fieldsBeforeLists = [
+	'title',
+	'description',
+	'source',
+	'prepMinutes',
+	'cookMinutes',
+	'totalMinutes',
+	'yieldAmount',
+	'yieldUnit',
+] as const satisfies readonly RecipeFormErrorField[];
+const fieldsAfterLists = ['notes', 'tags'] as const satisfies readonly RecipeFormErrorField[];
 
 // Problems whose paths never change, whatever the form holds.
 const fixedTargets: ProblemTargets = new Map<string, ProblemTarget>([
@@ -189,6 +237,19 @@ function filledText(text: string): string | undefined {
 	return isBlank(text) ? undefined : text.trim();
 }
 
+// Heading fields show for more than one section, or for one whose heading holds text or has an
+// error, so the error has a field to show beside.
+export function sectionsShowHeadings(
+	sections: readonly { heading?: string; headingError?: string }[]
+): boolean {
+	return (
+		sections.length > 1 ||
+		sections.some(
+			({ heading = '', headingError }) => !isBlank(heading) || headingError !== undefined
+		)
+	);
+}
+
 function minutesText(minutes: number | undefined): string {
 	return minutes === undefined ? '' : String(minutes);
 }
@@ -206,12 +267,12 @@ export function isPhotoInProgress(photo: RecipeFormPhoto): boolean {
 	return photo.upload.status === 'processing' || photo.upload.status === 'uploading';
 }
 
-export function hasPhotosInProgress(values: RecipeFormValues): boolean {
+export function hasPhotosInProgress(values: RecipeFormPhotoValues): boolean {
 	return photoRoles.some((role) => values.photos[role].some(isPhotoInProgress));
 }
 
 // The pathname of a stored photo; one still uploading, or one that failed, has none to save.
-function storedPathname({ upload }: RecipeFormPhoto): string | undefined {
+export function storedPathname({ upload }: RecipeFormPhoto): string | undefined {
 	return upload.status === 'saved' || upload.status === 'uploaded' ? upload.pathname : undefined;
 }
 
@@ -246,8 +307,11 @@ function problemTarget(path: string, targets: ProblemTargets): ProblemTarget | u
 	return undefined;
 }
 
-function targetKey(target: ProblemTarget): string {
+// What the form keeps a problem's check by, which follows an item, section, or photo as it moves.
+export function problemKey(target: ProblemTarget | { kind: 'form' }): ProblemKey {
 	switch (target.kind) {
+		case 'form':
+			return 'form';
 		case 'field':
 			return `field:${target.field}`;
 		case 'list':
@@ -257,14 +321,14 @@ function targetKey(target: ProblemTarget): string {
 	}
 }
 
-// Replaces every error in the form with these. The first problem for each target wins, and one
-// that names nothing in the form shows as a problem with the whole recipe.
+// Replaces every error in the form with these, which clears every check. The first problem for each
+// target wins, and one that names nothing in the form shows as a problem with the whole recipe.
 function withErrors(
 	values: RecipeFormValues,
 	fieldErrors: FieldErrors,
 	targets: ProblemTargets
 ): RecipeFormValues {
-	const messages = new Map<string, string>();
+	const messages = new Map<ProblemKey, string>();
 	const formFieldErrors: RecipeFormValues['fieldErrors'] = {};
 	let formError: string | undefined;
 	for (const [path, message] of Object.entries(fieldErrors)) {
@@ -276,16 +340,14 @@ function withErrors(
 			formError ??= message;
 		} else if (target.kind === 'field') {
 			formFieldErrors[target.field] ??= message;
-		} else if (!messages.has(targetKey(target))) {
-			messages.set(targetKey(target), message);
+		} else if (!messages.has(problemKey(target))) {
+			messages.set(problemKey(target), message);
 		}
 	}
 
-	const errorFor = (target: ProblemTarget) => messages.get(targetKey(target));
-	const listWithErrors = (list: RecipeFormListName): RecipeFormList => ({
-		...values[list],
-		error: errorFor({ kind: 'list', list }),
-		sections: values[list].sections.map((section) => ({
+	const errorFor = (target: ProblemTarget) => messages.get(problemKey(target));
+	const listWithErrors = (list: RecipeFormListName): RecipeFormList => {
+		const sections = values[list].sections.map((section) => ({
 			...section,
 			headingError: errorFor({ kind: 'heading', id: section.id }),
 			error: errorFor({ kind: 'section', id: section.id }),
@@ -293,8 +355,13 @@ function withErrors(
 				...item,
 				error: errorFor({ kind: 'item', id: item.id }),
 			})),
-		})),
-	});
+		}));
+		return {
+			sections,
+			showsHeadings: values[list].showsHeadings || sectionsShowHeadings(sections),
+			error: errorFor({ kind: 'list', list }),
+		};
+	};
 	const photosWithErrors = (role: RecipeImageRole) =>
 		values.photos[role].map((photo) => ({
 			...photo,
@@ -308,7 +375,28 @@ function withErrors(
 		photos: { dish: photosWithErrors('dish'), scan: photosWithErrors('scan') },
 		fieldErrors: formFieldErrors,
 		formError,
+		checkedProblems: new Set(),
 	};
+}
+
+// A draft's problems as one message for each place they show, so a note on a line that also lost
+// text shows both: each place's distinct messages in order, under the first path that names it.
+function draftFieldErrors(problems: readonly Problem[], targets: ProblemTargets): FieldErrors {
+	const places = new Map<ProblemKey, { path: string; messages: string[] }>();
+	for (const { path, message } of problems) {
+		const target = problemTarget(path, targets);
+		// Every problem that names nothing in the form shows as the one with the whole recipe.
+		const key = problemKey(target ?? { kind: 'form' });
+		const place = places.get(key);
+		if (place === undefined) {
+			places.set(key, { path, messages: [message] });
+		} else if (!place.messages.includes(message)) {
+			place.messages.push(message);
+		}
+	}
+	return Object.fromEntries(
+		Array.from(places.values(), ({ path, messages }) => [path, messages.join(' ')])
+	);
 }
 
 type ContentSection = {
@@ -337,7 +425,8 @@ function editableAmountText(amount: Amount): string {
 }
 
 // The form's starting value: empty, a recipe being edited, or a draft to review. A draft's problems
-// attach through the same paths a save's do, so they show from the start.
+// attach through the same paths a save's do, so they show from the start, joined where several
+// land in one place.
 export function recipeFormValues(
 	content?: RecipeContent | RecipeDraftContent,
 	problems: readonly Problem[] = []
@@ -369,8 +458,7 @@ export function recipeFormValues(
 				);
 				return { id, heading: section.heading ?? '', items };
 			}),
-			showsHeadings:
-				sections.length > 1 || sections.some((section) => section.heading !== undefined),
+			showsHeadings: sectionsShowHeadings(sections),
 		};
 	};
 
@@ -422,9 +510,12 @@ export function recipeFormValues(
 		tags,
 		photos,
 		fieldErrors: {},
+		checkedProblems: new Set(),
 		nextId,
 	};
-	return problems.length === 0 ? values : withErrors(values, fieldErrorsFrom(problems), targets);
+	return problems.length === 0
+		? values
+		: withErrors(values, draftFieldErrors(problems, targets), targets);
 }
 
 // The payload the form sends. Blank items, blank optional text, and sections with neither a heading
@@ -502,6 +593,70 @@ export function recipeFormSubmission(values: RecipeFormValues): RecipeFormSubmis
 	return { payload, targets };
 }
 
+// A problem and where it shows, before the member's check is looked up.
+type PlacedProblem = Omit<RecipeFormProblem, 'checked'>;
+
+function listProblems(values: RecipeFormValues, list: RecipeFormListName): PlacedProblem[] {
+	const { error, sections } = values[list];
+	const problems: PlacedProblem[] = [];
+	if (error !== undefined) {
+		problems.push({ message: error, target: { kind: 'list', list } });
+	}
+	sections.forEach((section, sectionIndex) => {
+		if (section.headingError !== undefined) {
+			problems.push({
+				message: section.headingError,
+				target: { kind: 'heading', list, sectionIndex, id: section.id },
+			});
+		}
+		section.items.forEach((item, itemIndex) => {
+			if (item.error !== undefined) {
+				problems.push({
+					message: item.error,
+					target: { kind: 'item', list, place: { sectionIndex, itemIndex }, id: item.id },
+				});
+			}
+		});
+		if (section.error !== undefined) {
+			problems.push({
+				message: section.error,
+				target: { kind: 'section', list, sectionIndex, id: section.id },
+			});
+		}
+	});
+	return problems;
+}
+
+// Every problem the form shows, in the order it shows them, starting with one about the whole recipe.
+export function recipeFormProblems(values: RecipeFormValues): RecipeFormProblem[] {
+	const fieldProblems = (fields: readonly RecipeFormErrorField[]) =>
+		fields.flatMap((field): PlacedProblem[] => {
+			const message = values.fieldErrors[field];
+			return message === undefined ? [] : [{ message, target: { kind: 'field', field } }];
+		});
+	const photoProblems = (role: RecipeImageRole) =>
+		values.photos[role].flatMap((photo, index): PlacedProblem[] =>
+			photo.error === undefined
+				? []
+				: [{ message: photo.error, target: { kind: 'photo', role, index, id: photo.id } }]
+		);
+
+	const problems: PlacedProblem[] = [
+		...(values.formError === undefined
+			? []
+			: [{ message: values.formError, target: { kind: 'form' } } as const]),
+		...fieldProblems(fieldsBeforeLists),
+		...listProblems(values, 'ingredientSections'),
+		...listProblems(values, 'instructionSections'),
+		...fieldProblems(fieldsAfterLists),
+		...photoRoles.flatMap(photoProblems),
+	];
+	return problems.map((problem) => ({
+		...problem,
+		checked: values.checkedProblems.has(problemKey(problem.target)),
+	}));
+}
+
 function updateSections(
 	values: RecipeFormValues,
 	list: RecipeFormListName,
@@ -541,11 +696,11 @@ function withItemMoved(
 }
 
 // Applies the update to the photo with this id, whichever field it is in; undefined removes it.
-function updatePhoto(
-	values: RecipeFormValues,
+function updatePhoto<Values extends RecipeFormPhotoValues>(
+	values: Values,
 	photoId: number,
 	update: (photo: RecipeFormPhoto) => RecipeFormPhoto | undefined
-): RecipeFormValues {
+): Values {
 	const updated = (photos: readonly RecipeFormPhoto[]) =>
 		photos.flatMap((photo) => {
 			if (photo.id !== photoId) {
@@ -562,15 +717,88 @@ function updatePhoto(
 
 // Changes a photo's upload only from the status it expects, so a late report about a photo that was
 // removed or reloaded changes nothing.
-function updateUpload(
-	values: RecipeFormValues,
+function updateUpload<Values extends RecipeFormPhotoValues>(
+	values: Values,
 	photoId: number,
 	update: (upload: PhotoUpload) => PhotoUpload | undefined
-): RecipeFormValues {
+): Values {
 	return updatePhoto(values, photoId, (photo) => {
 		const upload = update(photo.upload);
 		return upload === undefined ? photo : { ...photo, upload };
 	});
+}
+
+// Takes the photo out of the list, then puts it at the index; a list without it is unchanged.
+function withPhotoMoved(
+	photos: readonly RecipeFormPhoto[],
+	photoId: number,
+	toIndex: number
+): readonly RecipeFormPhoto[] {
+	const photo = photos.find(({ id }) => id === photoId);
+	if (photo === undefined) {
+		return photos;
+	}
+	return photos.filter(({ id }) => id !== photoId).toSpliced(toIndex, 0, photo);
+}
+
+export function editPhotos<Values extends RecipeFormPhotoValues>(
+	values: Values,
+	edit: PhotoEdit
+): Values {
+	switch (edit.type) {
+		case 'addPhotos': {
+			const added = edit.fileNames.map((fileName, index) => ({
+				id: values.nextId + index,
+				fileName,
+				alt: '',
+				upload: { status: 'processing' } as const,
+			}));
+			return {
+				...values,
+				photos: { ...values.photos, [edit.role]: [...values.photos[edit.role], ...added] },
+				nextId: values.nextId + added.length,
+			};
+		}
+		case 'startPhotoUpload':
+			return updateUpload(values, edit.photoId, (upload) =>
+				upload.status === 'processing'
+					? { status: 'uploading', pathname: edit.pathname, file: edit.file, fraction: 0 }
+					: undefined
+			);
+		case 'setPhotoProgress':
+			return updateUpload(values, edit.photoId, (upload) =>
+				upload.status === 'uploading' ? { ...upload, fraction: edit.fraction } : undefined
+			);
+		case 'finishPhotoUpload':
+			return updateUpload(values, edit.photoId, (upload) =>
+				upload.status === 'uploading'
+					? { status: 'uploaded', pathname: upload.pathname, file: upload.file }
+					: undefined
+			);
+		case 'failPhoto':
+			return updateUpload(values, edit.photoId, (upload) =>
+				upload.status === 'processing' || upload.status === 'uploading'
+					? { status: 'failed', failure: edit.failure }
+					: undefined
+			);
+		case 'removePhoto':
+			return updatePhoto(values, edit.photoId, () => undefined);
+		case 'makeCoverPhoto':
+			return {
+				...values,
+				photos: { ...values.photos, dish: withPhotoMoved(values.photos.dish, edit.photoId, 0) },
+			};
+		case 'movePhoto':
+			return {
+				...values,
+				photos: {
+					dish: withPhotoMoved(values.photos.dish, edit.photoId, edit.toIndex),
+					scan: withPhotoMoved(values.photos.scan, edit.photoId, edit.toIndex),
+				},
+			};
+		case 'setPhotoAlt':
+			return updatePhoto(values, edit.photoId, (photo) => ({ ...photo, alt: edit.alt }));
+	}
 }
 
 export function editRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): RecipeFormValues {
@@ -620,14 +848,18 @@ export function editRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): 
 				nextId: values.nextId + 2,
 			};
 		}
-		case 'removeSection':
+		case 'removeSection': {
+			const list = values[edit.list];
 			// A list always keeps one section.
-			if (values[edit.list].sections.length === 1) {
+			if (list.sections.length === 1) {
 				return values;
 			}
-			return updateSections(values, edit.list, (sections) =>
-				sections.filter((section) => section.id !== edit.sectionId)
-			);
+			const sections = list.sections.filter((section) => section.id !== edit.sectionId);
+			return {
+				...values,
+				[edit.list]: { ...list, sections, showsHeadings: sectionsShowHeadings(sections) },
+			};
+		}
 		case 'setHeading':
 			return updateSection(values, edit.list, edit.sectionId, (section) => ({
 				...section,
@@ -647,55 +879,27 @@ export function editRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): 
 		}
 		case 'removeTag':
 			return { ...values, tags: values.tags.filter((tag) => tag.id !== edit.tagId) };
-		case 'addPhotos': {
-			const added = edit.fileNames.map((fileName, index) => ({
-				id: values.nextId + index,
-				fileName,
-				alt: '',
-				upload: { status: 'processing' } as const,
-			}));
-			return {
-				...values,
-				photos: { ...values.photos, [edit.role]: [...values.photos[edit.role], ...added] },
-				nextId: values.nextId + added.length,
-			};
-		}
+		case 'addPhotos':
 		case 'startPhotoUpload':
-			return updateUpload(values, edit.photoId, (upload) =>
-				upload.status === 'processing'
-					? { status: 'uploading', pathname: edit.pathname, file: edit.file, fraction: 0 }
-					: undefined
-			);
 		case 'setPhotoProgress':
-			return updateUpload(values, edit.photoId, (upload) =>
-				upload.status === 'uploading' ? { ...upload, fraction: edit.fraction } : undefined
-			);
 		case 'finishPhotoUpload':
-			return updateUpload(values, edit.photoId, (upload) =>
-				upload.status === 'uploading'
-					? { status: 'uploaded', pathname: upload.pathname, file: upload.file }
-					: undefined
-			);
 		case 'failPhoto':
-			return updateUpload(values, edit.photoId, (upload) =>
-				upload.status === 'processing' || upload.status === 'uploading'
-					? { status: 'failed', failure: edit.failure }
-					: undefined
-			);
 		case 'removePhoto':
-			return updatePhoto(values, edit.photoId, () => undefined);
-		case 'makeCoverPhoto': {
-			const cover = values.photos.dish.find((photo) => photo.id === edit.photoId);
-			if (cover === undefined) {
-				return values;
-			}
-			const others = values.photos.dish.filter((photo) => photo.id !== edit.photoId);
-			return { ...values, photos: { ...values.photos, dish: [cover, ...others] } };
-		}
+		case 'makeCoverPhoto':
+		case 'movePhoto':
 		case 'setPhotoAlt':
-			return updatePhoto(values, edit.photoId, (photo) => ({ ...photo, alt: edit.alt }));
+			return editPhotos(values, edit);
 		case 'attachErrors':
 			return withErrors(values, edit.fieldErrors, edit.targets);
+		case 'setProblemChecked': {
+			const checkedProblems = new Set(values.checkedProblems);
+			if (edit.checked) {
+				checkedProblems.add(problemKey(edit.target));
+			} else {
+				checkedProblems.delete(problemKey(edit.target));
+			}
+			return { ...values, checkedProblems };
+		}
 		case 'load':
 			return edit.values;
 	}

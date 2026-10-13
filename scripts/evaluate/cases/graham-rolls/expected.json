@@ -1,0 +1,27 @@
+{
+	"title": "GRAHAM ROLLS",
+	"yield": { "kind": "makes", "amount": "54", "unit": "Rolls" },
+	"times": {},
+	"ingredientSections": [
+		{
+			"lines": [
+				"1 quart Milk",
+				"2 oz. Syrup",
+				"1 oz. Salt",
+				"½ oz. Butter",
+				"½ oz. Yeast",
+				"2 lbs. Graham Flour",
+				"1 Lb. Rye flour"
+			]
+		}
+	],
+	"instructionSections": [
+		{
+			"steps": [
+				"The Nutter and Syrup to be thoroughly mixed, the yeast to be dissolved in the milk, and poured into the mixture, add the Rye flour mixed with the Graham flour.",
+				"Bake in a hot oven."
+			]
+		}
+	],
+	"reviewNotes": []
+}

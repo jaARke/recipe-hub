@@ -1,6 +1,6 @@
 import 'server-only';
 import { requireAdmin, requireMember } from '@/application/authorization';
-import { MemberNotFoundError } from '@/application/members/errors';
+import { LastAdminError, MemberNotFoundError } from '@/application/members/errors';
 import {
 	toCurrentMemberDto,
 	toMemberDto,
@@ -10,13 +10,29 @@ import {
 } from '@/application/members/member-dtos';
 import type { ActorProvider } from '@/application/ports/actor-provider';
 import type { MemberRepository } from '@/application/ports/member-repository';
-import { emailAddressSchema, parseDisplayName } from '@/domain/member/member';
+import {
+	emailAddressSchema,
+	memberIdSchema,
+	parseDisplayName,
+	type Member,
+	type MemberId,
+} from '@/domain/member/member';
 import { getLogger } from '@/lib/logger';
 
 // The bootstrapped admin's name until they change it.
 const bootstrappedAdminName = 'Admin';
 
 const logger = getLogger('members');
+
+// Ids arrive from forms, so a malformed id names no member.
+function parseMemberId(id: string): MemberId {
+	const parsed = memberIdSchema.safeParse(id);
+	if (!parsed.success) {
+		throw new MemberNotFoundError();
+	}
+
+	return parsed.data;
+}
 
 export class MemberService {
 	private readonly members: MemberRepository;
@@ -40,10 +56,10 @@ export class MemberService {
 
 	// Oldest first.
 	async listMembers(): Promise<MemberDto[]> {
-		requireAdmin(await this.actors.currentActor());
+		const actor = requireAdmin(await this.actors.currentActor());
 
 		const members = await this.members.list();
-		return members.map(toMemberDto);
+		return members.map((member) => toMemberDto(member, member.id === actor.memberId));
 	}
 
 	async renameCurrentMember(displayName: string): Promise<MemberRef> {
@@ -57,6 +73,37 @@ export class MemberService {
 
 		logger.info('Member renamed', { memberId: member.id });
 		return { id: member.id };
+	}
+
+	async makeAdmin(memberId: string): Promise<void> {
+		const actor = requireAdmin(await this.actors.currentActor());
+		const id = parseMemberId(memberId);
+
+		const member = await this.members.setRole(id, 'admin');
+		if (member === null) {
+			throw new MemberNotFoundError();
+		}
+
+		logger.info('Admin role granted', { memberId: actor.memberId, targetMemberId: member.id });
+	}
+
+	// Admins may remove their own role too, while another admin remains.
+	async removeAdmin(memberId: string): Promise<void> {
+		const actor = requireAdmin(await this.actors.currentActor());
+		const id = parseMemberId(memberId);
+
+		// The repository counts the admins under its lock.
+		let member: Member | null;
+		try {
+			member = await this.members.setRole(id, 'member');
+		} catch (error) {
+			throw error instanceof LastAdminError ? this.lastAdminKept(id, actor.memberId) : error;
+		}
+		if (member === null) {
+			throw new MemberNotFoundError();
+		}
+
+		logger.info('Admin role removed', { memberId: actor.memberId, targetMemberId: member.id });
 	}
 
 	// A system use case for the bootstrap script, with no actor: makes the account at this
@@ -81,5 +128,11 @@ export class MemberService {
 		}
 
 		logger.info('Admin bootstrapped', { memberId: admin.id, created: existing === null });
+	}
+
+	// Logged, since the admin has to make someone else an admin first.
+	private lastAdminKept(targetMemberId: MemberId, memberId: MemberId): LastAdminError {
+		logger.warn('Admin role removal refused', { memberId, targetMemberId });
+		return new LastAdminError();
 	}
 }

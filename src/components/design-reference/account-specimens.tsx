@@ -109,7 +109,7 @@ const subsections = [
 		id: 'admin',
 		title: 'Admin',
 		description:
-			'The admin page, its headings from h4 here. Approving, declining, revoking, and inviting change the lists as the page does, and reloading restores them. Each new invite shows its notice once; below are the notices for each delivery state.',
+			'The admin page as Avery sees it, its headings from h4 here. Approving, declining, revoking, inviting, and making or removing admins change the lists as the page does, and reloading restores them. Each new invite shows its notice once; below are the notices for each delivery state.',
 		Content: AdminSpecimen,
 	},
 ] as const;

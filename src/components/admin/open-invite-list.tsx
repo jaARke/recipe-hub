@@ -60,6 +60,7 @@ function OpenInviteList({
 						</div>
 					</div>
 					<ConfirmActionDialog
+						variant="destructive"
 						trigger={
 							<>
 								Revoke<span className="sr-only"> the invite for {invite.displayName}</span>

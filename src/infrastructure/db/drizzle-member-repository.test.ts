@@ -1,6 +1,7 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ZodError } from 'zod';
+import { LastAdminError, MemberRoleConflictError } from '@/application/members/errors';
 import type { NewMember } from '@/application/ports/member-repository';
 import { memberIdSchema, type MemberId } from '@/domain/member/member';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
@@ -33,6 +34,25 @@ async function backdate(id: MemberId) {
 		.update(users)
 		.set({ createdAt: backdated, updatedAt: backdated })
 		.where(eq(users.id, id));
+}
+
+// Refuses any role write made without an advisory lock held, as an unserialized one would be.
+async function requireRoleLock() {
+	await db.execute(
+		sql.raw(`create function require_role_lock() returns trigger language plpgsql as $$
+begin
+	if not exists (
+		select 1 from pg_locks where locktype = 'advisory' and pid = pg_backend_pid() and granted
+	) then
+		raise exception 'role written without the role lock';
+	end if;
+	return new;
+end
+$$`)
+	);
+	await db.execute(
+		sql`create trigger require_role_lock before update of role on users for each row execute function require_role_lock()`
+	);
 }
 
 async function storedColumns(id: MemberId) {
@@ -132,6 +152,72 @@ describe('setRole', () => {
 
 	it('returns null when no member has the id', async () => {
 		expect(await repository.setRole(missingId, 'admin')).toBeNull();
+	});
+
+	it('refuses a role the member already has', async () => {
+		const member = await repository.create(ada);
+		const admin = await repository.create(grace);
+
+		await expect(repository.setRole(member.id, 'member')).rejects.toThrow(MemberRoleConflictError);
+		await expect(repository.setRole(admin.id, 'admin')).rejects.toThrow(MemberRoleConflictError);
+	});
+
+	it('removes admin while another admin remains', async () => {
+		const first = await repository.create(grace);
+		const second = await repository.create(lin);
+
+		expect(await repository.setRole(first.id, 'member')).toEqual({ ...first, role: 'member' });
+		expect(await repository.listAdmins()).toEqual([second]);
+	});
+
+	it('refuses to remove the only admin and keeps them an admin', async () => {
+		await repository.create(ada);
+		const admin = await repository.create(grace);
+
+		await expect(repository.setRole(admin.id, 'member')).rejects.toThrow(LastAdminError);
+		expect(await repository.listAdmins()).toEqual([admin]);
+	});
+
+	it('keeps one admin when two admins remove each other at once', async () => {
+		const first = await repository.create(grace);
+		const second = await repository.create(lin);
+
+		const results = await Promise.allSettled([
+			repository.setRole(first.id, 'member'),
+			repository.setRole(second.id, 'member'),
+		]);
+
+		expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
+		expect(results.filter(({ status }) => status === 'rejected')).toEqual([
+			{ status: 'rejected', reason: expect.any(LastAdminError) },
+		]);
+		expect(await repository.listAdmins()).toHaveLength(1);
+	});
+});
+
+// PGlite runs one transaction at a time, so these prove the lock that makes concurrent changes on
+// Postgres take turns.
+describe('role lock', () => {
+	it('holds the role lock while it writes a role', async () => {
+		const member = await repository.create(ada);
+		const admin = await repository.create(grace);
+		await requireRoleLock();
+
+		expect(await repository.setRole(member.id, 'admin')).toMatchObject({ role: 'admin' });
+		expect(await repository.setRole(admin.id, 'member')).toMatchObject({ role: 'member' });
+	});
+
+	it('is checked here by a trigger that refuses a role written without the lock', async () => {
+		const member = await repository.create(ada);
+		await requireRoleLock();
+
+		await expect(
+			db.update(users).set({ role: 'admin' }).where(eq(users.id, member.id))
+		).rejects.toThrow(
+			expect.objectContaining({
+				cause: expect.objectContaining({ message: 'role written without the role lock' }),
+			})
+		);
 	});
 });
 

@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { ForbiddenError, SignInRequiredError } from '@/application/authorization';
-import type { Actor } from '@/application/ports/actor-provider';
+import { ImportUnavailableError } from '@/application/ingestion/errors';
+import type { Actor, MemberActor } from '@/application/ports/actor-provider';
+import type { ImportSuccess } from '@/application/ports/recipe-import-repository';
 import type { RecipePage } from '@/application/ports/recipe-repository';
 import {
 	InvalidRecipePageError,
@@ -13,6 +15,7 @@ import { actorFor, adminActor, anonymousActor, memberActor } from '@/application
 import { FixedActorProvider } from '@/application/testing/fixed-actor-provider';
 import { InMemoryImageStore } from '@/application/testing/in-memory-image-store';
 import { InMemoryMemberRepository } from '@/application/testing/in-memory-member-repository';
+import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
 import {
 	recipeContentSchema,
@@ -20,6 +23,11 @@ import {
 	type RecipeId,
 } from '@/domain/recipe/recipe';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
+import {
+	importDraftCutoff,
+	type RecipeImportId,
+	type RecipeImportMode,
+} from '@/domain/recipe/recipe-import';
 import {
 	sampleButtermilkBiscuits,
 	sampleChickenSoup,
@@ -53,13 +61,31 @@ const unfinishedPhotoMessage = "This photo didn't finish uploading. Remove it an
 
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 
+const unavailableImportId = '0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d70';
+
+// What each mode's import recorded for review. A photo import's draft keeps the scan it read.
+const importResults: Record<RecipeImportMode, ImportSuccess> = {
+	url: {
+		draft: { content: { title: 'Weeknight chicken soup' }, problems: [] },
+		sourceUrl: 'https://example.com/soup',
+		aiModel: 'example/model',
+		costUsd: 0.0042,
+	},
+	photo: {
+		draft: { content: { title: 'Weeknight chicken soup', images: [scan] }, problems: [] },
+		aiModel: 'example/vision-model',
+		costUsd: 0.012,
+	},
+};
+
 function manualEntry(content: RecipeContentInput): CreateRecipeInput {
-	return { content, provenance: { entryMode: 'manual' } };
+	return { content };
 }
 
 // One catalog, with a service per actor. Every photo but the unfinished one is stored.
 async function createCatalog() {
 	const recipes = new InMemoryRecipeRepository();
+	const imports = new InMemoryRecipeImportRepository(recipes);
 	const members = new InMemoryMemberRepository();
 	const images = new InMemoryImageStore();
 	const storedImages = [
@@ -74,7 +100,7 @@ async function createCatalog() {
 	}
 
 	const serviceFor = (actor: Actor) =>
-		new RecipeService(recipes, members, images, new FixedActorProvider(actor), folders);
+		new RecipeService(recipes, imports, members, images, new FixedActorProvider(actor), folders);
 	// The version an editor that loaded the recipe just now sends back with its save.
 	const versionOf = async (id: RecipeId) => {
 		const recipe = await recipes.findById(id);
@@ -92,7 +118,36 @@ async function createCatalog() {
 				role: 'member',
 			})
 		);
-	return { recipes, members, images, serviceFor, addMember, versionOf };
+	// An import the member started that is still running, as a failed or unfinished one stays.
+	const startImport = async (actor: MemberActor, mode: RecipeImportMode = 'url') => {
+		const started = await imports.start({ memberId: actor.memberId, mode });
+		if (started === null) {
+			throw new Error('The import was refused');
+		}
+		return started.id;
+	};
+	// An import the member started whose draft awaits their review.
+	const importDraft = async (actor: MemberActor, mode: RecipeImportMode = 'url') => {
+		const id = await startImport(actor, mode);
+		await imports.recordSuccess(id, importResults[mode]);
+		return id;
+	};
+	return {
+		recipes,
+		imports,
+		members,
+		images,
+		serviceFor,
+		addMember,
+		versionOf,
+		startImport,
+		importDraft,
+	};
+}
+
+// Saves the sample soup from the import, as the review form does.
+function fromImport(importId: string, content: RecipeContentInput = sampleChickenSoup) {
+	return { content, importId };
 }
 
 async function catalogWithBiscuits() {
@@ -149,12 +204,12 @@ afterEach(() => {
 
 describe('public reads', () => {
 	it('never ask who is calling, so pages can cache them', async () => {
-		const { recipes, members, images, serviceFor, addMember } = await createCatalog();
+		const { recipes, imports, members, images, serviceFor, addMember } = await createCatalog();
 		const ref = await serviceFor(await addMember('Ada')).createRecipe(
 			manualEntry(sampleTomatoSalad)
 		);
 		const actors = new FixedActorProvider(memberActor());
-		const reader = new RecipeService(recipes, members, images, actors, folders);
+		const reader = new RecipeService(recipes, imports, members, images, actors, folders);
 
 		await reader.getRecipe(ref.slug);
 		await reader.listRecipes({ limit: 10, offset: 0, sort: 'newest' });
@@ -165,16 +220,11 @@ describe('public reads', () => {
 
 describe('getRecipe', () => {
 	it("shows dish photos, the source URL, and the contributor's name, but no scans or entry details", async () => {
-		const { serviceFor, addMember } = await createCatalog();
+		const { serviceFor, addMember, importDraft } = await createCatalog();
 		const author = await addMember('Ada');
-		const ref = await serviceFor(author).createRecipe({
-			content: { ...sampleChickenSoup, images: [scan, dishPhoto] },
-			provenance: {
-				entryMode: 'url',
-				sourceUrl: 'https://example.com/soup',
-				aiModel: 'example/model',
-			},
-		});
+		const ref = await serviceFor(author).createRecipe(
+			fromImport(await importDraft(author), { ...sampleChickenSoup, images: [scan, dishPhoto] })
+		);
 
 		const recipe = await serviceFor(anonymousActor()).getRecipe(ref.slug);
 
@@ -441,21 +491,6 @@ describe('createRecipe', () => {
 		);
 	});
 
-	it('reports invalid provenance under the provenance path', async () => {
-		const member = (await createCatalog()).serviceFor(memberActor());
-		const input: CreateRecipeInput = {
-			content: sampleChickenSoup,
-			provenance: { entryMode: 'url', sourceUrl: 'ftp://example.com/soup' },
-		};
-
-		await expect(member.createRecipe(input)).rejects.toThrow(
-			expect.objectContaining({
-				code: 'recipe.invalid',
-				problems: [{ path: 'provenance.sourceUrl', message: expect.any(String) }],
-			})
-		);
-	});
-
 	it.each([
 		['whose upload never finished', unfinishedPhoto],
 		["from another environment's folder, though stored", productionPhoto],
@@ -496,15 +531,39 @@ describe('createRecipe', () => {
 		expect([first.slug, second.slug]).toEqual(['buttermilk-biscuits', 'buttermilk-biscuits-2']);
 	});
 
-	it('logs the creation', async () => {
+	it('saves manual entry as such, and logs the creation', async () => {
 		const author = memberActor();
-		const member = (await createCatalog()).serviceFor(author);
+		const { recipes, serviceFor } = await createCatalog();
 
-		const ref = await member.createRecipe({
-			content: sampleChickenSoup,
-			provenance: { entryMode: 'url', sourceUrl: 'https://example.com/soup' },
+		const ref = await serviceFor(author).createRecipe(manualEntry(sampleChickenSoup));
+
+		expect((await recipes.findById(ref.id))?.provenance).toEqual({ entryMode: 'manual' });
+		expect(logLines(consoleInfo)).toEqual([
+			{
+				level: 'info',
+				logger: 'recipes',
+				message: 'Recipe created',
+				recipeId: ref.id,
+				memberId: author.memberId,
+				entryMode: 'manual',
+			},
+		]);
+	});
+});
+
+describe('createRecipe from an import', () => {
+	it("takes a URL import's provenance from the import, and logs the import", async () => {
+		const author = memberActor();
+		const { recipes, serviceFor, importDraft } = await createCatalog();
+		const importId = await importDraft(author);
+
+		const ref = await serviceFor(author).createRecipe(fromImport(importId));
+
+		expect((await recipes.findById(ref.id))?.provenance).toEqual({
+			entryMode: 'url',
+			sourceUrl: 'https://example.com/soup',
+			aiModel: 'example/model',
 		});
-
 		expect(logLines(consoleInfo)).toEqual([
 			{
 				level: 'info',
@@ -513,7 +572,180 @@ describe('createRecipe', () => {
 				recipeId: ref.id,
 				memberId: author.memberId,
 				entryMode: 'url',
+				importId,
 			},
+		]);
+	});
+
+	it("takes a photo import's provenance from the import", async () => {
+		const author = memberActor();
+		const { recipes, serviceFor, importDraft } = await createCatalog();
+
+		const ref = await serviceFor(author).createRecipe(
+			fromImport(await importDraft(author, 'photo'))
+		);
+
+		expect((await recipes.findById(ref.id))?.provenance).toEqual({
+			entryMode: 'photo',
+			aiModel: 'example/vision-model',
+		});
+	});
+
+	it('clears the draft and source URL once the recipe is saved, and keeps the record', async () => {
+		const author = memberActor();
+		const { imports, serviceFor, importDraft } = await createCatalog();
+		const importId = await importDraft(author);
+
+		const ref = await serviceFor(author).createRecipe(fromImport(importId));
+
+		const recipeImport = await imports.findById(importId);
+		expect(recipeImport).toMatchObject({
+			status: 'succeeded',
+			aiModel: 'example/model',
+			costUsd: 0.0042,
+			savedRecipeSlug: ref.slug,
+		});
+		expect(recipeImport).not.toHaveProperty('draft');
+		expect(recipeImport).not.toHaveProperty('sourceUrl');
+	});
+
+	it('refuses a second save from the import', async () => {
+		const author = memberActor();
+		const { recipes, serviceFor, importDraft } = await createCatalog();
+		const importId = await importDraft(author);
+		await serviceFor(author).createRecipe(fromImport(importId));
+
+		await expect(
+			serviceFor(author).createRecipe(fromImport(importId, sampleTomatoSalad))
+		).rejects.toThrow(ImportUnavailableError);
+		expect(await recipes.count()).toBe(1);
+	});
+
+	it('refuses a second save that raced past the check, and keeps the first', async () => {
+		const author = memberActor();
+		const { recipes, imports, serviceFor, importDraft } = await createCatalog();
+		const importId = await importDraft(author);
+		const unsaved = await imports.findById(importId);
+		await serviceFor(author).createRecipe(fromImport(importId));
+		// The second save read the import before the first one committed.
+		vi.spyOn(imports, 'findById').mockResolvedValueOnce(unsaved);
+
+		await expect(
+			serviceFor(author).createRecipe(fromImport(importId, sampleTomatoSalad))
+		).rejects.toThrow(ImportUnavailableError);
+		expect(await recipes.count()).toBe(1);
+		expect(logLines(consoleWarn)).toEqual([
+			{
+				level: 'warn',
+				logger: 'recipes',
+				message: 'Recipe save refused for an unavailable import',
+				importId,
+				memberId: author.memberId,
+			},
+		]);
+	});
+
+	it.each(['another member', 'an admin'] as const)(
+		"refuses a member's import when %s saves it, and saves nothing",
+		async (saver) => {
+			const { recipes, serviceFor, importDraft } = await createCatalog();
+			const importId = await importDraft(memberActor());
+			const actor = saver === 'an admin' ? adminActor() : memberActor();
+
+			await expect(serviceFor(actor).createRecipe(fromImport(importId))).rejects.toThrow(
+				ImportUnavailableError
+			);
+			expect(await recipes.count()).toBe(0);
+			expect(logLines(consoleWarn)).toEqual([
+				expect.objectContaining({
+					message: 'Recipe save refused for an unavailable import',
+					importId,
+					memberId: actor.memberId,
+				}),
+			]);
+		}
+	);
+
+	it.each<{
+		state: string;
+		finish: (imports: InMemoryRecipeImportRepository, id: RecipeImportId) => Promise<void>;
+	}>([
+		{ state: 'still running', finish: async () => {} },
+		{
+			state: 'that failed',
+			finish: async (imports, id) => {
+				await imports.recordFailure(id, { failure: 'import.failed' });
+			},
+		},
+		{
+			state: 'whose draft was cleared',
+			finish: async (imports, id) => {
+				await imports.recordSuccess(id, importResults.url);
+				await imports.clearDraft(id);
+			},
+		},
+		{
+			state: 'whose draft expired',
+			finish: async (imports, id) => {
+				await imports.recordSuccess(id, importResults.url);
+				imports.backdate(id, new Date(importDraftCutoff(new Date()).getTime() - 1000));
+			},
+		},
+	])('refuses an import $state, and saves nothing', async ({ finish }) => {
+		const author = memberActor();
+		const { recipes, imports, serviceFor, startImport } = await createCatalog();
+		const importId = await startImport(author);
+		await finish(imports, importId);
+
+		await expect(serviceFor(author).createRecipe(fromImport(importId))).rejects.toThrow(
+			ImportUnavailableError
+		);
+		expect(await recipes.count()).toBe(0);
+	});
+
+	it.each([unavailableImportId, 'not-an-import-id'])(
+		'refuses the import id %s, which names no import',
+		async (importId) => {
+			const author = memberActor();
+			const { recipes, serviceFor } = await createCatalog();
+
+			await expect(serviceFor(author).createRecipe(fromImport(importId))).rejects.toThrow(
+				ImportUnavailableError
+			);
+			expect(await recipes.count()).toBe(0);
+		}
+	);
+
+	it('checks the import before the content, which no edit could make saveable', async () => {
+		const author = memberActor();
+		const { serviceFor, startImport } = await createCatalog();
+		const importId = await startImport(author);
+
+		await expect(
+			serviceFor(author).createRecipe(fromImport(importId, { ...sampleChickenSoup, title: ' ' }))
+		).rejects.toThrow(ImportUnavailableError);
+	});
+
+	it('succeeds and logs a warning when the draft cannot be cleared', async () => {
+		const author = memberActor();
+		const { recipes, imports, serviceFor, importDraft } = await createCatalog();
+		const importId = await importDraft(author);
+		vi.spyOn(imports, 'clearDraft').mockRejectedValueOnce(
+			new Error('The database could not be reached')
+		);
+
+		const ref = await serviceFor(author).createRecipe(fromImport(importId));
+
+		expect(await recipes.findById(ref.id)).not.toBeNull();
+		expect(logLines(consoleWarn)).toEqual([
+			expect.objectContaining({
+				level: 'warn',
+				logger: 'recipes',
+				message: 'Import draft could not be cleared',
+				importId,
+				recipeId: ref.id,
+				err: expect.objectContaining({ message: 'The database could not be reached' }),
+			}),
 		]);
 	});
 });
@@ -847,6 +1079,49 @@ describe('deleteRecipe', () => {
 			expect(await images.has(dishPhoto.pathname)).toBe(false);
 		}
 	);
+
+	it("keeps scans another import's draft still names, and deletes them with that draft's recipe", async () => {
+		const author = memberActor();
+		const { images, serviceFor, importDraft } = await createCatalog();
+		const service = serviceFor(author);
+		// The same scan imported twice, as sending a photo import again does.
+		const first = await importDraft(author, 'photo');
+		const second = await importDraft(author, 'photo');
+		const content = { ...sampleChickenSoup, images: [scan] };
+		const saved = await service.createRecipe(fromImport(first, content));
+
+		await service.deleteRecipe(saved.id);
+
+		expect(images.deletedPathnames).toEqual([]);
+		expect(logLines(consoleInfo)).toContainEqual(
+			expect.objectContaining({
+				message: 'Recipe images deleted',
+				recipeId: saved.id,
+				keptPathnames: [scan.pathname],
+			})
+		);
+
+		const resaved = await service.createRecipe(fromImport(second, content));
+		await service.deleteRecipe(resaved.id);
+
+		expect(images.deletedPathnames).toEqual([scan.pathname]);
+	});
+
+	it('deletes scans that only an expired draft still names', async () => {
+		const author = memberActor();
+		const { images, imports, serviceFor, importDraft } = await createCatalog();
+		const service = serviceFor(author);
+		const first = await importDraft(author, 'photo');
+		const expired = await importDraft(author, 'photo');
+		imports.backdate(expired, new Date(importDraftCutoff(new Date()).getTime() - 1000));
+		const saved = await service.createRecipe(
+			fromImport(first, { ...sampleChickenSoup, images: [scan] })
+		);
+
+		await service.deleteRecipe(saved.id);
+
+		expect(images.deletedPathnames).toEqual([scan.pathname]);
+	});
 
 	it('reports the slug and deletes the images the recipe had when deleted, after a concurrent edit', async () => {
 		const { recipes, images, serviceFor, author, recipe } = await catalogWithStoredImages([

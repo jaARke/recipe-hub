@@ -1,3 +1,4 @@
+import { ImportUnavailableError } from '@/application/ingestion/errors';
 import type {
 	NewRecipe,
 	RecipePage,
@@ -8,6 +9,7 @@ import type {
 } from '@/application/ports/recipe-repository';
 import { RecipeEditConflictError } from '@/application/recipes/errors';
 import { recipeIdSchema, type Recipe, type RecipeId } from '@/domain/recipe/recipe';
+import type { RecipeImportId } from '@/domain/recipe/recipe-import';
 import { slugCandidate } from '@/domain/recipe/slug';
 import { tagKey } from '@/domain/recipe/tag';
 
@@ -24,6 +26,8 @@ export class InMemoryRecipeRepository implements RecipeRepository {
 	private readonly recipes = new Map<RecipeId, Recipe>();
 	// Each old slug and the recipe it now names.
 	private readonly oldSlugs = new Map<string, RecipeId>();
+	// Each import a recipe was saved from, and that recipe.
+	private readonly importIds = new Map<RecipeImportId, RecipeId>();
 
 	async findById(id: RecipeId): Promise<Recipe | null> {
 		return this.recipes.get(id) ?? null;
@@ -48,6 +52,10 @@ export class InMemoryRecipeRepository implements RecipeRepository {
 	}
 
 	async create(recipe: NewRecipe): Promise<Recipe> {
+		if (recipe.importId !== undefined && this.importIds.has(recipe.importId)) {
+			throw new ImportUnavailableError();
+		}
+
 		const now = new Date();
 		const created: Recipe = {
 			...recipe.content,
@@ -60,6 +68,9 @@ export class InMemoryRecipeRepository implements RecipeRepository {
 		};
 
 		this.recipes.set(created.id, created);
+		if (recipe.importId !== undefined) {
+			this.importIds.set(recipe.importId, created.id);
+		}
 		return created;
 	}
 
@@ -105,6 +116,11 @@ export class InMemoryRecipeRepository implements RecipeRepository {
 				this.oldSlugs.delete(slug);
 			}
 		}
+		for (const [importId, recipeId] of this.importIds) {
+			if (recipeId === id) {
+				this.importIds.delete(importId);
+			}
+		}
 
 		this.recipes.delete(id);
 		return existing;
@@ -125,6 +141,12 @@ export class InMemoryRecipeRepository implements RecipeRepository {
 			[...this.recipes.values()].flatMap((recipe) => recipe.images.map(({ pathname }) => pathname))
 		);
 		return [...new Set(pathnames)].filter((pathname) => listed.has(pathname));
+	}
+
+	// Stands in for the join the database makes from an import to the recipe saved from it.
+	findByImportId(importId: RecipeImportId): Recipe | null {
+		const recipeId = this.importIds.get(importId);
+		return recipeId === undefined ? null : (this.recipes.get(recipeId) ?? null);
 	}
 
 	private sorted(sort: RecipeSort): Recipe[] {

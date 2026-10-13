@@ -17,6 +17,7 @@ function DeleteRecipeDialog({ recipeId, title, action }: DeleteRecipeDialogProps
 
 	return (
 		<ConfirmActionDialog
+			variant="destructive"
 			trigger="Delete recipe"
 			title={`Delete “${title}”?`}
 			description="The recipe and its photos are deleted. This can't be undone."

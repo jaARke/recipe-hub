@@ -18,6 +18,7 @@ import {
 } from '@/domain/recipe/samples/sample-recipes';
 import { slugify } from '@/domain/recipe/slug';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
+import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { recipes } from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
@@ -83,7 +84,11 @@ $$`)
 	);
 }
 
-describeRecipeRepositoryContract(() => ({ repository, contributorId }));
+describeRecipeRepositoryContract(() => ({
+	repository,
+	imports: new DrizzleRecipeImportRepository(db),
+	contributorId,
+}));
 
 describe('create', () => {
 	it('assigns time-ordered uuidv7 ids', async () => {

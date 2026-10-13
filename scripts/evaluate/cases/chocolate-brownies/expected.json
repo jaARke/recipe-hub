@@ -1,0 +1,27 @@
+{
+	"title": "Chocolate Brownies",
+	"source": "Nancy Reagan",
+	"yield": { "kind": "makes", "amount": "96", "unit": "brownies" },
+	"times": {},
+	"ingredientSections": [
+		{
+			"lines": [
+				"2½ sticks (10 oz.) butter, softened",
+				"2½ cups sugar",
+				"7 eggs plus one egg yolk",
+				"1 tbsp. vanilla extract",
+				"2½ cups sifted flour, sifted together with ½ cup cocoa powder",
+				"3 cups walnuts or pecans, coarsely chopped"
+			]
+		}
+	],
+	"instructionSections": [
+		{
+			"steps": [
+				"Cream butter and sugar together in mixing bowl. Add eggs, one at a time, plus egg yolk and vanilla, mixing well. Fold in the flour/cocoa mixture. Add nuts.",
+				"Spread brownie mixture evenly in 12\" x 18\" greased and lightly floured, (or lined with paper) pan. Bake at 375 degrees for about 20 minutes or until firm to the touch. When cold, cut brownies into 1½ inch squares."
+			]
+		}
+	],
+	"reviewNotes": []
+}
