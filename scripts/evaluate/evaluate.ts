@@ -35,7 +35,6 @@ const defaultModels = [
 // Labels the evaluation's calls as their own user in the Gateway's usage reports.
 const evaluationRequester: ExtractionRequester = {
 	memberId: memberIdSchema.parse('e28e5c2f-a0df-4f9d-aa42-7cee9029f250'),
-	email: 'evaluation@recipes.invalid',
 };
 
 // Calls in flight at once: few enough that a call's latency stays its model's own.

@@ -25,14 +25,15 @@ import {
 	sampleTomatoSalad,
 } from '@/domain/recipe/samples/sample-recipes';
 import { slugify } from '@/domain/recipe/slug';
-import { tagKey } from '@/domain/recipe/tag';
+import { tagKey } from '@/domain/recipe/tag-normalization';
 
 export type RecipeRepositoryFixture = {
 	repository: RecipeRepository;
 	// Stores the imports a recipe can be saved from.
 	imports: RecipeImportRepository;
-	// A member the repository accepts as a contributor.
+	// Two members the repository accepts as contributors.
 	contributorId: MemberId;
+	otherContributorId: MemberId;
 };
 
 const missingId = recipeIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e');
@@ -452,6 +453,66 @@ export function describeRecipeRepositoryContract(fixture: () => RecipeRepository
 
 			expect(labels).toEqual(['make AHEAD']);
 		});
+
+		it("gives one label for each tag, the earliest recipe's spelling", async () => {
+			const soup = await create({ ...sampleChickenSoup, tags: ['Make ahead'] });
+			await create({ ...sampleTomatoSalad, tags: ['make AHEAD'] });
+			await create({ ...sampleButtermilkBiscuits, tags: ['MAKE AHEAD'] });
+			const { repository } = fixture();
+
+			expect(await repository.findTagLabels([tagKey('Make ahead')])).toEqual(['Make ahead']);
+			expect(await repository.findTagLabels([tagKey('Make ahead')], soup.id)).toEqual([
+				'make AHEAD',
+			]);
+		});
+	});
+
+	describe('listTagLabels', () => {
+		it('lists every tag once, most used first, and tags used as often by key', async () => {
+			await create({ ...sampleChickenSoup, tags: ['Soup', 'Weeknight'] });
+			await create({ ...sampleTomatoSalad, tags: ['salad', 'Weeknight', 'Make ahead'] });
+			await create({ ...sampleButtermilkBiscuits, tags: ['Baking', 'weeknight'] });
+
+			expect(await fixture().repository.listTagLabels()).toEqual([
+				'Weeknight',
+				'Baking',
+				'Make ahead',
+				'salad',
+				'Soup',
+			]);
+		});
+
+		it("labels a tag with the earliest recipe's spelling, and the next one's once it drops the tag", async () => {
+			const soup = await create({ ...sampleChickenSoup, tags: ['Make ahead'] });
+			await create({ ...sampleTomatoSalad, tags: ['make AHEAD'] });
+			const { repository } = fixture();
+			expect(await repository.listTagLabels()).toEqual(['Make ahead']);
+
+			await save(soup, { content: recipeContentSchema.parse({ ...sampleChickenSoup, tags: [] }) });
+
+			expect(await repository.listTagLabels()).toEqual(['make AHEAD']);
+		});
+
+		it('keeps the earliest spelling when that recipe is edited later', async () => {
+			const soup = await create({ ...sampleChickenSoup, tags: ['Make ahead'] });
+			await create({ ...sampleTomatoSalad, tags: ['make AHEAD'] });
+
+			await save(soup, {
+				content: recipeContentSchema.parse({
+					...sampleChickenSoup,
+					tags: ['Make ahead'],
+					notes: 'Edited.',
+				}),
+			});
+
+			expect(await fixture().repository.listTagLabels()).toEqual(['Make ahead']);
+		});
+
+		it('lists nothing when no recipe has tags', async () => {
+			await create({ ...sampleChickenSoup, tags: [] });
+
+			expect(await fixture().repository.listTagLabels()).toEqual([]);
+		});
 	});
 
 	describe('findImagesInUse', () => {
@@ -487,6 +548,25 @@ export function describeRecipeRepositoryContract(fixture: () => RecipeRepository
 			await repository.delete(soup.id);
 			await repository.delete(salad.id);
 			expect(await repository.findImagesInUse([sharedPhoto.pathname])).toEqual([]);
+		});
+
+		it("ignores the excluded contributor's recipes", async () => {
+			const { repository, contributorId, otherContributorId } = fixture();
+			await create({ ...sampleChickenSoup, images: [soupPhoto, sharedPhoto] });
+			await create(
+				{ ...sampleTomatoSalad, images: [sharedPhoto, saladScan] },
+				{ contributorId: otherContributorId }
+			);
+			const pathnames = [soupPhoto.pathname, sharedPhoto.pathname, saladScan.pathname];
+
+			expect((await repository.findImagesInUse(pathnames, contributorId)).toSorted()).toEqual([
+				sharedPhoto.pathname,
+				saladScan.pathname,
+			]);
+			expect((await repository.findImagesInUse(pathnames, otherContributorId)).toSorted()).toEqual([
+				sharedPhoto.pathname,
+				soupPhoto.pathname,
+			]);
 		});
 
 		it('finds nothing for no pathnames', async () => {

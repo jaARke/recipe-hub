@@ -76,3 +76,14 @@ export async function removeAdmin(_state: FormState, formData: FormData): Promis
 	refresh();
 	return { status: 'success' };
 }
+
+export async function removeMember(_state: FormState, formData: FormData): Promise<FormState> {
+	try {
+		await getMemberService().removeMember(formText(formData, adminFieldNames.memberId));
+	} catch (error) {
+		return toFormError(error);
+	}
+
+	refresh();
+	return { status: 'success' };
+}

@@ -168,7 +168,7 @@ function AccessRequestList({
 
 	return (
 		<div>
-			<div role="status">
+			<div role="status" aria-live="polite">
 				{issued !== null && <IssuedInviteNotice invite={issued} className="mb-6" />}
 			</div>
 			{requests.length === 0 ? (

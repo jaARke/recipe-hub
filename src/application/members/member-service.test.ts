@@ -4,6 +4,7 @@ import {
 	LastAdminError,
 	MemberNotFoundError,
 	MemberRoleConflictError,
+	SelfRemovalError,
 } from '@/application/members/errors';
 import { MemberService } from '@/application/members/member-service';
 import type { Actor } from '@/application/ports/actor-provider';
@@ -199,6 +200,13 @@ describe('makeAdmin', () => {
 		await expect(graceService.makeAdmin(id)).rejects.toThrow(MemberNotFoundError);
 	});
 
+	it('reports a removed member as not found', async () => {
+		const { members, ada, graceService } = await membersWithGrace();
+		await members.remove(ada.id);
+
+		await expect(graceService.makeAdmin(ada.id)).rejects.toThrow(MemberNotFoundError);
+	});
+
 	it('reports an admin as a role conflict', async () => {
 		const { members, graceService } = await membersWithGrace();
 		const lin = await members.create({
@@ -271,6 +279,7 @@ describe('removeAdmin', () => {
 				message: 'Admin role removal refused',
 				memberId: grace.id,
 				targetMemberId: grace.id,
+				failure: 'member.last-admin',
 			},
 		]);
 	});
@@ -304,6 +313,113 @@ describe('removeAdmin', () => {
 				message: 'Admin role removed',
 				memberId: grace.id,
 				targetMemberId: lin.id,
+			},
+		]);
+	});
+});
+
+describe('removeMember', () => {
+	it.each(refusedActors)('refuses $who and keeps the member', async ({ actor, error }) => {
+		const { members, ada, serviceFor } = await membersWithGrace();
+
+		await expect(serviceFor(actor).removeMember(ada.id)).rejects.toThrow(error);
+		expect(await members.findById(ada.id)).not.toHaveProperty('removedAt');
+	});
+
+	it('removes the member, who leaves the list and keeps their name', async () => {
+		const { members, ada, grace, graceService } = await membersWithGrace();
+
+		await graceService.removeMember(ada.id);
+
+		expect((await graceService.listMembers()).map(({ id }) => id)).toEqual([grace.id]);
+		expect(await members.findById(ada.id)).toMatchObject({
+			displayName: 'Ada',
+			removedAt: expect.any(Date),
+		});
+	});
+
+	it('removes another admin', async () => {
+		const { members, graceService } = await membersWithGrace();
+		const lin = await members.create({
+			email: 'lin@example.com',
+			displayName: 'Lin',
+			role: 'admin',
+		});
+
+		await graceService.removeMember(lin.id);
+
+		expect(await members.listAdmins()).not.toContainEqual(expect.objectContaining({ id: lin.id }));
+	});
+
+	it('refuses an admin removing themselves and logs the refusal by ids alone', async () => {
+		const { members, grace, graceService } = await membersWithGrace();
+		await members.create({ email: 'lin@example.com', displayName: 'Lin', role: 'admin' });
+
+		await expect(graceService.removeMember(grace.id)).rejects.toThrow(SelfRemovalError);
+
+		expect(await members.findById(grace.id)).not.toHaveProperty('removedAt');
+		expect(loggedLines()).toEqual([
+			{
+				level: 'warn',
+				logger: 'members',
+				message: 'Member removal refused',
+				memberId: grace.id,
+				targetMemberId: grace.id,
+				failure: 'member.self-removal',
+			},
+		]);
+	});
+
+	it('refuses to remove the last admin after the acting admin lost their role, and logs it', async () => {
+		const { members, grace, graceService } = await membersWithGrace();
+		const lin = await members.create({
+			email: 'lin@example.com',
+			displayName: 'Lin',
+			role: 'admin',
+		});
+		// Lin removed admin from Grace after Grace's page loaded.
+		await members.setRole(grace.id, 'member');
+
+		await expect(graceService.removeMember(lin.id)).rejects.toThrow(LastAdminError);
+
+		expect(await members.listAdmins()).toEqual([lin]);
+		expect(loggedLines()).toEqual([
+			{
+				level: 'warn',
+				logger: 'members',
+				message: 'Member removal refused',
+				memberId: grace.id,
+				targetMemberId: lin.id,
+				failure: 'member.last-admin',
+			},
+		]);
+	});
+
+	it.each([missingId, malformedId])('reports the id %s as not found', async (id) => {
+		const { graceService } = await membersWithGrace();
+
+		await expect(graceService.removeMember(id)).rejects.toThrow(MemberNotFoundError);
+	});
+
+	it('reports a member removed already as not found', async () => {
+		const { ada, graceService } = await membersWithGrace();
+		await graceService.removeMember(ada.id);
+
+		await expect(graceService.removeMember(ada.id)).rejects.toThrow(MemberNotFoundError);
+	});
+
+	it('logs the removal by ids alone', async () => {
+		const { ada, grace, graceService } = await membersWithGrace();
+
+		await graceService.removeMember(ada.id);
+
+		expect(loggedLines()).toEqual([
+			{
+				level: 'info',
+				logger: 'members',
+				message: 'Member removed',
+				memberId: grace.id,
+				targetMemberId: ada.id,
 			},
 		]);
 	});

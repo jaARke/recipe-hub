@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
+import { getCachedTagLabels } from '@/app/_lib/recipe-cache';
 import {
 	createRecipe,
 	importFromScans,
@@ -44,6 +45,7 @@ async function loadUnsavedImports(): Promise<UnsavedImportDto[]> {
 
 async function ContributeForMember() {
 	const unsavedImports = await loadUnsavedImports();
+	const tagLabels = await getCachedTagLabels();
 	const uploadFolders = getRecipeImageService().uploadFolders();
 
 	return (
@@ -54,6 +56,7 @@ async function ContributeForMember() {
 						initial={recipeFormValues()}
 						action={createRecipe}
 						uploadFolders={uploadFolders}
+						tagLabels={tagLabels}
 						submitLabel="Save recipe"
 					/>
 				),

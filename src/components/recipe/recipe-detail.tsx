@@ -296,7 +296,7 @@ function RecipeDetail({
 
 function RecipeDetailSkeleton() {
 	return (
-		<div role="status">
+		<div role="status" aria-live="polite">
 			<span className="sr-only">Loading recipe</span>
 			<div aria-hidden="true" className="flex flex-col gap-10">
 				<div className="flex flex-col gap-4">

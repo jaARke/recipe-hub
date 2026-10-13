@@ -20,11 +20,11 @@ export class InMemoryMemberRepository implements MemberRepository {
 	}
 
 	async list(): Promise<Member[]> {
-		return [...this.members.values()];
+		return [...this.members.values()].filter((member) => member.removedAt === undefined);
 	}
 
 	async listAdmins(): Promise<Member[]> {
-		return [...this.members.values()].filter((member) => member.role === 'admin');
+		return (await this.list()).filter((member) => member.role === 'admin');
 	}
 
 	async create(member: NewMember): Promise<Member> {
@@ -42,7 +42,7 @@ export class InMemoryMemberRepository implements MemberRepository {
 	}
 
 	async setRole(id: MemberId, role: MemberRole): Promise<Member | null> {
-		const existing = this.members.get(id);
+		const existing = this.findNotRemoved(id);
 		if (existing === undefined) {
 			return null;
 		}
@@ -57,8 +57,27 @@ export class InMemoryMemberRepository implements MemberRepository {
 		return this.replace(id, { role });
 	}
 
+	// Keeps no sessions, passkeys, or codes, so marking the member removed is the whole removal.
+	async remove(id: MemberId): Promise<Member | null> {
+		const existing = this.findNotRemoved(id);
+		if (existing === undefined) {
+			return null;
+		}
+
+		if (existing.role === 'admin' && (await this.listAdmins()).length === 1) {
+			throw new LastAdminError();
+		}
+
+		return this.replace(id, { removedAt: new Date() });
+	}
+
 	async rename(id: MemberId, displayName: string): Promise<Member | null> {
-		return this.replace(id, { displayName });
+		return this.findNotRemoved(id) === undefined ? null : this.replace(id, { displayName });
+	}
+
+	private findNotRemoved(id: MemberId): Member | undefined {
+		const existing = this.members.get(id);
+		return existing?.removedAt === undefined ? existing : undefined;
 	}
 
 	private replace(id: MemberId, changes: Partial<Member>): Member | null {

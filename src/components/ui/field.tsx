@@ -163,6 +163,8 @@ function FieldSeparator({
 	);
 }
 
+// The explicit aria-live, which the role implies, keeps an error announced while a Base UI popup hides
+// everything else from screen readers. A caller that changes the role passes the matching aria-live.
 function FieldError({
 	className,
 	children,
@@ -200,6 +202,7 @@ function FieldError({
 	return (
 		<div
 			role="alert"
+			aria-live="assertive"
 			data-slot="field-error"
 			className={cn('text-sm font-normal text-destructive', className)}
 			{...props}

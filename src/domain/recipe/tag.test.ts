@@ -1,38 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeTagLabel, tagKey, tagLabelSchema, tagListSchema } from '@/domain/recipe/tag';
-
-describe('normalizeTagLabel', () => {
-	it('trims and collapses internal whitespace', () => {
-		expect(normalizeTagLabel('  Make   ahead ')).toBe('Make ahead');
-		expect(normalizeTagLabel('Freezer\tfriendly\n')).toBe('Freezer friendly');
-	});
-
-	it('keeps the case as written', () => {
-		expect(normalizeTagLabel('BBQ')).toBe('BBQ');
-	});
-});
-
-describe('tagKey', () => {
-	it('matches labels that differ only in case or spacing', () => {
-		expect(tagKey(' make  AHEAD')).toBe(tagKey('Make ahead'));
-	});
-
-	it('matches composed and decomposed accents', () => {
-		expect(tagKey('Cafe\u0301')).toBe(tagKey('Caf\u00e9'));
-	});
-
-	it('tells different tags apart', () => {
-		expect(tagKey('Soup')).not.toBe(tagKey('Soups'));
-	});
-});
+import { tagLabelSchema, tagListSchema } from '@/domain/recipe/tag';
 
 describe('tagLabelSchema', () => {
 	it('normalizes the label', () => {
 		expect(tagLabelSchema.parse('  Slow   cooked ')).toBe('Slow cooked');
 	});
 
+	it('strips NUL, which Postgres cannot store, rather than refusing it', () => {
+		expect(tagLabelSchema.parse('Bak\0ing')).toBe('Baking');
+	});
+
 	it('rejects a blank label', () => {
 		expect(tagLabelSchema.safeParse(' \t ').success).toBe(false);
+	});
+
+	it('rejects a label of only control characters as blank', () => {
+		const result = tagLabelSchema.safeParse('\0\u0002\u007F');
+		expect(result.error?.issues.map((issue) => issue.message)).toEqual(['Enter a tag.']);
 	});
 });
 
@@ -41,5 +25,9 @@ describe('tagListSchema', () => {
 		expect(
 			tagListSchema.parse(['Baking', ' baking ', 'Make  ahead', 'BAKING', 'make ahead'])
 		).toEqual(['Baking', 'Make ahead']);
+	});
+
+	it('drops a repeat that differs only in control characters', () => {
+		expect(tagListSchema.parse(['Soup', 'So\0up'])).toEqual(['Soup']);
 	});
 });

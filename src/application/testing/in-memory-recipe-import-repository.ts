@@ -89,10 +89,14 @@ export class InMemoryRecipeImportRepository implements RecipeImportRepository {
 			}));
 	}
 
-	async findImagesInUnsavedImports(pathnames: readonly string[], since: Date): Promise<string[]> {
+	async findImagesInUnsavedImports(
+		pathnames: readonly string[],
+		since: Date,
+		excludeMemberId?: MemberId
+	): Promise<string[]> {
 		const named = new Set(
 			[...this.imports.values()]
-				.filter((stored) => this.isUnsaved(stored, since))
+				.filter((stored) => stored.memberId !== excludeMemberId && this.isUnsaved(stored, since))
 				.flatMap((stored) => stored.draft?.content.images?.map(({ pathname }) => pathname) ?? [])
 		);
 		return [...new Set(pathnames)].filter((pathname) => named.has(pathname));

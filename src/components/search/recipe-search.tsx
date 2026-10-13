@@ -99,13 +99,13 @@ function RecipeSearch({
 					className="hidden lg:flex lg:w-64 lg:shrink-0"
 				/>
 				<section aria-labelledby={resultsHeadingId} className="flex min-w-0 flex-1 flex-col gap-6">
-					<Section id={resultsHeadingId} className="sr-only">
+					<Section id={resultsHeadingId} tabIndex={-1} className="sr-only">
 						Results
 					</Section>
 					<RecipeSearchActiveFilters state={state} facets={results.facets} />
 					<div className="flex flex-wrap items-center justify-between gap-4">
 						{/* Outside any keyed subtree, so it stays in place and each new count is announced. */}
-						<p role="status" className="text-sm text-muted-foreground">
+						<p role="status" aria-live="polite" className="text-sm text-muted-foreground">
 							{recipeCount(results.total)}
 							<span className="sr-only">{resultsDescription(state, results, pageCount)}</span>
 						</p>
@@ -143,6 +143,7 @@ function RecipeSearch({
 							page={state.page}
 							pageCount={pageCount}
 							pageHref={(page) => recipeSearchHref({ ...state, page })}
+							resultsHeadingId={resultsHeadingId}
 						/>
 					)}
 				</section>
@@ -153,7 +154,7 @@ function RecipeSearch({
 
 function RecipeSearchSkeleton() {
 	return (
-		<div role="status">
+		<div role="status" aria-live="polite">
 			<span className="sr-only">Loading results</span>
 			<div aria-hidden="true" className="flex flex-col gap-8">
 				<div className="flex max-w-2xl flex-col gap-3">

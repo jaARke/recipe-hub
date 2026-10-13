@@ -64,6 +64,8 @@ type PhotoFieldProps = {
 	role: RecipeImageRole;
 	legend: string;
 	description: string;
+	// The most photos the field takes: a recipe's limit for the role, or fewer, as an import reads.
+	limit: number;
 	photos: readonly RecipeFormPhoto[];
 	// The id the form gives the next photo it adds.
 	nextId: number;
@@ -83,6 +85,7 @@ function photoFieldIds(prefix: string) {
 		description: `${prefix}-description`,
 		error: `${prefix}-error`,
 		choose: `${prefix}-choose`,
+		limit: `${prefix}-limit`,
 		actions: (photoId: number) => `${prefix}-photo-${photoId}-actions`,
 		alt: (photoId: number) => `${prefix}-photo-${photoId}-alt`,
 		photoError: (photoId: number) => `${prefix}-photo-${photoId}-error`,
@@ -204,6 +207,7 @@ function PhotoField({
 	role,
 	legend,
 	description,
+	limit,
 	photos,
 	nextId,
 	dispatch,
@@ -220,6 +224,8 @@ function PhotoField({
 	// One for each photo still processing or uploading, so removing it or leaving the page stops it.
 	const uploadsRef = React.useRef(new Map<number, AbortController>());
 	const ids = photoFieldIds(idPrefix);
+	const isFull = photos.length >= limit;
+	const limitMessage = `You can add up to ${limit} photos here. Remove one to add another.`;
 
 	React.useEffect(() => {
 		const uploads = uploadsRef.current;
@@ -266,13 +272,22 @@ function PhotoField({
 		}
 	}
 
+	// Photos past the limit are left out, and the announcement says so.
 	function addFiles(files: readonly File[]) {
 		if (files.length === 0) {
 			return;
 		}
-		dispatch({ type: 'addPhotos', role, fileNames: files.map((file) => file.name) });
-		setAnnouncement(`Added ${countPhotos(files.length)}.`);
-		files.forEach((file, index) => void processPhoto(nextId + index, file));
+		const added = files.slice(0, Math.max(limit - photos.length, 0));
+		const leftOut = files.length - added.length;
+		if (added.length > 0) {
+			dispatch({ type: 'addPhotos', role, fileNames: added.map((file) => file.name) });
+			added.forEach((file, index) => void processPhoto(nextId + index, file));
+		}
+		const sentences = [
+			added.length > 0 && `Added ${countPhotos(added.length)}.`,
+			leftOut > 0 && `${countPhotos(leftOut)} didn't fit. ${limitMessage}`,
+		];
+		setAnnouncement(sentences.filter((sentence) => typeof sentence === 'string').join(' '));
 	}
 
 	function removePhoto(photo: RecipeFormPhoto, index: number) {
@@ -460,13 +475,21 @@ function PhotoField({
 					<EmptyMedia variant="icon">
 						<ImagePlusIcon aria-hidden="true" />
 					</EmptyMedia>
-					<EmptyDescription>Drag photos here, or</EmptyDescription>
+					{isFull ? (
+						<EmptyDescription id={ids.limit}>{limitMessage}</EmptyDescription>
+					) : (
+						<EmptyDescription>Drag photos here, or</EmptyDescription>
+					)}
 				</EmptyHeader>
 				<EmptyContent>
+					{/* Stays focusable when full, so focus is not lost as the last photo that fits is chosen. */}
 					<Button
 						id={ids.choose}
 						type="button"
 						variant="outline"
+						disabled={isFull}
+						focusableWhenDisabled
+						aria-describedby={isFull ? ids.limit : undefined}
 						onClick={() => inputRef.current?.click()}
 					>
 						Choose photos
@@ -494,7 +517,7 @@ function PhotoField({
 					{photos.map((photo, index) => renderPhoto(photo, index))}
 				</ul>
 			)}
-			<p role="status" className="sr-only">
+			<p role="status" aria-live="polite" className="sr-only">
 				{announcement}
 			</p>
 		</FieldSet>

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageSection } from '@/components/layout/page-section';
 import { sessionLifetimeDays, signInCodeLifetimeMinutes } from '@/domain/member/member';
+import { removedImageLifetimeDays } from '@/domain/recipe/image-retention';
 import { importDraftLifetimeDays } from '@/domain/recipe/recipe-import';
 import { siteName } from '@/lib/site';
 
@@ -40,8 +41,7 @@ export default function PrivacyPage() {
 				<ul className={listClassName}>
 					<li>Your display name is public. It appears beside recipes you add.</li>
 					<li>
-						Your email address is private. Sign-in codes are sent to it, admins can see it, and it
-						labels your import requests in the AI Gateway&apos;s usage reports.
+						Your email address is private. Sign-in codes are sent to it, and admins can see it.
 					</li>
 					<li>
 						A sign-in code is stored encrypted until it&apos;s used, or for{' '}
@@ -68,9 +68,9 @@ export default function PrivacyPage() {
 						provider keeps them after answering.
 					</li>
 					<li>
-						Each request an import makes is labeled with your email address in the AI Gateway&apos;s
-						usage reports. The model&apos;s provider gets a coded form of your account id instead,
-						so it can trace misuse to an account without knowing who you are.
+						Each request an import makes is labeled with your account id in the AI Gateway&apos;s
+						usage reports, never your name or email address. The model&apos;s provider gets a coded
+						form of that id, so it can trace misuse to an account without knowing who you are.
 					</li>
 					<li>
 						An import&apos;s draft is kept until you save it as a recipe, or for{' '}
@@ -103,6 +103,10 @@ export default function PrivacyPage() {
 					<li>
 						The site is hosted by Vercel. Its database is hosted by Neon, and photos are stored in
 						Vercel Blob.
+					</li>
+					<li>
+						A photo or scan that&apos;s removed, or that belongs to a deleted recipe, is kept for{' '}
+						{removedImageLifetimeDays} days before it&apos;s deleted for good.
 					</li>
 					<li>Imports are read by AI models through Vercel&apos;s AI Gateway.</li>
 					<li>

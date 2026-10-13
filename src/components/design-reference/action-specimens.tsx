@@ -134,12 +134,14 @@ function SamplePageLinks({
 	));
 }
 
+// Each wraps on the narrowest phones, as RecipePagination does, and has its own name, since this page
+// shows several.
 function PaginationSpecimen() {
 	return (
 		<div className="grid gap-6 md:grid-cols-2">
 			<Specimen label="A middle page, with gaps on both sides">
-				<Pagination>
-					<PaginationContent>
+				<Pagination aria-label="Pagination, a middle page">
+					<PaginationContent className="flex-wrap justify-center">
 						<PaginationItem>
 							<PaginationPrevious href="#pagination" />
 						</PaginationItem>
@@ -159,8 +161,8 @@ function PaginationSpecimen() {
 				</Pagination>
 			</Specimen>
 			<Specimen label="The first page, which has no previous link">
-				<Pagination>
-					<PaginationContent>
+				<Pagination aria-label="Pagination, the first page">
+					<PaginationContent className="flex-wrap justify-center">
 						<SamplePageLinks pages={[1, 2, 3]} currentPage={1} />
 						<PaginationItem>
 							<PaginationNext href="#pagination" />

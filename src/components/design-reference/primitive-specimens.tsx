@@ -3,6 +3,8 @@ import {
 	ButtonSpecimen,
 	PaginationSpecimen,
 } from '@/components/design-reference/action-specimens';
+import { AlertDialogSpecimen } from '@/components/design-reference/alert-dialog-specimen';
+import { ComboboxSpecimen } from '@/components/design-reference/combobox-specimen';
 import {
 	AlertSpecimen,
 	AttachmentSpecimen,
@@ -47,11 +49,13 @@ const primitives = [
 	{ id: 'label', title: 'Label', Content: LabelSpecimen },
 	{ id: 'field', title: 'Field', Content: FieldSpecimen },
 	{ id: 'select', title: 'Select', Content: SelectSpecimen },
+	{ id: 'combobox', title: 'Combobox', Content: ComboboxSpecimen },
 	{ id: 'checkbox', title: 'Checkbox', Content: CheckboxSpecimen },
 	{ id: 'attachment', title: 'Attachment', Content: AttachmentSpecimen },
 	{ id: 'tabs', title: 'Tabs', Content: TabsSpecimen },
 	{ id: 'carousel', title: 'Carousel', Content: CarouselSpecimen },
 	{ id: 'dialog', title: 'Dialog', Content: DialogSpecimen },
+	{ id: 'alert-dialog', title: 'Alert dialog', Content: AlertDialogSpecimen },
 	{ id: 'dropdown-menu', title: 'Dropdown menu', Content: DropdownMenuSpecimen },
 	{ id: 'tooltip', title: 'Tooltip', Content: TooltipSpecimen },
 	{ id: 'alert', title: 'Alert', Content: AlertSpecimen },

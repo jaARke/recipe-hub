@@ -1,3 +1,4 @@
+import { PageChangeFocus } from '@/components/recipe/page-change-focus';
 import { pageItems } from '@/components/recipe/page-items';
 import {
 	Pagination,
@@ -14,11 +15,13 @@ type RecipePaginationProps = {
 	pageCount: number;
 	// Each page's link, carrying whatever else the URL holds, such as the order.
 	pageHref: (page: number) => string;
+	// The heading above the results, focusable with tabIndex -1, which takes focus on a page change.
+	resultsHeadingId: string;
 };
 
-function RecipePagination({ page, pageCount, pageHref }: RecipePaginationProps) {
+function RecipePagination({ page, pageCount, pageHref, resultsHeadingId }: RecipePaginationProps) {
 	return (
-		<div className="flex flex-col items-center gap-3">
+		<PageChangeFocus page={page} resultsHeadingId={resultsHeadingId}>
 			<Pagination>
 				{/* Wraps on the narrowest phones rather than scrolling sideways. */}
 				<PaginationContent className="flex-wrap justify-center">
@@ -54,7 +57,7 @@ function RecipePagination({ page, pageCount, pageHref }: RecipePaginationProps) 
 			<p className="text-sm text-muted-foreground">
 				Page {page} of {pageCount}
 			</p>
-		</div>
+		</PageChangeFocus>
 	);
 }
 

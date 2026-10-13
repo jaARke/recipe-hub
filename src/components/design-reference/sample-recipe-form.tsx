@@ -60,9 +60,11 @@ const saveSampleRecipe: FormAction = (_state, formData) =>
 
 function SampleRecipeForm({
 	initial,
+	tagLabels,
 	editing,
 }: {
 	initial: RecipeFormValues;
+	tagLabels: readonly string[];
 	editing?: EditedRecipe;
 }) {
 	return (
@@ -70,6 +72,7 @@ function SampleRecipeForm({
 			initial={initial}
 			action={saveSampleRecipe}
 			uploadFolders={sampleUploadFolders}
+			tagLabels={tagLabels}
 			uploader={sampleUpload}
 			editing={editing}
 			submitLabel="Save recipe"

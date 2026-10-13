@@ -1,5 +1,9 @@
 import type { UnsavedImportDto } from '@/application/ingestion/recipe-import-dtos';
-import { ReferenceSubsection, Specimen } from '@/components/design-reference/reference-section';
+import {
+	ReferenceSubsection,
+	ReferenceSubsectionNav,
+	Specimen,
+} from '@/components/design-reference/reference-section';
 import {
 	sampleCatalogFacets,
 	sampleContributor,
@@ -75,10 +79,15 @@ const noResultStates: readonly { label: string; state: RecipeSearchState }[] = [
 	},
 ];
 
-// Any id and version: the stand-in action never reads them, and they mark the form as editing.
+// Every sample recipe's tags, most used first, as the recipe form suggests them.
+const sampleTagLabels = sampleCatalogFacets.tags.map(({ label }) => label);
+
+// Any id and version: the stand-in action never reads them, and they mark the form as editing. No
+// other sample recipe is slow cooked, so the pot roast can respell that tag.
 const sampleEditedRecipe: EditedRecipe = {
 	id: '0199c7a4-2c3e-7b1a-9f00-000000000001',
 	version: '2026-10-12T00:00:00.000Z',
+	respellableTags: ['Slow cooked'],
 };
 
 // An import as an extractor might hand it over: no title, and a line and a step to check against
@@ -163,182 +172,246 @@ const entryDraftSamples: readonly { label: string; imports: readonly UnsavedImpo
 	{ label: 'With no drafts', imports: [] },
 ];
 
-function CompositionSpecimens() {
+// One entry per composition, browsing first and contributing last.
+const subsections = [
+	{
+		id: 'recipe-grid',
+		title: 'Recipe grid',
+		description:
+			"One column on phones, two on tablets, three on desktop. Each card is a single link to its recipe, and a recipe without a photo keeps the photo's box.",
+		Content: RecipeGridSpecimen,
+	},
+	{
+		id: 'recipe-grid-loading',
+		title: 'Recipe grid, loading',
+		description: 'Skeletons hold the same layout while recipes load.',
+		Content: RecipeGridSkeleton,
+	},
+	{
+		id: 'recipe-pagination',
+		title: 'Recipe pagination',
+		description:
+			"Previous and Next only where they lead somewhere, the first and last pages, and the current page with one on each side. Each page's link comes from the page, so it keeps the rest of the URL, such as the order. Here every link stays on this page.",
+		Content: RecipePaginationSpecimen,
+	},
+	{
+		id: 'recipe-detail',
+		title: 'Recipe detail',
+		description:
+			"Reading width, with ingredients and steps in text-lg. The cover and the row of other photos each open a viewer of every photo, and the pencil beside the title, for the contributor and admins, opens the edit page. Its headings start at h4 here, under this page's own.",
+		Content: RecipeDetailSpecimen,
+	},
+	{
+		id: 'empty-state',
+		title: 'Empty state',
+		description: 'The home page and search before anyone adds a recipe.',
+		Content: RecipesEmptyState,
+	},
+	{
+		id: 'search-bar',
+		title: 'Search bar',
+		description:
+			'In the header, a field from sm that starts a fresh search, and on phones a link to the search page. The search page leaves both off, since it has its own field.',
+		Content: SearchBarSpecimen,
+	},
+	{
+		id: 'search-results',
+		title: 'Search results',
+		description:
+			'A search for butter among baking recipes added by one member. Filters sit beside the results from lg and fold into a disclosure below it; they apply with their button, while the order applies on selection. Active filters are links that remove themselves, the count is announced as it changes, and matches are marked. Its headings start at h4 here.',
+		Content: SearchResultsSpecimen,
+	},
+	{
+		id: 'search-results-loading',
+		title: 'Search results, loading',
+		description: 'Skeletons hold the same layout while results load.',
+		Content: RecipeSearchSkeleton,
+	},
+	{
+		id: 'search-no-results',
+		title: 'No results',
+		description:
+			'Each says what found nothing and how to widen the search. A search of an empty catalog shows the empty state instead.',
+		Content: NoResultsSpecimen,
+	},
+	{
+		id: 'recipe-form',
+		title: 'Recipe form',
+		description:
+			"For adding and editing a recipe, and for reviewing an import, whose problems a summary at the top lists and links to until the first save; on the review page it takes focus. The member can mark each problem as checked, in the summary or beside its field, which dims it and counts it but never holds up saving. Ingredients and steps are lists of growing fields in sections, and each item's menu moves or removes it; each ingredient shows how it will read. Tags show as chips and suggest the labels in use, still taking new ones, and editing can respell a tag no other recipe uses (here, Slow cooked on the pot roast). Chosen photos are resized and upload at once, and pages of the original recipe move up and down. Here uploads are simulated, and saving checks the recipe as the site does but saves nothing.",
+		Content: RecipeFormSpecimen,
+	},
+	{
+		id: 'recipe-entry',
+		title: 'Adding a recipe',
+		description:
+			"Three ways in, one tab each, and a fourth for the member's unsaved drafts, counted in its label; hidden tabs keep what was entered. A link or photos of the pages, which upload as they're chosen, are read into a draft that opens in the recipe form for review. Reading takes up to a minute or two, so the form shows what it's reading and for how long, announcing the stage once and not each second. Here each import waits four seconds and then shows its error, since nothing is imported.",
+		Content: RecipeEntrySpecimen,
+	},
+] as const;
+
+function RecipeGridSpecimen() {
 	return (
-		<div className="flex flex-col gap-16">
-			<ReferenceSubsection
-				id="recipe-grid"
-				title="Recipe grid"
-				description="One column on phones, two on tablets, three on desktop. Each card is a single link to its recipe, and a recipe without a photo keeps the photo's box."
-			>
-				<RecipeGrid>
-					{sampleRecipeSummaries.map((recipe) => (
-						<li key={recipe.id}>
-							<RecipeCard recipe={recipe} />
-						</li>
-					))}
-				</RecipeGrid>
-			</ReferenceSubsection>
-			<ReferenceSubsection
-				id="recipe-grid-loading"
-				title="Recipe grid, loading"
-				description="Skeletons hold the same layout while recipes load."
-			>
-				<RecipeGridSkeleton />
-			</ReferenceSubsection>
-			<ReferenceSubsection
-				id="recipe-pagination"
-				title="Recipe pagination"
-				description="Previous and Next only where they lead somewhere, the first and last pages, and the current page with one on each side. Each page's link comes from the page, so it keeps the rest of the URL, such as the order. Here every link stays on this page."
-			>
-				<Specimen>
-					<RecipePagination page={5} pageCount={10} pageHref={() => '#recipe-pagination'} />
+		<RecipeGrid>
+			{sampleRecipeSummaries.map((recipe) => (
+				<li key={recipe.id}>
+					<RecipeCard recipe={recipe} headingTag="h4" />
+				</li>
+			))}
+		</RecipeGrid>
+	);
+}
+
+function RecipePaginationSpecimen() {
+	return (
+		<Specimen>
+			<RecipePagination
+				page={5}
+				pageCount={10}
+				pageHref={() => '#recipe-pagination'}
+				resultsHeadingId="recipe-pagination"
+			/>
+		</Specimen>
+	);
+}
+
+function RecipeDetailSpecimen() {
+	return (
+		<Specimen className="px-0 py-10 sm:py-14">
+			<PageContainer width="reading">
+				<RecipeDetail
+					recipe={sampleRecipeDetail}
+					headingLevel={4}
+					titleAction={<RecipeEditLink slug={sampleRecipeDetail.slug} />}
+				/>
+			</PageContainer>
+		</Specimen>
+	);
+}
+
+function SearchBarSpecimen() {
+	return (
+		<div className="grid gap-6 md:grid-cols-2">
+			<Specimen label="From sm">
+				<HeaderSearchForm id="design-header-search" />
+			</Specimen>
+			<Specimen label="On phones">
+				<HeaderSearchLink />
+			</Specimen>
+		</div>
+	);
+}
+
+function SearchResultsSpecimen() {
+	return (
+		<>
+			<Specimen>
+				<RecipeSearch
+					state={sampleSearchState}
+					results={sampleSearchPage}
+					pageCount={1}
+					headingLevel={4}
+				/>
+			</Specimen>
+			<div className="grid gap-6 md:grid-cols-2">
+				<Specimen label="Below lg: the filters in a disclosure, over every sample recipe">
+					<RecipeSearchFiltersDisclosure
+						idPrefix="design-filters-disclosure"
+						state={sampleCatalogState}
+						facets={sampleCatalogFacets}
+						headingTag="h4"
+					/>
 				</Specimen>
-			</ReferenceSubsection>
-			<ReferenceSubsection
-				id="recipe-detail"
-				title="Recipe detail"
-				description="Reading width, with ingredients and steps in text-lg. The cover and the row of other photos each open a viewer of every photo, and the pencil beside the title, for the contributor and admins, opens the edit page. Its headings start at h4 here, under this page's own."
-			>
-				<Specimen className="px-0 py-10 sm:py-14">
+				<Specimen label="From lg: the filters in a sidebar, over every sample recipe">
+					<RecipeSearchFiltersSidebar
+						idPrefix="design-filters-sidebar"
+						state={sampleCatalogState}
+						facets={sampleCatalogFacets}
+						headingTag="h4"
+					/>
+				</Specimen>
+			</div>
+			<Specimen label="When nothing matches exactly">
+				<RecipeSearchCloseMatches text="chiken soup" />
+			</Specimen>
+		</>
+	);
+}
+
+function NoResultsSpecimen() {
+	return (
+		<div className="grid gap-6 lg:grid-cols-3">
+			{noResultStates.map(({ label, state }) => (
+				<Specimen key={label} label={label} frame="bare">
+					<RecipeSearchEmptyState state={state} />
+				</Specimen>
+			))}
+		</div>
+	);
+}
+
+function RecipeFormSpecimen() {
+	return recipeFormSamples.map(({ label, initial, editing }) => (
+		<Specimen key={label} label={label} className="px-0 py-10 sm:py-14">
+			<PageContainer width="reading">
+				<SampleRecipeForm initial={initial} tagLabels={sampleTagLabels} editing={editing} />
+			</PageContainer>
+		</Specimen>
+	));
+}
+
+function RecipeEntrySpecimen() {
+	return (
+		<>
+			{entryDraftSamples.map(({ label, imports }) => (
+				<Specimen key={label} label={label} className="px-0 py-10 sm:py-14">
 					<PageContainer width="reading">
-						<RecipeDetail
-							recipe={sampleRecipeDetail}
-							headingLevel={4}
-							titleAction={<RecipeEditLink slug={sampleRecipeDetail.slug} />}
+						<RecipeEntryTabs
+							forms={{
+								manual: (
+									<SampleRecipeForm initial={recipeFormValues()} tagLabels={sampleTagLabels} />
+								),
+								url: <SampleUrlImportForm />,
+								photo: <SampleScanImportForm />,
+							}}
+							unsavedImports={imports}
+							now={sampleImportsNow}
 						/>
 					</PageContainer>
 				</Specimen>
-			</ReferenceSubsection>
-			<ReferenceSubsection
-				id="empty-state"
-				title="Empty state"
-				description="The home page and search before anyone adds a recipe."
-			>
-				<RecipesEmptyState />
-			</ReferenceSubsection>
-			<ReferenceSubsection
-				id="search-bar"
-				title="Search bar"
-				description="In the header, a field from sm that starts a fresh search, and on phones a link to the search page. The search page leaves both off, since it has its own field."
-			>
-				<div className="grid gap-6 md:grid-cols-2">
-					<Specimen label="From sm">
-						<HeaderSearchForm id="design-header-search" />
-					</Specimen>
-					<Specimen label="On phones">
-						<HeaderSearchLink />
-					</Specimen>
-				</div>
-			</ReferenceSubsection>
-			<ReferenceSubsection
-				id="search-results"
-				title="Search results"
-				description="A search for butter among baking recipes added by one member. Filters sit beside the results from lg and fold into a disclosure below it; they apply with their button, while the order applies on selection. Active filters are links that remove themselves, the count is announced as it changes, and matches are marked. Its headings start at h4 here."
-			>
-				<Specimen>
-					<RecipeSearch
-						state={sampleSearchState}
-						results={sampleSearchPage}
-						pageCount={1}
-						headingLevel={4}
+			))}
+			<div className="grid gap-6 md:grid-cols-2">
+				<Specimen label="While a link is read">
+					<RecipeImportSubmit
+						pending
+						label="Import recipe"
+						pendingLabel="Importing recipe"
+						stage="Reading the page…"
 					/>
 				</Specimen>
-				<div className="grid gap-6 md:grid-cols-2">
-					<Specimen label="Below lg: the filters in a disclosure, over every sample recipe">
-						<RecipeSearchFiltersDisclosure
-							idPrefix="design-filters-disclosure"
-							state={sampleCatalogState}
-							facets={sampleCatalogFacets}
-							headingTag="h4"
-						/>
-					</Specimen>
-					<Specimen label="From lg: the filters in a sidebar, over every sample recipe">
-						<RecipeSearchFiltersSidebar
-							idPrefix="design-filters-sidebar"
-							state={sampleCatalogState}
-							facets={sampleCatalogFacets}
-							headingTag="h4"
-						/>
-					</Specimen>
-				</div>
-				<Specimen label="When nothing matches exactly">
-					<RecipeSearchCloseMatches text="chiken soup" />
+				<Specimen label="While photos upload">
+					<RecipeImportSubmit
+						pending={false}
+						label="Read recipe"
+						pendingLabel="Reading recipe"
+						stage="Reading the photos…"
+						waitNote="Wait for the photos to finish uploading."
+					/>
 				</Specimen>
-			</ReferenceSubsection>
-			<ReferenceSubsection
-				id="search-results-loading"
-				title="Search results, loading"
-				description="Skeletons hold the same layout while results load."
-			>
-				<RecipeSearchSkeleton />
-			</ReferenceSubsection>
-			<ReferenceSubsection
-				id="search-no-results"
-				title="No results"
-				description="Each says what found nothing and how to widen the search. A search of an empty catalog shows the empty state instead."
-			>
-				<div className="grid gap-6 lg:grid-cols-3">
-					{noResultStates.map(({ label, state }) => (
-						<Specimen key={label} label={label} frame="bare">
-							<RecipeSearchEmptyState state={state} />
-						</Specimen>
-					))}
-				</div>
-			</ReferenceSubsection>
-			<ReferenceSubsection
-				id="recipe-form"
-				title="Recipe form"
-				description="For adding and editing a recipe, and for reviewing an import, whose problems a summary at the top lists and links to until the first save; on the review page it takes focus. The member can mark each problem as checked, in the summary or beside its field, which dims it and counts it but never holds up saving. Ingredients and steps are lists of growing fields in sections, and each item's menu moves or removes it; each ingredient shows how it will read. Chosen photos are resized and upload at once, and pages of the original recipe move up and down. Here uploads are simulated, and saving checks the recipe as the site does but saves nothing."
-			>
-				{recipeFormSamples.map(({ label, initial, editing }) => (
-					<Specimen key={label} label={label} className="px-0 py-10 sm:py-14">
-						<PageContainer width="reading">
-							<SampleRecipeForm initial={initial} editing={editing} />
-						</PageContainer>
-					</Specimen>
-				))}
-			</ReferenceSubsection>
-			<ReferenceSubsection
-				id="recipe-entry"
-				title="Adding a recipe"
-				description="Three ways in, one tab each, and a fourth for the member's unsaved drafts, counted in its label; hidden tabs keep what was entered. A link or photos of the pages, which upload as they're chosen, are read into a draft that opens in the recipe form for review. Reading takes up to a minute or two, so the form shows what it's reading and for how long, announcing the stage once and not each second. Here each import waits four seconds and then shows its error, since nothing is imported."
-			>
-				{entryDraftSamples.map(({ label, imports }) => (
-					<Specimen key={label} label={label} className="px-0 py-10 sm:py-14">
-						<PageContainer width="reading">
-							<RecipeEntryTabs
-								forms={{
-									manual: <SampleRecipeForm initial={recipeFormValues()} />,
-									url: <SampleUrlImportForm />,
-									photo: <SampleScanImportForm />,
-								}}
-								unsavedImports={imports}
-								now={sampleImportsNow}
-							/>
-						</PageContainer>
-					</Specimen>
-				))}
-				<div className="grid gap-6 md:grid-cols-2">
-					<Specimen label="While a link is read">
-						<RecipeImportSubmit
-							pending
-							label="Import recipe"
-							pendingLabel="Importing recipe"
-							stage="Reading the page…"
-						/>
-					</Specimen>
-					<Specimen label="While photos upload">
-						<RecipeImportSubmit
-							pending={false}
-							label="Read recipe"
-							pendingLabel="Reading recipe"
-							stage="Reading the photos…"
-							waitNote="Wait for the photos to finish uploading."
-						/>
-					</Specimen>
-				</div>
-			</ReferenceSubsection>
+			</div>
+		</>
+	);
+}
+
+function CompositionSpecimens() {
+	return (
+		<div className="flex flex-col gap-16">
+			<ReferenceSubsectionNav label="Compositions" subsections={subsections} />
+			{subsections.map(({ id, title, description, Content }) => (
+				<ReferenceSubsection key={id} id={id} title={title} description={description}>
+					<Content />
+				</ReferenceSubsection>
+			))}
 		</div>
 	);
 }

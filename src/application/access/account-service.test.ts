@@ -98,6 +98,21 @@ describe('sendSignInCode', () => {
 		expect(emails.sentMessages).toEqual([]);
 	});
 
+	it('sends nothing to a removed member, even with an open invite bound to the address', async () => {
+		const { members, emails, service, createInvite } = createAccounts();
+		const ada = await members.create({
+			email: 'ada@example.com',
+			displayName: 'Ada',
+			role: 'member',
+		});
+		await members.remove(ada.id);
+		await createInvite('Ada', 'ada@example.com');
+
+		await expect(service.sendSignInCode('ada@example.com', code)).resolves.toBeUndefined();
+
+		expect(emails.sentMessages).toEqual([]);
+	});
+
 	it('logs a failed email without the address or code, and does not throw', async () => {
 		const { members, emails, service } = createAccounts();
 		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });

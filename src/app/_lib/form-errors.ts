@@ -13,12 +13,15 @@ const errorMessages: Partial<Record<string, string>> = {
 	'access.invite-not-found': 'That invite was already used, revoked, or has expired.',
 	'access.request-not-found':
 		'That request was already handled. Reload the page to see the latest.',
+	'member.not-found': 'That account was removed. Reload the page to see the latest.',
 	'member.role-conflict': "That member's role already changed. Reload the page to see the latest.",
 	'member.last-admin': "You can't remove the last admin. Make someone else an admin first.",
+	'member.self-removal': "You can't remove yourself. Ask another admin to remove you.",
 	'recipe.not-found':
 		'That recipe was deleted, or this page is out of date. Reload the page and try again.',
 	'recipe.edit-conflict':
 		'This recipe changed after you opened it. Copy anything you want to keep, then reload the page and make your changes again.',
+	'image.invalid-upload': "This photo didn't upload. Remove it and add it again.",
 	'import.unavailable': "This import can't be saved anymore. Import the recipe again.",
 	'import.page-refused': "This website doesn't support importing recipes.",
 	'import.page-unavailable': "We couldn't open that page. Check the link and try again.",

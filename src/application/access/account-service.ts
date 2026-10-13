@@ -72,11 +72,15 @@ export class AccountService {
 		logger.info('Access granted', { memberId, inviteId });
 	}
 
-	// Members sign in with codes; an invitee confirms the address bound to their open invite.
+	// Members sign in with codes; an invitee confirms the address bound to their open invite. A
+	// removed member's address gets none, even with an open invite: its code would sign in to the
+	// removed account.
 	private async mayReceiveCode(email: string): Promise<boolean> {
-		return (
-			(await this.members.findByEmail(email)) !== null ||
-			(await this.invites.findOpenByEmail(email, new Date())) !== null
-		);
+		const member = await this.members.findByEmail(email);
+		if (member !== null) {
+			return member.removedAt === undefined;
+		}
+
+		return (await this.invites.findOpenByEmail(email, new Date())) !== null;
 	}
 }

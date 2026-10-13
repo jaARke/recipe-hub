@@ -3,10 +3,13 @@ import { attachDatabasePool } from '@vercel/functions';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { pinFullSslVerification } from '@/infrastructure/db/connection-string';
+import { printQueryErrorsWithoutParameters } from '@/infrastructure/db/query-errors';
 import { env } from '@/lib/env';
 import { getLogger } from '@/lib/logger';
 
 const logger = getLogger('db');
+
+printQueryErrorsWithoutParameters();
 
 const pool = new Pool({
 	connectionString: pinFullSslVerification(env.DATABASE_URL),

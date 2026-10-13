@@ -1,5 +1,5 @@
 import { getSessionCookie } from 'better-auth/cookies';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { InviteUnavailableError } from '@/application/access/errors';
 import { InviteService } from '@/application/access/invite-service';
@@ -16,7 +16,7 @@ import {
 import { DrizzleAccessRequestRepository } from '@/infrastructure/db/drizzle-access-request-repository';
 import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
-import { users } from '@/infrastructure/db/schema';
+import { passkeys, rateLimits, sessions, users } from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 
 const clientIp = '198.51.100.7';
@@ -33,7 +33,6 @@ const enabledPaths = [
 	'/passkey/generate-authenticate-options',
 	'/passkey/verify-authentication',
 	'/passkey/list-user-passkeys',
-	'/passkey/update-passkey',
 	'/passkey/delete-passkey',
 ];
 
@@ -173,6 +172,22 @@ describe('sending a sign-in code', () => {
 		expect(await forStranger.json()).toEqual(await forMember.json());
 		expect(emails.sentMessages.map((message) => message.to)).toEqual(['ada@example.com']);
 		expect(await members.findByEmail('stranger@example.com')).toBeNull();
+	});
+
+	it('answers a removed member as it answers an unknown address, with no email', async () => {
+		const ada = await members.create({
+			email: 'ada@example.com',
+			displayName: 'Ada',
+			role: 'member',
+		});
+		await members.remove(ada.id);
+
+		const forRemoved = await requestCode('ada@example.com');
+		const forStranger = await requestCode('stranger@example.com');
+
+		expect(forRemoved.status).toBe(forStranger.status);
+		expect(await forRemoved.json()).toEqual(await forStranger.json());
+		expect(emails.sentMessages).toEqual([]);
 	});
 
 	it('refuses a fourth request from one client within a minute', async () => {
@@ -323,18 +338,47 @@ describe('passkeys', () => {
 
 		expect(await response.json()).toMatchObject({ rp: { id: 'recipes.example.com' } });
 	});
+
+	it("refuses a sign-in naming a removed member's passkey", async () => {
+		const ada = await members.create({
+			email: 'ada@example.com',
+			displayName: 'Ada',
+			role: 'member',
+		});
+		await db.insert(passkeys).values({
+			publicKey: 'public-key',
+			userId: ada.id,
+			credentialID: 'ada-credential',
+			counter: 0,
+			deviceType: 'multiDevice',
+			backedUp: true,
+		});
+		await members.remove(ada.id);
+		const options = await request('GET', '/passkey/generate-authenticate-options');
+
+		// The plugin finds the credential before it checks the signature, so none is sent.
+		const response = await request(
+			'POST',
+			'/passkey/verify-authentication',
+			{ response: { id: 'ada-credential' } },
+			cookiesFrom(options.headers)
+		);
+
+		expect(response.status).toBe(401);
+		expect(await response.json()).toMatchObject({ code: 'PASSKEY_NOT_FOUND' });
+		expect(await db.$count(sessions)).toBe(0);
+	});
 });
 
 describe('routes', () => {
-	it('answers 404 on every route the flows do not call', async () => {
-		const unused = mountedRoutes().filter(
-			({ path }) => !enabledPaths.includes(path) && !path.includes(':')
-		);
+	it('answers 404 on every route the flows do not call, parameterized ones included', async () => {
+		const unused = mountedRoutes().filter(({ path }) => !enabledPaths.includes(path));
 
 		for (const { path, method } of unused) {
-			expect((await request(method, path)).status, path).toBe(404);
+			const requested = path.replace(/:\w+/g, 'sample');
+			expect((await request(method, requested)).status, path).toBe(404);
 		}
-		expect(unused.length).toBeGreaterThan(0);
+		expect(unused.filter(({ path }) => path.includes(':'))).not.toHaveLength(0);
 	});
 
 	it('serves every route the flows call', async () => {
@@ -346,12 +390,49 @@ describe('routes', () => {
 		}
 	});
 
-	it('mounts no parameterized route but the two disabledPaths cannot name', () => {
-		const parameterized = mountedRoutes().filter(({ path }) => path.includes(':'));
+	it('answers a path it does not serve without a rate-limit row', async () => {
+		const unknown = await request('POST', '/no-such-route');
+		const unused = await request('POST', '/update-user', { name: 'Ada' });
 
-		expect(parameterized.map(({ path }) => path).toSorted()).toEqual([
-			'/callback/:id',
-			'/reset-password/:token',
-		]);
+		expect([unknown.status, unused.status]).toEqual([404, 404]);
+		expect(await db.$count(rateLimits)).toBe(0);
+		await request('GET', '/get-session');
+		expect(await db.$count(rateLimits)).toBe(1);
+	});
+});
+
+describe('logging', () => {
+	it.each([
+		['a route', 'users', 'ada@example.com'],
+		['the rate limiter', 'rate_limits', clientIp],
+	])(
+		'answers 500 and logs a failed query in %s without its parameters',
+		async (_, table, parameter) => {
+			await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
+			await db.execute(sql`drop table ${sql.identifier(table)} cascade`);
+			const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+			const response = await requestCode('ada@example.com');
+
+			expect(response.status).toBe(500);
+			const logged = consoleError.mock.calls.flat().map(String);
+			expect(logged).toHaveLength(1);
+			expect(JSON.parse(logged[0] ?? '')).toMatchObject({ message: 'Better Auth request failed' });
+			expect(logged[0]).not.toContain(parameter);
+		}
+	);
+
+	it("logs Better Auth's own messages without query parameters", () => {
+		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		auth.options.logger.log(
+			'error',
+			'Failed query: select 1 where email = $1\nparams: ada@example.com'
+		);
+
+		expect(JSON.parse(String(consoleError.mock.calls[0]?.[0]))).toMatchObject({
+			message: 'Better Auth reported an error',
+			detail: 'Failed query: select 1 where email = $1',
+		});
 	});
 });

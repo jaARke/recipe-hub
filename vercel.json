@@ -1,4 +1,10 @@
 {
 	"$schema": "https://openapi.vercel.sh/vercel.json",
-	"buildCommand": "pnpm db:migrate && pnpm db:bootstrap && pnpm db:seed && pnpm build"
+	"buildCommand": "pnpm db:migrate && pnpm db:bootstrap && pnpm db:seed && pnpm build",
+	"crons": [
+		{
+			"path": "/api/cron/sweep-images",
+			"schedule": "0 9 * * *"
+		}
+	]
 }

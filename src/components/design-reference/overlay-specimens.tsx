@@ -20,7 +20,6 @@ import {
 } from '@/components/ui/carousel';
 import {
 	Dialog,
-	DialogClose,
 	DialogContent,
 	DialogDescription,
 	DialogFooter,
@@ -147,52 +146,32 @@ function CarouselSpecimen() {
 function DialogSpecimen() {
 	return (
 		<Specimen label="Escape or the close button dismisses; focus returns to the trigger">
-			<div className="flex flex-wrap gap-3">
-				<Dialog>
-					<DialogTrigger render={<Button variant="destructive" />}>
-						<Trash2Icon data-icon="inline-start" aria-hidden="true" />
-						Delete recipe
-					</DialogTrigger>
-					<DialogContent showCloseButton={false}>
-						<DialogHeader>
-							<DialogTitle>Delete Buttermilk biscuits?</DialogTitle>
-							<DialogDescription>
-								The recipe and its photos leave the collection. This cannot be undone.
-							</DialogDescription>
-						</DialogHeader>
-						<DialogFooter>
-							<DialogClose render={<Button variant="outline" />}>Keep recipe</DialogClose>
-							<DialogClose render={<Button variant="destructive" />}>Delete</DialogClose>
-						</DialogFooter>
-					</DialogContent>
-				</Dialog>
-				<Dialog>
-					<DialogTrigger render={<Button variant="outline" />}>
-						<Share2Icon data-icon="inline-start" aria-hidden="true" />
-						Share recipe
-					</DialogTrigger>
-					<DialogContent>
-						<DialogHeader>
-							<DialogTitle>Share Buttermilk biscuits</DialogTitle>
-							<DialogDescription>Anyone who is signed in can open this link.</DialogDescription>
-						</DialogHeader>
-						<Field>
-							<FieldLabel htmlFor="dialog-share-link">Link</FieldLabel>
-							<Input
-								id="dialog-share-link"
-								readOnly
-								defaultValue="https://recipes.example/buttermilk-biscuits"
-							/>
-						</Field>
-						<DialogFooter showCloseButton>
-							<Button>
-								<CopyIcon data-icon="inline-start" aria-hidden="true" />
-								Copy link
-							</Button>
-						</DialogFooter>
-					</DialogContent>
-				</Dialog>
-			</div>
+			<Dialog>
+				<DialogTrigger render={<Button variant="outline" />}>
+					<Share2Icon data-icon="inline-start" aria-hidden="true" />
+					Share recipe
+				</DialogTrigger>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Share Buttermilk biscuits</DialogTitle>
+						<DialogDescription>Anyone who is signed in can open this link.</DialogDescription>
+					</DialogHeader>
+					<Field>
+						<FieldLabel htmlFor="dialog-share-link">Link</FieldLabel>
+						<Input
+							id="dialog-share-link"
+							readOnly
+							defaultValue="https://recipes.example/buttermilk-biscuits"
+						/>
+					</Field>
+					<DialogFooter showCloseButton>
+						<Button>
+							<CopyIcon data-icon="inline-start" aria-hidden="true" />
+							Copy link
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</Specimen>
 	);
 }

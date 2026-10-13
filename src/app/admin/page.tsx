@@ -6,6 +6,7 @@ import {
 	issueInvite,
 	makeAdmin,
 	removeAdmin,
+	removeMember,
 	revokeInvite,
 } from '@/app/admin/actions';
 import type { AccessRequestDto, InviteDto } from '@/application/access/access-dtos';
@@ -32,6 +33,7 @@ const adminActions: AdminActions = {
 	revokeInvite,
 	makeAdmin,
 	removeAdmin,
+	removeMember,
 };
 
 type AdminData = {

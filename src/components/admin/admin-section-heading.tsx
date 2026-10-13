@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { focusFellToPage } from '@/components/forms/focus-fell-to-page';
 
 type AdminSectionHeadingProps = {
 	as: 'h2' | 'h4';
@@ -21,7 +22,7 @@ function AdminSectionHeading({ as: Heading, id, itemCount, children }: AdminSect
 			previousItemCount.current !== undefined &&
 			itemCount < previousItemCount.current;
 		previousItemCount.current = itemCount;
-		if (itemLeft && (document.activeElement === null || document.activeElement === document.body)) {
+		if (itemLeft && focusFellToPage()) {
 			headingRef.current?.focus();
 		}
 	}, [itemCount]);

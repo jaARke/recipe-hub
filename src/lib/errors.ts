@@ -2,6 +2,11 @@
 // presentation maps to a user-facing message; anything else reaching a boundary is unexpected.
 export abstract class AppError extends Error {
 	abstract readonly code: string;
+
+	constructor(message?: string, options?: ErrorOptions) {
+		super(message, options);
+		this.name = new.target.name;
+	}
 }
 
 // Drizzle's query errors end their message with the query's parameters, which can hold email

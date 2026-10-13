@@ -8,6 +8,7 @@ export type NewMember = {
 	role: MemberRole;
 };
 
+// Removed members keep their accounts, so the finds return them; everything else leaves them out.
 export interface MemberRepository {
 	findById(id: MemberId): Promise<Member | null>;
 	findByEmail(email: string): Promise<Member | null>;
@@ -17,9 +18,13 @@ export interface MemberRepository {
 	// Stores the email as verified. Invited members are created by Better Auth when they sign up.
 	create(member: NewMember): Promise<Member>;
 	// Returns null when no member has this id. Throws MemberRoleConflictError when the member already
-	// has the role, and LastAdminError rather than take admin from the only admin. Role changes take
-	// turns, so two admins removing each other at once leave one of them an admin.
+	// has the role, and LastAdminError rather than take admin from the only admin. Role changes and
+	// removals take turns, so two admins removing each other at once leave one of them an admin.
 	setRole(id: MemberId, role: MemberRole): Promise<Member | null>;
+	// Marks the member removed and, in the same write, ends their sessions and deletes their passkeys
+	// and any sign-in code they were sent. Returns null when no member has this id, and throws
+	// LastAdminError rather than remove the only admin.
+	remove(id: MemberId): Promise<Member | null>;
 	// Returns null when no member has this id.
 	rename(id: MemberId, displayName: string): Promise<Member | null>;
 }

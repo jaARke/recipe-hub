@@ -58,8 +58,12 @@ export interface RecipeRepository {
 	// Returns the recipe as it was when deleted, or null when no recipe has this id. Its old slugs are
 	// freed with it.
 	delete(id: RecipeId): Promise<Recipe | null>;
-	// Tag labels in use whose tagKey is one of the given keys, ignoring the excluded recipe's own tags.
+	// The label in use for each of the given tag keys, ignoring the excluded recipe's own tags. A tag's
+	// label is the earliest recipe's spelling, as search facets label it.
 	findTagLabels(keys: readonly string[], excludeRecipeId?: RecipeId): Promise<string[]>;
-	// The given image pathnames that some recipe still lists.
-	findImagesInUse(pathnames: readonly string[]): Promise<string[]>;
+	// Every tag in use, by the label findTagLabels gives it, most used first and then by key.
+	listTagLabels(): Promise<string[]>;
+	// The given image pathnames that some recipe still lists, ignoring the excluded contributor's
+	// recipes.
+	findImagesInUse(pathnames: readonly string[], excludeContributorId?: MemberId): Promise<string[]>;
 }

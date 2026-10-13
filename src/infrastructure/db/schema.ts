@@ -86,6 +86,8 @@ export const recipes = pgTable(
 	(table) => [
 		index('recipes_search_vector_idx').using('gin', table.searchVector),
 		index('recipes_tag_keys_idx').using('gin', table.tagKeys),
+		// Serves the contributor filter and its facet.
+		index('recipes_contributor_id_idx').on(table.contributorId),
 	]
 );
 
@@ -158,6 +160,8 @@ export const users = pgTable(
 		inviteId: uuid('invite_id')
 			.unique()
 			.references((): AnyPgColumn => invites.id),
+		// Set when an admin removes the member. The row stays, so their recipes keep naming them.
+		removedAt: timestamp('removed_at', { withTimezone: true }),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 	},

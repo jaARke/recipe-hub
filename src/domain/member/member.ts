@@ -35,6 +35,8 @@ export const memberSchema = z.object({
 	email: emailAddressSchema,
 	role: memberRoleSchema,
 	createdAt: z.date(),
+	// Set when an admin removed the member, who can no longer sign in. Their recipes still name them.
+	removedAt: z.date().optional(),
 });
 export type Member = z.infer<typeof memberSchema>;
 

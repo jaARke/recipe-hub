@@ -39,11 +39,12 @@ type JsonLdGraph = {
 };
 
 // One recipe's read through its ingredient and step lists: the lists it is inside, and how many
-// elements it has read from them all.
+// elements and characters of text it has read from them all.
 type ListWalk = {
 	graph: JsonLdGraph;
 	inside: Set<JsonObject>;
 	elementsRead: number;
+	charactersRead: number;
 };
 
 // A recipe's ingredients and steps, read in one walk.
@@ -101,11 +102,13 @@ const minutesPerWeek = 7 * minutesPerDay;
 
 const authorNames = new Intl.ListFormat('en', { type: 'conjunction' });
 
-// How deep lists nest in lists, and how many elements and lines of text one recipe's lists hold in
-// all, counting a list again each time a reference reaches it. Real recipes nest two or three deep and
-// hold a few hundred.
+// How deep lists nest in lists, how many elements and lines of text one recipe's lists hold in all,
+// and how many characters their text holds before it is decoded, counting a list or a string again
+// each time a reference reaches it. Real recipes nest two or three deep and hold a few hundred lines
+// and a few thousand characters.
 const maxListDepth = 16;
 const maxListElements = 2000;
+const maxListCharacters = 1_000_000;
 
 // A recipe's lists contain themselves or pass the bounds above, so the page is left to the model.
 class UnreadableListsError extends Error {}
@@ -186,18 +189,30 @@ function resolved(value: unknown, graph: JsonLdGraph): unknown {
 	return value;
 }
 
+// The value's entries with references resolved, each read once however many references reach it.
+function distinctEntries(value: unknown, graph: JsonLdGraph): unknown[] {
+	return [...new Set(list(value).map((entry) => resolved(entry, graph)))];
+}
+
 function decodedText(html: string): string {
 	const text = stringText(html);
 	return htmlEntity.test(text) ? stringText(text) : text;
 }
 
-// The value's lines as text, without blank ones.
-function textLines(value: unknown): string[] {
+// The value's lines as text, without blank ones. Within a walk, a string's characters count toward
+// its bound before they are decoded, since references can reach one long string thousands of times.
+function textLines(value: unknown, walk?: ListWalk): string[] {
 	if (typeof value === 'number') {
 		return [String(value)];
 	}
 	if (typeof value !== 'string') {
 		return [];
+	}
+	if (walk !== undefined) {
+		walk.charactersRead += value.length;
+		if (walk.charactersRead > maxListCharacters) {
+			throw new UnreadableListsError();
+		}
 	}
 	return decodedText(value)
 		.split('\n')
@@ -206,8 +221,8 @@ function textLines(value: unknown): string[] {
 }
 
 // The first value as one line of text, or undefined when there is none.
-function singleLine(value: unknown): string | undefined {
-	const text = textLines(list(value)[0]).join(' ');
+function singleLine(value: unknown, walk?: ListWalk): string | undefined {
+	const text = textLines(list(value)[0], walk).join(' ');
 	return text === '' ? undefined : text;
 }
 
@@ -231,11 +246,13 @@ function namesFragment(recipe: SchemaNode<Recipe>, page: URL): boolean {
 	return [recipe['@id'], recipe.url].some((value) => addressOf(value, page)?.hash === page.hash);
 }
 
-function isMainEntity(recipe: JsonObject, graph: JsonLdGraph): boolean {
-	return graph.nodes.some((node) =>
-		list((node as SchemaNode<CreativeWork>).mainEntity)
-			.map((entity) => resolved(entity, graph))
-			.includes(recipe)
+// Every node any node names as its mainEntity, in one pass, so a page of many recipes is not read once
+// for each of them.
+function mainEntities(graph: JsonLdGraph): Set<unknown> {
+	return new Set(
+		graph.nodes.flatMap((node) =>
+			list((node as SchemaNode<CreativeWork>).mainEntity).map((entity) => resolved(entity, graph))
+		)
 	);
 }
 
@@ -248,9 +265,10 @@ function describesPage(recipe: SchemaNode<Recipe>, page: URL): boolean {
 // or the recipe's url.
 function mainRecipe(graph: JsonLdGraph, page: URL): JsonObject | undefined {
 	const recipes = graph.nodes.filter(isRecipe);
+	const main = mainEntities(graph);
 	return (
 		(page.hash === '' ? undefined : recipes.find((recipe) => namesFragment(recipe, page))) ??
-		recipes.find((recipe) => isMainEntity(recipe, graph)) ??
+		recipes.find((recipe) => main.has(recipe)) ??
 		recipes.find((recipe) => describesPage(recipe, page)) ??
 		recipes.find((recipe) => list((recipe as SchemaNode<Recipe>).recipeIngredient).length > 0) ??
 		recipes[0]
@@ -302,9 +320,9 @@ function nestedLines(
 	return lines;
 }
 
-function propertyValueLine(value: SchemaNode<PropertyValue>): string {
+function propertyValueLine(value: SchemaNode<PropertyValue>, walk: ListWalk): string {
 	return [value.value, value.unitText, value.name]
-		.map(singleLine)
+		.map((part) => singleLine(part, walk))
 		.filter((part) => part !== undefined)
 		.join(' ');
 }
@@ -312,15 +330,15 @@ function propertyValueLine(value: SchemaNode<PropertyValue>): string {
 function ingredientLines(value: unknown, walk: ListWalk): string[] {
 	const item = resolved(value, walk.graph);
 	if (!isObject(item)) {
-		return counted(textLines(item), walk);
+		return counted(textLines(item, walk), walk);
 	}
 	if (hasType(item, 'ItemList')) {
 		return nestedLines(item, walk, ingredientLines);
 	}
 	if (hasType(item, 'PropertyValue')) {
-		return [propertyValueLine(item)].filter((line) => line !== '');
+		return [propertyValueLine(item, walk)].filter((line) => line !== '');
 	}
-	return counted(textLines((item as SchemaNode<ListItem>).name), walk);
+	return counted(textLines((item as SchemaNode<ListItem>).name, walk), walk);
 }
 
 // An ingredient as the page shows it: only the parentheses a recipe plugin added are undone, and every
@@ -351,7 +369,7 @@ function withoutStepNumber(step: string): string {
 function steps(value: unknown, walk: ListWalk): string[] {
 	const item = resolved(value, walk.graph);
 	if (!isObject(item)) {
-		return counted(textLines(item), walk).map(withoutStepNumber);
+		return counted(textLines(item, walk), walk).map(withoutStepNumber);
 	}
 	if (hasType(item, 'ItemList') || hasType(item, 'HowToSection')) {
 		return nestedLines(item, walk, steps);
@@ -359,13 +377,15 @@ function steps(value: unknown, walk: ListWalk): string[] {
 	const step = item as SchemaNode<HowToStep>;
 	// A step can hold its directions and tips as a list rather than as text.
 	const text =
-		singleLine(step.text) ??
+		singleLine(step.text, walk) ??
 		listElements(step, walk)
 			.flatMap((element) =>
-				isObject(element) ? counted(textLines((element as SchemaNode<HowToStep>).text), walk) : []
+				isObject(element)
+					? counted(textLines((element as SchemaNode<HowToStep>).text, walk), walk)
+					: []
 			)
 			.join(' ');
-	const written = text === '' ? singleLine(step.name) : text;
+	const written = text === '' ? singleLine(step.name, walk) : text;
 	return written === undefined ? [] : [withoutStepNumber(written)];
 }
 
@@ -394,7 +414,7 @@ function instructionSections(
 			const sectionSteps = steps(item, walk);
 			if (sectionSteps.length > 0) {
 				sections.push({
-					heading: singleLine((item as SchemaNode<HowToSection>).name),
+					heading: singleLine((item as SchemaNode<HowToSection>).name, walk),
 					steps: sectionSteps,
 				});
 			}
@@ -408,7 +428,7 @@ function instructionSections(
 
 // The recipe's ingredients and steps, or null when its lists cannot be read.
 function recipeLists(recipe: SchemaNode<Recipe>, graph: JsonLdGraph): RecipeLists | null {
-	const walk: ListWalk = { graph, inside: new Set(), elementsRead: 0 };
+	const walk: ListWalk = { graph, inside: new Set(), elementsRead: 0, charactersRead: 0 };
 	try {
 		return {
 			ingredientSections: ingredientSections(recipe, walk),
@@ -482,8 +502,8 @@ function yieldFromText(text: string): ExtractedYield {
 
 // WP Recipe Maker and Tasty Recipes write ["4", "4 servings"]; the entry with words says more.
 function recipeYield(recipe: SchemaNode<Recipe>, graph: JsonLdGraph): ExtractedYield | undefined {
-	const texts = list(recipe.recipeYield)
-		.map((value) => yieldText(resolved(value, graph)))
+	const texts = distinctEntries(recipe.recipeYield, graph)
+		.map(yieldText)
 		.filter((text) => text !== undefined);
 	const hasWords = (text: string) => /\p{L}/u.test(text);
 	const [text] = texts.toSorted(
@@ -532,8 +552,7 @@ function minutes(value: unknown): number | undefined {
 
 // Everyone the value names, as "A, B, and C".
 function names(value: unknown, graph: JsonLdGraph): string | undefined {
-	const written = list(value)
-		.map((entry) => resolved(entry, graph))
+	const written = distinctEntries(value, graph)
 		.map((entry) =>
 			isObject(entry)
 				? singleLine((entry as SchemaNode<Person | Organization>).name)

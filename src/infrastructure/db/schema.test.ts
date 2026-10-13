@@ -6,7 +6,7 @@ import { totalMinutes, type RecipeTimes } from '@/domain/recipe/duration';
 import { recipeContentSchema, type RecipeContentInput } from '@/domain/recipe/recipe';
 import { sampleChickenSoup, sampleRecipeContents } from '@/domain/recipe/samples/sample-recipes';
 import { slugify } from '@/domain/recipe/slug';
-import { tagKey } from '@/domain/recipe/tag';
+import { tagKey } from '@/domain/recipe/tag-normalization';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { recipes } from '@/infrastructure/db/schema';

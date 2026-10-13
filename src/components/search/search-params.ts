@@ -17,7 +17,8 @@ import {
 	type RouteSearchParams,
 } from '@/components/recipe/recipe-list-params';
 import { recipeListParamNames, recipeSearchPath } from '@/components/recipe/recipe-paths';
-import { normalizeTagLabel, tagListSchema } from '@/domain/recipe/tag';
+import { tagListSchema } from '@/domain/recipe/tag';
+import { normalizeTagLabel } from '@/domain/recipe/tag-normalization';
 
 // The search page's URL parameters, by the state they hold.
 export const recipeSearchParamNames = {

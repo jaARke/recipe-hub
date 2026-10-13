@@ -49,7 +49,6 @@ export async function generateMetadata({
 			modifiedTime: recipe.updatedAt.toISOString(),
 			siteName,
 		},
-		twitter: { card: 'summary_large_image' },
 	};
 }
 

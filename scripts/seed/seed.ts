@@ -17,6 +17,7 @@ import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repo
 import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
+import { seedImageEnvironment } from '@/lib/image-paths';
 import { getLogger } from '@/lib/logger';
 
 // A sample's photo is stored here under the file name its pathname ends with.
@@ -24,9 +25,6 @@ const photosFolder = path.join(import.meta.dirname, 'photos');
 
 // Every seed photo is a JPEG, as scripts/seed/photos/SOURCES.md lists.
 const photoContentType = 'image/jpeg';
-
-// Seed photos live at dish/seed/<slug>.jpg, shared by every environment the seed runs in.
-const seedImageEnvironment = 'seed';
 
 // Every sample's contributor. No one signs in as it: its address can never receive a code.
 const sampleContributor: NewMember = {

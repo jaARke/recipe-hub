@@ -18,6 +18,8 @@ const alertVariants = cva(
 	}
 );
 
+// The explicit aria-live, which the role implies, keeps an alert announced while a Base UI popup hides
+// everything else from screen readers. A caller that changes the role passes the matching aria-live.
 function Alert({
 	className,
 	variant,
@@ -27,6 +29,7 @@ function Alert({
 		<div
 			data-slot="alert"
 			role="alert"
+			aria-live="assertive"
 			className={cn(alertVariants({ variant }), className)}
 			{...props}
 		/>

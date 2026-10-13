@@ -311,6 +311,21 @@ export function describeRecipeImportRepositoryContract(
 			expect(named).toEqual([recentScan.pathname]);
 		});
 
+		it("ignores the excluded member's drafts", async () => {
+			const { imports, memberId, otherMemberId } = fixture();
+			const since = new Date(Date.now() - hourMs);
+			await startScanned([cardScan, backScan]);
+			await startScanned([backScan, otherScan], otherMemberId);
+			const pathnames = [cardScan, backScan, otherScan].map(({ pathname }) => pathname);
+
+			expect(
+				(await imports.findImagesInUnsavedImports(pathnames, since, memberId)).toSorted()
+			).toEqual([backScan.pathname, otherScan.pathname]);
+			expect(
+				(await imports.findImagesInUnsavedImports(pathnames, since, otherMemberId)).toSorted()
+			).toEqual([backScan.pathname, cardScan.pathname]);
+		});
+
 		it('finds nothing for no pathnames', async () => {
 			await startScanned([cardScan]);
 

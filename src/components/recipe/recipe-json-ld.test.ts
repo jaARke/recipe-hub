@@ -53,7 +53,7 @@ describe('toRecipeJsonLd', () => {
 			],
 			datePublished: '2026-10-01T12:00:00.000Z',
 			dateModified: '2026-10-05T08:30:00.000Z',
-			recipeYield: 'Serves 6',
+			recipeYield: '6',
 			keywords: 'Soup, Weeknight',
 		});
 	});
@@ -84,10 +84,27 @@ describe('toRecipeJsonLd', () => {
 		]);
 	});
 
-	it('writes the yield the way the page does', () => {
-		const biscuits = publicRecipe('buttermilk-biscuits', sampleButtermilkBiscuits);
+	describe('yield', () => {
+		it('gives servings as just a number', () => {
+			const soup = publicRecipe('weeknight-chicken-soup', sampleChickenSoup);
 
-		expect(toRecipeJsonLd(biscuits, siteUrl).recipeYield).toBe('Makes 10 biscuits');
+			expect(toRecipeJsonLd(soup, siteUrl).recipeYield).toBe('6');
+		});
+
+		it('keeps the wording of a range of servings', () => {
+			const soup = publicRecipe('weeknight-chicken-soup', {
+				...sampleChickenSoup,
+				yield: { kind: 'servings', amount: { min: 4, max: 6 } },
+			});
+
+			expect(toRecipeJsonLd(soup, siteUrl).recipeYield).toBe('Serves 4 to 6');
+		});
+
+		it('keeps the wording of a yield that makes an amount', () => {
+			const biscuits = publicRecipe('buttermilk-biscuits', sampleButtermilkBiscuits);
+
+			expect(toRecipeJsonLd(biscuits, siteUrl).recipeYield).toBe('Makes 10 biscuits');
+		});
 	});
 
 	describe('times', () => {

@@ -43,6 +43,8 @@ export type EditableRecipeDto = RecipeContent & {
 	slug: string;
 	// Changes with every save, so a form can tell its copy is out of date.
 	updatedAt: Date;
+	// The recipe's tags that no other recipe uses, which the edit can respell.
+	respellableTags: string[];
 };
 
 // What a signed-in member sees beside the public recipe: whether they may edit it, and its scans.
@@ -68,6 +70,18 @@ export type ImageUploadGrant = {
 	maximumSizeInBytes: number;
 };
 
+// How many images one sweep restored, deleted for good, and removed.
+export type ImageSweepCounts = {
+	restoredCount: number;
+	deletedCount: number;
+	removedCount: number;
+};
+
+// How many images deleting a closed preview's folders deleted for good, removed ones included.
+export type PreviewImageCounts = {
+	deletedCount: number;
+};
+
 export function toPublicRecipeDto(recipe: Recipe, contributor: Member): PublicRecipeDto {
 	return {
 		id: recipe.id,
@@ -89,7 +103,7 @@ export function toPublicRecipeDto(recipe: Recipe, contributor: Member): PublicRe
 	};
 }
 
-export function toEditableRecipeDto(recipe: Recipe): EditableRecipeDto {
+export function toEditableRecipeDto(recipe: Recipe, respellableTags: string[]): EditableRecipeDto {
 	return {
 		id: recipe.id,
 		slug: recipe.slug,
@@ -104,6 +118,7 @@ export function toEditableRecipeDto(recipe: Recipe): EditableRecipeDto {
 		tags: recipe.tags,
 		images: recipe.images,
 		updatedAt: recipe.updatedAt,
+		respellableTags,
 	};
 }
 

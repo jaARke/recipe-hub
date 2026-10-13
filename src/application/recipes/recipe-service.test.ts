@@ -57,7 +57,7 @@ const productionPhoto: RecipeImage = { role: 'dish', pathname: 'dish/production/
 // In this environment's folder, but its upload never finished.
 const unfinishedPhoto: RecipeImage = { role: 'dish', pathname: 'dish/seed/half-sent.jpg' };
 
-const unfinishedPhotoMessage = "This photo didn't finish uploading. Remove it and add it again.";
+const unstoredImageMessage = "This photo didn't upload. Remove it and add it again.";
 
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 
@@ -87,7 +87,7 @@ async function createCatalog() {
 	const recipes = new InMemoryRecipeRepository();
 	const imports = new InMemoryRecipeImportRepository(recipes);
 	const members = new InMemoryMemberRepository();
-	const images = new InMemoryImageStore();
+	const images = new InMemoryImageStore(folders);
 	const storedImages = [
 		...sampleRecipeContents.flatMap((content) => content.images),
 		dishPhoto,
@@ -213,6 +213,7 @@ describe('public reads', () => {
 
 		await reader.getRecipe(ref.slug);
 		await reader.listRecipes({ limit: 10, offset: 0, sort: 'newest' });
+		await reader.listTagLabels();
 
 		expect(actors.wasAsked).toBe(false);
 	});
@@ -305,9 +306,18 @@ describe('getRecipeForEditing', () => {
 				...recipeContentSchema.parse(content),
 				...ref,
 				updatedAt: expect.any(Date),
+				respellableTags: ['Soup', 'Weeknight'],
 			});
 		}
 	);
+
+	it("names the recipe's tags that no other recipe uses, which an edit can respell", async () => {
+		const { serviceFor, author, ref } = await catalogWithBiscuits();
+		const service = serviceFor(author);
+		await service.createRecipe(manualEntry({ ...sampleChickenSoup, tags: ['breakfast'] }));
+
+		expect((await service.getRecipeForEditing(ref.slug))?.respellableTags).toEqual(['Baking']);
+	});
 
 	it('finds the recipe by an old slug, with its current slug', async () => {
 		const { serviceFor, versionOf, author, ref } = await catalogWithBiscuits();
@@ -451,6 +461,21 @@ describe('listRecipes', () => {
 	});
 });
 
+describe('listTagLabels', () => {
+	it('lists the label of every tag in use, most used first', async () => {
+		const { serviceFor, addMember } = await createCatalog();
+		const member = serviceFor(await addMember('Ada'));
+		await member.createRecipe(manualEntry(sampleButtermilkBiscuits));
+		await member.createRecipe(manualEntry({ ...sampleChickenSoup, tags: ['baking', 'Soup'] }));
+
+		expect(await serviceFor(anonymousActor()).listTagLabels()).toEqual([
+			'Baking',
+			'Breakfast',
+			'Soup',
+		]);
+	});
+});
+
 describe('createRecipe', () => {
 	it('refuses an anonymous visitor', async () => {
 		const reader = (await createCatalog()).serviceFor(anonymousActor());
@@ -501,13 +526,49 @@ describe('createRecipe', () => {
 		await expect(member.createRecipe(manualEntry(content))).rejects.toThrow(
 			expect.objectContaining({
 				code: 'recipe.invalid',
-				problems: [{ path: 'images.1.pathname', message: unfinishedPhotoMessage }],
+				problems: [{ path: 'images.1.pathname', message: unstoredImageMessage }],
 			})
 		);
 		expect(await member.listRecipes({ limit: 10, offset: 0, sort: 'newest' })).toEqual({
 			recipes: [],
 			total: 0,
 		});
+	});
+
+	it("refuses a photo or scan another member's recipe or draft names, as never uploaded", async () => {
+		const { serviceFor, addMember, importDraft } = await createCatalog();
+		const owner = await addMember('Ada');
+		await serviceFor(owner).createRecipe(
+			manualEntry({ ...sampleChickenSoup, images: [dishPhoto] })
+		);
+		// The draft names the scan it was read from.
+		await importDraft(owner, 'photo');
+		const member = serviceFor(await addMember('Lou'));
+		const content = { ...sampleTomatoSalad, images: [secondDishPhoto, dishPhoto, scan] };
+
+		await expect(member.createRecipe(manualEntry(content))).rejects.toThrow(
+			expect.objectContaining({
+				code: 'recipe.invalid',
+				problems: [
+					{ path: 'images.1.pathname', message: unstoredImageMessage },
+					{ path: 'images.2.pathname', message: unstoredImageMessage },
+				],
+			})
+		);
+	});
+
+	it("reuses the member's own photos and scans from their recipes and drafts", async () => {
+		const { serviceFor, addMember, importDraft } = await createCatalog();
+		const owner = await addMember('Ada');
+		const service = serviceFor(owner);
+		await service.createRecipe(manualEntry({ ...sampleChickenSoup, images: [dishPhoto] }));
+		await importDraft(owner, 'photo');
+
+		const ref = await service.createRecipe(
+			manualEntry({ ...sampleTomatoSalad, images: [dishPhoto, scan] })
+		);
+
+		expect((await service.getRecipeForEditing(ref.slug))?.images).toEqual([dishPhoto, scan]);
 	});
 
 	it('reuses the label already in use for a tag and keeps the spelling of a new one', async () => {
@@ -520,6 +581,30 @@ describe('createRecipe', () => {
 		);
 
 		expect((await member.getRecipe(ref.slug))?.tags).toEqual(['Weeknight', 'Soup', 'No cook']);
+	});
+
+	it("takes the earliest recipe's spelling of a tag saved in two, as racing saves can leave it", async () => {
+		const { recipes, serviceFor, addMember } = await createCatalog();
+		const author = await addMember('Ada');
+		for (const [input, tags] of [
+			[sampleChickenSoup, ['Weeknight']],
+			[sampleLemonIceboxPie, ['WEEKNIGHT']],
+		] as const) {
+			const content = recipeContentSchema.parse({ ...input, tags });
+			await recipes.create({
+				content,
+				provenance: { entryMode: 'manual' },
+				contributorId: author.memberId,
+				slugBase: slugify(content.title),
+			});
+		}
+		const member = serviceFor(author);
+
+		const ref = await member.createRecipe(
+			manualEntry({ ...sampleTomatoSalad, tags: ['weeknight'] })
+		);
+
+		expect((await member.getRecipe(ref.slug))?.tags).toEqual(['Weeknight']);
 	});
 
 	it('suffixes the slug of a title already in use', async () => {
@@ -890,13 +975,70 @@ describe('updateRecipe', () => {
 			)
 		).rejects.toThrow(
 			expect.objectContaining({
-				problems: [{ path: 'images.2.pathname', message: unfinishedPhotoMessage }],
+				problems: [{ path: 'images.2.pathname', message: unstoredImageMessage }],
 			})
 		);
 		expect((await service.getRecipe(recipe.slug))?.images).toEqual([productionPhoto, dishPhoto]);
 	});
 
-	it("deletes the photos it removes from this environment's folders, and only those", async () => {
+	it("refuses to add a photo another member's recipe lists, as never uploaded", async () => {
+		const { serviceFor, addMember, versionOf, author, recipe } = await catalogWithStoredImages([
+			dishPhoto,
+		]);
+		await serviceFor(await addMember('Lou')).createRecipe(
+			manualEntry({ ...sampleTomatoSalad, images: [secondDishPhoto] })
+		);
+
+		await expect(
+			serviceFor(author).updateRecipe(
+				recipe.id,
+				{ ...sampleChickenSoup, images: [dishPhoto, secondDishPhoto] },
+				await versionOf(recipe.id)
+			)
+		).rejects.toThrow(
+			expect.objectContaining({
+				problems: [{ path: 'images.1.pathname', message: unstoredImageMessage }],
+			})
+		);
+	});
+
+	it("lets an admin keep the recipe's images and add the contributor's, but not another member's", async () => {
+		const { images, serviceFor, addMember, versionOf, author, recipe } =
+			await catalogWithStoredImages([dishPhoto]);
+		const admin = serviceFor(adminActor());
+		const adminPhoto: RecipeImage = { role: 'dish', pathname: 'dish/seed/salad.jpg' };
+		await images.put(adminPhoto.pathname, jpeg, 'image/jpeg');
+		await admin.createRecipe(manualEntry({ ...sampleTomatoSalad, images: [adminPhoto] }));
+		await serviceFor(author).createRecipe(
+			manualEntry({ ...sampleLemonIceboxPie, images: [secondDishPhoto] })
+		);
+		await serviceFor(await addMember('Lou')).createRecipe(
+			manualEntry({ ...sampleButtermilkBiscuits, images: [scan] })
+		);
+
+		await admin.updateRecipe(
+			recipe.id,
+			{ ...sampleChickenSoup, images: [dishPhoto, secondDishPhoto] },
+			await versionOf(recipe.id)
+		);
+		await expect(
+			admin.updateRecipe(
+				recipe.id,
+				{ ...sampleChickenSoup, images: [dishPhoto, secondDishPhoto, adminPhoto, scan] },
+				await versionOf(recipe.id)
+			)
+		).rejects.toThrow(
+			expect.objectContaining({
+				problems: [
+					{ path: 'images.2.pathname', message: unstoredImageMessage },
+					{ path: 'images.3.pathname', message: unstoredImageMessage },
+				],
+			})
+		);
+		expect((await admin.getRecipe(recipe.slug))?.images).toEqual([dishPhoto, secondDishPhoto]);
+	});
+
+	it("removes the photos it drops from this environment's folders, and only those", async () => {
 		const { images, serviceFor, versionOf, author, recipe } = await catalogWithStoredImages([
 			dishPhoto,
 			secondDishPhoto,
@@ -910,11 +1052,11 @@ describe('updateRecipe', () => {
 			await versionOf(recipe.id)
 		);
 
-		expect(images.deletedPathnames).toEqual([dishPhoto.pathname, scan.pathname]);
+		expect(images.removedPathnames).toEqual([dishPhoto.pathname, scan.pathname]);
 		expect(logLines(consoleInfo)).toContainEqual({
 			level: 'info',
 			logger: 'recipes',
-			message: 'Recipe images deleted',
+			message: 'Recipe images removed',
 			recipeId: recipe.id,
 			pathnames: [dishPhoto.pathname, scan.pathname],
 		});
@@ -929,18 +1071,18 @@ describe('updateRecipe', () => {
 			await versionOf(soup.id)
 		);
 
-		expect(images.deletedPathnames).toEqual([secondDishPhoto.pathname]);
+		expect(images.removedPathnames).toEqual([secondDishPhoto.pathname]);
 		expect(logLines(consoleInfo)).toContainEqual({
 			level: 'info',
 			logger: 'recipes',
-			message: 'Recipe images deleted',
+			message: 'Recipe images removed',
 			recipeId: soup.id,
 			pathnames: [secondDishPhoto.pathname],
 			keptPathnames: [dishPhoto.pathname],
 		});
 	});
 
-	it('refuses a save from a copy loaded before another save, even one keeping a photo it deleted', async () => {
+	it('refuses a save from a copy loaded before another save, even one keeping a photo it removed', async () => {
 		const { images, serviceFor, versionOf, author, recipe } = await catalogWithStoredImages([
 			dishPhoto,
 			secondDishPhoto,
@@ -963,10 +1105,10 @@ describe('updateRecipe', () => {
 			notes: sampleChickenSoup.notes,
 			images: [secondDishPhoto],
 		});
-		expect(images.deletedPathnames).toEqual([dishPhoto.pathname]);
+		expect(images.removedPathnames).toEqual([dishPhoto.pathname]);
 	});
 
-	it('deletes no images when it refuses a stale save', async () => {
+	it('removes no images when it refuses a stale save', async () => {
 		const { images, serviceFor, versionOf, author, recipe } = await catalogWithStoredImages([
 			dishPhoto,
 			secondDishPhoto,
@@ -985,7 +1127,7 @@ describe('updateRecipe', () => {
 				loaded
 			)
 		).rejects.toThrow(RecipeEditConflictError);
-		expect(images.deletedPathnames).toEqual([]);
+		expect(images.removedPathnames).toEqual([]);
 		expect(logLines(consoleWarn)).toEqual([
 			expect.objectContaining({
 				level: 'warn',
@@ -1032,7 +1174,7 @@ describe('deleteRecipe', () => {
 
 		await expect(other.deleteRecipe(ref.id)).rejects.toThrow(ForbiddenError);
 		expect(await other.getRecipe(ref.slug)).not.toBeNull();
-		expect(images.deletedPathnames).toEqual([]);
+		expect(images.removedPathnames).toEqual([]);
 	});
 
 	it.each(['contributor', 'admin'] as const)('lets the %s delete the recipe', async (editor) => {
@@ -1043,7 +1185,7 @@ describe('deleteRecipe', () => {
 		expect(await service.getRecipe(ref.slug)).toBeNull();
 	});
 
-	it("deletes the recipe's images in this environment's folders, and only those", async () => {
+	it("removes the recipe's images in this environment's folders, and only those", async () => {
 		const { images, serviceFor, author, recipe } = await catalogWithStoredImages([
 			dishPhoto,
 			productionPhoto,
@@ -1052,22 +1194,27 @@ describe('deleteRecipe', () => {
 
 		await serviceFor(author).deleteRecipe(recipe.id);
 
-		expect(images.deletedPathnames).toEqual([dishPhoto.pathname, scan.pathname]);
+		expect(images.removedPathnames).toEqual([dishPhoto.pathname, scan.pathname]);
+		// Kept, so restoring the recipe brings them back.
+		expect((await images.listRemoved()).map(({ pathname }) => pathname)).toEqual([
+			dishPhoto.pathname,
+			scan.pathname,
+		]);
 	});
 
 	it.each(['soup', 'salad'] as const)(
-		'keeps a shared photo when the %s goes first, and deletes it with the last recipe listing it',
+		'keeps a shared photo when the %s goes first, and removes it with the last recipe listing it',
 		async (first) => {
 			const { images, service, soup, salad } = await catalogWithSharedPhoto();
 			const [deletedFirst, deletedLast] = first === 'soup' ? [soup, salad] : [salad, soup];
 
 			await service.deleteRecipe(deletedFirst.id);
 
-			expect(images.deletedPathnames).not.toContain(dishPhoto.pathname);
+			expect(images.removedPathnames).not.toContain(dishPhoto.pathname);
 			expect(await images.has(dishPhoto.pathname)).toBe(true);
 			expect(logLines(consoleInfo)).toContainEqual(
 				expect.objectContaining({
-					message: 'Recipe images deleted',
+					message: 'Recipe images removed',
 					recipeId: deletedFirst.id,
 					keptPathnames: [dishPhoto.pathname],
 				})
@@ -1075,12 +1222,12 @@ describe('deleteRecipe', () => {
 
 			await service.deleteRecipe(deletedLast.id);
 
-			expect(images.deletedPathnames).toContain(dishPhoto.pathname);
+			expect(images.removedPathnames).toContain(dishPhoto.pathname);
 			expect(await images.has(dishPhoto.pathname)).toBe(false);
 		}
 	);
 
-	it("keeps scans another import's draft still names, and deletes them with that draft's recipe", async () => {
+	it("keeps scans another import's draft still names, and removes them with that draft's recipe", async () => {
 		const author = memberActor();
 		const { images, serviceFor, importDraft } = await createCatalog();
 		const service = serviceFor(author);
@@ -1092,10 +1239,10 @@ describe('deleteRecipe', () => {
 
 		await service.deleteRecipe(saved.id);
 
-		expect(images.deletedPathnames).toEqual([]);
+		expect(images.removedPathnames).toEqual([]);
 		expect(logLines(consoleInfo)).toContainEqual(
 			expect.objectContaining({
-				message: 'Recipe images deleted',
+				message: 'Recipe images removed',
 				recipeId: saved.id,
 				keptPathnames: [scan.pathname],
 			})
@@ -1104,10 +1251,10 @@ describe('deleteRecipe', () => {
 		const resaved = await service.createRecipe(fromImport(second, content));
 		await service.deleteRecipe(resaved.id);
 
-		expect(images.deletedPathnames).toEqual([scan.pathname]);
+		expect(images.removedPathnames).toEqual([scan.pathname]);
 	});
 
-	it('deletes scans that only an expired draft still names', async () => {
+	it('removes scans that only an expired draft still names', async () => {
 		const author = memberActor();
 		const { images, imports, serviceFor, importDraft } = await createCatalog();
 		const service = serviceFor(author);
@@ -1120,10 +1267,10 @@ describe('deleteRecipe', () => {
 
 		await service.deleteRecipe(saved.id);
 
-		expect(images.deletedPathnames).toEqual([scan.pathname]);
+		expect(images.removedPathnames).toEqual([scan.pathname]);
 	});
 
-	it('reports the slug and deletes the images the recipe had when deleted, after a concurrent edit', async () => {
+	it('reports the slug and removes the images the recipe had when deleted, after a concurrent edit', async () => {
 		const { recipes, images, serviceFor, author, recipe } = await catalogWithStoredImages([
 			dishPhoto,
 		]);
@@ -1142,12 +1289,12 @@ describe('deleteRecipe', () => {
 			id: recipe.id,
 			slug: 'garden-tomato-salad',
 		});
-		expect(images.deletedPathnames).toEqual([secondDishPhoto.pathname]);
+		expect(images.removedPathnames).toEqual([secondDishPhoto.pathname]);
 	});
 
-	it('succeeds and logs a warning when its images cannot be deleted', async () => {
+	it('succeeds and logs a warning when its images cannot be removed', async () => {
 		const { images, serviceFor, author, recipe } = await catalogWithStoredImages([dishPhoto]);
-		images.failDeletes();
+		images.failRemoves();
 		const service = serviceFor(author);
 
 		expect(await service.deleteRecipe(recipe.id)).toEqual({ id: recipe.id, slug: recipe.slug });
@@ -1156,7 +1303,7 @@ describe('deleteRecipe', () => {
 			expect.objectContaining({
 				level: 'warn',
 				logger: 'recipes',
-				message: 'Recipe images could not be deleted',
+				message: 'Recipe images could not be removed',
 				recipeId: recipe.id,
 				pathnames: [dishPhoto.pathname],
 				err: expect.objectContaining({ message: 'The image store could not be reached' }),

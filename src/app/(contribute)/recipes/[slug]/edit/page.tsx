@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, permanentRedirect, redirect } from 'next/navigation';
 import { Suspense } from 'react';
+import { getCachedRecipe, getCachedTagLabels } from '@/app/_lib/recipe-cache';
 import { deleteRecipe, updateRecipe } from '@/app/(contribute)/recipes/[slug]/edit/actions';
 import { ForbiddenError, SignInRequiredError } from '@/application/authorization';
 import type { EditableRecipeDto } from '@/application/recipes/recipe-dtos';
@@ -24,9 +25,17 @@ import {
 } from '@/components/ui/empty';
 import { getRecipeImageService, getRecipeService } from '@/composition/services';
 
-export const metadata: Metadata = {
-	title: 'Edit recipe',
-};
+// The public lookup gates only the title, so a missing recipe's 404 carries the not-found page's title
+// without authorizing; the page itself authorizes in loadEditableRecipe.
+export async function generateMetadata({
+	params,
+}: PageProps<'/recipes/[slug]/edit'>): Promise<Metadata> {
+	const { slug } = await params;
+	if ((await getCachedRecipe(slug)) === null) {
+		notFound();
+	}
+	return { title: 'Edit recipe' };
+}
 
 // The authoritative check: the service authorizes the actor, and the proxy only looks for a cookie.
 // Null for a member who may not edit the recipe; an unknown slug is a 404.
@@ -85,6 +94,7 @@ async function RecipeEditor({ params }: Pick<PageProps<'/recipes/[slug]/edit'>, 
 		permanentRedirect(recipeEditPath(recipe.slug));
 	}
 
+	const tagLabels = await getCachedTagLabels();
 	return (
 		<div className="flex flex-col gap-12">
 			<RecipeForm
@@ -93,7 +103,12 @@ async function RecipeEditor({ params }: Pick<PageProps<'/recipes/[slug]/edit'>, 
 				initial={recipeFormValues(recipe)}
 				action={updateRecipe}
 				uploadFolders={getRecipeImageService().uploadFolders()}
-				editing={{ id: recipe.id, version: recipe.updatedAt.toISOString() }}
+				tagLabels={tagLabels}
+				editing={{
+					id: recipe.id,
+					version: recipe.updatedAt.toISOString(),
+					respellableTags: recipe.respellableTags,
+				}}
 				submitLabel="Save changes"
 			/>
 			<PageSection id="delete-recipe" title="Delete recipe">

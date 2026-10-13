@@ -50,6 +50,13 @@
       "when": 1791845325736,
       "tag": "0006_add-recipe-imports",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791904404734,
+      "tag": "0007_add-member-removal-and-contributor-index",
+      "breakpoints": true
     }
   ]
 }

@@ -2,7 +2,7 @@
 
 import { cn } from 'cn';
 import { CircleCheckIcon, CircleIcon, TriangleAlertIcon } from 'lucide-react';
-import type * as React from 'react';
+import * as React from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { FieldError } from '@/components/ui/field';
@@ -24,6 +24,13 @@ export type SummarizedProblem = {
 	targetId?: string;
 	check?: ProblemCheck;
 };
+
+// Takes the alert role and its aria-live off an Alert or a FieldError, so its text is read only
+// when focus reaches it or the field it describes.
+const unannounced = { role: undefined, 'aria-live': undefined } as const;
+
+// True inside a form whose ProblemSummary lists every problem and takes focus after a failed save.
+const SummarizedProblemsContext = React.createContext(false);
 
 function countThings(count: number): string {
 	return `${count} ${count === 1 ? 'thing' : 'things'}`;
@@ -71,12 +78,16 @@ function ProblemCheckToggle({
 }
 
 // A problem beside its field, as FieldError shows one, with its toggle while the member reviews it.
-// A checked problem dims. Only a class changes, since any change to an alert's text reads it again.
+// A checked problem dims. Where the form's summary lists it, it isn't announced as it appears, so a
+// failed save reads as the summary rather than every problem at once.
 function FieldProblem({
 	check,
 	children,
-	...errorProps
+	...fieldErrorProps
 }: React.ComponentProps<typeof FieldError> & { check?: ProblemCheck }) {
+	const summarized = React.useContext(SummarizedProblemsContext);
+	const errorProps = summarized ? { ...fieldErrorProps, ...unannounced } : fieldErrorProps;
+
 	if (check === undefined) {
 		return <FieldError {...errorProps}>{children}</FieldError>;
 	}
@@ -101,7 +112,7 @@ function ProblemSummary({ problems }: { problems: readonly SummarizedProblem[] }
 	const checkedCount = problems.filter(({ check }) => check?.checked === true).length;
 
 	return (
-		<Alert variant="destructive" role={checkable ? undefined : 'alert'}>
+		<Alert variant="destructive" {...(checkable ? unannounced : undefined)}>
 			<TriangleAlertIcon aria-hidden="true" />
 			<AlertTitle>Check {countThings(problems.length)}</AlertTitle>
 			<AlertDescription>
@@ -132,4 +143,12 @@ function ProblemSummary({ problems }: { problems: readonly SummarizedProblem[] }
 	);
 }
 
-export { FieldProblem, ProblemSummary };
+// Wraps a form's fields when its ProblemSummary lists their problems, which then stay quiet beside
+// the fields.
+function SummarizedProblems({ children }: { children: React.ReactNode }) {
+	return (
+		<SummarizedProblemsContext.Provider value={true}>{children}</SummarizedProblemsContext.Provider>
+	);
+}
+
+export { FieldProblem, ProblemSummary, SummarizedProblems };

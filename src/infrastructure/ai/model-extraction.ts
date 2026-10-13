@@ -42,12 +42,13 @@ type ModelExtractionRequest = {
 };
 
 // Content stays with the Gateway only for the request; this holds the providers it routes to, and
-// any fallback, to zero data retention too. The email labels the call in the Gateway's usage reports.
+// any fallback, to zero data retention too. The member's id labels the call in the Gateway's usage
+// reports, which never see their email.
 function gatewayOptions(requester: ExtractionRequester) {
 	return {
 		gateway: {
 			zeroDataRetention: true,
-			user: requester.email,
+			user: requester.memberId,
 			// Providers get a hash of the id instead, as Vercel advises, to trace misuse to one account.
 			safetyIdentifier: createHash('sha256').update(requester.memberId).digest('hex'),
 		},

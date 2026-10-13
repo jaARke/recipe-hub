@@ -2,11 +2,13 @@ import 'server-only';
 import { waitUntil } from '@vercel/functions';
 import { headers } from 'next/headers';
 import { connection } from 'next/server';
+import { cache } from 'react';
 import { AccessRequestService } from '@/application/access/access-request-service';
 import { AccountService } from '@/application/access/account-service';
 import { InviteService } from '@/application/access/invite-service';
 import { RecipeImportService } from '@/application/ingestion/recipe-import-service';
 import { MemberService } from '@/application/members/member-service';
+import type { ActorProvider } from '@/application/ports/actor-provider';
 import { ImageFolders } from '@/application/recipes/image-folders';
 import { RecipeImageService } from '@/application/recipes/recipe-image-service';
 import { RecipeService } from '@/application/recipes/recipe-service';
@@ -15,6 +17,7 @@ import { AiPageRecipeExtractor } from '@/infrastructure/ai/ai-page-recipe-extrac
 import { AiScanRecipeExtractor } from '@/infrastructure/ai/ai-scan-recipe-extractor';
 import { createAuth, type Auth } from '@/infrastructure/auth/better-auth';
 import { BetterAuthActorProvider } from '@/infrastructure/auth/better-auth-actor-provider';
+import { GitHubActionsTokenVerifier } from '@/infrastructure/auth/github-actions-token-verifier';
 import { db } from '@/infrastructure/db/client';
 import { DrizzleAccessRequestRepository } from '@/infrastructure/db/drizzle-access-request-repository';
 import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
@@ -27,14 +30,14 @@ import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
 import { BlobUploadHandler } from '@/infrastructure/storage/blob-upload-handler';
 import { GuardedWebPageFetcher } from '@/infrastructure/web/guarded-web-page-fetcher';
 import { JsonLdPageRecipeExtractor } from '@/infrastructure/web/json-ld-page-recipe-extractor';
-import { appUrl, env, imageEnvironment, siteUrl } from '@/lib/env';
+import { appUrl, env, imageEnvironment, readableImageEnvironments, siteUrl } from '@/lib/env';
 
 const emails = new ResendEmailSender({
 	apiKey: env.RESEND_API_KEY,
 	domain: env.RESEND_EMAIL_DOMAIN,
 });
 
-const imageFolders = new ImageFolders(imageEnvironment);
+const imageFolders = new ImageFolders(imageEnvironment, readableImageEnvironments);
 
 const images = new BlobImageStore({ storeId: env.BLOB_STORE_ID, folders: imageFolders });
 
@@ -44,7 +47,7 @@ const pageModelId = 'anthropic/claude-sonnet-5.5';
 const scanModelId = 'anthropic/claude-sonnet-5.5';
 
 // The hosts a deployment answers on: the one its links name, and its own Vercel hosts.
-const authHosts = [
+const deploymentHosts = [
 	...new Set(
 		[appUrl.host, env.VERCEL_URL, env.VERCEL_BRANCH_URL].filter((host) => host !== undefined)
 	),
@@ -57,7 +60,7 @@ function getAuth(): Auth {
 	auth ??= createAuth({
 		db,
 		secret: env.BETTER_AUTH_SECRET,
-		allowedHosts: authHosts,
+		allowedHosts: deploymentHosts,
 		productionHost: env.VERCEL_ENV === 'production' ? siteUrl.hostname : undefined,
 		accounts: new AccountService(
 			new DrizzleMemberRepository(db),
@@ -76,7 +79,33 @@ async function requestHeaders(): Promise<Headers> {
 	return headers();
 }
 
-const actors = new BetterAuthActorProvider(getAuth, requestHeaders);
+let cleanupWorkflowTokens: GitHubActionsTokenVerifier | undefined;
+
+// The preview cleanup workflow's job, which runs from main on pull_request_target, so no branch can
+// change it. Built on first use, since only a preview's cleanup asks, and Vercel names the repository
+// on Git deployments alone.
+function getCleanupWorkflowTokens(): GitHubActionsTokenVerifier {
+	const { VERCEL_GIT_REPO_OWNER: owner, VERCEL_GIT_REPO_SLUG: name } = env;
+	if (owner === undefined || name === undefined) {
+		throw new Error('Only a Git deployment knows the repository its cleanup workflow runs in');
+	}
+
+	cleanupWorkflowTokens ??= new GitHubActionsTokenVerifier({
+		// GitHub's default audience, the repository owner's URL, which the workflow asks for.
+		audience: `https://github.com/${owner}`,
+		repository: `${owner}/${name}`,
+		workflowRef: `${owner}/${name}/.github/workflows/preview-branch-cleanup.yml@refs/heads/main`,
+		eventName: 'pull_request_target',
+	});
+	return cleanupWorkflowTokens;
+}
+
+const sessionActors = new BetterAuthActorProvider(getAuth, requestHeaders);
+
+// Every service resolves the actor, so a page that calls several reads the session once. React's
+// cache keeps the read for the rest of the render's request, and outside a render, as in a Server
+// Action or a Route Handler, each call reads the session again.
+const actors: ActorProvider = { currentActor: cache(() => sessionActors.currentActor()) };
 
 export function getRecipeService(): RecipeService {
 	return new RecipeService(
@@ -94,13 +123,19 @@ export function getRecipeSearchService(): RecipeSearchService {
 }
 
 export function getRecipeImageService(): RecipeImageService {
-	return new RecipeImageService(images, actors, imageFolders);
+	return new RecipeImageService(
+		new DrizzleRecipeRepository(db),
+		new DrizzleRecipeImportRepository(db),
+		images,
+		actors,
+		imageFolders
+	);
 }
 
 export function getRecipeImportService(): RecipeImportService {
 	return new RecipeImportService(
+		new DrizzleRecipeRepository(db),
 		new DrizzleRecipeImportRepository(db),
-		new DrizzleMemberRepository(db),
 		new GuardedWebPageFetcher({ siteUrl }),
 		new JsonLdPageRecipeExtractor(),
 		new AiPageRecipeExtractor(pageModelId),
@@ -146,7 +181,14 @@ export function handleImageUploadRequest(request: Request): Promise<Response> {
 	const uploads = new BlobUploadHandler({
 		storeId: env.BLOB_STORE_ID,
 		webhookPublicKey: env.BLOB_WEBHOOK_PUBLIC_KEY,
+		allowedHosts: deploymentHosts,
 		authorizeUpload: (pathname) => getRecipeImageService().authorizeUpload(pathname),
 	});
 	return uploads.handle(request);
+}
+
+// Whether a GitHub Actions token is the cleanup workflow's own, which the Route Handler at
+// /api/preview-images requires.
+export function verifyCleanupWorkflowToken(token: string): Promise<boolean> {
+	return getCleanupWorkflowTokens().verify(token);
 }

@@ -6,6 +6,7 @@ import {
 	ImportNoRecipeError,
 	ImportPageRefusedError,
 	ImportPageUnavailableError,
+	ImportPausedError,
 	ImportRateLimitedError,
 	InvalidImportError,
 } from '@/application/ingestion/errors';
@@ -15,10 +16,8 @@ import {
 	type RecipeImportRef,
 	type UnsavedImportDto,
 } from '@/application/ingestion/recipe-import-dtos';
-import { MemberNotFoundError } from '@/application/members/errors';
 import type { ActorProvider, MemberActor } from '@/application/ports/actor-provider';
 import type { ImageStore } from '@/application/ports/image-store';
-import type { MemberRepository } from '@/application/ports/member-repository';
 import type {
 	Extraction,
 	ExtractionRequester,
@@ -30,8 +29,11 @@ import type {
 	RecipeImportLimit,
 	RecipeImportRepository,
 } from '@/application/ports/recipe-import-repository';
+import type { RecipeRepository } from '@/application/ports/recipe-repository';
 import type { WebPage, WebPageFetcher } from '@/application/ports/web-page-fetcher';
 import type { ImageFolders } from '@/application/recipes/image-folders';
+import { imagesInUse } from '@/application/recipes/images-in-use';
+import type { MemberId } from '@/domain/member/member';
 import {
 	importDraftFromExtractedRecipe,
 	type ExtractedRecipe,
@@ -65,8 +67,9 @@ const importUrlSchema = z.httpUrl().refine(hasNoNul);
 const invalidUrlMessage = 'Enter a web address that starts with http:// or https://.';
 const noScansMessage = 'Add at least one photo.';
 const tooManyScansMessage = `Use ${maxImportScans} photos or fewer.`;
-// For a scan this environment never stored: its upload failed, was cut off, or never happened.
-const unstoredScanMessage = "This photo didn't finish uploading. Remove it and add it again.";
+// For a scan this environment never stored: its upload failed, was cut off, or never happened. A scan
+// another member's recipe or draft names gets it too, so the refusal tells nothing about theirs.
+const unstoredScanMessage = "This photo didn't upload. Remove it and add it again.";
 const repeatedScanMessage = 'This photo is already attached.';
 const largeScanMessage = 'This photo is too large to read. Crop it to the recipe and add it again.';
 
@@ -144,8 +147,8 @@ function scanContentProblem(scan: ScanImage | null): string | undefined {
 }
 
 export class RecipeImportService {
+	private readonly recipes: RecipeRepository;
 	private readonly imports: RecipeImportRepository;
-	private readonly members: MemberRepository;
 	private readonly pages: WebPageFetcher;
 	private readonly structuredData: PageRecipeExtractor;
 	private readonly pageReader: PageRecipeExtractor;
@@ -156,8 +159,8 @@ export class RecipeImportService {
 
 	// A page is read from its structured data, which costs nothing, or by the page reader's model.
 	constructor(
+		recipes: RecipeRepository,
 		imports: RecipeImportRepository,
-		members: MemberRepository,
 		pages: WebPageFetcher,
 		structuredData: PageRecipeExtractor,
 		pageReader: PageRecipeExtractor,
@@ -166,8 +169,8 @@ export class RecipeImportService {
 		actors: ActorProvider,
 		folders: ImageFolders
 	) {
+		this.recipes = recipes;
 		this.imports = imports;
-		this.members = members;
 		this.pages = pages;
 		this.structuredData = structuredData;
 		this.pageReader = pageReader;
@@ -191,7 +194,7 @@ export class RecipeImportService {
 	// recipe. Pathnames are the browser's upload names, in page order.
 	async importFromScans(pathnames: readonly string[]): Promise<RecipeImportRef> {
 		const actor = requireMember(await this.actors.currentActor());
-		const scans = await this.readScans(pathnames);
+		const scans = await this.readScans(pathnames, actor.memberId);
 		const images = pathnames.map((pathname): RecipeImage => ({ role: 'scan', pathname }));
 		return this.runImport(actor, { mode: 'photo', images }, (requester) =>
 			this.scanReader.extract(scans, requester)
@@ -237,7 +240,6 @@ export class RecipeImportService {
 		source: ImportSource,
 		extract: (requester: ExtractionRequester) => Promise<Extraction | null>
 	): Promise<RecipeImportRef> {
-		const requester = await this.readRequester(actor);
 		await this.clearExpiredDrafts();
 		const recipeImport = await this.imports.start(
 			{ memberId: actor.memberId, mode: source.mode },
@@ -258,7 +260,7 @@ export class RecipeImportService {
 		});
 		let extraction: Extraction | null = null;
 		try {
-			extraction = await extract(requester);
+			extraction = await extract({ memberId: actor.memberId });
 			if (extraction === null || !foundRecipe(extraction.recipe)) {
 				throw new ImportNoRecipeError();
 			}
@@ -270,17 +272,6 @@ export class RecipeImportService {
 		}
 
 		return { id: recipeImport.id };
-	}
-
-	// Read before the import starts, whose record must name a member. A session ends with its member's
-	// account, so a missing account was removed during this request.
-	private async readRequester(actor: MemberActor): Promise<ExtractionRequester> {
-		const member = await this.members.findById(actor.memberId);
-		if (member === null) {
-			throw new MemberNotFoundError();
-		}
-
-		return { memberId: member.id, email: member.email };
 	}
 
 	// Drafts are cleared lazily, before each import, so no scheduled job is needed.
@@ -322,7 +313,8 @@ export class RecipeImportService {
 	}
 
 	// Logged before it is recorded, so the logs keep the failure even when recording it fails. Import
-	// errors' causes carry codes and ids only, never the page or the model's output.
+	// errors' causes carry codes and ids only, never the page or the model's output. An unexpected error
+	// is a failure, a failed or paused model call a problem to watch, and an expected refusal routine.
 	private async recordFailure(
 		recipeImport: RecipeImport,
 		error: unknown,
@@ -330,7 +322,7 @@ export class RecipeImportService {
 	): Promise<void> {
 		const failure = error instanceof AppError ? error.code : unexpectedFailure;
 		const costUsd = extraction?.costUsd;
-		logger.info('Import failed', {
+		const fields = {
 			importId: recipeImport.id,
 			memberId: recipeImport.memberId,
 			mode: recipeImport.mode,
@@ -340,7 +332,14 @@ export class RecipeImportService {
 			...(extraction?.model !== undefined && { aiModel: extraction.model }),
 			...(costUsd !== undefined && { costUsd }),
 			...(logsError(error) && { err: error }),
-		});
+		};
+		if (!(error instanceof AppError)) {
+			logger.error('Import failed', fields);
+		} else if (error instanceof ImportFailedError || error instanceof ImportPausedError) {
+			logger.warn('Import failed', fields);
+		} else {
+			logger.info('Import failed', fields);
+		}
 		await this.imports.recordFailure(recipeImport.id, {
 			failure,
 			...(costUsd !== undefined && { costUsd }),
@@ -360,8 +359,9 @@ export class RecipeImportService {
 		return this.pageReader.extract(page, requester);
 	}
 
-	// Names are checked before the store is read, so refused pathnames never reach it.
-	private async readScans(pathnames: readonly string[]): Promise<ScanImage[]> {
+	// Names, and whether another member's recipe or draft names a scan, are checked before the store is
+	// read, so refused pathnames never reach it. The member's own scans can be imported again.
+	private async readScans(pathnames: readonly string[], memberId: MemberId): Promise<ScanImage[]> {
 		if (pathnames.length === 0 || pathnames.length > maxImportScans) {
 			const message = pathnames.length === 0 ? noScansMessage : tooManyScansMessage;
 			throw new InvalidImportError([{ path: 'scans', message }]);
@@ -369,6 +369,16 @@ export class RecipeImportService {
 
 		assertNoScanProblems(
 			pathnames.map((pathname, index) => this.scanNameProblem(pathname, index, pathnames))
+		);
+		const othersScans = await imagesInUse(
+			pathnames,
+			this.recipes,
+			this.imports,
+			new Date(),
+			memberId
+		);
+		assertNoScanProblems(
+			pathnames.map((pathname) => (othersScans.has(pathname) ? unstoredScanMessage : undefined))
 		);
 		const scans = await Promise.all(pathnames.map((pathname) => this.readScan(pathname)));
 		assertNoScanProblems(scans.map(scanContentProblem));

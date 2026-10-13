@@ -60,7 +60,7 @@ function PasskeyList({ passkeys, removingId, onRemove }: PasskeyListProps) {
 
 function PasskeyListSkeleton() {
 	return (
-		<div role="status" className="flex flex-col divide-y border-y">
+		<div role="status" aria-live="polite" className="flex flex-col divide-y border-y">
 			<span className="sr-only">Loading passkeys</span>
 			<div className="flex items-center justify-between gap-4 py-3">
 				<div className="flex flex-col gap-1">

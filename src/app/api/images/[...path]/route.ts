@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import { notFoundResponse } from '@/app/_lib/route-responses';
 import { SignInRequiredError } from '@/application/authorization';
 import type { StoredImage } from '@/application/ports/image-store';
 import { getRecipeImageService } from '@/composition/services';
@@ -10,10 +11,6 @@ const logger = getLogger('images');
 
 // Vercel's image optimizer adds this parameter when it fetches a source image.
 const optimizerParameter = '_vercel_system';
-
-function notFoundResponse(): Response {
-	return new Response(null, { status: 404, headers: { 'Cache-Control': 'no-store' } });
-}
 
 function refusedQueryResponse(pathname: string, params: URLSearchParams): Response {
 	logger.warn('Image request refused for its query', {

@@ -14,7 +14,6 @@ type ScanOutput = z.infer<typeof scanOutputSchema>;
 
 const requester: ExtractionRequester = {
 	memberId: memberIdSchema.parse('0199d2e8-4b7a-7c3e-9a1f-6e2d8c4b0a75'),
-	email: 'ada@example.com',
 };
 // The SHA-256 of the member's id, in hex.
 const safetyIdentifier = 'ddc99d0a0120fa986be91caf0cabfbcafbdc9c4000ff1c108176e0e6619a11b6';
@@ -150,16 +149,46 @@ describe('extract', () => {
 		expect(call?.topK).toBeUndefined();
 	});
 
-	it("labels the call with the member's email and hashed id, with zero data retention", async () => {
+	it("labels the call with the member's id and its hash, with zero data retention", async () => {
 		const model = new MockLanguageModelV4({ doGenerate: answer(cardOutput) });
 
 		await new AiScanRecipeExtractor(model).extract(scans, requester);
 
 		const [call] = model.doGenerateCalls;
 		expect(call?.providerOptions).toEqual({
-			gateway: { zeroDataRetention: true, user: 'ada@example.com', safetyIdentifier },
+			gateway: {
+				zeroDataRetention: true,
+				user: '0199d2e8-4b7a-7c3e-9a1f-6e2d8c4b0a75',
+				safetyIdentifier,
+			},
 		});
 		expect(call?.providerOptions?.gateway?.safetyIdentifier).toHaveLength(64);
+	});
+
+	it("sends the member's id and its hash in the Gateway's request", async () => {
+		const bodies: unknown[] = [];
+		const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+			bodies.push(JSON.parse(String(init?.body)));
+			return Response.json(
+				{ error: { message: 'Invalid request', type: 'invalid_request_error' } },
+				{ status: 400 }
+			);
+		});
+		const model = createGateway({ apiKey: 'test-key', fetch })('anthropic/claude-haiku-5.5');
+
+		await new AiScanRecipeExtractor(model).extract(scans, requester).catch(() => undefined);
+
+		expect(bodies).toEqual([
+			expect.objectContaining({
+				providerOptions: {
+					gateway: {
+						zeroDataRetention: true,
+						user: '0199d2e8-4b7a-7c3e-9a1f-6e2d8c4b0a75',
+						safetyIdentifier,
+					},
+				},
+			}),
+		]);
 	});
 
 	it('maps the output into an extracted recipe, leaving out what the card does not state', async () => {

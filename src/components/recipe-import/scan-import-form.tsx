@@ -68,6 +68,7 @@ function ScanImportForm({ action, uploadFolder, uploader = uploadPhoto }: ScanIm
 				role="scan"
 				legend="Original recipe"
 				description={`Photos of the recipe as it was written, up to ${maxImportScans} pages in order, such as both sides of a recipe card. They stay with the recipe, and only members can see them.`}
+				limit={maxImportScans}
 				photos={values.photos.scan}
 				nextId={values.nextId}
 				dispatch={dispatch}

@@ -196,7 +196,7 @@ function SignInForm({ next, codeLifetimeMinutes }: SignInFormProps) {
 
 function SignInFormSkeleton() {
 	return (
-		<div role="status" className="flex flex-col gap-8">
+		<div role="status" aria-live="polite" className="flex flex-col gap-8">
 			<span className="sr-only">Loading sign-in</span>
 			<div className="flex flex-col gap-3">
 				<Skeleton className="h-5 w-12" />

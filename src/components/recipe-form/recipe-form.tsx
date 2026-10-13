@@ -6,6 +6,7 @@ import type { FormAction } from '@/components/forms/form-state';
 import {
 	countChecked,
 	ProblemSummary,
+	SummarizedProblems,
 	type ProblemCheck,
 	type SummarizedProblem,
 } from '@/components/forms/problem-summary';
@@ -53,6 +54,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { maxIngredientLineLength } from '@/domain/recipe/ingredient-limits';
 import { parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
+import { maxDishPhotos, maxScans } from '@/domain/recipe/recipe-image-limits';
 
 const failureMessage = "We couldn't save the recipe. Check your connection and try again.";
 
@@ -99,6 +101,8 @@ type RecipeFormProps = {
 	action: FormAction;
 	// Where this environment keeps new photos of each role.
 	uploadFolders: Record<RecipeImageRole, string>;
+	// Every tag label in use, most used first, which the tags field suggests.
+	tagLabels: readonly string[];
 	uploader?: PhotoUploader;
 	// Absent when adding a recipe.
 	editing?: EditedRecipe;
@@ -141,6 +145,7 @@ function RecipeForm({
 	initial,
 	action,
 	uploadFolders,
+	tagLabels,
 	uploader = uploadPhoto,
 	editing,
 	importId,
@@ -174,18 +179,19 @@ function RecipeForm({
 		return result;
 	};
 	const [state, formAction, pending] = useFormAction(saveRecipe, failureMessage);
-	useFocusOnFailure(state, formRef, ids.formError);
+	// About the whole form, such as an edit conflict; the summary lists a save's problems.
+	const formMessage = state.status === 'error' ? state.message : undefined;
+	useFocusOnFailure(state, formRef, formMessage === undefined ? ids.problemSummary : ids.formError);
 	// Announced as the member checks problems, and never as a draft loads.
 	const [checkAnnouncement, setCheckAnnouncement] = React.useState('');
 
-	// A draft starts with problems, which the summary lists until the first save, each with a check
-	// the member can mark, in the summary and beside its field. A save's problems show as before,
-	// beside their fields and in the alert.
-	const problems = state.status === 'idle' ? recipeFormProblems(values) : [];
+	// The summary lists the form's problems, each linking to where it shows: a draft's, each with a
+	// check the member can mark, in the summary and beside its field, until the first save; then that
+	// save's errors, which take focus.
+	const problems = recipeFormProblems(values);
 	const summarizedProblems = new Map(
 		problems.map((problem) => [problemKey(problem.target), summarizedProblem(problem)])
 	);
-	const formMessage = state.status === 'error' ? (state.message ?? values.formError) : undefined;
 
 	// Reviewing an import starts on its problems, once, not again when a hidden page shows.
 	const focusedProblems = React.useRef(false);
@@ -253,6 +259,9 @@ function RecipeForm({
 
 	function summarizedProblem(problem: RecipeFormProblem): SummarizedProblem {
 		const place = problemPlace(problem.target);
+		if (!values.reviewingDraft) {
+			return { message: problem.message, ...place };
+		}
 		return {
 			message: problem.message,
 			...place,
@@ -298,9 +307,11 @@ function RecipeForm({
 			{summarizedProblems.size > 0 && (
 				<div id={ids.problemSummary} tabIndex={-1}>
 					<ProblemSummary problems={[...summarizedProblems.values()]} />
-					<p role="status" className="sr-only">
-						{checkAnnouncement}
-					</p>
+					{values.reviewingDraft && (
+						<p role="status" aria-live="polite" className="sr-only">
+							{checkAnnouncement}
+						</p>
+					)}
 				</div>
 			)}
 			<input
@@ -317,154 +328,160 @@ function RecipeForm({
 			{importId !== undefined && (
 				<input type="hidden" name={recipeFormFieldNames.importId} value={importId} />
 			)}
-			<FieldGroup>
-				<TextField
-					{...textFieldProps('title')}
-					label={textFieldLabels.title}
-					required
-					autoComplete="off"
-					description={
-						isEditing
-							? "Changing the title changes the recipe's link. Old links keep working."
-							: undefined
-					}
-				/>
-				<TextareaField
-					{...textFieldProps('description')}
-					label={textFieldLabels.description}
-					description="Shown in search results and when the recipe is shared."
-				/>
-				<TextField
-					{...textFieldProps('source')}
-					label={textFieldLabels.source}
-					autoComplete="off"
-					description="Who or where the recipe comes from, such as a relative or a cookbook."
-				/>
-				<FieldSet>
-					<FieldLegend>Times and yield</FieldLegend>
-					<div className="grid gap-4 sm:grid-cols-3">
-						<TextField
-							{...textFieldProps('prepMinutes')}
-							label={textFieldLabels.prepMinutes}
-							inputMode="numeric"
-						/>
-						<TextField
-							{...textFieldProps('cookMinutes')}
-							label={textFieldLabels.cookMinutes}
-							inputMode="numeric"
-						/>
-						<TextField
-							{...textFieldProps('totalMinutes')}
-							label={textFieldLabels.totalMinutes}
-							inputMode="numeric"
-							description="Only if it's longer than prep and cook together, such as time to chill."
-						/>
-					</div>
-					<div className="grid gap-4 sm:grid-cols-3">
-						<Field>
-							<FieldLabel htmlFor={ids.yieldKind}>Yield</FieldLabel>
-							<Select
-								items={yieldKindItems}
-								value={values.yieldKind}
-								onValueChange={(kind) => {
-									if (kind !== null) {
-										dispatch({ type: 'setYieldKind', kind });
-									}
-								}}
-							>
-								<SelectTrigger id={ids.yieldKind} className="w-full">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{yieldKindItems.map((item) => (
-										<SelectItem key={item.value} value={item.value}>
-											{item.label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</Field>
-						<TextField
-							{...textFieldProps('yieldAmount')}
-							label={fieldLabel('yieldAmount')}
-							autoComplete="off"
-							description="A number or a range, such as 4 or 4 to 6."
-						/>
-						{values.yieldKind === 'makes' && (
+			<SummarizedProblems>
+				<FieldGroup>
+					<TextField
+						{...textFieldProps('title')}
+						label={textFieldLabels.title}
+						required
+						autoComplete="off"
+						description={
+							isEditing
+								? "Changing the title changes the recipe's link. Old links keep working."
+								: undefined
+						}
+					/>
+					<TextareaField
+						{...textFieldProps('description')}
+						label={textFieldLabels.description}
+						description="Shown in search results and when the recipe is shared."
+					/>
+					<TextField
+						{...textFieldProps('source')}
+						label={textFieldLabels.source}
+						autoComplete="off"
+						description="Who or where the recipe comes from, such as a relative or a cookbook."
+					/>
+					<FieldSet>
+						<FieldLegend>Times and yield</FieldLegend>
+						<div className="grid gap-4 sm:grid-cols-3">
 							<TextField
-								{...textFieldProps('yieldUnit')}
-								label={textFieldLabels.yieldUnit}
-								autoComplete="off"
-								description="Such as biscuits or loaves."
+								{...textFieldProps('prepMinutes')}
+								label={textFieldLabels.prepMinutes}
+								inputMode="numeric"
 							/>
-						)}
-					</div>
-				</FieldSet>
-				<SectionedListField
-					idPrefix={ids.list('ingredientSections')}
-					name="ingredientSections"
-					list={values.ingredientSections}
-					nextId={values.nextId}
-					dispatch={dispatch}
-					{...listFieldLabels.ingredientSections}
-					description="One ingredient per field, as you'd write it. Add a section for a separate part, such as a glaze."
-					itemPlaceholder="2½ cups all-purpose flour"
-					headingPlaceholder="For the glaze"
-					maxItemLength={maxIngredientLineLength}
-					itemPreview={ingredientPreview}
-					problemCheck={problemCheck}
-				/>
-				<SectionedListField
-					idPrefix={ids.list('instructionSections')}
-					name="instructionSections"
-					list={values.instructionSections}
-					nextId={values.nextId}
-					dispatch={dispatch}
-					{...listFieldLabels.instructionSections}
-					description="One step per field. Add a section for a separate part, such as a glaze."
-					itemPlaceholder="Heat the oven to 450°F."
-					headingPlaceholder="For the glaze"
-					numbered
-					problemCheck={problemCheck}
-				/>
-				<TextareaField
-					{...textFieldProps('notes')}
-					label={textFieldLabels.notes}
-					description="The story behind the recipe, or tips for making it."
-				/>
-				<TagsField
-					idPrefix={ids.tags}
-					tags={values.tags}
-					draft={values.text.tagDraft}
-					error={values.fieldErrors.tags}
-					errorCheck={problemCheck({ kind: 'field', field: 'tags' })}
-					dispatch={dispatch}
-				/>
-				<PhotoField
-					idPrefix={ids.photos('dish')}
-					role="dish"
-					legend={photoFieldLegends.dish}
-					description="Photos of the finished dish, which anyone can see. The first is the cover. Describe each one for people who can't see it."
-					photos={values.photos.dish}
-					nextId={values.nextId}
-					dispatch={dispatch}
-					uploadFolder={uploadFolders.dish}
-					uploader={uploader}
-					problemCheck={problemCheck}
-				/>
-				<PhotoField
-					idPrefix={ids.photos('scan')}
-					role="scan"
-					legend={photoFieldLegends.scan}
-					description="Photos of the recipe as it was written, such as a recipe card. Only members can see them."
-					photos={values.photos.scan}
-					nextId={values.nextId}
-					dispatch={dispatch}
-					uploadFolder={uploadFolders.scan}
-					uploader={uploader}
-					problemCheck={problemCheck}
-				/>
-			</FieldGroup>
+							<TextField
+								{...textFieldProps('cookMinutes')}
+								label={textFieldLabels.cookMinutes}
+								inputMode="numeric"
+							/>
+							<TextField
+								{...textFieldProps('totalMinutes')}
+								label={textFieldLabels.totalMinutes}
+								inputMode="numeric"
+								description="Only if it's longer than prep and cook together, such as time to chill."
+							/>
+						</div>
+						<div className="grid gap-4 sm:grid-cols-3">
+							<Field>
+								<FieldLabel htmlFor={ids.yieldKind}>Yield</FieldLabel>
+								<Select
+									items={yieldKindItems}
+									value={values.yieldKind}
+									onValueChange={(kind) => {
+										if (kind !== null) {
+											dispatch({ type: 'setYieldKind', kind });
+										}
+									}}
+								>
+									<SelectTrigger id={ids.yieldKind} className="w-full">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										{yieldKindItems.map((item) => (
+											<SelectItem key={item.value} value={item.value}>
+												{item.label}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</Field>
+							<TextField
+								{...textFieldProps('yieldAmount')}
+								label={fieldLabel('yieldAmount')}
+								autoComplete="off"
+								description="A number or a range, such as 4 or 4 to 6."
+							/>
+							{values.yieldKind === 'makes' && (
+								<TextField
+									{...textFieldProps('yieldUnit')}
+									label={textFieldLabels.yieldUnit}
+									autoComplete="off"
+									description="Such as biscuits or loaves."
+								/>
+							)}
+						</div>
+					</FieldSet>
+					<SectionedListField
+						idPrefix={ids.list('ingredientSections')}
+						name="ingredientSections"
+						list={values.ingredientSections}
+						nextId={values.nextId}
+						dispatch={dispatch}
+						{...listFieldLabels.ingredientSections}
+						description="One ingredient per field, as you'd write it. Add a section for a separate part, such as a glaze."
+						itemPlaceholder="2½ cups all-purpose flour"
+						headingPlaceholder="For the glaze"
+						maxItemLength={maxIngredientLineLength}
+						itemPreview={ingredientPreview}
+						problemCheck={problemCheck}
+					/>
+					<SectionedListField
+						idPrefix={ids.list('instructionSections')}
+						name="instructionSections"
+						list={values.instructionSections}
+						nextId={values.nextId}
+						dispatch={dispatch}
+						{...listFieldLabels.instructionSections}
+						description="One step per field. Add a section for a separate part, such as a glaze."
+						itemPlaceholder="Heat the oven to 450°F."
+						headingPlaceholder="For the glaze"
+						numbered
+						problemCheck={problemCheck}
+					/>
+					<TextareaField
+						{...textFieldProps('notes')}
+						label={textFieldLabels.notes}
+						description="The story behind the recipe, or tips for making it."
+					/>
+					<TagsField
+						idPrefix={ids.tags}
+						tags={values.tags}
+						draft={values.text.tagDraft}
+						tagLabels={tagLabels}
+						respellableTags={editing?.respellableTags ?? []}
+						error={values.fieldErrors.tags}
+						errorCheck={problemCheck({ kind: 'field', field: 'tags' })}
+						dispatch={dispatch}
+					/>
+					<PhotoField
+						idPrefix={ids.photos('dish')}
+						role="dish"
+						legend={photoFieldLegends.dish}
+						description="Photos of the finished dish, which anyone can see. The first is the cover. Describe each one for people who can't see it."
+						limit={maxDishPhotos}
+						photos={values.photos.dish}
+						nextId={values.nextId}
+						dispatch={dispatch}
+						uploadFolder={uploadFolders.dish}
+						uploader={uploader}
+						problemCheck={problemCheck}
+					/>
+					<PhotoField
+						idPrefix={ids.photos('scan')}
+						role="scan"
+						legend={photoFieldLegends.scan}
+						description="Photos of the recipe as it was written, such as a recipe card. Only members can see them."
+						limit={maxScans}
+						photos={values.photos.scan}
+						nextId={values.nextId}
+						dispatch={dispatch}
+						uploadFolder={uploadFolders.scan}
+						uploader={uploader}
+						problemCheck={problemCheck}
+					/>
+				</FieldGroup>
+			</SummarizedProblems>
 			<div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
 				{photosInProgress && (
 					<p id={ids.saveNote} className="text-sm text-muted-foreground">
@@ -489,7 +506,7 @@ function RecipeForm({
 // Mirrors the top of the recipe form: its title, description, and source fields.
 function RecipeFormSkeleton() {
 	return (
-		<div role="status" className="flex flex-col gap-7">
+		<div role="status" aria-live="polite" className="flex flex-col gap-7">
 			<span className="sr-only">Loading the recipe form</span>
 			<div className="flex flex-col gap-3">
 				<Skeleton className="h-5 w-12" />

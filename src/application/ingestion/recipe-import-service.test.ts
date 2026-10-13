@@ -10,12 +10,11 @@ import {
 	InvalidImportError,
 } from '@/application/ingestion/errors';
 import { RecipeImportService } from '@/application/ingestion/recipe-import-service';
-import { MemberNotFoundError } from '@/application/members/errors';
 import type { Actor, MemberActor } from '@/application/ports/actor-provider';
 import type { Extraction } from '@/application/ports/recipe-extractors';
 import type { WebPage } from '@/application/ports/web-page-fetcher';
 import { ImageFolders } from '@/application/recipes/image-folders';
-import { actorFor, adminActor, anonymousActor, memberActor } from '@/application/testing/actors';
+import { adminActor, anonymousActor, memberActor } from '@/application/testing/actors';
 import { FixedActorProvider } from '@/application/testing/fixed-actor-provider';
 import {
 	FixedPageRecipeExtractor,
@@ -23,10 +22,8 @@ import {
 } from '@/application/testing/fixed-recipe-extractors';
 import { FixedWebPageFetcher } from '@/application/testing/fixed-web-page-fetcher';
 import { InMemoryImageStore } from '@/application/testing/in-memory-image-store';
-import { InMemoryMemberRepository } from '@/application/testing/in-memory-member-repository';
 import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
-import type { MemberRole } from '@/domain/member/member';
 import {
 	importDraftFromExtractedRecipe,
 	type ExtractedRecipe,
@@ -88,7 +85,7 @@ const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 const backOfCard = new Uint8Array([0xff, 0xd8, 0xff, 0x02, 0xd9]);
 const scanUpload = 'scan/development/0b6e2f4a-9c1d-4e8b-a7f3-5d2c1b0a9e8f.jpg';
 const secondScanUpload = 'scan/development/3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b.jpg';
-const unstoredScanMessage = "This photo didn't finish uploading. Remove it and add it again.";
+const unstoredScanMessage = "This photo didn't upload. Remove it and add it again.";
 
 type ImportFakes = {
 	pages?: FixedWebPageFetcher;
@@ -110,8 +107,7 @@ function scanImages(pathnames: readonly string[]): RecipeImage[] {
 function createImports(fakes: ImportFakes = {}) {
 	const recipes = new InMemoryRecipeRepository();
 	const imports = new InMemoryRecipeImportRepository(recipes);
-	const members = new InMemoryMemberRepository();
-	const images = new InMemoryImageStore();
+	const images = new InMemoryImageStore(folders);
 	const pages = fakes.pages ?? new FixedWebPageFetcher(page);
 	const structuredData = fakes.structuredData ?? new FixedPageRecipeExtractor(null);
 	const pageReader = fakes.pageReader ?? new FixedPageRecipeExtractor(readLemonade);
@@ -120,8 +116,8 @@ function createImports(fakes: ImportFakes = {}) {
 
 	const serviceFor = (actor: Actor) =>
 		new RecipeImportService(
+			recipes,
 			imports,
-			members,
 			pages,
 			structuredData,
 			pageReader,
@@ -129,15 +125,6 @@ function createImports(fakes: ImportFakes = {}) {
 			images,
 			new FixedActorProvider(actor),
 			folders
-		);
-	// Signed in with an account, so imports can label their model calls with its email.
-	const addMember = async (role: MemberRole = 'member') =>
-		actorFor(
-			await members.create({
-				email: `${crypto.randomUUID()}@example.com`,
-				displayName: 'Ada',
-				role,
-			})
 		);
 	// The import the service started last, as the repository holds it now.
 	const lastImport = async (): Promise<RecipeImport> => {
@@ -153,6 +140,22 @@ function createImports(fakes: ImportFakes = {}) {
 			await images.put(pathname, bytes, 'image/jpeg');
 		}
 	};
+	// The member's recipe lists one scan and their draft awaiting review names another.
+	const nameScans = async (owner: MemberActor, recipeScan: string, draftScan: string) => {
+		await recipes.create({
+			content: parseRecipeContent({ ...sampleTomatoSalad, images: scanImages([recipeScan]) }),
+			provenance: { entryMode: 'photo' },
+			contributorId: owner.memberId,
+			slugBase: 'tomato-salad',
+		});
+		const started = await imports.start({ memberId: owner.memberId, mode: 'photo' });
+		if (started === null) {
+			throw new Error('The import was refused');
+		}
+		await imports.recordSuccess(started.id, {
+			draft: { content: { title: 'Lemon bars', images: scanImages([draftScan]) }, problems: [] },
+		});
+	};
 	// An import the member started directly, as earlier requests leave them.
 	const startImport = async (actor: MemberActor) => {
 		const started = await imports.start({ memberId: actor.memberId, mode: 'url' });
@@ -166,16 +169,15 @@ function createImports(fakes: ImportFakes = {}) {
 	return {
 		recipes,
 		imports,
-		members,
 		images,
 		pages,
 		structuredData,
 		pageReader,
 		scanReader,
 		serviceFor,
-		addMember,
 		lastImport,
 		storeScans,
+		nameScans,
 		startImport,
 		backdate,
 	};
@@ -192,15 +194,18 @@ async function failureOf(promise: Promise<unknown>): Promise<unknown> {
 
 let consoleInfo: MockInstance<typeof console.info>;
 let consoleWarn: MockInstance<typeof console.warn>;
+let consoleError: MockInstance<typeof console.error>;
+
+function loggedCalls(): unknown[][] {
+	return [...consoleInfo.mock.calls, ...consoleWarn.mock.calls, ...consoleError.mock.calls];
+}
 
 function loggedLines(): Record<string, unknown>[] {
-	return [...consoleInfo.mock.calls, ...consoleWarn.mock.calls].map(
-		([line]) => JSON.parse(String(line)) as Record<string, unknown>
-	);
+	return loggedCalls().map(([line]) => JSON.parse(String(line)) as Record<string, unknown>);
 }
 
 function loggedText(): string {
-	return [...consoleInfo.mock.calls, ...consoleWarn.mock.calls]
+	return loggedCalls()
 		.map(([line]) => String(line))
 		.join('\n');
 }
@@ -213,6 +218,7 @@ beforeEach(() => {
 	// Keeps log lines out of the test output; the logging tests read them here.
 	consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => {});
 	consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+	consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -248,20 +254,12 @@ describe('importFromUrl', () => {
 		expect(pages.fetchedUrls).toEqual([]);
 	});
 
-	it('refuses a member whose account is gone, before starting an import', async () => {
-		const { pages, serviceFor, lastImport } = createImports();
-
-		await expect(serviceFor(memberActor()).importFromUrl(url)).rejects.toThrow(MemberNotFoundError);
-		await expect(lastImport()).rejects.toThrow('No import was started');
-		expect(pages.fetchedUrls).toEqual([]);
-	});
-
 	it('uses complete structured data without calling the model', async () => {
-		const { pageReader, serviceFor, addMember, lastImport } = createImports({
+		const { pageReader, serviceFor, lastImport } = createImports({
 			structuredData: new FixedPageRecipeExtractor(structuredLemonade),
 		});
 
-		await serviceFor(await addMember()).importFromUrl(url);
+		await serviceFor(memberActor()).importFromUrl(url);
 
 		const recipeImport = await lastImport();
 		expect(pageReader.readPages).toEqual([]);
@@ -280,11 +278,11 @@ describe('importFromUrl', () => {
 			{ recipe: { ...lemonade, ingredientSections: [{ lines: [' '] }] } },
 		],
 	])('has the model read the page when %s', async (_, structured) => {
-		const { pageReader, serviceFor, addMember, lastImport } = createImports({
+		const { pageReader, serviceFor, lastImport } = createImports({
 			structuredData: new FixedPageRecipeExtractor(structured),
 		});
 
-		await serviceFor(await addMember()).importFromUrl(url);
+		await serviceFor(memberActor()).importFromUrl(url);
 
 		expect(pageReader.readPages).toEqual([page]);
 		expect(await lastImport()).toMatchObject({
@@ -294,30 +292,26 @@ describe('importFromUrl', () => {
 		});
 	});
 
-	it('reads the page for the member, by their id and email', async () => {
-		const { members, structuredData, pageReader, serviceFor } = createImports();
-		const ada = await members.create({
-			email: 'ada@example.com',
-			displayName: 'Ada',
-			role: 'member',
-		});
+	it('reads the page for the member, by their id alone', async () => {
+		const { structuredData, pageReader, serviceFor } = createImports();
+		const member = memberActor();
 
-		await serviceFor(actorFor(ada)).importFromUrl(url);
+		await serviceFor(member).importFromUrl(url);
 
-		const requester = { memberId: ada.id, email: 'ada@example.com' };
+		const requester = { memberId: member.memberId };
 		expect(structuredData.receivedRequesters).toEqual([requester]);
 		expect(pageReader.receivedRequesters).toEqual([requester]);
 	});
 
 	it('stores the draft the domain builds from the reading, with the problems it found', async () => {
-		const { serviceFor, addMember, lastImport } = createImports({
+		const { serviceFor, lastImport } = createImports({
 			pageReader: new FixedPageRecipeExtractor({
 				...readLemonade,
 				recipe: { ...lemonade, title: undefined },
 			}),
 		});
 
-		await serviceFor(await addMember()).importFromUrl(url);
+		await serviceFor(memberActor()).importFromUrl(url);
 
 		const expected = importDraftFromExtractedRecipe({ ...lemonade, title: undefined }, []);
 		expect((await lastImport()).draft).toEqual({
@@ -328,20 +322,20 @@ describe('importFromUrl', () => {
 	});
 
 	it('fetches and records the address the member gave, not where the site redirected', async () => {
-		const { pages, serviceFor, addMember, lastImport } = createImports({
+		const { pages, serviceFor, lastImport } = createImports({
 			pages: new FixedWebPageFetcher({ ...page, url: 'https://www.example.com/lemonade-2' }),
 		});
 
-		await serviceFor(await addMember()).importFromUrl(`  ${url}\n`);
+		await serviceFor(memberActor()).importFromUrl(`  ${url}\n`);
 
 		expect(pages.fetchedUrls).toEqual([url]);
 		expect((await lastImport()).sourceUrl).toBe(url);
 	});
 
 	it('returns the import, so the member can review its draft', async () => {
-		const { serviceFor, addMember, lastImport } = createImports();
+		const { serviceFor, lastImport } = createImports();
 
-		const ref = await serviceFor(await addMember()).importFromUrl(url);
+		const ref = await serviceFor(memberActor()).importFromUrl(url);
 
 		expect(ref).toEqual({ id: (await lastImport()).id });
 	});
@@ -354,11 +348,11 @@ describe('importFromUrl', () => {
 			'import.page-unavailable',
 		],
 	])('records a failed import when %s, without reading anything', async (_, error, failure) => {
-		const { structuredData, pageReader, serviceFor, addMember, lastImport } = createImports({
+		const { structuredData, pageReader, serviceFor, lastImport } = createImports({
 			pages: new FixedWebPageFetcher(error),
 		});
 
-		await expect(serviceFor(await addMember()).importFromUrl(url)).rejects.toBe(error);
+		await expect(serviceFor(memberActor()).importFromUrl(url)).rejects.toBe(error);
 
 		expect(await lastImport()).toMatchObject({ status: 'failed', failure });
 		expect(structuredData.readPages).toEqual([]);
@@ -370,11 +364,11 @@ describe('importFromUrl', () => {
 		['the model call fails', new ImportFailedError(), 'import.failed'],
 		['something unexpected breaks', new Error('Extractor crashed'), 'unexpected'],
 	])('records a failed import when %s, and rethrows the error', async (_, error, failure) => {
-		const { serviceFor, addMember, lastImport } = createImports({
+		const { serviceFor, lastImport } = createImports({
 			pageReader: new FixedPageRecipeExtractor(error),
 		});
 
-		await expect(serviceFor(await addMember()).importFromUrl(url)).rejects.toBe(error);
+		await expect(serviceFor(memberActor()).importFromUrl(url)).rejects.toBe(error);
 
 		const recipeImport = await lastImport();
 		expect(recipeImport).toMatchObject({ status: 'failed', failure });
@@ -397,11 +391,11 @@ describe('importFromUrl', () => {
 	])(
 		'says there is no recipe when the model %s, and records what the call cost',
 		async (_, reading) => {
-			const { serviceFor, addMember, lastImport } = createImports({
+			const { serviceFor, lastImport } = createImports({
 				pageReader: new FixedPageRecipeExtractor(reading),
 			});
 
-			await expect(serviceFor(await addMember()).importFromUrl(url)).rejects.toThrow(
+			await expect(serviceFor(memberActor()).importFromUrl(url)).rejects.toThrow(
 				ImportNoRecipeError
 			);
 
@@ -414,14 +408,14 @@ describe('importFromUrl', () => {
 	);
 
 	it('keeps a reading with steps but no ingredients, for the member to finish', async () => {
-		const { serviceFor, addMember, lastImport } = createImports({
+		const { serviceFor, lastImport } = createImports({
 			pageReader: new FixedPageRecipeExtractor({
 				...readLemonade,
 				recipe: { ...emptyRecipe, instructionSections: [{ steps: ['Stir the punch.'] }] },
 			}),
 		});
 
-		await serviceFor(await addMember()).importFromUrl(url);
+		await serviceFor(memberActor()).importFromUrl(url);
 
 		expect(await lastImport()).toMatchObject({ status: 'succeeded' });
 	});
@@ -429,8 +423,8 @@ describe('importFromUrl', () => {
 
 describe('import limit', () => {
 	it('refuses a member past 50 imports in a day, before fetching the page', async () => {
-		const { pages, serviceFor, addMember, startImport } = createImports();
-		const member = await addMember();
+		const { pages, serviceFor, startImport } = createImports();
+		const member = memberActor();
 		for (let count = 0; count < 50; count += 1) {
 			await startImport(member);
 		}
@@ -448,8 +442,8 @@ describe('import limit', () => {
 	});
 
 	it('counts only imports started in the last 24 hours', async () => {
-		const { serviceFor, addMember, startImport, backdate } = createImports();
-		const member = await addMember();
+		const { serviceFor, startImport, backdate } = createImports();
+		const member = memberActor();
 		for (let count = 0; count < 50; count += 1) {
 			backdate(await startImport(member), 1.01);
 		}
@@ -458,18 +452,18 @@ describe('import limit', () => {
 	});
 
 	it("counts each member's imports alone", async () => {
-		const { serviceFor, addMember, startImport } = createImports();
+		const { serviceFor, startImport } = createImports();
 		const busyMember = memberActor();
 		for (let count = 0; count < 50; count += 1) {
 			await startImport(busyMember);
 		}
 
-		await expect(serviceFor(await addMember()).importFromUrl(url)).resolves.toBeDefined();
+		await expect(serviceFor(memberActor()).importFromUrl(url)).resolves.toBeDefined();
 	});
 
 	it('leaves admins without a limit', async () => {
-		const { serviceFor, addMember, startImport } = createImports();
-		const admin = await addMember('admin');
+		const { serviceFor, startImport } = createImports();
+		const admin = adminActor();
 		for (let count = 0; count < 50; count += 1) {
 			await startImport(admin);
 		}
@@ -480,8 +474,8 @@ describe('import limit', () => {
 
 describe('expired drafts', () => {
 	it('clears drafts older than 7 days, and their source URLs, before starting an import', async () => {
-		const { imports, serviceFor, addMember, backdate } = createImports();
-		const member = await addMember();
+		const { imports, serviceFor, backdate } = createImports();
+		const member = memberActor();
 		const service = serviceFor(member);
 		const expired = (await service.importFromUrl(url)).id;
 		const recent = (await service.importFromUrl(url)).id;
@@ -588,12 +582,41 @@ describe('importFromScans', () => {
 		expect(scanReader.readScanSets).toEqual([]);
 	});
 
+	it("refuses scans another member's recipe or draft names as never uploaded, without reading the store", async () => {
+		const { images, storeScans, nameScans, scanReader, serviceFor } = createImports();
+		await storeScans([scanUpload, secondScanUpload]);
+		await nameScans(memberActor(), scanUpload, secondScanUpload);
+
+		const error = await failureOf(
+			serviceFor(memberActor()).importFromScans([scanUpload, secondScanUpload])
+		);
+
+		expect((error as InvalidImportError).problems).toEqual([
+			{ path: 'scans.0', message: unstoredScanMessage },
+			{ path: 'scans.1', message: unstoredScanMessage },
+		]);
+		expect(images.wasRead).toBe(false);
+		expect(scanReader.readScanSets).toEqual([]);
+	});
+
+	it("imports the member's own scans again, from their recipe or a draft", async () => {
+		const { storeScans, nameScans, scanReader, serviceFor, lastImport } = createImports();
+		const owner = memberActor();
+		await storeScans([scanUpload, secondScanUpload]);
+		await nameScans(owner, scanUpload, secondScanUpload);
+
+		await serviceFor(owner).importFromScans([scanUpload, secondScanUpload]);
+
+		expect(scanReader.readScanSets[0]).toHaveLength(2);
+		expect(await lastImport()).toMatchObject({ status: 'succeeded' });
+	});
+
 	it('reads every photo in one call, in order, and keeps them on the draft as scans', async () => {
-		const { images, scanReader, serviceFor, addMember, lastImport } = createImports();
+		const { images, scanReader, serviceFor, lastImport } = createImports();
 		await images.put(scanUpload, jpeg, 'image/jpeg');
 		await images.put(secondScanUpload, backOfCard, 'image/jpeg');
 
-		await serviceFor(await addMember()).importFromScans([scanUpload, secondScanUpload]);
+		await serviceFor(memberActor()).importFromScans([scanUpload, secondScanUpload]);
 
 		expect(scanReader.readScanSets).toEqual([
 			[
@@ -616,37 +639,33 @@ describe('importFromScans', () => {
 		expect(recipeImport.draft).toEqual({ content: expected.content, problems: expected.problems });
 	});
 
-	it('reads the photos for the member, by their id and email', async () => {
-		const { members, storeScans, scanReader, serviceFor } = createImports();
-		const ada = await members.create({
-			email: 'ada@example.com',
-			displayName: 'Ada',
-			role: 'member',
-		});
+	it('reads the photos for the member, by their id alone', async () => {
+		const { storeScans, scanReader, serviceFor } = createImports();
+		const member = memberActor();
 		await storeScans([scanUpload]);
 
-		await serviceFor(actorFor(ada)).importFromScans([scanUpload]);
+		await serviceFor(member).importFromScans([scanUpload]);
 
-		expect(scanReader.receivedRequesters).toEqual([{ memberId: ada.id, email: 'ada@example.com' }]);
+		expect(scanReader.receivedRequesters).toEqual([{ memberId: member.memberId }]);
 	});
 
 	it('takes up to 6 photos', async () => {
-		const { storeScans, scanReader, serviceFor, addMember } = createImports();
+		const { storeScans, scanReader, serviceFor } = createImports();
 		const pathnames = Array.from({ length: 6 }, newScanUpload);
 		await storeScans(pathnames);
 
-		await serviceFor(await addMember()).importFromScans(pathnames);
+		await serviceFor(memberActor()).importFromScans(pathnames);
 
 		expect(scanReader.readScanSets[0]).toHaveLength(6);
 	});
 
 	it('says there is no recipe when the photos hold none, and records what the call cost', async () => {
-		const { storeScans, serviceFor, addMember, lastImport } = createImports({
+		const { storeScans, serviceFor, lastImport } = createImports({
 			scanReader: new FixedScanRecipeExtractor(emptyReading),
 		});
 		await storeScans([scanUpload]);
 
-		await expect(serviceFor(await addMember()).importFromScans([scanUpload])).rejects.toThrow(
+		await expect(serviceFor(memberActor()).importFromScans([scanUpload])).rejects.toThrow(
 			ImportNoRecipeError
 		);
 		expect(await lastImport()).toMatchObject({
@@ -659,12 +678,12 @@ describe('importFromScans', () => {
 
 	it('records a failed model call and rethrows it', async () => {
 		const error = new ImportPausedError();
-		const { storeScans, serviceFor, addMember, lastImport } = createImports({
+		const { storeScans, serviceFor, lastImport } = createImports({
 			scanReader: new FixedScanRecipeExtractor(error),
 		});
 		await storeScans([scanUpload]);
 
-		await expect(serviceFor(await addMember()).importFromScans([scanUpload])).rejects.toBe(error);
+		await expect(serviceFor(memberActor()).importFromScans([scanUpload])).rejects.toBe(error);
 		expect(await lastImport()).toMatchObject({ status: 'failed', failure: 'import.paused' });
 	});
 });
@@ -679,8 +698,8 @@ describe('getImportReview', () => {
 	});
 
 	it('returns the draft to the member who imported it, with the page it was read from', async () => {
-		const { serviceFor, addMember } = createImports();
-		const service = serviceFor(await addMember());
+		const { serviceFor } = createImports();
+		const service = serviceFor(memberActor());
 		const { id } = await service.importFromUrl(url);
 
 		const review = await service.getImportReview(id);
@@ -699,9 +718,9 @@ describe('getImportReview', () => {
 	});
 
 	it('returns a photo import without a source URL', async () => {
-		const { storeScans, serviceFor, addMember } = createImports();
+		const { storeScans, serviceFor } = createImports();
 		await storeScans([scanUpload]);
-		const service = serviceFor(await addMember());
+		const service = serviceFor(memberActor());
 		const { id } = await service.importFromScans([scanUpload]);
 
 		const review = await service.getImportReview(id);
@@ -711,8 +730,8 @@ describe('getImportReview', () => {
 	});
 
 	it('names the recipe saved from the import, after its draft is cleared', async () => {
-		const { recipes, imports, serviceFor, addMember } = createImports();
-		const member = await addMember();
+		const { recipes, imports, serviceFor } = createImports();
+		const member = memberActor();
 		const service = serviceFor(member);
 		const { id } = await service.importFromUrl(url);
 		const recipe = await recipes.create({
@@ -737,26 +756,26 @@ describe('getImportReview', () => {
 	});
 
 	it("returns null for another member's import, even to an admin", async () => {
-		const { serviceFor, addMember } = createImports();
-		const { id } = await serviceFor(await addMember()).importFromUrl(url);
+		const { serviceFor } = createImports();
+		const { id } = await serviceFor(memberActor()).importFromUrl(url);
 
 		expect(await serviceFor(memberActor()).getImportReview(id)).toBeNull();
 		expect(await serviceFor(adminActor()).getImportReview(id)).toBeNull();
 	});
 
 	it('returns null for a failed import', async () => {
-		const { serviceFor, addMember, lastImport } = createImports({
+		const { serviceFor, lastImport } = createImports({
 			pageReader: new FixedPageRecipeExtractor(emptyReading),
 		});
-		const service = serviceFor(await addMember());
+		const service = serviceFor(memberActor());
 		await service.importFromUrl(url).catch(() => undefined);
 
 		expect(await service.getImportReview((await lastImport()).id)).toBeNull();
 	});
 
 	it('returns null for a draft that expired or was cleared without a recipe', async () => {
-		const { imports, serviceFor, addMember, backdate } = createImports();
-		const service = serviceFor(await addMember());
+		const { imports, serviceFor, backdate } = createImports();
+		const service = serviceFor(memberActor());
 		const expired = (await service.importFromUrl(url)).id;
 		const cleared = (await service.importFromUrl(url)).id;
 		backdate(expired, 7.01);
@@ -777,15 +796,15 @@ describe('listUnsavedImports', () => {
 	});
 
 	it("lists the member's reviewable drafts, newest first", async () => {
-		const { recipes, storeScans, serviceFor, addMember, backdate } = createImports();
+		const { recipes, storeScans, serviceFor, backdate } = createImports();
 		await storeScans([scanUpload]);
-		const member = await addMember();
+		const member = memberActor();
 		const service = serviceFor(member);
 		const first = (await service.importFromUrl(url)).id;
 		const photo = (await service.importFromScans([scanUpload])).id;
 		const saved = (await service.importFromUrl(url)).id;
 		const expired = (await service.importFromUrl(url)).id;
-		await serviceFor(await addMember()).importFromUrl(url);
+		await serviceFor(memberActor()).importFromUrl(url);
 		await recipes.create({
 			content: parseRecipeContent(sampleTomatoSalad),
 			provenance: { entryMode: 'manual' },
@@ -804,8 +823,8 @@ describe('listUnsavedImports', () => {
 	});
 
 	it('lists at most the 10 newest', async () => {
-		const { serviceFor, addMember } = createImports();
-		const service = serviceFor(await addMember());
+		const { serviceFor } = createImports();
+		const service = serviceFor(memberActor());
 		const ids: RecipeImportId[] = [];
 		for (let count = 0; count < 11; count += 1) {
 			ids.push((await service.importFromUrl(url)).id);
@@ -819,8 +838,8 @@ describe('listUnsavedImports', () => {
 
 describe('logging', () => {
 	it('logs an import by ids, mode, model, and cost, never the address, email, or recipe', async () => {
-		const { serviceFor, addMember } = createImports();
-		const member = await addMember();
+		const { serviceFor } = createImports();
+		const member = memberActor();
 
 		const { id } = await serviceFor(member).importFromUrl(url);
 
@@ -849,10 +868,10 @@ describe('logging', () => {
 		[new ImportPageRefusedError(451), { status: 451 }],
 		[new ImportPageUnavailableError('not-html'), { reason: 'not-html' }],
 	])('logs a page that could not be read with why, never the address', async (error, why) => {
-		const { serviceFor, addMember, lastImport } = createImports({
+		const { serviceFor, lastImport } = createImports({
 			pages: new FixedWebPageFetcher(error),
 		});
-		const member = await addMember();
+		const member = memberActor();
 
 		await serviceFor(member)
 			.importFromUrl(url)
@@ -871,12 +890,57 @@ describe('logging', () => {
 		expect(loggedText()).not.toMatch(/example\.com|newsletter/);
 	});
 
+	it.each<[string, ImportFakes, 'info' | 'warn' | 'error']>([
+		[
+			'a page that refused',
+			{ pages: new FixedWebPageFetcher(new ImportPageRefusedError(403)) },
+			'info',
+		],
+		[
+			'a page that could not be read',
+			{ pages: new FixedWebPageFetcher(new ImportPageUnavailableError('timed-out')) },
+			'info',
+		],
+		[
+			'a reading with no recipe',
+			{ pageReader: new FixedPageRecipeExtractor(emptyReading) },
+			'info',
+		],
+		[
+			'a paused import',
+			{ pageReader: new FixedPageRecipeExtractor(new ImportPausedError()) },
+			'warn',
+		],
+		[
+			'a failed model call',
+			{ pageReader: new FixedPageRecipeExtractor(new ImportFailedError()) },
+			'warn',
+		],
+		[
+			'an unexpected failure',
+			{ pageReader: new FixedPageRecipeExtractor(new Error('Extractor crashed')) },
+			'error',
+		],
+	])('logs %s at %s', async (_, fakes, level) => {
+		const { serviceFor } = createImports(fakes);
+		const consoleMethod = { info: consoleInfo, warn: consoleWarn, error: consoleError }[level];
+
+		await serviceFor(memberActor())
+			.importFromUrl(url)
+			.catch(() => undefined);
+
+		expect(logged('Import failed')).toMatchObject({ level });
+		expect(consoleMethod.mock.calls.map(([line]) => JSON.parse(String(line)).message)).toContain(
+			'Import failed'
+		);
+	});
+
 	it('logs the model and cost of a paid call that found no recipe', async () => {
-		const { serviceFor, addMember } = createImports({
+		const { serviceFor } = createImports({
 			pageReader: new FixedPageRecipeExtractor(emptyReading),
 		});
 
-		await serviceFor(await addMember())
+		await serviceFor(memberActor())
 			.importFromUrl(url)
 			.catch(() => undefined);
 
@@ -889,13 +953,13 @@ describe('logging', () => {
 	});
 
 	it('logs paused imports by their code alone', async () => {
-		const { serviceFor, addMember } = createImports({
+		const { serviceFor } = createImports({
 			pageReader: new FixedPageRecipeExtractor(
 				new ImportPausedError({ cause: { statusCode: 402 } })
 			),
 		});
 
-		await serviceFor(await addMember())
+		await serviceFor(memberActor())
 			.importFromUrl(url)
 			.catch(() => undefined);
 
@@ -917,11 +981,11 @@ describe('logging', () => {
 			{ message: 'Extractor crashed' },
 		],
 	])('logs the error of %s', async (_, error, failure, loggedError) => {
-		const { serviceFor, addMember } = createImports({
+		const { serviceFor } = createImports({
 			pageReader: new FixedPageRecipeExtractor(error),
 		});
 
-		await serviceFor(await addMember())
+		await serviceFor(memberActor())
 			.importFromUrl(url)
 			.catch(() => undefined);
 

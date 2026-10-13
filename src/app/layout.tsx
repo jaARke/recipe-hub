@@ -2,6 +2,7 @@ import { cn } from 'cn';
 import type { Metadata } from 'next';
 import { Fraunces, Hanken_Grotesk, JetBrains_Mono } from 'next/font/google';
 import { Suspense } from 'react';
+import { readHeaderMember } from '@/app/_lib/read-header-member';
 import { SessionRenewal } from '@/components/auth/session-renewal';
 import { HeaderAccount, HeaderAccountPlaceholder } from '@/components/layout/header-account';
 import { SiteHeader } from '@/components/layout/site-header';
@@ -10,7 +11,7 @@ import { Toaster } from '@/components/ui/toast';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { getMemberService } from '@/composition/services';
 import { siteUrl } from '@/lib/env';
-import { siteName } from '@/lib/site';
+import { siteDescription, siteName } from '@/lib/site';
 import './globals.css';
 
 const fraunces = Fraunces({
@@ -32,19 +33,20 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
 	metadataBase: siteUrl,
 	title: { default: siteName, template: `%s | ${siteName}` },
-	description: 'Browse, search, and cook from a shared recipe collection.',
+	description: siteDescription,
+	// The opengraph-image file convention fills in the images, which pages without their own inherit.
+	openGraph: { type: 'website', siteName },
+	twitter: { card: 'summary_large_image' },
 	// Kept out of search results until launch; links are still followed so crawlers see each noindex.
 	robots: { index: false, follow: true },
 };
 
 // Reads the session, so it streams in behind its own boundary instead of holding up the page.
 async function SiteHeaderAccount() {
-	const member = await getMemberService().getCurrentMember();
+	const member = await readHeaderMember(() => getMemberService().getCurrentMember());
 	return (
 		<>
-			<HeaderAccount
-				member={member === null ? null : { displayName: member.displayName, role: member.role }}
-			/>
+			<HeaderAccount member={member} />
 			{member !== null && <SessionRenewal />}
 		</>
 	);

@@ -39,7 +39,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select';
-import { tagKey } from '@/domain/recipe/tag';
+import { tagKey } from '@/domain/recipe/tag-normalization';
 
 const totalTimeLabels: Record<RecipeTotalTimeChoice, string> = {
 	15: '15 minutes or less',

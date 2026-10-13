@@ -3,7 +3,7 @@ import type { PublicRecipeDto } from '@/application/recipes/recipe-dtos';
 import { recipeImageSrc, recipePath } from '@/components/recipe/recipe-paths';
 import { toIsoDuration, totalMinutes } from '@/domain/recipe/duration';
 import type { InstructionSection } from '@/domain/recipe/instruction';
-import { formatYield } from '@/domain/recipe/recipe-yield';
+import { formatYield, type RecipeYield } from '@/domain/recipe/recipe-yield';
 
 type RecipeJsonLdProps = {
 	recipe: PublicRecipeDto;
@@ -16,6 +16,14 @@ function absoluteUrl(path: string, siteUrl: URL): string {
 
 function toHowToSteps(section: InstructionSection): HowToStep[] {
 	return section.steps.map((step) => ({ '@type': 'HowToStep', text: step.text }));
+}
+
+// Google asks for servings as just a number. A range of servings is not one, so it keeps the page's
+// wording, as a "makes" yield does.
+function toRecipeYield(recipeYield: RecipeYield): string {
+	return recipeYield.kind === 'servings' && recipeYield.amount.max === undefined
+		? String(recipeYield.amount.min)
+		: formatYield(recipeYield);
 }
 
 // Google asks for plain steps, adding sections only where the recipe names them.
@@ -50,7 +58,7 @@ function toRecipeJsonLd(recipe: PublicRecipeDto, siteUrl: URL): WithContext<Reci
 		prepTime: hasPrepAndCook ? toIsoDuration(prepMinutes) : undefined,
 		cookTime: hasPrepAndCook ? toIsoDuration(cookMinutes) : undefined,
 		totalTime: total === undefined ? undefined : toIsoDuration(total),
-		recipeYield: recipe.yield === undefined ? undefined : formatYield(recipe.yield),
+		recipeYield: recipe.yield === undefined ? undefined : toRecipeYield(recipe.yield),
 		recipeIngredient: recipe.ingredientSections.flatMap((section) =>
 			section.lines.map((line) => line.text)
 		),

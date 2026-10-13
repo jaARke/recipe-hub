@@ -27,6 +27,7 @@ import {
 	toHighlightedText,
 	toSnippet,
 } from '@/infrastructure/db/search-headline';
+import { recipeTags, tagKeyColumn, tagLabel, tagOrder } from '@/infrastructure/db/tag-labels';
 
 // Below pg_trgm's default of 0.6, which misses a one-letter slip in a short word ("chiken" scores 0.5).
 const closeMatchSimilarity = 0.5;
@@ -269,18 +270,16 @@ export class DrizzleRecipeSearch implements RecipeSearch {
 		);
 	}
 
-	// The earliest recipe's spelling labels each facet, and ties order by key: the label ignoring case.
+	// The earliest recipe's spelling labels each facet, most used first and then by key: the label
+	// ignoring case, the rule every list of tags shares.
 	private async countTags(match: TextMatch, filters: SearchFilters): Promise<RecipeFacetCount[]> {
 		return this.db
-			.select({
-				label: sql<string>`(array_agg(tag.label order by ${recipes.createdAt}, ${recipes.id}))[1]`,
-				count: count(),
-			})
+			.select({ label: tagLabel, count: count() })
 			.from(recipes)
-			.crossJoin(sql`unnest(${recipes.tagKeys}, ${recipes.tags}) as tag(key, label)`)
+			.crossJoin(recipeTags)
 			.where(matching(match, filters))
-			.groupBy(sql`tag.key`)
-			.orderBy(desc(count()), sql`tag.key`);
+			.groupBy(tagKeyColumn)
+			.orderBy(...tagOrder);
 	}
 
 	// Labeled and ordered as tags are.

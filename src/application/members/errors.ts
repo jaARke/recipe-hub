@@ -26,3 +26,12 @@ export class LastAdminError extends AppError {
 		super('Last admin cannot be removed');
 	}
 }
+
+// Removing their own account would sign the admin out for good, so another admin removes them.
+export class SelfRemovalError extends AppError {
+	readonly code = 'member.self-removal';
+
+	constructor() {
+		super('Admin cannot remove themselves');
+	}
+}

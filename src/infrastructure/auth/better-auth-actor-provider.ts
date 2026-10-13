@@ -22,7 +22,9 @@ export class BetterAuthActorProvider implements ActorProvider {
 			headers: requestHeaders,
 			query: { disableRefresh: true },
 		});
-		if (session === null) {
+		// Removal deletes a member's sessions, but a sign-in finishing as it lands can leave one. Better
+		// Auth reads a member never removed with a null or absent removedAt.
+		if (session === null || (session.user.removedAt ?? null) !== null) {
 			return { kind: 'anonymous' };
 		}
 

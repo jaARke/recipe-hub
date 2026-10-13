@@ -16,7 +16,6 @@ export type Extraction = {
 // usage and any misuse trace back to one account.
 export type ExtractionRequester = {
 	memberId: MemberId;
-	email: string;
 };
 
 // Reads a recipe from a web page: its structured data, or an AI model reading its text.

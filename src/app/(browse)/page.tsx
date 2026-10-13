@@ -6,11 +6,15 @@ import { recipeSorts } from '@/application/ports/recipe-repository';
 import { PageContainer } from '@/components/layout/page-container';
 import { RecipeCard } from '@/components/recipe/recipe-card';
 import { firstRowCardCount, RecipeGrid, RecipeGridSkeleton } from '@/components/recipe/recipe-grid';
+import { RecipeListHeading } from '@/components/recipe/recipe-list-heading';
 import { parseRecipeListParams, recipeListHref } from '@/components/recipe/recipe-list-params';
 import { RecipePagination } from '@/components/recipe/recipe-pagination';
 import { recipeListPath } from '@/components/recipe/recipe-paths';
 import { RecipeSortForm, RecipeSortFormSkeleton } from '@/components/recipe/recipe-sort-form';
 import { RecipesEmptyState } from '@/components/recipe/recipes-empty-state';
+
+// The page's heading, which takes focus when the pagination changes the page.
+const recipesHeadingId = 'recipes-heading';
 
 // Every page names its normalized URL, so /?page=1 points at /.
 export async function generateMetadata({ searchParams }: PageProps<'/'>): Promise<Metadata> {
@@ -50,7 +54,7 @@ async function RecipeList({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>
 			<RecipeGrid>
 				{recipes.map((recipe, index) => (
 					<li key={recipe.id}>
-						<RecipeCard recipe={recipe} eager={index < firstRowCardCount} />
+						<RecipeCard recipe={recipe} headingTag="h2" eager={index < firstRowCardCount} />
 					</li>
 				))}
 			</RecipeGrid>
@@ -59,6 +63,7 @@ async function RecipeList({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>
 					page={state.page}
 					pageCount={pageCount}
 					pageHref={(page) => recipeListHref({ page, sort: state.sort })}
+					resultsHeadingId={recipesHeadingId}
 				/>
 			)}
 		</>
@@ -68,7 +73,7 @@ async function RecipeList({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>
 export default function RecipesPage({ searchParams }: PageProps<'/'>) {
 	return (
 		<PageContainer width="wide" className="flex flex-col gap-8 py-12 sm:py-16">
-			<h1 className="font-heading text-4xl font-medium">Recipes</h1>
+			<RecipeListHeading id={recipesHeadingId}>Recipes</RecipeListHeading>
 			<Suspense
 				fallback={
 					<>

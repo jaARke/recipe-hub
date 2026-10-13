@@ -1,15 +1,17 @@
+import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { NewMember } from '@/application/ports/member-repository';
 import type { Auth } from '@/infrastructure/auth/better-auth';
 import { BetterAuthActorProvider } from '@/infrastructure/auth/better-auth-actor-provider';
 import { cookiesFrom, createTestAuth, testHost } from '@/infrastructure/auth/testing/test-auth';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
-import { sessions } from '@/infrastructure/db/schema';
+import { sessions, users } from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 
 const day = 24 * 60 * 60 * 1000;
 
 const jake: NewMember = { email: 'jake@example.com', displayName: 'Jake', role: 'admin' };
+const ada: NewMember = { email: 'ada@example.com', displayName: 'Ada', role: 'member' };
 
 let db: TestDatabase;
 let members: DrizzleMemberRepository;
@@ -64,6 +66,25 @@ describe('currentActor', () => {
 		const actor = await providerFor(new Headers({ host: testHost })).currentActor();
 
 		expect(actor).toEqual({ kind: 'anonymous' });
+	});
+
+	it('returns an anonymous actor once the signed-in member is removed', async () => {
+		const member = await members.create(ada);
+		const headers = await signedInHeaders(ada.email);
+
+		await members.remove(member.id);
+
+		expect(await providerFor(headers).currentActor()).toEqual({ kind: 'anonymous' });
+	});
+
+	it("returns an anonymous actor for a session that outlived its member's removal", async () => {
+		const member = await members.create(ada);
+		const headers = await signedInHeaders(ada.email);
+
+		// What a sign-in finishing during the removal leaves: the member marked removed, the session kept.
+		await db.update(users).set({ removedAt: new Date() }).where(eq(users.id, member.id));
+
+		expect(await providerFor(headers).currentActor()).toEqual({ kind: 'anonymous' });
 	});
 
 	it('reads the request before building Better Auth', async () => {

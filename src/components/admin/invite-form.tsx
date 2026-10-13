@@ -48,7 +48,7 @@ function InviteForm({ issueInvite }: { issueInvite: FormAction<IssuedInvite> }) 
 					</Button>
 				</div>
 			</form>
-			<div role="status">
+			<div role="status" aria-live="polite">
 				{state.status === 'success' && <IssuedInviteNotice invite={state} className="mt-6" />}
 			</div>
 		</div>

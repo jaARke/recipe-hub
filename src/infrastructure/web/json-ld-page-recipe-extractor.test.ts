@@ -10,6 +10,15 @@ import { JsonLdPageRecipeExtractor } from '@/infrastructure/web/json-ld-page-rec
 
 const pageUrl = 'https://blog.example.com/sunday-pot-roast/';
 
+// A line of text just under a megabyte, which html-to-text takes about a tenth of a second to read.
+const megabyteLine = '<b>flour</b> '.repeat(76_000);
+
+// A recipe whose property holds many references to one node, which a page can repeat without growing.
+function pagePointingAt(property: string, count: number, node: object): WebPage {
+	const references = Array.from({ length: count }, () => ({ '@id': '#node' }));
+	return pageWith([recipe({ [property]: references }), { '@id': '#node', ...node }]);
+}
+
 function pageWith(blocks: readonly unknown[], url = pageUrl): WebPage {
 	const scripts = blocks
 		.map((block) => (typeof block === 'string' ? block : JSON.stringify(block)))
@@ -204,6 +213,25 @@ describe('extract', () => {
 		});
 	});
 
+	it.each([
+		[
+			'an author',
+			pagePointingAt('author', 2000, { '@type': 'Person', name: megabyteLine }),
+			{ source: expect.stringMatching(/^flour flour/) },
+		],
+		[
+			'a yield',
+			pagePointingAt('recipeYield', 2000, {
+				'@type': 'QuantitativeValue',
+				value: 4,
+				unitText: megabyteLine,
+			}),
+			{ yield: { kind: 'makes', amount: '4', unit: expect.stringMatching(/^flour flour/) } },
+		],
+	])('reads %s that thousands of references repeat once', async (_, page, read) => {
+		await expect(extracted(page)).resolves.toMatchObject(read);
+	});
+
 	it('reads a page nesting JSON-LD or HTML far deeper than real pages, rather than failing', async () => {
 		const deepJson = `${'['.repeat(20_000)}${']'.repeat(20_000)}`;
 		const deepHtml = `${'<div>'.repeat(20_000)}2 eggs${'</div>'.repeat(20_000)}`;
@@ -280,6 +308,26 @@ describe('extract', () => {
 		[
 			'hold more ingredients in one string than any recipe',
 			pageWith([recipe({ recipeIngredient: '1 cup flour\n'.repeat(100_000) })]),
+		],
+		[
+			"reach a megabyte ingredient's name through a thousand references",
+			pagePointingAt('recipeIngredient', 1000, { '@type': 'Thing', name: megabyteLine }),
+		],
+		[
+			"reach a megabyte PropertyValue's name through two thousand references",
+			pagePointingAt('recipeIngredient', 2000, { '@type': 'PropertyValue', name: megabyteLine }),
+		],
+		[
+			"reach a megabyte step's text through fifteen hundred references",
+			pagePointingAt('recipeInstructions', 1500, { '@type': 'HowToStep', text: megabyteLine }),
+		],
+		[
+			"reach a megabyte section's heading through six hundred references",
+			pagePointingAt('recipeInstructions', 600, {
+				'@type': 'HowToSection',
+				name: megabyteLine,
+				itemListElement: ['Mix.'],
+			}),
 		],
 	])('leaves a page whose lists %s to the model, rather than failing', async (_, page) => {
 		await expect(new JsonLdPageRecipeExtractor().extract(page)).resolves.toBeNull();
@@ -482,6 +530,20 @@ describe('extract', () => {
 			const page = pageWith([
 				first,
 				second,
+				third,
+				{ '@type': 'WebPage', mainEntity: { '@id': `${pageUrl}#third` } },
+			]);
+
+			await expect(extracted(page)).resolves.toMatchObject({ title: 'Third' });
+		});
+
+		it('finds the page’s mainEntity among tens of thousands of recipes at once', async () => {
+			const others = Array.from({ length: 60_000 }, (_, index) => ({
+				'@type': 'Recipe',
+				name: `Recipe ${index}`,
+			}));
+			const page = pageWith([
+				...others,
 				third,
 				{ '@type': 'WebPage', mainEntity: { '@id': `${pageUrl}#third` } },
 			]);

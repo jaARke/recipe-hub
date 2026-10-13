@@ -1,6 +1,10 @@
 import 'server-only';
 import { requireAdmin, requireMember } from '@/application/authorization';
-import { LastAdminError, MemberNotFoundError } from '@/application/members/errors';
+import {
+	LastAdminError,
+	MemberNotFoundError,
+	SelfRemovalError,
+} from '@/application/members/errors';
 import {
 	toCurrentMemberDto,
 	toMemberDto,
@@ -92,18 +96,45 @@ export class MemberService {
 		const actor = requireAdmin(await this.actors.currentActor());
 		const id = parseMemberId(memberId);
 
-		// The repository counts the admins under its lock.
+		// The repository counts the admins under the role lock.
 		let member: Member | null;
 		try {
 			member = await this.members.setRole(id, 'member');
 		} catch (error) {
-			throw error instanceof LastAdminError ? this.lastAdminKept(id, actor.memberId) : error;
+			throw error instanceof LastAdminError
+				? this.adminRemovalRefused(error, id, actor.memberId)
+				: error;
 		}
 		if (member === null) {
 			throw new MemberNotFoundError();
 		}
 
 		logger.info('Admin role removed', { memberId: actor.memberId, targetMemberId: member.id });
+	}
+
+	// Signs the member out everywhere and keeps them from signing in again. Their recipes stay, still
+	// naming them. Admins may remove another admin, never themselves.
+	async removeMember(memberId: string): Promise<void> {
+		const actor = requireAdmin(await this.actors.currentActor());
+		const id = parseMemberId(memberId);
+		if (id === actor.memberId) {
+			throw this.memberRemovalRefused(new SelfRemovalError(), id, actor.memberId);
+		}
+
+		// The repository counts the admins under the role lock.
+		let member: Member | null;
+		try {
+			member = await this.members.remove(id);
+		} catch (error) {
+			throw error instanceof LastAdminError
+				? this.memberRemovalRefused(error, id, actor.memberId)
+				: error;
+		}
+		if (member === null) {
+			throw new MemberNotFoundError();
+		}
+
+		logger.info('Member removed', { memberId: actor.memberId, targetMemberId: member.id });
 	}
 
 	// A system use case for the bootstrap script, with no actor: makes the account at this
@@ -131,8 +162,23 @@ export class MemberService {
 	}
 
 	// Logged, since the admin has to make someone else an admin first.
-	private lastAdminKept(targetMemberId: MemberId, memberId: MemberId): LastAdminError {
-		logger.warn('Admin role removal refused', { memberId, targetMemberId });
-		return new LastAdminError();
+	private adminRemovalRefused(
+		error: LastAdminError,
+		targetMemberId: MemberId,
+		memberId: MemberId
+	): LastAdminError {
+		logger.warn('Admin role removal refused', { memberId, targetMemberId, failure: error.code });
+		return error;
+	}
+
+	// Logged, since only a crafted request names the admin's own account, and the last admin is
+	// refused only when the acting admin lost their role meanwhile.
+	private memberRemovalRefused(
+		error: SelfRemovalError | LastAdminError,
+		targetMemberId: MemberId,
+		memberId: MemberId
+	): SelfRemovalError | LastAdminError {
+		logger.warn('Member removal refused', { memberId, targetMemberId, failure: error.code });
+		return error;
 	}
 }
