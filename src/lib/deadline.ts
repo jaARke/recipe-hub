@@ -8,11 +8,14 @@ export type WaitLimits = {
 // AbortSignal.timeout on internal timers that fake timers cannot reach, so this one runs on setTimeout,
 // unref'd as Node's is, so a deadline never keeps a process alive.
 export function deadlineAfter(milliseconds: number): AbortSignal {
+	const reason = () => new DOMException('The operation timed out.', 'TimeoutError');
+	// No time left means the deadline has passed already, rather than at the timer's next turn.
+	if (milliseconds <= 0) {
+		return AbortSignal.abort(reason());
+	}
+
 	const controller = new AbortController();
-	setTimeout(
-		() => controller.abort(new DOMException('The operation timed out.', 'TimeoutError')),
-		milliseconds
-	).unref();
+	setTimeout(() => controller.abort(reason()), milliseconds).unref();
 	return controller.signal;
 }
 

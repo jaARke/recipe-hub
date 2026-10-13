@@ -38,6 +38,15 @@ describe('deadlineAfter', () => {
 		expect(deadline.reason).toBeInstanceOf(DOMException);
 		expect(deadline.reason).toMatchObject({ name: 'TimeoutError' });
 	});
+
+	it('has passed already when no time is left', () => {
+		for (const milliseconds of [0, -5]) {
+			const deadline = deadlineAfter(milliseconds);
+
+			expect(deadline.aborted).toBe(true);
+			expect(deadline.reason).toMatchObject({ name: 'TimeoutError' });
+		}
+	});
 });
 
 describe('settleWithin', () => {
