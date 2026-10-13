@@ -808,7 +808,7 @@ flowchart LR
 	S2 --> S5
 	S3 --> S6["6 Authoring (done)"]
 	S5 --> S6
-	S6 --> S7["7 AI import"]
+	S6 --> S7["7 AI import (done)"]
 	S4 --> S8["8 Launch"]
 	S7 --> S8
 ```
@@ -1226,7 +1226,7 @@ Deferred, each to the session that needs it:
   - Next 16.4's dev validation records clock reads that land after it has aborted a render; possibly an upstream bug.
   - The slug lock test uses a PL/pgSQL trigger, which PGlite supports today. A slug written by hand in SQL bypasses the lock; the unique constraint still guards current slugs, but not old ones.
 
-### Session 7: AI import from photos and URLs
+### Session 7: AI import from photos and URLs (done 2026-10-13)
 
 **Goal:** photos and links become reviewed recipes.
 
@@ -1296,7 +1296,7 @@ Delivered:
   - Three unsaved drafts showed as "Drafts, 3", opened from the tab, and saved; the tab went back to its empty state.
   - Making the sample contributor an admin and removing it worked with their toasts, and removing the last admin was refused with its message.
   - The deployment's runtime logs held no errors; import lines carried ids, codes, the model, and the cost, and no address, email, or recipe text.
-  - The run found the four issues listed under Fixes, fixed before merge.
+  - The run found the four issues listed under Fixes, fixed before merge. A recheck on the fixed deployment read RecipeTin Eats' lines as the page shows them (14 of 16; the others are the nested-note quirk and an en dash read as a hyphen), and kept the card's yield as "Makes 50 one and a half inch cakes" with a check-the-yield problem and no description.
 
 Deferred, each to the session that needs it:
 
@@ -1404,5 +1404,5 @@ Deferred, each to the session that needs it:
 - [x] Session 4: Search
 - [x] Session 5: Authentication and contributor access
 - [x] Session 6: Recipe authoring
-- [ ] Session 7: AI import from photos and URLs
+- [x] Session 7: AI import from photos and URLs
 - [ ] Session 8: Launch hardening and onboarding
