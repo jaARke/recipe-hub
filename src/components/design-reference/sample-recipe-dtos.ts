@@ -1,3 +1,4 @@
+import type { UnsavedImportDto } from '@/application/ingestion/recipe-import-dtos';
 import type { HighlightedText, RecipeSearchFacets } from '@/application/ports/recipe-search';
 import {
 	toPublicRecipeDto,
@@ -10,6 +11,7 @@ import {
 } from '@/application/search/recipe-search-dtos';
 import { memberIdSchema, memberSchema } from '@/domain/member/member';
 import { recipeSchema, type Recipe, type RecipeContentInput } from '@/domain/recipe/recipe';
+import { recipeImportIdSchema } from '@/domain/recipe/recipe-import';
 import {
 	sampleBrownButterChocolateChipCookies,
 	sampleOatmealRaisinCookies,
@@ -193,3 +195,28 @@ export const sampleSearchPage: RecipeSearchPage = {
 	match: 'exact',
 	facets: sampleSearchFacets,
 };
+
+// When the drafts list renders, which each sample import's age counts back from.
+export const sampleImportsNow = new Date('2026-10-12T18:00:00.000Z');
+
+// A member's imports they haven't saved, newest first: one just read from photos with no title
+// found, one from a link this afternoon, and one from photos two days ago.
+export const sampleUnsavedImports: readonly UnsavedImportDto[] = [
+	{
+		id: recipeImportIdSchema.parse('0199d2a0-1b2c-7d3e-8f40-000000000003'),
+		mode: 'photo',
+		createdAt: new Date('2026-10-12T17:59:30.000Z'),
+	},
+	{
+		id: recipeImportIdSchema.parse('0199d2a0-1b2c-7d3e-8f40-000000000002'),
+		mode: 'url',
+		title: 'Sheet-pan gnocchi with sausage and peppers',
+		createdAt: new Date('2026-10-12T15:10:00.000Z'),
+	},
+	{
+		id: recipeImportIdSchema.parse('0199d2a0-1b2c-7d3e-8f40-000000000001'),
+		mode: 'photo',
+		title: 'Lemon bars',
+		createdAt: new Date('2026-10-10T12:00:00.000Z'),
+	},
+];

@@ -1,6 +1,7 @@
 import 'server-only';
 import { and, arrayOverlaps, eq, ne, sql } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
+import { ImportUnavailableError } from '@/application/ingestion/errors';
 import type {
 	NewRecipe,
 	RecipePage,
@@ -20,13 +21,24 @@ import {
 } from '@/infrastructure/db/recipe-mapper';
 import { recipeOrders } from '@/infrastructure/db/recipe-order';
 import { oldRecipeSlugs, recipes } from '@/infrastructure/db/schema';
+import { lockForTransaction } from '@/infrastructure/db/transaction-lock';
 
 // Every slug allocation takes this transaction-scoped lock, so a slug checked free stays free until
 // the write that takes it commits. The unique constraint covers current slugs only, not old ones.
 const slugLockKey = 'recipe-hub:recipe-slugs';
 
-async function lockSlugs(tx: PgDatabase<PgQueryResultHKT>): Promise<void> {
-	await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${slugLockKey}))`);
+// The unique constraint that refuses a second recipe from one import.
+const importIdConstraint = 'recipes_import_id_unique';
+
+// Whether Postgres refused the query for breaking the named constraint.
+function violatesConstraint(error: unknown, constraint: string): boolean {
+	const cause = error instanceof Error ? error.cause : undefined;
+	return (
+		typeof cause === 'object' &&
+		cause !== null &&
+		'constraint' in cause &&
+		cause.constraint === constraint
+	);
 }
 
 // Every image pathname a recipe lists, as a jsonb array of strings.
@@ -160,15 +172,19 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 	}
 
 	async create(recipe: NewRecipe): Promise<Recipe> {
-		return this.db.transaction(async (tx) => {
-			await lockSlugs(tx);
-			const slug = await findFreeSlug(tx, recipe.slugBase);
-			const [row] = await tx
-				.insert(recipes)
-				.values(toInsertColumns(recipe, slug))
-				.returning(recipeColumns);
-			return toRecipe(row!);
-		});
+		try {
+			return await this.db.transaction(async (tx) => {
+				await lockForTransaction(tx, slugLockKey);
+				const slug = await findFreeSlug(tx, recipe.slugBase);
+				const [row] = await tx
+					.insert(recipes)
+					.values(toInsertColumns(recipe, slug))
+					.returning(recipeColumns);
+				return toRecipe(row!);
+			});
+		} catch (error) {
+			throw violatesConstraint(error, importIdConstraint) ? new ImportUnavailableError() : error;
+		}
 	}
 
 	async update(id: RecipeId, update: RecipeUpdate): Promise<UpdatedRecipe | null> {
@@ -176,7 +192,7 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 		return this.db.transaction(async (tx) => {
 			// The slug lock comes before the row lock, in the order every rename takes them.
 			if (slugBase !== undefined) {
-				await lockSlugs(tx);
+				await lockForTransaction(tx, slugLockKey);
 			}
 
 			// Locked, so the version checked is the one replaced, and edits of one recipe take turns.

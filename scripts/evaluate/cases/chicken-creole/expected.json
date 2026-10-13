@@ -1,0 +1,37 @@
+{
+	"title": "20-Minute Chicken Creole",
+	"description": "This quick Southern-style dish contains no added fat and very little added salt in its spicy tomato sauce.",
+	"notes": "Delicious served over rice.",
+	"source": "Deliciously Healthy Dinners",
+	"yield": { "kind": "servings", "amount": "4" },
+	"times": { "prepMinutes": 15, "cookMinutes": 20 },
+	"ingredientSections": [
+		{
+			"lines": [
+				"12 oz boneless, skinless chicken breast, cut into thin strips",
+				"1 C canned whole peeled tomatoes, chopped",
+				"1 C chili sauce (look for lowest sodium version)",
+				"1½ C green bell pepper, rinsed and chopped",
+				"1½ C celery, rinsed and chopped",
+				"¼ C onion, chopped",
+				"1 Tbsp garlic, minced (about 2–3 cloves)",
+				"1 Tbsp fresh basil, rinsed, dried, and chopped (or 1 tsp dried)",
+				"1 Tbsp fresh parsley, rinsed, dried, and chopped (or 1 tsp dried)",
+				"¼ tsp crushed red pepper",
+				"¼ tsp salt",
+				"Cooking spray"
+			]
+		}
+	],
+	"instructionSections": [
+		{
+			"steps": [
+				"Spray sauté pan with cooking spray. Preheat over high heat.",
+				"Cook chicken in hot sauté pan, stirring for 3–5 minutes. Reduce heat.",
+				"Add tomatoes with juice, chili sauce, green pepper, celery, onion, garlic, basil, parsley, crushed red pepper, and salt. Bring to boil over high heat, and then reduce heat to simmer.",
+				"Simmer, covered, for 10 minutes."
+			]
+		}
+	],
+	"reviewNotes": []
+}

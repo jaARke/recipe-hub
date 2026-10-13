@@ -1,4 +1,5 @@
-// Labels, moves, and announcements for the form's sectioned lists of ingredients and steps.
+// Labels, moves, and announcements for the form's sectioned lists of ingredients and steps. Photo
+// fields announce their moves the same way.
 
 type ListSectionText = {
 	heading: string;
@@ -57,6 +58,16 @@ export function itemName(text: string, noun: string): string {
 		: `“${words}”`;
 }
 
+// Moving within one list names both positions.
+export function describePositionMove(
+	name: string,
+	fromIndex: number,
+	toIndex: number,
+	count: number
+): string {
+	return `Moved ${name} from position ${fromIndex + 1} to ${toIndex + 1} of ${count}.`;
+}
+
 // Moving within a section names both positions; moving to another section names the section.
 export function describeMove(
 	sections: readonly ListSectionText[],
@@ -67,7 +78,7 @@ export function describeMove(
 	const name = itemName(sections[from.sectionIndex]?.items[from.itemIndex]?.text ?? '', noun);
 	if (from.sectionIndex === to.sectionIndex) {
 		const count = sections[from.sectionIndex]?.items.length ?? 0;
-		return `Moved ${name} from position ${from.itemIndex + 1} to ${to.itemIndex + 1} of ${count}.`;
+		return describePositionMove(name, from.itemIndex, to.itemIndex, count);
 	}
 
 	const count = (sections[to.sectionIndex]?.items.length ?? 0) + 1;

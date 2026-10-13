@@ -77,4 +77,4 @@ function SampleRecipeForm({
 	);
 }
 
-export { SampleRecipeForm };
+export { SampleRecipeForm, sampleUpload, sampleUploadFolders };

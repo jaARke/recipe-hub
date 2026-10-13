@@ -1,0 +1,33 @@
+{
+	"title": "Peach cobbler with biscuit topping",
+	"description": "Ripe peaches bubbling under a tender, sugar-dusted biscuit topping. June made it all summer long.",
+	"source": "Aunt June",
+	"yield": { "kind": "servings", "amount": "8" },
+	"times": { "prepMinutes": 20, "cookMinutes": 45 },
+	"ingredientSections": [
+		{
+			"heading": "For the filling",
+			"lines": ["6 ripe peaches, sliced", "½ cup sugar", "1 tablespoon cornstarch"]
+		},
+		{
+			"heading": "For the biscuit topping",
+			"lines": [
+				"1½ cups all-purpose flour",
+				"1 tablespoon baking powder",
+				"6 tablespoons cold butter, cubed",
+				"¾ cup cream"
+			]
+		}
+	],
+	"instructionSections": [
+		{
+			"steps": [
+				"Heat the oven to 375°F. Toss the peaches with the sugar and cornstarch and spread them in a baking dish.",
+				"Whisk the flour and baking powder, then rub in the butter until crumbly.",
+				"Stir in the cream until a soft dough forms and drop spoonfuls over the peaches.",
+				"Bake 40 to 45 minutes until the topping is golden and the fruit bubbles at the edges."
+			]
+		}
+	],
+	"reviewNotes": []
+}

@@ -1,12 +1,15 @@
 import 'server-only';
 import { z } from 'zod';
 import { requireMember } from '@/application/authorization';
+import { ImportUnavailableError } from '@/application/ingestion/errors';
 import { paginationSchema } from '@/application/pagination';
 import type { ActorProvider } from '@/application/ports/actor-provider';
 import type { ImageStore } from '@/application/ports/image-store';
 import type { MemberRepository } from '@/application/ports/member-repository';
+import type { RecipeImportRepository } from '@/application/ports/recipe-import-repository';
 import {
 	recipeSorts,
+	type NewRecipe,
 	type RecipePage,
 	type RecipeRepository,
 	type UpdatedRecipe,
@@ -32,9 +35,7 @@ import {
 } from '@/application/recipes/recipe-dtos';
 import { assertCanModifyRecipe, canModifyRecipe } from '@/application/recipes/recipe-policy';
 import type { MemberId } from '@/domain/member/member';
-import { problemsFromZodError } from '@/domain/problem';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
-import { provenanceSchema, type Provenance } from '@/domain/recipe/provenance';
 import {
 	parseRecipeContent,
 	recipeIdSchema,
@@ -44,6 +45,12 @@ import {
 	type RecipeId,
 } from '@/domain/recipe/recipe';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
+import {
+	importDraftCutoff,
+	recipeImportIdSchema,
+	reviewableDraft,
+	type RecipeImportId,
+} from '@/domain/recipe/recipe-import';
 import { slugify, slugSchema } from '@/domain/recipe/slug';
 import { tagKey } from '@/domain/recipe/tag';
 import { getLogger } from '@/lib/logger';
@@ -60,26 +67,16 @@ const logger = getLogger('recipes');
 
 export type CreateRecipeInput = {
 	content: RecipeContentInput;
-	provenance: Provenance;
+	// The import the member reviewed, whose provenance the recipe takes; absent for manual entry.
+	importId?: string;
 };
 
-// Problems are reported under provenance, beside the content's own paths.
-function parseProvenance(input: unknown): Provenance {
-	const result = provenanceSchema.safeParse(input);
-	if (!result.success) {
-		throw new InvalidRecipeError(
-			problemsFromZodError(result.error).map((problem) => ({
-				...problem,
-				path: problem.path === '' ? 'provenance' : `provenance.${problem.path}`,
-			}))
-		);
-	}
-
-	return result.data;
-}
+// Where a new recipe came from: manual entry, or an import it is saved from.
+type RecipeOrigin = Pick<NewRecipe, 'provenance' | 'importId'>;
 
 export class RecipeService {
 	private readonly recipes: RecipeRepository;
+	private readonly imports: RecipeImportRepository;
 	private readonly members: MemberRepository;
 	private readonly images: ImageStore;
 	private readonly actors: ActorProvider;
@@ -87,12 +84,14 @@ export class RecipeService {
 
 	constructor(
 		recipes: RecipeRepository,
+		imports: RecipeImportRepository,
 		members: MemberRepository,
 		images: ImageStore,
 		actors: ActorProvider,
 		folders: ImageFolders
 	) {
 		this.recipes = recipes;
+		this.imports = imports;
 		this.members = members;
 		this.images = images;
 		this.actors = actors;
@@ -153,24 +152,38 @@ export class RecipeService {
 	}
 
 	// Writes resolve the actor first, so an anonymous caller learns nothing about which recipes exist.
+	// The browser never names the provenance: a recipe saved from an import takes the import's.
 	async createRecipe(input: CreateRecipeInput): Promise<RecipeRef> {
 		const actor = requireMember(await this.actors.currentActor());
+		// Checked before the content, since no edit to the content can save an unavailable import.
+		const origin = await this.recipeOrigin(input.importId, actor.memberId);
 		const content = parseRecipeContent(input.content);
-		const provenance = parseProvenance(input.provenance);
 		await this.assertImagesStored(content.images, []);
 
-		const recipe = await this.recipes.create({
-			content: await this.withCanonicalTags(content),
-			provenance,
-			contributorId: actor.memberId,
-			slugBase: slugify(content.title),
-		});
+		// The repository refuses a second recipe from the import, as a save racing this one can make.
+		let recipe: Recipe;
+		try {
+			recipe = await this.recipes.create({
+				content: await this.withCanonicalTags(content),
+				...origin,
+				contributorId: actor.memberId,
+				slugBase: slugify(content.title),
+			});
+		} catch (error) {
+			throw error instanceof ImportUnavailableError
+				? this.unavailableImport(origin.importId, actor.memberId)
+				: error;
+		}
 
 		logger.info('Recipe created', {
 			recipeId: recipe.id,
 			memberId: actor.memberId,
 			entryMode: recipe.provenance.entryMode,
+			...(origin.importId !== undefined && { importId: origin.importId }),
 		});
+		if (origin.importId !== undefined) {
+			await this.clearImportDraft(origin.importId, recipe.id);
+		}
 		return toRecipeRef(recipe);
 	}
 
@@ -241,6 +254,27 @@ export class RecipeService {
 		return toRecipeRef(deleted);
 	}
 
+	// Without an import id, the recipe was entered by hand. Import ids arrive from forms, so a malformed
+	// one names no import. The import must be the member's and its draft still reviewable.
+	private async recipeOrigin(
+		importId: string | undefined,
+		memberId: MemberId
+	): Promise<RecipeOrigin> {
+		if (importId === undefined) {
+			return { provenance: { entryMode: 'manual' } };
+		}
+
+		const parsed = recipeImportIdSchema.safeParse(importId);
+		const recipeImport = parsed.success ? await this.imports.findById(parsed.data) : null;
+		const draft =
+			recipeImport?.memberId === memberId ? reviewableDraft(recipeImport, new Date()) : null;
+		if (recipeImport === null || draft === null) {
+			throw this.unavailableImport(parsed.data, memberId);
+		}
+
+		return { provenance: draft.provenance, importId: recipeImport.id };
+	}
+
 	// Slugs arrive from URLs, so a malformed slug names no recipe.
 	private async findRecipeBySlug(slug: string): Promise<Recipe | null> {
 		return slugSchema.safeParse(slug).success ? this.recipes.findBySlug(slug) : null;
@@ -282,7 +316,8 @@ export class RecipeService {
 
 	// After the write commits, so a failure leaves an unused photo behind rather than a recipe pointing
 	// at a missing one. Other environments' photos, such as production's on a preview's copy, are kept,
-	// and so is a photo another recipe still lists, as a crafted save can make it do.
+	// and so is a photo another recipe still lists, as a crafted save can make it do, or a draft
+	// awaiting review names, as importing the same scans twice does.
 	private async deleteImages(recipeId: RecipeId, images: readonly RecipeImage[]): Promise<void> {
 		const ownPathnames = images
 			.map(({ pathname }) => pathname)
@@ -292,7 +327,13 @@ export class RecipeService {
 		}
 
 		try {
-			const inUse = new Set(await this.recipes.findImagesInUse(ownPathnames));
+			// Drafts before recipes, so a draft saved as a recipe in between is found as the recipe.
+			const inDrafts = await this.imports.findImagesInUnsavedImports(
+				ownPathnames,
+				importDraftCutoff(new Date())
+			);
+			const inRecipes = await this.recipes.findImagesInUse(ownPathnames);
+			const inUse = new Set([...inDrafts, ...inRecipes]);
 			const pathnames = ownPathnames.filter((pathname) => !inUse.has(pathname));
 			const keptPathnames = ownPathnames.filter((pathname) => inUse.has(pathname));
 			if (pathnames.length > 0) {
@@ -309,11 +350,30 @@ export class RecipeService {
 		}
 	}
 
+	// After the recipe commits. A failure leaves the draft for its expiry to clear, and the import is
+	// already spent, since the recipe names it.
+	private async clearImportDraft(importId: RecipeImportId, recipeId: RecipeId): Promise<void> {
+		try {
+			await this.imports.clearDraft(importId);
+		} catch (err) {
+			logger.warn('Import draft could not be cleared', { importId, recipeId, err });
+		}
+	}
+
 	// A tag takes the label other recipes already use, so an update can respell a tag only it uses.
 	// Logged, since the editor has to reload and redo their changes.
 	private staleSave(recipeId: RecipeId, memberId: MemberId): RecipeEditConflictError {
 		logger.warn('Recipe save refused as stale', { recipeId, memberId });
 		return new RecipeEditConflictError();
+	}
+
+	// Logged, since the member has to import the recipe again. A malformed id is left out.
+	private unavailableImport(
+		importId: RecipeImportId | undefined,
+		memberId: MemberId
+	): ImportUnavailableError {
+		logger.warn('Recipe save refused for an unavailable import', { importId, memberId });
+		return new ImportUnavailableError();
 	}
 
 	private async withCanonicalTags(

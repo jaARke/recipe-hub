@@ -106,7 +106,11 @@ function AdminDashboard({
 				<OpenInviteList invites={invites} revokeInvite={actions.revokeInvite} />
 			</AdminSection>
 			<AdminSection id="admin-members" headingTag={section} title="Members">
-				<MemberList members={members} />
+				<MemberList
+					members={members}
+					makeAdmin={actions.makeAdmin}
+					removeAdmin={actions.removeAdmin}
+				/>
 			</AdminSection>
 		</div>
 	);

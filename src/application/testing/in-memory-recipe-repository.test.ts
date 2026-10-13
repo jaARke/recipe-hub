@@ -1,4 +1,5 @@
 import { beforeEach } from 'vitest';
+import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
 import { describeRecipeRepositoryContract } from '@/application/testing/recipe-repository-contract';
 import { memberIdSchema } from '@/domain/member/member';
@@ -7,9 +8,11 @@ import { memberIdSchema } from '@/domain/member/member';
 const contributorId = memberIdSchema.parse('3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b');
 
 let repository: InMemoryRecipeRepository;
+let imports: InMemoryRecipeImportRepository;
 
 beforeEach(() => {
 	repository = new InMemoryRecipeRepository();
+	imports = new InMemoryRecipeImportRepository(repository);
 });
 
-describeRecipeRepositoryContract(() => ({ repository, contributorId }));
+describeRecipeRepositoryContract(() => ({ repository, imports, contributorId }));

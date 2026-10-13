@@ -6,7 +6,11 @@ import type { IssuedInviteDto } from '@/application/access/access-dtos';
 import { adminFieldNames, type IssuedInvite } from '@/components/admin/admin-forms';
 import { formText, optionalFormText } from '@/components/forms/form-data';
 import type { FormState } from '@/components/forms/form-state';
-import { getAccessRequestService, getInviteService } from '@/composition/services';
+import {
+	getAccessRequestService,
+	getInviteService,
+	getMemberService,
+} from '@/composition/services';
 
 // Approving a request sends its id; inviting someone directly sends none.
 export async function issueInvite(
@@ -43,6 +47,28 @@ export async function declineRequest(_state: FormState, formData: FormData): Pro
 export async function revokeInvite(_state: FormState, formData: FormData): Promise<FormState> {
 	try {
 		await getInviteService().revokeInvite(formText(formData, adminFieldNames.inviteId));
+	} catch (error) {
+		return toFormError(error);
+	}
+
+	refresh();
+	return { status: 'success' };
+}
+
+export async function makeAdmin(_state: FormState, formData: FormData): Promise<FormState> {
+	try {
+		await getMemberService().makeAdmin(formText(formData, adminFieldNames.memberId));
+	} catch (error) {
+		return toFormError(error);
+	}
+
+	refresh();
+	return { status: 'success' };
+}
+
+export async function removeAdmin(_state: FormState, formData: FormData): Promise<FormState> {
+	try {
+		await getMemberService().removeAdmin(formText(formData, adminFieldNames.memberId));
 	} catch (error) {
 		return toFormError(error);
 	}

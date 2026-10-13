@@ -7,6 +7,7 @@ import {
 	index,
 	integer,
 	jsonb,
+	numeric,
 	pgTable,
 	text,
 	timestamp,
@@ -37,6 +38,10 @@ export const recipes = pgTable(
 		// The JSON columns are untyped because the mapper validates every read. Content excludes tags.
 		content: jsonb('content').notNull(),
 		provenance: jsonb('provenance').notNull(),
+		// The import the recipe was saved from. Unique, so an import saves one recipe.
+		importId: uuid('import_id')
+			.unique()
+			.references(() => recipeImports.id),
 		tags: text('tags').array().notNull().default([]),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -95,6 +100,42 @@ export const oldRecipeSlugs = pgTable(
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 	},
 	(table) => [index('old_recipe_slugs_recipe_id_idx').on(table.recipeId)]
+);
+
+// Every import a member starts, kept as a record of use and cost once its draft is cleared.
+export const recipeImports = pgTable(
+	'recipe_imports',
+	{
+		id: uuid('id')
+			.primaryKey()
+			.default(sql`uuidv7()`),
+		// No cascade, as for recipes: removing a member must not remove the record of their imports.
+		memberId: uuid('member_id')
+			.notNull()
+			.references(() => users.id),
+		mode: text('mode', { enum: ['url', 'photo'] }).notNull(),
+		status: text('status', { enum: ['running', 'succeeded', 'failed'] })
+			.notNull()
+			.default('running'),
+		sourceUrl: text('source_url'),
+		aiModel: text('ai_model'),
+		costUsd: numeric('cost_usd', { mode: 'number' }),
+		// The code of the error that ended a failed import.
+		failure: text('failure'),
+		// Untyped, like the recipe documents, because the mapper validates every read.
+		draft: jsonb('draft'),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+	},
+	(table) => [
+		check('recipe_imports_mode_check', sql`${table.mode} in ('url', 'photo')`),
+		check(
+			'recipe_imports_status_check',
+			sql`${table.status} in ('running', 'succeeded', 'failed')`
+		),
+		// Serves the count of a member's recent imports and the list of their drafts.
+		index('recipe_imports_member_id_created_at_idx').on(table.memberId, table.createdAt),
+	]
 );
 
 // Better Auth reads the tables below by their JS keys, so the keys keep its field names. Its

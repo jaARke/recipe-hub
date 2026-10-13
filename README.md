@@ -7,12 +7,11 @@ A recipe catalog for our family's recipes. Anyone can browse and search it; appr
 - [Next.js 16](https://nextjs.org/docs) (App Router, TypeScript) on Vercel
 - [Neon](https://neon.com/docs) Postgres via the Vercel Marketplace, which also powers search, through [Drizzle ORM](https://orm.drizzle.team/docs/overview)
 - [Vercel Blob](https://vercel.com/docs/vercel-blob) (private store) for recipe images
-- [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) for parsing scans and URLs into recipes
+- The [AI SDK](https://ai-sdk.dev/docs) through the [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) for reading recipe photos and pages into drafts
 - [shadcn/ui](https://ui.shadcn.com/docs) on [Base UI](https://base-ui.com) primitives, with Tailwind CSS v4 tokens
 - [Better Auth](https://www.better-auth.com/docs) with email codes and passkeys, sessions in Postgres
 - [Resend](https://resend.com/docs) for email, through the Vercel Marketplace, sending from `recipes.jakerichard.tech`
 - [Vercel BotID](https://vercel.com/docs/botid) on the access request form
-- Planned as features land: the [AI SDK](https://ai-sdk.dev/docs)
 
 ## Development
 
@@ -21,7 +20,7 @@ Requires Node 24, [pnpm](https://pnpm.io/installation), and the [Vercel CLI](htt
 ```bash
 pnpm install
 vercel link       # once, connects this checkout to the Vercel project
-vercel env pull   # writes .env.local; rerun when the AI Gateway OIDC token expires (12h)
+vercel env pull   # writes .env.local; the Blob and AI SDKs renew its 12-hour OIDC token with your CLI login
 pnpm db:migrate && pnpm db:bootstrap && pnpm db:seed   # once, and after pulling new migrations
 pnpm dev
 ```
@@ -46,6 +45,7 @@ The design reference at [localhost:3000/design](http://localhost:3000/design) sh
 | `pnpm db:migrate`      | Apply migrations to the database in `DATABASE_URL_UNPOOLED`     |
 | `pnpm db:bootstrap`    | Make `ADMIN_EMAIL` an admin when the database has none          |
 | `pnpm db:seed`         | Seed synthetic recipes and photos (refused in production)       |
+| `pnpm evaluate`        | Score import models on `scripts/evaluate/` (spends AI credit)   |
 
 ## Database
 
@@ -57,4 +57,8 @@ Vercel deploys `main` to production and every pull request to a preview URL. Eac
 
 ## Accounts
 
-Anyone can request access at `/request-access`. Admins review requests at `/admin`, where approving one creates a single-use invite link that lasts 7 days, emailed or copied to send by text. Accepting an invite confirms an email address with a code and creates the account; members then sign in with a passkey or an emailed code, and add passkeys on `/account`. The first admin is the account at `ADMIN_EMAIL`, which the build's bootstrap step creates when no admin exists.
+Anyone can request access at `/request-access`. Admins review requests at `/admin`, where approving one creates a single-use invite link that lasts 7 days, emailed or copied to send by text. Accepting an invite confirms an email address with a code and creates the account; members then sign in with a passkey or an emailed code, and add passkeys on `/account`. The first admin is the account at `ADMIN_EMAIL`, which the build's bootstrap step creates when no admin exists, and admins can make other members admins on `/admin`.
+
+## Imports
+
+Members import a recipe at `/contribute` from a link or from photos of a written or printed recipe. A link's schema.org data is read when it is complete; otherwise, and for photos, Claude Sonnet reads the page or photos through the AI Gateway. Each import becomes a draft that the member reviews in the recipe form at `/contribute/imports/<id>` before saving; drafts are kept for 7 days. Members can start 50 imports a day, and the Gateway's credit limit pauses imports when it is reached. `pnpm evaluate` reruns the model comparison on the public-domain cases in `scripts/evaluate/`.

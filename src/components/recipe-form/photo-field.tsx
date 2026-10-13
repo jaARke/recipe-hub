@@ -1,16 +1,27 @@
 'use client';
 
-import { CircleAlertIcon, ImagePlusIcon, StarIcon } from 'lucide-react';
+import {
+	ArrowDownIcon,
+	ArrowUpIcon,
+	CircleAlertIcon,
+	ImagePlusIcon,
+	StarIcon,
+	type LucideIcon,
+} from 'lucide-react';
 import * as React from 'react';
 import { flushSync } from 'react-dom';
-import { ItemActionsMenu } from '@/components/recipe-form/item-actions-menu';
+import { describedBy } from '@/components/forms/described-by';
+import { FieldProblem, type ProblemCheck } from '@/components/forms/problem-summary';
+import { ItemActionsMenu, type ItemAction } from '@/components/recipe-form/item-actions-menu';
 import { normalizePhoto, UnreadablePhotoError } from '@/components/recipe-form/photo-processing';
 import { newPhotoPathname, type PhotoUploader } from '@/components/recipe-form/photo-upload';
 import type {
+	PhotoEdit,
 	PhotoFailure,
-	RecipeFormEdit,
+	ProblemTarget,
 	RecipeFormPhoto,
 } from '@/components/recipe-form/recipe-form-values';
+import { describePositionMove, itemName } from '@/components/recipe-form/sectioned-list';
 import { recipeImageSrc } from '@/components/recipe/recipe-paths';
 import { RecipePhoto } from '@/components/recipe/recipe-photo';
 import {
@@ -48,17 +59,35 @@ const failureMessages: Record<PhotoFailure, string> = {
 };
 
 type PhotoFieldProps = {
+	// Starts every id in the field, so the form can link to its problems.
+	idPrefix: string;
 	role: RecipeImageRole;
 	legend: string;
 	description: string;
 	photos: readonly RecipeFormPhoto[];
 	// The id the form gives the next photo it adds.
 	nextId: number;
-	dispatch: React.Dispatch<RecipeFormEdit>;
+	dispatch: React.Dispatch<PhotoEdit>;
 	// Where this environment keeps new photos of this role.
 	uploadFolder: string;
 	uploader: PhotoUploader;
+	// About the photos together, such as too many pages to read at once.
+	error?: string;
+	// Each photo problem's check while the member reviews a draft, and none otherwise.
+	problemCheck?: (target: ProblemTarget) => ProblemCheck | undefined;
 };
+
+// The ids of the field's parts, which the form's problem summary links to.
+function photoFieldIds(prefix: string) {
+	return {
+		description: `${prefix}-description`,
+		error: `${prefix}-error`,
+		choose: `${prefix}-choose`,
+		actions: (photoId: number) => `${prefix}-photo-${photoId}-actions`,
+		alt: (photoId: number) => `${prefix}-photo-${photoId}-alt`,
+		photoError: (photoId: number) => `${prefix}-photo-${photoId}-error`,
+	};
+}
 
 function countPhotos(count: number) {
 	return `${count} ${count === 1 ? 'photo' : 'photos'}`;
@@ -171,6 +200,7 @@ function PhotoThumbnail({ photo, role }: { photo: RecipeFormPhoto; role: RecipeI
 // Photos of one role: a drop area and a button to choose them, then each photo with its progress.
 // Every chosen photo is resized and re-encoded in the browser, then uploaded straight to storage.
 function PhotoField({
+	idPrefix,
 	role,
 	legend,
 	description,
@@ -179,8 +209,9 @@ function PhotoField({
 	dispatch,
 	uploadFolder,
 	uploader,
+	error,
+	problemCheck,
 }: PhotoFieldProps) {
-	const baseId = React.useId();
 	const inputRef = React.useRef<HTMLInputElement>(null);
 	// Children fire their own enter and leave events; the depth tells a real leave from a move onto a child.
 	const dragDepth = React.useRef(0);
@@ -188,13 +219,7 @@ function PhotoField({
 	const [announcement, setAnnouncement] = React.useState('');
 	// One for each photo still processing or uploading, so removing it or leaving the page stops it.
 	const uploadsRef = React.useRef(new Map<number, AbortController>());
-	const ids = {
-		description: `${baseId}-description`,
-		choose: `${baseId}-choose`,
-		actions: (photoId: number) => `${baseId}-photo-${photoId}-actions`,
-		alt: (photoId: number) => `${baseId}-photo-${photoId}-alt`,
-		error: (photoId: number) => `${baseId}-photo-${photoId}-error`,
-	};
+	const ids = photoFieldIds(idPrefix);
 
 	React.useEffect(() => {
 		const uploads = uploadsRef.current;
@@ -273,6 +298,48 @@ function PhotoField({
 		document.getElementById(ids.actions(photo.id))?.scrollIntoView({ block: 'nearest' });
 	}
 
+	// Pages are read in order, so scans move up and down; the menu gives focus back to its trigger.
+	function movePhoto(photo: RecipeFormPhoto, index: number, toIndex: number) {
+		flushSync(() => {
+			dispatch({ type: 'movePhoto', photoId: photo.id, toIndex });
+			setAnnouncement(
+				describePositionMove(
+					itemName(photoName(photo, index, role), 'photo'),
+					index,
+					toIndex,
+					photos.length
+				)
+			);
+		});
+		document.getElementById(ids.actions(photo.id))?.scrollIntoView({ block: 'nearest' });
+	}
+
+	function photoActions(photo: RecipeFormPhoto, index: number): ItemAction[] {
+		if (role === 'scan') {
+			const moves: { label: string; icon: LucideIcon; toIndex: number }[] = [
+				{ label: 'Move up', icon: ArrowUpIcon, toIndex: index - 1 },
+				{ label: 'Move down', icon: ArrowDownIcon, toIndex: index + 1 },
+			];
+			return moves.map(({ label, icon, toIndex }) => ({
+				label,
+				icon,
+				onSelect:
+					toIndex < 0 || toIndex >= photos.length
+						? undefined
+						: () => movePhoto(photo, index, toIndex),
+			}));
+		}
+		const isCover = index === 0;
+		const failed = photo.upload.status === 'failed';
+		return [
+			{
+				label: 'Use as cover photo',
+				icon: StarIcon,
+				onSelect: isCover || failed ? undefined : () => makeCover(photo, index),
+			},
+		];
+	}
+
 	function handleDragEnter(event: React.DragEvent) {
 		if (!carriesFiles(event)) {
 			return;
@@ -313,17 +380,6 @@ function PhotoField({
 		const isCover = role === 'dish' && index === 0;
 		const status = photoStatus(photo, isCover);
 		const failure = photo.upload.status === 'failed' ? photo.upload.failure : undefined;
-		const actions =
-			role === 'dish'
-				? [
-						{
-							label: 'Use as cover photo',
-							icon: StarIcon,
-							onSelect:
-								isCover || failure !== undefined ? undefined : () => makeCover(photo, index),
-						},
-					]
-				: [];
 
 		return (
 			<li key={photo.id} className="flex flex-col gap-3">
@@ -346,7 +402,7 @@ function PhotoField({
 						<ItemActionsMenu
 							triggerId={ids.actions(photo.id)}
 							itemLabel={name}
-							actions={actions}
+							actions={photoActions(photo, index)}
 							onRemove={() => removePhoto(photo, index)}
 						/>
 					</AttachmentActions>
@@ -355,10 +411,14 @@ function PhotoField({
 					<p className="text-sm text-destructive">{failureMessages[failure]}</p>
 				)}
 				{photo.error !== undefined && (
-					// Takes focus after a failed save in place of a field.
-					<FieldError id={ids.error(photo.id)} tabIndex={-1}>
+					// Takes focus after a failed save or import in place of a field.
+					<FieldProblem
+						id={ids.photoError(photo.id)}
+						tabIndex={-1}
+						check={problemCheck?.({ kind: 'photo', id: photo.id })}
+					>
 						{photo.error}
-					</FieldError>
+					</FieldProblem>
 				)}
 				{role === 'dish' && failure === undefined && (
 					<Field>
@@ -379,9 +439,15 @@ function PhotoField({
 	}
 
 	return (
-		<FieldSet aria-describedby={ids.description}>
+		<FieldSet aria-describedby={describedBy(ids.description, error !== undefined && ids.error)}>
 			<FieldLegend>{legend}</FieldLegend>
 			<FieldDescription id={ids.description}>{description}</FieldDescription>
+			{error !== undefined && (
+				// Takes focus after a failed import in place of a field.
+				<FieldError id={ids.error} tabIndex={-1}>
+					{error}
+				</FieldError>
+			)}
 			<Empty
 				data-dragging={isDragging || undefined}
 				className="border transition-colors data-dragging:border-primary data-dragging:bg-accent"
@@ -435,4 +501,4 @@ function PhotoField({
 	);
 }
 
-export { PhotoField };
+export { PhotoField, photoFieldIds, photoName };

@@ -2,10 +2,13 @@ import 'server-only';
 import type { MemberId } from '@/domain/member/member';
 import type { Provenance } from '@/domain/recipe/provenance';
 import type { Recipe, RecipeContent, RecipeId } from '@/domain/recipe/recipe';
+import type { RecipeImportId } from '@/domain/recipe/recipe-import';
 
 export type NewRecipe = {
 	content: RecipeContent;
 	provenance: Provenance;
+	// The import the recipe was saved from, if any.
+	importId?: RecipeImportId;
 	contributorId: MemberId;
 	// The repository stores the first free slugCandidate built from this base.
 	slugBase: string;
@@ -45,6 +48,7 @@ export interface RecipeRepository {
 	list(page: RecipePage): Promise<Recipe[]>;
 	count(): Promise<number>;
 	// Never takes a slug another recipe holds, current or old, even when creates and renames race.
+	// Throws ImportUnavailableError when a recipe was already saved from the import.
 	create(recipe: NewRecipe): Promise<Recipe>;
 	// Replaces the content, and moves the slug when given a slug base, in one transaction. Each save
 	// moves updatedAt forward by at least a millisecond, the precision a Date keeps, so it versions

@@ -34,6 +34,7 @@ export function toInsertColumns(recipe: NewRecipe, slug: string): typeof recipes
 		slug,
 		contributorId: recipe.contributorId,
 		provenance: recipe.provenance,
+		importId: recipe.importId,
 		...toContentColumns(recipe.content),
 	};
 }

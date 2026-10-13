@@ -26,17 +26,20 @@ type ConfirmActionDialogProps = {
 	cancelLabel: string;
 	confirmLabel: string;
 	pendingLabel: string;
-	// Said in a toast, because the dialog disappears with the item it removes or the page it leaves.
+	// Said in a toast, because the dialog disappears with the item it changes or removes, or the page
+	// it leaves.
 	successMessage: string;
 	failureMessage: string;
 	action: FormAction;
 	// Runs after the success toast, such as to leave a page whose subject the action deleted.
 	onSuccess?: () => void;
+	// Default for an action that takes nothing away, such as making someone an admin.
+	variant: 'destructive' | 'default';
 	// Hidden inputs naming what the action acts on.
 	children: React.ReactNode;
 };
 
-// Asks before a destructive action, and shows a refused one's reason in place.
+// Asks before a destructive or consequential action, and shows a refused one's reason in place.
 function ConfirmActionDialog({
 	trigger,
 	title,
@@ -48,6 +51,7 @@ function ConfirmActionDialog({
 	failureMessage,
 	action,
 	onSuccess,
+	variant,
 	children,
 }: ConfirmActionDialogProps) {
 	const [state, formAction, pending] = useFormAction(async (previous, formData) => {
@@ -61,7 +65,11 @@ function ConfirmActionDialog({
 
 	return (
 		<Dialog>
-			<DialogTrigger render={<Button variant="destructive" />}>{trigger}</DialogTrigger>
+			<DialogTrigger
+				render={<Button variant={variant === 'destructive' ? 'destructive' : 'outline'} />}
+			>
+				{trigger}
+			</DialogTrigger>
 			<DialogContent showCloseButton={false}>
 				<form action={formAction} className="grid gap-6">
 					{children}
@@ -72,7 +80,7 @@ function ConfirmActionDialog({
 					<FormErrorAlert message={state.status === 'error' ? state.message : undefined} />
 					<DialogFooter>
 						<DialogClose render={<Button variant="outline" />}>{cancelLabel}</DialogClose>
-						<Button type="submit" variant="destructive" disabled={pending} focusableWhenDisabled>
+						<Button type="submit" variant={variant} disabled={pending} focusableWhenDisabled>
 							{pending && <Spinner data-icon="inline-start" />}
 							{pending ? pendingLabel : confirmLabel}
 						</Button>

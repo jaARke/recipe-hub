@@ -1,0 +1,32 @@
+{
+	"title": "Lemon garlic roast chicken with potatoes",
+	"description": "A whole chicken rubbed with lemon, garlic, and thyme, roasted over a bed of little potatoes that catch every drip.",
+	"notes": "Aunt June tucked the squeezed lemon halves inside the bird and swore it kept the breast juicy. She served it with plenty of crusty bread for the pan juices.",
+	"source": "Aunt June",
+	"yield": { "kind": "servings", "amount": "4" },
+	"times": { "prepMinutes": 15, "cookMinutes": 75 },
+	"ingredientSections": [
+		{
+			"lines": [
+				"1 whole chicken, about 4 pounds",
+				"2 lemons",
+				"6 garlic cloves",
+				"1½ pounds small potatoes, halved",
+				"3 tablespoons olive oil",
+				"1 tablespoon fresh thyme"
+			]
+		}
+	],
+	"instructionSections": [
+		{
+			"steps": [
+				"Heat the oven to 425°F and pat the chicken very dry.",
+				"Mash four garlic cloves with the thyme, the zest of one lemon, the oil, and a generous pinch of salt. Rub it all over the chicken.",
+				"Toss the potatoes in a roasting pan with the remaining garlic and a little oil. Set the chicken on top with a squeezed lemon half inside.",
+				"Roast 70 to 80 minutes, until the juices run clear and the potatoes are browned.",
+				"Rest the chicken 10 minutes, then squeeze the other lemon over everything."
+			]
+		}
+	],
+	"reviewNotes": []
+}

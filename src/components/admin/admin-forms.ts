@@ -8,6 +8,7 @@ export const adminFieldNames = {
 	sendTo: 'sendTo',
 	requestId: 'requestId',
 	inviteId: 'inviteId',
+	memberId: 'memberId',
 } as const;
 
 // Shown once, right after the invite is issued; the link is never shown again.
@@ -18,4 +19,6 @@ export type AdminActions = {
 	issueInvite: FormAction<IssuedInvite>;
 	declineRequest: FormAction;
 	revokeInvite: FormAction;
+	makeAdmin: FormAction;
+	removeAdmin: FormAction;
 };

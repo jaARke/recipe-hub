@@ -7,6 +7,8 @@ export const recipeFormFieldNames = {
 	recipe: 'recipe',
 	recipeId: 'recipeId',
 	recipeVersion: 'recipeVersion',
+	// The import a create form reviews, whose provenance the saved recipe takes.
+	importId: 'importId',
 } as const;
 
 // The recipe a form edits, and the version it loaded, so a save over a newer one is refused.

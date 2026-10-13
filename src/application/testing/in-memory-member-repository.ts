@@ -1,3 +1,4 @@
+import { LastAdminError, MemberRoleConflictError } from '@/application/members/errors';
 import type { MemberRepository, NewMember } from '@/application/ports/member-repository';
 import {
 	memberIdSchema,
@@ -41,6 +42,18 @@ export class InMemoryMemberRepository implements MemberRepository {
 	}
 
 	async setRole(id: MemberId, role: MemberRole): Promise<Member | null> {
+		const existing = this.members.get(id);
+		if (existing === undefined) {
+			return null;
+		}
+
+		if (existing.role === role) {
+			throw new MemberRoleConflictError();
+		}
+		if (existing.role === 'admin' && (await this.listAdmins()).length === 1) {
+			throw new LastAdminError();
+		}
+
 		return this.replace(id, { role });
 	}
 

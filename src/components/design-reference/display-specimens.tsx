@@ -256,7 +256,7 @@ const progressSamples = [
 
 function ProgressSpecimen() {
 	return (
-		<Specimen label="At 0, 64, and 100: ProgressLabel gives the bar its accessible name, and ProgressValue its percent">
+		<Specimen label="At 0, 64, and 100: ProgressLabel gives the bar its accessible name, and ProgressValue its percent. Indeterminate (value null) fills the track and pulses, for work with no measurable progress">
 			<div className="flex max-w-sm flex-col gap-6">
 				{progressSamples.map(({ name, value }) => (
 					// Fixed, like the site's other formats, so the server and browser render the same text.
@@ -265,6 +265,9 @@ function ProgressSpecimen() {
 						<ProgressValue />
 					</Progress>
 				))}
+				<Progress value={null}>
+					<ProgressLabel>Reading the photos…</ProgressLabel>
+				</Progress>
 			</div>
 		</Specimen>
 	);

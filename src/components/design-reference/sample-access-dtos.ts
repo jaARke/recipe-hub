@@ -48,7 +48,7 @@ function sampleInvite({
 	});
 }
 
-// Oldest first, as the admin page lists them.
+// Oldest first, as the admin page lists them for the sample admin.
 export const sampleMembers: MemberDto[] = [
 	sampleAdmin,
 	memberSchema.parse({
@@ -66,7 +66,7 @@ export const sampleMembers: MemberDto[] = [
 		createdAt: new Date('2026-10-08T12:15:00.000Z'),
 	}),
 	sampleContributor,
-].map(toMemberDto);
+].map((member) => toMemberDto(member, member.id === sampleAdmin.id));
 
 // The header's view of a member and of an admin.
 export const sampleHeaderMember: HeaderMember = {

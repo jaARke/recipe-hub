@@ -14,12 +14,13 @@ import { sampleRecipeContents } from '@/domain/recipe/samples/sample-recipes';
 import { slugify } from '@/domain/recipe/slug';
 import { pinFullSslVerification } from '@/infrastructure/db/connection-string';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
+import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
 import { getLogger } from '@/lib/logger';
 
 // A sample's photo is stored here under the file name its pathname ends with.
-const photosFolder = path.join(import.meta.dirname, 'seed/photos');
+const photosFolder = path.join(import.meta.dirname, 'photos');
 
 // Every seed photo is a JPEG, as scripts/seed/photos/SOURCES.md lists.
 const photoContentType = 'image/jpeg';
@@ -99,7 +100,7 @@ async function seed(recipes: RecipeService, images: ImageStore): Promise<void> {
 			photosUploaded += 1;
 		}
 
-		await recipes.createRecipe({ content, provenance: { entryMode: 'manual' } });
+		await recipes.createRecipe({ content });
 		recipesCreated += 1;
 	}
 
@@ -135,6 +136,7 @@ if (env.VERCEL_ENV === 'production') {
 			await seed(
 				new RecipeService(
 					new DrizzleRecipeRepository(db),
+					new DrizzleRecipeImportRepository(db),
 					members,
 					images,
 					new SeedActorProvider(contributor),
