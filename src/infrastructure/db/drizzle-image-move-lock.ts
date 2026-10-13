@@ -10,8 +10,9 @@ import {
 // environment's database.
 const imageMoveLockKey = 'recipe-hub:image-moves';
 
-// A sweep holds the lock through seconds of Blob calls, and a removal waits for it inside a save's
-// response: long enough for a sweep to finish, short enough that a stuck one never holds the save.
+// A sweep holds the lock through seconds of Blob calls, and a write's removal waits for it in a
+// background task after the response: long enough for a sweep to finish, short enough that a stuck
+// one never keeps that task's function alive for long.
 const lockWaitTimeoutMs = 10_000;
 
 // A transaction-scoped lock, since the pooler can hand a session lock and its unlock to different

@@ -13,7 +13,6 @@ import type { Member } from '@/domain/member/member';
 import { sampleRecipeContents } from '@/domain/recipe/samples/sample-recipes';
 import { slugify } from '@/domain/recipe/slug';
 import { pinFullSslVerification } from '@/infrastructure/db/connection-string';
-import { DrizzleImageMoveLock } from '@/infrastructure/db/drizzle-image-move-lock';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
@@ -140,8 +139,7 @@ if (env.VERCEL_ENV === 'production') {
 					members,
 					images,
 					new SeedActorProvider(contributor),
-					folders,
-					new DrizzleImageMoveLock(db)
+					folders
 				),
 				images
 			);

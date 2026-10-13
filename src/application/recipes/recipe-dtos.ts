@@ -59,9 +59,22 @@ export type RecipeRef = {
 	slug: string;
 };
 
+// The images an edit or delete let go: those the recipe named before the write and no longer does.
+// Callers hand them to the image sweep, which removes each one nothing else names once the response
+// is sent, so no save waits for the image move lock.
+export type ReleasedImages = {
+	recipeId: RecipeId;
+	images: RecipeImage[];
+};
+
 // The previous slug is set only when the edit moved the slug, so its cache tag is invalidated too.
 export type UpdatedRecipeRef = RecipeRef & {
 	previousSlug?: string;
+	releasedImages: ReleasedImages;
+};
+
+export type DeletedRecipeRef = RecipeRef & {
+	releasedImages: ReleasedImages;
 };
 
 // What the upload adapter allows the one upload a member was authorized for.

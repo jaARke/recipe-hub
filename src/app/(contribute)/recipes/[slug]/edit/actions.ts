@@ -4,7 +4,7 @@ import { updateTag } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { toFormError } from '@/app/_lib/form-errors';
 import { recipeCacheTags } from '@/app/_lib/recipe-cache';
-import type { RecipeRef, UpdatedRecipeRef } from '@/application/recipes/recipe-dtos';
+import type { DeletedRecipeRef, UpdatedRecipeRef } from '@/application/recipes/recipe-dtos';
 import { formText } from '@/components/forms/form-data';
 import type { FormState } from '@/components/forms/form-state';
 import { recipeContentFromForm } from '@/components/recipe-form/recipe-form-content';
@@ -26,7 +26,7 @@ export async function updateRecipe(_state: FormState, formData: FormData): Promi
 		return toFormError(error);
 	}
 
-	getRecipeImageService().scheduleSweep();
+	getRecipeImageService().scheduleSweep(recipe.releasedImages);
 	updateTag(recipeCacheTags.list);
 	updateTag(recipeCacheTags.recipe(recipe.slug));
 	if (recipe.previousSlug !== undefined) {
@@ -38,7 +38,7 @@ export async function updateRecipe(_state: FormState, formData: FormData): Promi
 // Its re-render of the edit page finds no recipe, but React commits that together with the dialog's
 // navigation to the list, so the not-found page never shows.
 export async function deleteRecipe(_state: FormState, formData: FormData): Promise<FormState> {
-	let recipe: RecipeRef;
+	let recipe: DeletedRecipeRef;
 	try {
 		recipe = await getRecipeService().deleteRecipe(
 			formText(formData, recipeFormFieldNames.recipeId)
@@ -47,7 +47,7 @@ export async function deleteRecipe(_state: FormState, formData: FormData): Promi
 		return toFormError(error);
 	}
 
-	getRecipeImageService().scheduleSweep();
+	getRecipeImageService().scheduleSweep(recipe.releasedImages);
 	updateTag(recipeCacheTags.list);
 	updateTag(recipeCacheTags.recipe(recipe.slug));
 	return { status: 'success' };

@@ -104,8 +104,7 @@ export function getRecipeService(): RecipeService {
 		new DrizzleMemberRepository(db),
 		images,
 		actors,
-		imageFolders,
-		new DrizzleImageMoveLock(db)
+		imageFolders
 	);
 }
 

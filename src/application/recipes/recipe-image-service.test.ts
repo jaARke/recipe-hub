@@ -12,7 +12,7 @@ import { InMemoryImageMoveLock } from '@/application/testing/in-memory-image-mov
 import { InMemoryImageStore } from '@/application/testing/in-memory-image-store';
 import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
-import { recipeContentSchema } from '@/domain/recipe/recipe';
+import { recipeContentSchema, recipeIdSchema } from '@/domain/recipe/recipe';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import { sampleChickenSoup } from '@/domain/recipe/samples/sample-recipes';
 
@@ -24,6 +24,8 @@ const scanUpload = 'scan/development/0b6e2f4a-9c1d-4e8b-a7f3-5d2c1b0a9e8f.jpg';
 // A deployment that, like a preview, also reads production's and the seed's images.
 const folders = new ImageFolders('development', ['production', 'seed']);
 const dayInMilliseconds = 24 * 60 * 60 * 1000;
+// How long the test lock lets a removal wait before it gives up.
+const moveLockWaitMs = 10_000;
 
 let consoleInfo: MockInstance<typeof console.info>;
 let consoleWarn: MockInstance<typeof console.warn>;
@@ -128,7 +130,7 @@ async function createSweep(environment = 'development', expiringPrefixes: string
 		draft: { content: { title: 'Soup card', images: [drafted] }, problems: [] },
 	});
 
-	const lock = new InMemoryImageMoveLock();
+	const lock = new InMemoryImageMoveLock(moveLockWaitMs);
 	const { tasks, scheduleTask } = heldTasks();
 	const service = new RecipeImageService(
 		recipes,
@@ -613,4 +615,240 @@ describe('scheduleSweep', () => {
 			}),
 		]);
 	});
+});
+
+describe('scheduleSweep with the images an edit or delete let go', () => {
+	// The recipe the write let them go from, which their log lines name.
+	const recipeId = recipeIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e');
+	const released = 'dish/development/released.jpg';
+	const releasedImage: RecipeImage = { role: 'dish', pathname: released };
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	// The sweep's images, and an upload made just now that nothing names: a sweep leaves it for a day,
+	// so only a removal removes it.
+	async function createRemoval() {
+		const sweep = await createSweep();
+		await sweep.images.put(released, jpeg, 'image/jpeg');
+		return sweep;
+	}
+
+	// Another image move, which holds the lock until the returned function ends it.
+	function moveHolding(lock: InMemoryImageMoveLock): () => Promise<void> {
+		const move = Promise.withResolvers<void>();
+		const moving = lock.tryRun(() => move.promise);
+		return async () => {
+			move.resolve();
+			await moving;
+		};
+	}
+
+	it('removes those nothing names once the scheduler runs it, then sweeps', async () => {
+		const { images, service, tasks, unused } = await createRemoval();
+
+		service.scheduleSweep({ recipeId, images: [releasedImage] });
+
+		expect(tasks).toHaveLength(1);
+		expect(await images.has(released)).toBe(true);
+		await tasks[0]?.();
+		expect(await images.hasRemoved(released)).toBe(true);
+		expect(images.removedPathnames).toEqual([released, unused]);
+		expect(logLines(consoleInfo)).toEqual([
+			{
+				level: 'info',
+				logger: 'images',
+				message: 'Recipe images removed',
+				recipeId,
+				pathnames: [released],
+			},
+			expect.objectContaining({ message: 'Images swept', removedPathnames: [unused] }),
+		]);
+	});
+
+	it("keeps those a recipe lists or a draft awaiting review names, logged as kept, and other environments'", async () => {
+		const { images, service, tasks, listed, drafted, others } = await createRemoval();
+		const othersImages: RecipeImage[] = others.map((pathname) => ({ role: 'dish', pathname }));
+
+		service.scheduleSweep({
+			recipeId,
+			images: [
+				{ role: 'dish', pathname: listed },
+				{ role: 'scan', pathname: drafted },
+				...othersImages,
+				releasedImage,
+			],
+		});
+		await tasks[0]?.();
+
+		for (const pathname of [listed, drafted, ...others]) {
+			expect(await images.has(pathname)).toBe(true);
+		}
+		expect(images.removedPathnames).not.toContain(listed);
+		expect(images.removedPathnames).not.toContain(drafted);
+		expect(logLines(consoleInfo)).toContainEqual({
+			level: 'info',
+			logger: 'images',
+			message: 'Recipe images removed',
+			recipeId,
+			pathnames: [released],
+			keptPathnames: [listed, drafted],
+		});
+	});
+
+	it('waits for another move that holds the lock, then removes them and sweeps', async () => {
+		const { images, lock, service, tasks, unused } = await createRemoval();
+		const endMove = moveHolding(lock);
+
+		service.scheduleSweep({ recipeId, images: [releasedImage] });
+		const running = tasks[0]?.();
+		await vi.waitFor(() => expect(lock.waitingCount).toBe(1));
+		expect(images.removedPathnames).toEqual([]);
+		await endMove();
+		await running;
+
+		expect(images.removedPathnames).toEqual([released, unused]);
+	});
+
+	it('checks which are in use only once it holds the lock, so an image saved meanwhile is kept', async () => {
+		const { images, lock, recipes, service, tasks } = await createRemoval();
+		const endMove = moveHolding(lock);
+
+		service.scheduleSweep({ recipeId, images: [releasedImage] });
+		const running = tasks[0]?.();
+		await vi.waitFor(() => expect(lock.waitingCount).toBe(1));
+		await attach(recipes, releasedImage);
+		await endMove();
+		await running;
+
+		expect(await images.has(released)).toBe(true);
+		expect(images.removedPathnames).not.toContain(released);
+	});
+
+	it('removes them and sweeps in one hold, so no other move runs in between', async () => {
+		const { images, lock, service, tasks } = await createRemoval();
+		const moves: string[] = [];
+		let otherMove: Promise<void> | undefined;
+		const remove = images.remove.bind(images);
+		vi.spyOn(images, 'remove').mockImplementationOnce(async (pathnames) => {
+			// Another move asks for the lock while the removal runs.
+			otherMove = lock.run(async () => {
+				moves.push('other move');
+			});
+			await remove(pathnames);
+			moves.push('removal');
+		});
+		const listRemoved = images.listRemoved.bind(images);
+		vi.spyOn(images, 'listRemoved').mockImplementation(async () => {
+			moves.push('sweep');
+			return listRemoved();
+		});
+
+		service.scheduleSweep({ recipeId, images: [releasedImage] });
+		await tasks[0]?.();
+		await otherMove;
+
+		expect(moves).toEqual(['removal', 'sweep', 'other move']);
+	});
+
+	it('leaves them for a later sweep and logs a warning when the lock stays held past its wait', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		const { images, lock, service, tasks } = await createRemoval();
+		moveHolding(lock);
+
+		service.scheduleSweep({ recipeId, images: [releasedImage] });
+		const running = tasks[0]?.();
+		await vi.advanceTimersByTimeAsync(moveLockWaitMs);
+
+		await expect(running).resolves.toBeUndefined();
+		expect(await images.has(released)).toBe(true);
+		expect(images.removedPathnames).toEqual([]);
+		expect(logLines(consoleWarn)).toEqual([
+			expect.objectContaining({
+				level: 'warn',
+				logger: 'images',
+				message: 'Recipe images could not be removed',
+				recipeId,
+				pathnames: [released],
+				err: expect.objectContaining({ message: 'Timed out waiting for the image move lock' }),
+			}),
+		]);
+		expect(consoleError).not.toHaveBeenCalled();
+	});
+
+	it('logs a removal that fails and carries on with the sweep, leaving them for a later one', async () => {
+		const { images, service, tasks, unused } = await createRemoval();
+		vi.spyOn(images, 'remove').mockRejectedValueOnce(new Error('Blob is unreachable'));
+
+		service.scheduleSweep({ recipeId, images: [releasedImage] });
+		await tasks[0]?.();
+
+		expect(await images.has(released)).toBe(true);
+		expect(await images.hasRemoved(unused)).toBe(true);
+		expect(logLines(consoleWarn)).toEqual([
+			expect.objectContaining({
+				level: 'warn',
+				logger: 'images',
+				message: 'Recipe images could not be removed',
+				recipeId,
+				pathnames: [released],
+				err: expect.objectContaining({ message: 'Blob is unreachable' }),
+			}),
+		]);
+		expect(logLines(consoleInfo)).toEqual([
+			expect.objectContaining({ message: 'Images swept', removedCount: 1 }),
+		]);
+	});
+
+	it('logs a sweep that fails after the removal as a failed sweep, and releases the lock', async () => {
+		const { images, lock, service, tasks } = await createRemoval();
+		vi.spyOn(images, 'listRemoved').mockRejectedValueOnce(new Error('Blob is unreachable'));
+
+		service.scheduleSweep({ recipeId, images: [releasedImage] });
+
+		await expect(tasks[0]?.()).resolves.toBeUndefined();
+		expect(images.removedPathnames).toEqual([released]);
+		expect(lock.isHeld).toBe(false);
+		expect(consoleWarn).not.toHaveBeenCalled();
+		expect(logLines(consoleError)).toEqual([
+			expect.objectContaining({
+				level: 'error',
+				logger: 'images',
+				message: 'Image sweep failed',
+				err: expect.objectContaining({ message: 'Blob is unreachable' }),
+			}),
+		]);
+	});
+
+	it.each<[string, RecipeImage[]]>([
+		['no images', []],
+		[
+			"only other environments' images",
+			[
+				{ role: 'dish', pathname: 'dish/seed/soup.jpg' },
+				{ role: 'dish', pathname: 'dish/production/soup.jpg' },
+			],
+		],
+	])(
+		'sweeps without waiting, so skips while another move runs, when given %s',
+		async (_case, releasedImages) => {
+			const { images, lock, service, tasks } = await createRemoval();
+			const endMove = moveHolding(lock);
+
+			service.scheduleSweep({ recipeId, images: releasedImages });
+			await tasks[0]?.();
+
+			expect(lock.waitingCount).toBe(0);
+			expect(images.removedPathnames).toEqual([]);
+			expect(logLines(consoleInfo)).toEqual([
+				{
+					level: 'info',
+					logger: 'images',
+					message: 'Image sweep skipped while another image move runs',
+				},
+			]);
+			await endMove();
+		}
+	);
 });

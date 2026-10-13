@@ -9,12 +9,17 @@ import type { TaskScheduler } from '@/application/ports/task-scheduler';
 import { InvalidImageUploadError } from '@/application/recipes/errors';
 import type { ImageFolders } from '@/application/recipes/image-folders';
 import { imagesInUse } from '@/application/recipes/images-in-use';
-import type { ImageSweepCounts, ImageUploadGrant } from '@/application/recipes/recipe-dtos';
+import type {
+	ImageSweepCounts,
+	ImageUploadGrant,
+	ReleasedImages,
+} from '@/application/recipes/recipe-dtos';
 import {
 	expiringImageCutoff,
 	removedImageCutoff,
 	unusedImageCutoff,
 } from '@/domain/recipe/image-retention';
+import type { RecipeId } from '@/domain/recipe/recipe';
 import {
 	isPublicImagePathname,
 	isRecipeImageContentType,
@@ -61,6 +66,11 @@ async function expireStep(run: () => Promise<string[]>): Promise<string[]> {
 		logger.warn('Image sweep step failed', { step: 'expire' satisfies ImageSweepStep, err });
 		return [];
 	}
+}
+
+// Left where they are, for a later sweep to remove once nothing has named them for a day.
+function warnImagesNotRemoved(recipeId: RecipeId, pathnames: string[], err: unknown): void {
+	logger.warn('Recipe images could not be removed', { recipeId, pathnames, err });
 }
 
 export class RecipeImageService {
@@ -130,11 +140,12 @@ export class RecipeImageService {
 	}
 
 	// Sweeps once the response is sent, so the write that calls it never waits. Every recipe and import
-	// write calls it, so cleanup follows activity rather than a schedule.
-	scheduleSweep(): void {
+	// write calls it, so cleanup follows activity rather than a schedule. An edit or delete passes the
+	// images it let go, which the task removes before it sweeps.
+	scheduleSweep(released?: ReleasedImages): void {
 		this.scheduleTask(async () => {
 			try {
-				await this.sweepImages();
+				await (released === undefined ? this.sweepImages() : this.removeAndSweep(released));
 			} catch (err) {
 				logger.error('Image sweep failed', { err });
 			}
@@ -142,7 +153,7 @@ export class RecipeImageService {
 	}
 
 	// A system use case with no actor. Skipped while another image move runs: a running sweep covers
-	// it, and the write whose removal holds the lock sweeps once that removal ends.
+	// it, as does a write's removal, which sweeps in the same hold once its images are removed.
 	async sweepImages(): Promise<LockAttempt<ImageSweepCounts>> {
 		const attempt = await this.moveLock.tryRun(() => this.sweep());
 		if (attempt.status === 'skipped') {
@@ -157,6 +168,56 @@ export class RecipeImageService {
 			this.images.hasRemoved(pathname),
 		]);
 		return stored || removed;
+	}
+
+	// Waits for the lock rather than skipping, so the images go now rather than at a later write's
+	// sweep, and sweeps in the same hold. Other environments' images, such as production's on a
+	// preview's copy, are kept. A wait that times out leaves the images for a later sweep.
+	private async removeAndSweep({ recipeId, images }: ReleasedImages): Promise<void> {
+		const pathnames = images
+			.map(({ pathname }) => pathname)
+			.filter((pathname) => this.folders.contains(pathname));
+		if (pathnames.length === 0) {
+			await this.sweepImages();
+			return;
+		}
+
+		// Set once the lock is held, so a wait that times out is told apart from a sweep that fails.
+		let held = false;
+		try {
+			await this.moveLock.run(async () => {
+				held = true;
+				await this.removeReleasedImages(recipeId, pathnames);
+				await this.sweep();
+			});
+		} catch (err) {
+			if (held) {
+				throw err;
+			}
+			warnImagesNotRemoved(recipeId, pathnames, err);
+		}
+	}
+
+	// After the write commits, so a failure leaves an unused image rather than a recipe naming a missing
+	// one; a failure is logged, and the sweep carries on. An image another recipe still lists or an
+	// unexpired draft names is kept, as importing the same scans twice makes drafts share them.
+	private async removeReleasedImages(recipeId: RecipeId, pathnames: string[]): Promise<void> {
+		try {
+			const inUse = await imagesInUse(pathnames, this.recipes, this.imports, new Date());
+			const removedPathnames = pathnames.filter((pathname) => !inUse.has(pathname));
+			const keptPathnames = pathnames.filter((pathname) => inUse.has(pathname));
+			if (removedPathnames.length > 0) {
+				await this.images.remove(removedPathnames);
+			}
+
+			logger.info('Recipe images removed', {
+				recipeId,
+				pathnames: removedPathnames,
+				...(keptPathnames.length > 0 && { keptPathnames }),
+			});
+		} catch (err) {
+			warnImagesNotRemoved(recipeId, pathnames, err);
+		}
 	}
 
 	// Brings back removed images that a recipe or draft names again, as after the database is restored
