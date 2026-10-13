@@ -11,6 +11,7 @@ const copyRules = [
 	'- Keep the steps in order, divided as the source divides them.',
 	'- Give a time only where the source states a prep, cook, or total time, in whole minutes. Never work a time out from the steps.',
 	'- Give a yield only where the source states one: servings, such as "Serves 4 to 6", or what the recipe makes, such as "Makes 2 dozen cookies".',
+	'- A line that states the yield, such as "Makes about 50 cakes" or "Serves 6", is the yield, not the description or the notes.',
 	'- If the source holds more than one recipe, read the most prominent one and add a review note on the field "recipe" that names what you left out.',
 	'- If the source holds no recipe, use null for every value and empty lists.',
 ].join('\n');

@@ -279,12 +279,50 @@ describe('importDraftFromExtractedRecipe', () => {
 			expect(draft.problems).toEqual([]);
 		});
 
+		it.each<[string, ExtractedYield, RecipeYield, string]>([
+			[
+				'a count with its unit',
+				{ kind: 'makes', amount: 'About 50', unit: 'one and a half inch cakes' },
+				{ kind: 'makes', amount: { min: 50 }, unit: 'one and a half inch cakes' },
+				'“About 50 one and a half inch cakes”',
+			],
+			[
+				'an abbreviation with its period',
+				{ kind: 'makes', amount: 'approx. 2', unit: ' dozen ' },
+				{ kind: 'makes', amount: { min: 2 }, unit: 'dozen' },
+				'“approx. 2 dozen”',
+			],
+			[
+				'a range of servings',
+				{ kind: 'servings', amount: 'Around 4 to 6', unit: 'people' },
+				{ kind: 'servings', amount: { min: 4, max: 6 } },
+				'“Around 4 to 6”',
+			],
+			[
+				'a two-word phrase',
+				{ kind: 'servings', amount: 'up to 8' },
+				{ kind: 'servings', amount: { min: 8 } },
+				'“up to 8”',
+			],
+		])(
+			'keeps the number of an approximate amount and quotes the original: %s',
+			(_label, extracted, expected, quoted) => {
+				const draft = draftWith({ yield: extracted });
+
+				expect(draft.content.yield).toEqual(expected);
+				expect(draft.problems).toEqual([
+					{ path: 'yield.amount', message: `The original says ${quoted}. Check the yield.` },
+				]);
+			}
+		);
+
 		it.each<[string, ExtractedYield, string]>([
 			[
 				'a count with its unit',
 				{ kind: 'makes', amount: 'about a dozen', unit: 'cookies' },
 				'“about a dozen cookies”',
 			],
+			['a count without a number', { kind: 'makes', amount: 'a dozen' }, '“a dozen”'],
 			['servings', { kind: 'servings', amount: 'a crowd', unit: 'people' }, '“a crowd”'],
 		])(
 			'leaves out an amount that is not a number and quotes the original: %s',

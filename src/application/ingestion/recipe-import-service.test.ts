@@ -867,7 +867,6 @@ describe('logging', () => {
 			mode: 'url',
 			failure: error.code,
 			...why,
-			err: expect.objectContaining({ code: error.code }),
 		});
 		expect(loggedText()).not.toMatch(/example\.com|newsletter/);
 	});
@@ -885,6 +884,50 @@ describe('logging', () => {
 			failure: 'import.no-recipe',
 			aiModel: 'example/text-model',
 			costUsd: 0.0009,
+		});
+		expect(logged('Import failed')).not.toHaveProperty('err');
+	});
+
+	it('logs paused imports by their code alone', async () => {
+		const { serviceFor, addMember } = createImports({
+			pageReader: new FixedPageRecipeExtractor(
+				new ImportPausedError({ cause: { statusCode: 402 } })
+			),
+		});
+
+		await serviceFor(await addMember())
+			.importFromUrl(url)
+			.catch(() => undefined);
+
+		expect(logged('Import failed')).toMatchObject({ failure: 'import.paused' });
+		expect(logged('Import failed')).not.toHaveProperty('err');
+	});
+
+	it.each([
+		[
+			'a failed model call, with its cause',
+			new ImportFailedError({ cause: { statusCode: 500, generationId: 'gen_01' } }),
+			'import.failed',
+			{ code: 'import.failed', cause: { statusCode: 500, generationId: 'gen_01' } },
+		],
+		[
+			'an unexpected failure',
+			new Error('Extractor crashed'),
+			'unexpected',
+			{ message: 'Extractor crashed' },
+		],
+	])('logs the error of %s', async (_, error, failure, loggedError) => {
+		const { serviceFor, addMember } = createImports({
+			pageReader: new FixedPageRecipeExtractor(error),
+		});
+
+		await serviceFor(await addMember())
+			.importFromUrl(url)
+			.catch(() => undefined);
+
+		expect(logged('Import failed')).toMatchObject({
+			failure,
+			err: { ...loggedError, stack: expect.any(String) },
 		});
 	});
 });

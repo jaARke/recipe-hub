@@ -144,6 +144,10 @@ const shortenedLineMessage = `Check this line against the original. It was cut t
 // The second half of a character written as two UTF-16 code units, such as an emoji.
 const lowSurrogate = /[\uDC00-\uDFFF]/;
 
+// A word that opens an approximate yield, as in "About 50" or "approx. 2".
+export const approximationWord =
+	/^(?:about|approximately|approx|around|roughly|nearly|almost|up\s+to)\b\.?\s*/iu;
+
 // Text as the domain stores it, or undefined when nothing is left of it.
 function storedText(text: string | undefined): string | undefined {
 	if (text === undefined) {
@@ -219,8 +223,8 @@ function draftLine(text: string, path: string, problems: Problem[]): IngredientL
 	return parseIngredientLine(shortenedLine(text));
 }
 
-// Read like the form's yield field. An amount that isn't a number is left to the member, with what
-// the original said.
+// Read like the form's yield field. An approximate amount keeps its number, and one that isn't a
+// number is left to the member, each with what the original said.
 function draftYield(
 	extracted: ExtractedYield | undefined,
 	problems: Problem[]
@@ -230,14 +234,21 @@ function draftYield(
 		return undefined;
 	}
 	const unit = extracted.kind === 'makes' ? storedText(extracted.unit) : undefined;
-	const amount = parseAmountText(amountText);
+	const original = unit === undefined ? amountText : `${amountText} ${unit}`;
+	const exactAmount = parseAmountText(amountText);
+	const amount = exactAmount ?? parseAmountText(amountText.replace(approximationWord, ''));
 	if (amount === undefined) {
-		const original = unit === undefined ? amountText : `${amountText} ${unit}`;
 		problems.push({
 			path: 'yield.amount',
 			message: `The original says “${original}”. Use a number, or two numbers for a range.`,
 		});
 		return undefined;
+	}
+	if (exactAmount === undefined) {
+		problems.push({
+			path: 'yield.amount',
+			message: `The original says “${original}”. Check the yield.`,
+		});
 	}
 	return extracted.kind === 'servings'
 		? { kind: 'servings', amount }

@@ -16,11 +16,12 @@ import type {
 } from 'schema-dts';
 import type { Extraction, PageRecipeExtractor } from '@/application/ports/recipe-extractors';
 import type { WebPage } from '@/application/ports/web-page-fetcher';
-import type {
-	ExtractedIngredientSection,
-	ExtractedInstructionSection,
-	ExtractedRecipe,
-	ExtractedYield,
+import {
+	approximationWord,
+	type ExtractedIngredientSection,
+	type ExtractedInstructionSection,
+	type ExtractedRecipe,
+	type ExtractedYield,
 } from '@/domain/recipe/extracted-recipe';
 import { maxIngredientLineLength } from '@/domain/recipe/ingredient-limits';
 import { parseAmountText } from '@/domain/recipe/ingredient-parser';
@@ -74,6 +75,12 @@ const htmlEntity = /&(?:#\d+|#x[\da-f]+|[a-z]+\d*);/i;
 
 // A step numbered in its own text, which the recipe form numbers again.
 const stepNumber = /^(?:step\s*)?\d+[.):]\s+/i;
+
+// WP Recipe Maker writes each ingredient's note in parentheses the page never shows, so a note that
+// opens with a comma or has parentheses of its own reads "onion (, sliced)" or "soda ((optional))".
+const doubledGroup = / \(\(([^()]*)\)\)/g;
+// A group opening with a comma that ends the line, holding at most one group of its own.
+const trailingCommaGroup = / \(, ?((?:[^()]|\([^()]*\))*)\)$/;
 
 // A yield can open with a label: "Serves 4", "Servings: 4", "Makes 12", "Yield: 2 loaves".
 const yieldLabel = /^(serves|servings?|makes|yields?)\b\s*:?\s*/i;
@@ -316,13 +323,22 @@ function ingredientLines(value: unknown, walk: ListWalk): string[] {
 	return counted(textLines((item as SchemaNode<ListItem>).name), walk);
 }
 
+// An ingredient as the page shows it: only the parentheses a recipe plugin added are undone, and every
+// other parenthesis stays as written.
+function withoutNoteWrapping(line: string): string {
+	return line
+		.replaceAll(' )', ')')
+		.replace(doubledGroup, ' ($1)')
+		.replace(trailingCommaGroup, ', $1');
+}
+
 function ingredientSections(
 	recipe: SchemaNode<Recipe>,
 	walk: ListWalk
 ): ExtractedIngredientSection[] {
-	const lines = counted(list(recipe.recipeIngredient), walk).flatMap((item) =>
-		ingredientLines(item, walk)
-	);
+	const lines = counted(list(recipe.recipeIngredient), walk)
+		.flatMap((item) => ingredientLines(item, walk))
+		.map(withoutNoteWrapping);
 	return lines.length === 0 ? [] : [{ lines }];
 }
 
@@ -449,12 +465,14 @@ function yieldFromText(text: string): ExtractedYield {
 	const label = yieldLabel.exec(text);
 	const labelWord = label?.[1]?.toLowerCase();
 	const rest = text.slice(label?.[0].length ?? 0);
-	const words = rest.split(/\s+/);
+	// A word that makes the amount approximate, as in "About 12", stays with it for drafts to strip.
+	const approximation = approximationWord.exec(rest)?.[0] ?? '';
+	const words = rest.slice(approximation.length).split(/\s+/);
 	const count = amountWordCount(words);
 	if (count === 0) {
 		return { kind: yieldKind(labelWord, rest), amount: rest === '' ? text : rest };
 	}
-	const amount = words.slice(0, count).join(' ');
+	const amount = `${approximation}${words.slice(0, count).join(' ')}`;
 	const unit = words.slice(count).join(' ');
 	if (yieldKind(labelWord, unit) === 'servings') {
 		return { kind: 'servings', amount };

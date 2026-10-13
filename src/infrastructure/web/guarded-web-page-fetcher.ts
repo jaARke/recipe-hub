@@ -138,7 +138,8 @@ function unavailableReason(
 	}
 }
 
-// guarded-fetch's messages quote the address, and services log the cause, so it keeps only codes.
+// guarded-fetch's messages quote the address, so the cause keeps only codes, which keeps the address
+// out of the error chain. The import service logs a page-unavailable error's reason, not its cause.
 function failureCodes(error: unknown): FailureCodes {
 	const codes: string[] = [];
 	for (let current = error; current instanceof Error; current = current.cause) {

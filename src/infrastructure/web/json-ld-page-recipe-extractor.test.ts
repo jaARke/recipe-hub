@@ -46,8 +46,14 @@ function withEntities(text: string): string {
 	return text.replaceAll("'", '&#39;').replaceAll('°', '&deg;').replaceAll('½', '&frac12;');
 }
 
-// WP Recipe Maker inside Yoast's graph: the author by reference, the yield twice, and the steps in
-// sections.
+// As WP Recipe Maker writes a line: its note in parentheses, still opening with the comma that sets it
+// off on the page.
+function withWrappedNote(line: string): string {
+	return line.replace(/, (.*)$/, ' (, $1)');
+}
+
+// WP Recipe Maker inside Yoast's graph: the author by reference, the yield twice, notes in
+// parentheses, and the steps in sections.
 function wpRecipeMakerPage(sample: RecipeContentInput): WebPage {
 	const personId = 'https://blog.example.com/#/schema/person/ray';
 	return pageWith([
@@ -66,7 +72,7 @@ function wpRecipeMakerPage(sample: RecipeContentInput): WebPage {
 					prepTime: 'PT25M',
 					cookTime: 'PT200M',
 					totalTime: 'PT225M',
-					recipeIngredient: lineTexts(sample).map(withEntities),
+					recipeIngredient: lineTexts(sample).map(withWrappedNote).map(withEntities),
 					recipeInstructions: sample.instructionSections.map((section) => ({
 						'@type': 'HowToSection',
 						name: section.heading,
@@ -279,6 +285,28 @@ describe('extract', () => {
 		await expect(new JsonLdPageRecipeExtractor().extract(page)).resolves.toBeNull();
 	});
 
+	it.each([
+		['225g (8oz ) pork loin (, thinly sliced)', '225g (8oz) pork loin, thinly sliced'],
+		['1/2 tsp smoked paprika ((optional, Note 2))', '1/2 tsp smoked paprika (optional, Note 2)'],
+		[
+			'1/2 leek (, sliced (white and light green parts))',
+			'1/2 leek, sliced (white and light green parts)',
+		],
+		['Pinch of nutmeg ((or mace))', 'Pinch of nutmeg (or mace)'],
+		['1 tbsp dry sherry (OR rice wine (Note 3))', '1 tbsp dry sherry (OR rice wine (Note 3))'],
+		['1 (14-ounce) can tomatoes', '1 (14-ounce) can tomatoes'],
+		['2 cups flour (sifted)', '2 cups flour (sifted)'],
+		['2 eggs (, beaten) (see note)', '2 eggs (, beaten) (see note)'],
+		[
+			'1 cup butter (softened (not melted)) (Note 2)',
+			'1 cup butter (softened (not melted)) (Note 2)',
+		],
+	])('reads the ingredient %j as the page shows it', async (written, shown) => {
+		await expect(
+			extracted(pageWith([recipe({ recipeIngredient: [written] })]))
+		).resolves.toMatchObject({ ingredientSections: [{ lines: [shown] }] });
+	});
+
 	it('reads ingredients from an ItemList in position order, and from PropertyValues', async () => {
 		const page = pageWith([
 			recipe({
@@ -379,7 +407,16 @@ describe('extract', () => {
 		['Serves 1 1/2 - 2', { kind: 'servings', amount: '1 1/2 - 2' }],
 		['Makes 2 1/2 to 3 dozen', { kind: 'makes', amount: '2 1/2 to 3', unit: 'dozen' }],
 		['Serves about 6', { kind: 'servings', amount: 'about 6' }],
-		['Makes about 2 dozen', { kind: 'makes', amount: 'about 2 dozen' }],
+		['Makes about 2 dozen', { kind: 'makes', amount: 'about 2', unit: 'dozen' }],
+		['About 12 servings', { kind: 'servings', amount: 'About 12' }],
+		[
+			'Makes approx. 3 dozen cookies',
+			{ kind: 'makes', amount: 'approx. 3', unit: 'dozen cookies' },
+		],
+		['up to 8 servings', { kind: 'servings', amount: 'up to 8' }],
+		['approx.2 dozen', { kind: 'makes', amount: 'approx.2', unit: 'dozen' }],
+		// Not an approximation: the domain's approximation word ends at a word boundary.
+		['about12 servings', { amount: 'about12 servings' }],
 		[['36', '36 cookies'], { kind: 'makes', amount: '36', unit: 'cookies' }],
 		['Makes 16', { kind: 'makes', amount: '16' }],
 		['2 dozen cookies', { kind: 'makes', amount: '2', unit: 'dozen cookies' }],

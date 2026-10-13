@@ -2,6 +2,7 @@ import 'server-only';
 import { z } from 'zod';
 import { requireMember } from '@/application/authorization';
 import {
+	ImportFailedError,
 	ImportNoRecipeError,
 	ImportPageRefusedError,
 	ImportPageUnavailableError,
@@ -116,6 +117,12 @@ function importLimit(actor: MemberActor, now: Date): RecipeImportLimit | undefin
 	return actor.role === 'admin'
 		? undefined
 		: { maxImports: maxImportsPerDay, since: new Date(now.getTime() - dayInMilliseconds) };
+}
+
+// An expected failure's code says what happened. An unexpected one keeps its stack, and a failed
+// model call its cause, which holds the call's status, finish reason, and generation id.
+function logsError(error: unknown): boolean {
+	return !(error instanceof AppError) || error instanceof ImportFailedError;
 }
 
 // Each message is the problem with the scan at its index, if it has one.
@@ -332,7 +339,7 @@ export class RecipeImportService {
 			...(error instanceof ImportPageRefusedError && { status: error.status }),
 			...(extraction?.model !== undefined && { aiModel: extraction.model }),
 			...(costUsd !== undefined && { costUsd }),
-			err: error,
+			...(logsError(error) && { err: error }),
 		});
 		await this.imports.recordFailure(recipeImport.id, {
 			failure,
