@@ -10,7 +10,7 @@ import type { FormState } from '@/components/forms/form-state';
 import { recipeContentFromForm } from '@/components/recipe-form/recipe-form-content';
 import { recipeFormFieldNames } from '@/components/recipe-form/recipe-form-fields';
 import { recipePath } from '@/components/recipe/recipe-paths';
-import { getRecipeService } from '@/composition/services';
+import { getRecipeImageService, getRecipeService } from '@/composition/services';
 
 // Redirects to the saved recipe, so the editor sees it rendered fresh in this response; a
 // navigation afterwards could get the CDN's copy from before the save for a few seconds.
@@ -26,6 +26,7 @@ export async function updateRecipe(_state: FormState, formData: FormData): Promi
 		return toFormError(error);
 	}
 
+	getRecipeImageService().scheduleSweep();
 	updateTag(recipeCacheTags.list);
 	updateTag(recipeCacheTags.recipe(recipe.slug));
 	if (recipe.previousSlug !== undefined) {
@@ -46,6 +47,7 @@ export async function deleteRecipe(_state: FormState, formData: FormData): Promi
 		return toFormError(error);
 	}
 
+	getRecipeImageService().scheduleSweep();
 	updateTag(recipeCacheTags.list);
 	updateTag(recipeCacheTags.recipe(recipe.slug));
 	return { status: 'success' };

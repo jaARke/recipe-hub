@@ -1,25 +1,40 @@
+import { randomBytes } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { eq, sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ZodError } from 'zod';
-import { LastAdminError, MemberRoleConflictError } from '@/application/members/errors';
 import type { NewMember } from '@/application/ports/member-repository';
-import { memberIdSchema, type MemberId } from '@/domain/member/member';
+import { describeMemberRepositoryContract } from '@/application/testing/member-repository-contract';
+import { inviteExpiry, type InviteId } from '@/domain/member/invite';
+import { memberIdSchema, removedMemberEmail, type MemberId } from '@/domain/member/member';
 import { recipeContentSchema } from '@/domain/recipe/recipe';
 import { sampleChickenSoup } from '@/domain/recipe/samples/sample-recipes';
 import { createTestAuth, testHost } from '@/infrastructure/auth/testing/test-auth';
+import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
-import { passkeys, recipes, sessions, users, verifications } from '@/infrastructure/db/schema';
+import {
+	invites,
+	passkeys,
+	recipes,
+	sessions,
+	users,
+	verifications,
+} from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 
-const missingId = memberIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e');
 const backdated = new Date('2026-01-01T00:00:00Z');
+
+const freeRemovedMemberEmails = path.join(
+	import.meta.dirname,
+	'migrations/0008_free-removed-member-emails.sql'
+);
 
 const uuidV7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 const ada: NewMember = { email: 'ada@example.com', displayName: 'Ada', role: 'member' };
 const grace: NewMember = { email: 'grace@example.com', displayName: 'Grace', role: 'admin' };
-const lin: NewMember = { email: 'lin@example.com', displayName: 'Lin', role: 'admin' };
 
 let db: TestDatabase;
 let repository: DrizzleMemberRepository;
@@ -40,22 +55,23 @@ async function backdate(id: MemberId) {
 		.where(eq(users.id, id));
 }
 
-// Refuses any role or removal written without an advisory lock held, as an unserialized one would be.
-async function requireRoleLock() {
+// Refuses any account created or role written without an advisory lock held, as an unserialized
+// ensureAdmin would be.
+async function requireEnsureAdminLock() {
 	await db.execute(
-		sql.raw(`create function require_role_lock() returns trigger language plpgsql as $$
+		sql.raw(`create function require_ensure_admin_lock() returns trigger language plpgsql as $$
 begin
 	if not exists (
 		select 1 from pg_locks where locktype = 'advisory' and pid = pg_backend_pid() and granted
 	) then
-		raise exception 'role written without the role lock';
+		raise exception 'admin ensured without the lock';
 	end if;
 	return new;
 end
 $$`)
 	);
 	await db.execute(
-		sql`create trigger require_role_lock before update of role, removed_at on users for each row execute function require_role_lock()`
+		sql`create trigger require_ensure_admin_lock before insert or update of role on users for each row execute function require_ensure_admin_lock()`
 	);
 }
 
@@ -65,6 +81,10 @@ async function storedColumns(id: MemberId) {
 		.from(users)
 		.where(eq(users.id, id));
 	return row;
+}
+
+async function expectUpdatedAtMoved(id: MemberId) {
+	expect((await storedColumns(id))?.updatedAt.getTime()).toBeGreaterThan(backdated.getTime());
 }
 
 // A session, a passkey, and a pending sign-in code, as Better Auth stores them for a member.
@@ -92,57 +112,21 @@ async function signInRowCounts(id: MemberId, email: string) {
 	};
 }
 
+describeMemberRepositoryContract(() => ({
+	members: repository,
+	invites: new DrizzleInviteRepository(db),
+}));
+
 describe('create', () => {
-	it('stores the member and reads it back', async () => {
+	it('stores the email as verified, with a uuidv7 id', async () => {
 		const created = await repository.create(ada);
 
-		expect(created).toEqual({
-			...ada,
-			id: expect.stringMatching(uuidV7),
-			createdAt: expect.any(Date),
-		});
-		expect(await repository.findById(created.id)).toEqual(created);
-	});
-
-	it('stores the email as verified', async () => {
-		const created = await repository.create(ada);
-
+		expect(created.id).toMatch(uuidV7);
 		expect((await storedColumns(created.id))?.emailVerified).toBe(true);
 	});
 });
 
-describe('findById and findByEmail', () => {
-	it('find a stored member', async () => {
-		const created = await repository.create(ada);
-
-		expect(await repository.findById(created.id)).toEqual(created);
-		expect(await repository.findByEmail('ada@example.com')).toEqual(created);
-	});
-
-	it('return null when nothing matches', async () => {
-		await repository.create(ada);
-
-		expect(await repository.findById(missingId)).toBeNull();
-		expect(await repository.findByEmail('grace@example.com')).toBeNull();
-	});
-
-	it('compare addresses exactly, since callers lowercase them', async () => {
-		await repository.create(ada);
-
-		expect(await repository.findByEmail('Ada@Example.com')).toBeNull();
-	});
-});
-
 describe('list', () => {
-	it('lists every member oldest first', async () => {
-		const created = [];
-		for (const member of [ada, grace, lin]) {
-			created.push(await repository.create(member));
-		}
-
-		expect(await repository.list()).toEqual(created);
-	});
-
 	it('orders members created at the same moment by id', async () => {
 		const first = await repository.create(ada);
 		const second = await repository.create(grace);
@@ -155,139 +139,86 @@ describe('list', () => {
 	});
 });
 
-describe('listAdmins', () => {
-	it('lists only admins, oldest first', async () => {
-		await repository.create(ada);
-		const firstAdmin = await repository.create(grace);
-		const secondAdmin = await repository.create(lin);
+describe('ensureAdmin', () => {
+	it('stores the email of an account it creates as verified', async () => {
+		const { member } = await repository.ensureAdmin({ email: ada.email, displayName: 'Admin' });
 
-		expect(await repository.listAdmins()).toEqual([firstAdmin, secondAdmin]);
+		expect((await storedColumns(member.id))?.emailVerified).toBe(true);
 	});
 });
 
-describe('setRole', () => {
-	it('changes the role and moves updatedAt', async () => {
-		const created = await repository.create(ada);
-		await backdate(created.id);
-
-		const updated = await repository.setRole(created.id, 'admin');
-
-		expect(updated).toEqual({ ...created, role: 'admin', createdAt: backdated });
-		expect(await repository.findById(created.id)).toEqual(updated);
-		expect((await storedColumns(created.id))?.updatedAt.getTime()).toBeGreaterThan(
-			backdated.getTime()
-		);
-	});
-
-	it('returns null when no member has the id', async () => {
-		expect(await repository.setRole(missingId, 'admin')).toBeNull();
-	});
-
-	it('returns null for a removed member', async () => {
+describe('updatedAt', () => {
+	it('moves when ensureAdmin makes the member an admin', async () => {
 		const member = await repository.create(ada);
+		await backdate(member.id);
+
+		await repository.ensureAdmin({ email: ada.email, displayName: 'Admin' });
+
+		await expectUpdatedAtMoved(member.id);
+	});
+
+	it('moves when the role changes', async () => {
+		const member = await repository.create(ada);
+		await backdate(member.id);
+
+		await repository.setRole(member.id, 'admin');
+
+		await expectUpdatedAtMoved(member.id);
+	});
+
+	it('moves when the member is removed', async () => {
+		const member = await repository.create(ada);
+		await backdate(member.id);
+
 		await repository.remove(member.id);
 
-		expect(await repository.setRole(member.id, 'admin')).toBeNull();
+		await expectUpdatedAtMoved(member.id);
 	});
 
-	it('refuses a role the member already has', async () => {
+	it('moves when the member is renamed', async () => {
 		const member = await repository.create(ada);
-		const admin = await repository.create(grace);
+		await backdate(member.id);
 
-		await expect(repository.setRole(member.id, 'member')).rejects.toThrow(MemberRoleConflictError);
-		await expect(repository.setRole(admin.id, 'admin')).rejects.toThrow(MemberRoleConflictError);
-	});
+		await repository.rename(member.id, 'Ada L.');
 
-	it('removes admin while another admin remains', async () => {
-		const first = await repository.create(grace);
-		const second = await repository.create(lin);
-
-		expect(await repository.setRole(first.id, 'member')).toEqual({ ...first, role: 'member' });
-		expect(await repository.listAdmins()).toEqual([second]);
-	});
-
-	it('refuses to remove the only admin and keeps them an admin', async () => {
-		await repository.create(ada);
-		const admin = await repository.create(grace);
-
-		await expect(repository.setRole(admin.id, 'member')).rejects.toThrow(LastAdminError);
-		expect(await repository.listAdmins()).toEqual([admin]);
-	});
-
-	it('counts only admins who are not removed', async () => {
-		const admin = await repository.create(grace);
-		const removedAdmin = await repository.create(lin);
-		await repository.remove(removedAdmin.id);
-
-		await expect(repository.setRole(admin.id, 'member')).rejects.toThrow(LastAdminError);
-	});
-
-	it('keeps one admin when two admins remove each other at once', async () => {
-		const first = await repository.create(grace);
-		const second = await repository.create(lin);
-
-		const results = await Promise.allSettled([
-			repository.setRole(first.id, 'member'),
-			repository.setRole(second.id, 'member'),
-		]);
-
-		expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
-		expect(results.filter(({ status }) => status === 'rejected')).toEqual([
-			{ status: 'rejected', reason: expect.any(LastAdminError) },
-		]);
-		expect(await repository.listAdmins()).toHaveLength(1);
+		await expectUpdatedAtMoved(member.id);
 	});
 });
 
-// PGlite runs one transaction at a time, so these prove the lock that makes concurrent changes on
+// PGlite runs one transaction at a time, so these prove the lock that makes concurrent calls on
 // Postgres take turns.
-describe('role lock', () => {
-	it('holds the role lock while it writes a role', async () => {
-		const member = await repository.create(ada);
-		const admin = await repository.create(grace);
-		await requireRoleLock();
+describe('ensureAdmin lock', () => {
+	const owner = { email: 'owner@example.com', displayName: 'Admin' };
 
-		expect(await repository.setRole(member.id, 'admin')).toMatchObject({ role: 'admin' });
-		expect(await repository.setRole(admin.id, 'member')).toMatchObject({ role: 'member' });
+	it('holds the lock while it creates the account', async () => {
+		await requireEnsureAdminLock();
+
+		expect(await repository.ensureAdmin(owner)).toMatchObject({ outcome: 'created' });
 	});
 
-	it('holds the role lock while it removes a member', async () => {
-		const member = await repository.create(ada);
-		await requireRoleLock();
+	it('holds the lock while it makes a member an admin', async () => {
+		await repository.create({ ...ada, email: owner.email });
+		await requireEnsureAdminLock();
 
-		expect(await repository.remove(member.id)).toMatchObject({ removedAt: expect.any(Date) });
+		expect(await repository.ensureAdmin(owner)).toMatchObject({ outcome: 'promoted' });
 	});
 
-	it('is checked here by a trigger that refuses a role or removal written without the lock', async () => {
+	it('is checked here by a trigger that refuses an account or role written without the lock', async () => {
 		const member = await repository.create(ada);
-		await requireRoleLock();
+		await requireEnsureAdminLock();
 		const refused = expect.objectContaining({
-			cause: expect.objectContaining({ message: 'role written without the role lock' }),
+			cause: expect.objectContaining({ message: 'admin ensured without the lock' }),
 		});
 
+		await expect(repository.create(grace)).rejects.toThrow(refused);
 		await expect(
 			db.update(users).set({ role: 'admin' }).where(eq(users.id, member.id))
-		).rejects.toThrow(refused);
-		await expect(
-			db.update(users).set({ removedAt: new Date() }).where(eq(users.id, member.id))
 		).rejects.toThrow(refused);
 	});
 });
 
 describe('remove', () => {
-	it('marks the member removed and moves updatedAt', async () => {
-		const created = await repository.create(ada);
-		await backdate(created.id);
-
-		const removed = await repository.remove(created.id);
-
-		expect(removed).toEqual({ ...created, createdAt: backdated, removedAt: expect.any(Date) });
-		expect((await storedColumns(created.id))?.updatedAt.getTime()).toBeGreaterThan(
-			backdated.getTime()
-		);
-	});
-
-	it('keeps the member findable by id and address, with the recipes that name them', async () => {
+	it('keeps the recipes that name the member', async () => {
 		const member = await repository.create(ada);
 		const content = recipeContentSchema.parse(sampleChickenSoup);
 		await new DrizzleRecipeRepository(db).create({
@@ -297,23 +228,9 @@ describe('remove', () => {
 			slugBase: 'chicken-soup',
 		});
 
-		const removed = await repository.remove(member.id);
-
-		expect(await repository.findById(member.id)).toEqual(removed);
-		expect(await repository.findByEmail(ada.email)).toEqual(removed);
-		expect(await db.$count(recipes, eq(recipes.contributorId, member.id))).toBe(1);
-	});
-
-	it('leaves the member out of the lists', async () => {
-		const member = await repository.create(ada);
-		const admin = await repository.create(grace);
-		const removedAdmin = await repository.create(lin);
-
 		await repository.remove(member.id);
-		await repository.remove(removedAdmin.id);
 
-		expect(await repository.list()).toEqual([admin]);
-		expect(await repository.listAdmins()).toEqual([admin]);
+		expect(await db.$count(recipes, eq(recipes.contributorId, member.id))).toBe(1);
 	});
 
 	it("ends the member's sessions and deletes their passkeys and sign-in code", async () => {
@@ -356,77 +273,88 @@ describe('remove', () => {
 			auth.api.signInEmailOTP({ body: { email: grace.email, otp: keptCode }, headers })
 		).resolves.toMatchObject({ user: { email: grace.email } });
 	});
-
-	it('returns null when no member has the id, or the member was removed already', async () => {
-		const member = await repository.create(ada);
-		await repository.remove(member.id);
-
-		expect(await repository.remove(missingId)).toBeNull();
-		expect(await repository.remove(member.id)).toBeNull();
-	});
-
-	it('removes an admin while another admin remains', async () => {
-		const first = await repository.create(grace);
-		const second = await repository.create(lin);
-
-		expect(await repository.remove(first.id)).toMatchObject({ role: 'admin' });
-		expect(await repository.listAdmins()).toEqual([second]);
-	});
-
-	it('refuses to remove the only admin and keeps them', async () => {
-		await repository.create(ada);
-		const admin = await repository.create(grace);
-		await storeSignIn(admin.id, grace.email);
-
-		await expect(repository.remove(admin.id)).rejects.toThrow(LastAdminError);
-		expect(await repository.listAdmins()).toEqual([admin]);
-		expect(await signInRowCounts(admin.id, grace.email)).toEqual({
-			sessions: 1,
-			passkeys: 1,
-			codes: 1,
-		});
-	});
-
-	it('keeps one admin when an admin is removed as they remove admin from the other', async () => {
-		const first = await repository.create(grace);
-		const second = await repository.create(lin);
-
-		const results = await Promise.allSettled([
-			repository.remove(first.id),
-			repository.setRole(second.id, 'member'),
-		]);
-
-		expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
-		expect(results.filter(({ status }) => status === 'rejected')).toEqual([
-			{ status: 'rejected', reason: expect.any(LastAdminError) },
-		]);
-		expect(await repository.listAdmins()).toHaveLength(1);
-	});
 });
 
-describe('rename', () => {
-	it('changes the display name and moves updatedAt', async () => {
-		const created = await repository.create(ada);
-		await backdate(created.id);
+describe('migration 0008', () => {
+	// The owner's account as the migration finds it: removed while still holding its address.
+	async function insertRemovedOwner(inviteId?: InviteId): Promise<MemberId> {
+		const [row] = await db
+			.insert(users)
+			.values({
+				displayName: 'Olive',
+				email: 'owner@example.com',
+				emailVerified: true,
+				role: 'admin',
+				removedAt: backdated,
+				inviteId,
+			})
+			.returning({ id: users.id });
+		return memberIdSchema.parse(row?.id);
+	}
 
-		const renamed = await repository.rename(created.id, 'Ada L.');
+	// The file as one script: PGlite prepares what db.execute sends, and a prepared statement holds one.
+	async function runMigration() {
+		await db.$client.exec(await readFile(freeRemovedMemberEmails, 'utf8'));
+	}
 
-		expect(renamed).toEqual({ ...created, displayName: 'Ada L.', createdAt: backdated });
-		expect(await repository.findById(created.id)).toEqual(renamed);
-		expect((await storedColumns(created.id))?.updatedAt.getTime()).toBeGreaterThan(
-			backdated.getTime()
-		);
-	});
+	async function storedRevokedAt(id: InviteId) {
+		const [row] = await db
+			.select({ revokedAt: invites.revokedAt })
+			.from(invites)
+			.where(eq(invites.id, id));
+		return row?.revokedAt;
+	}
 
-	it('returns null when no member has the id', async () => {
-		expect(await repository.rename(missingId, 'Ada L.')).toBeNull();
-	});
-
-	it('returns null for a removed member', async () => {
+	it('frees the address of an account removed with it, so ensureAdmin creates a new account', async () => {
+		const removedId = await insertRemovedOwner();
 		const member = await repository.create(ada);
-		await repository.remove(member.id);
 
-		expect(await repository.rename(member.id, 'Ada L.')).toBeNull();
+		await runMigration();
+		const ensured = await repository.ensureAdmin({
+			email: 'owner@example.com',
+			displayName: 'Admin',
+		});
+
+		expect(await repository.findById(removedId)).toMatchObject({
+			email: removedMemberEmail(removedId),
+			removedAt: backdated,
+		});
+		expect(await repository.findById(member.id)).toEqual(member);
+		expect(ensured).toMatchObject({ member: { email: 'owner@example.com' }, outcome: 'created' });
+		expect(ensured.member.id).not.toBe(removedId);
+	});
+
+	it("revokes the open invites bound to a removed account's address, and no others", async () => {
+		const admin = await repository.create(grace);
+		const invitesRepository = new DrizzleInviteRepository(db);
+		const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+		const issue = async (email: string, issuedAt = new Date()) => {
+			const invite = await invitesRepository.create({
+				tokenHash: randomBytes(32).toString('hex'),
+				displayName: 'Olive',
+				role: 'member',
+				createdBy: admin.id,
+				expiresAt: inviteExpiry(issuedAt),
+			});
+			await invitesRepository.bindEmail(invite.id, email, issuedAt);
+			return invite.id;
+		};
+		const open = await issue('owner@example.com');
+		const accepted = await issue('owner@example.com');
+		const revoked = await issue('owner@example.com');
+		await invitesRepository.revoke(revoked, hourAgo);
+		const expired = await issue('owner@example.com', backdated);
+		const elsewhere = await issue('lin@example.com');
+		await insertRemovedOwner(accepted);
+		const migratedFrom = new Date();
+
+		await runMigration();
+
+		expect((await storedRevokedAt(open))?.getTime()).toBeGreaterThanOrEqual(migratedFrom.getTime());
+		expect(await storedRevokedAt(accepted)).toBeNull();
+		expect(await storedRevokedAt(revoked)).toEqual(hourAgo);
+		expect(await storedRevokedAt(expired)).toBeNull();
+		expect(await storedRevokedAt(elsewhere)).toBeNull();
 	});
 });
 

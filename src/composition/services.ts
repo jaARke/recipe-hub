@@ -1,7 +1,7 @@
 import 'server-only';
 import { waitUntil } from '@vercel/functions';
 import { headers } from 'next/headers';
-import { connection } from 'next/server';
+import { after, connection } from 'next/server';
 import { cache } from 'react';
 import { AccessRequestService } from '@/application/access/access-request-service';
 import { AccountService } from '@/application/access/account-service';
@@ -17,9 +17,9 @@ import { AiPageRecipeExtractor } from '@/infrastructure/ai/ai-page-recipe-extrac
 import { AiScanRecipeExtractor } from '@/infrastructure/ai/ai-scan-recipe-extractor';
 import { createAuth, type Auth } from '@/infrastructure/auth/better-auth';
 import { BetterAuthActorProvider } from '@/infrastructure/auth/better-auth-actor-provider';
-import { GitHubActionsTokenVerifier } from '@/infrastructure/auth/github-actions-token-verifier';
 import { db } from '@/infrastructure/db/client';
 import { DrizzleAccessRequestRepository } from '@/infrastructure/db/drizzle-access-request-repository';
+import { DrizzleImageMoveLock } from '@/infrastructure/db/drizzle-image-move-lock';
 import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
@@ -30,14 +30,25 @@ import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
 import { BlobUploadHandler } from '@/infrastructure/storage/blob-upload-handler';
 import { GuardedWebPageFetcher } from '@/infrastructure/web/guarded-web-page-fetcher';
 import { JsonLdPageRecipeExtractor } from '@/infrastructure/web/json-ld-page-recipe-extractor';
-import { appUrl, env, imageEnvironment, readableImageEnvironments, siteUrl } from '@/lib/env';
+import {
+	appUrl,
+	env,
+	expiringImageEnvironmentPrefixes,
+	imageEnvironment,
+	readableImageEnvironments,
+	siteUrl,
+} from '@/lib/env';
 
 const emails = new ResendEmailSender({
 	apiKey: env.RESEND_API_KEY,
 	domain: env.RESEND_EMAIL_DOMAIN,
 });
 
-const imageFolders = new ImageFolders(imageEnvironment, readableImageEnvironments);
+const imageFolders = new ImageFolders(
+	imageEnvironment,
+	readableImageEnvironments,
+	expiringImageEnvironmentPrefixes
+);
 
 const images = new BlobImageStore({ storeId: env.BLOB_STORE_ID, folders: imageFolders });
 
@@ -79,27 +90,6 @@ async function requestHeaders(): Promise<Headers> {
 	return headers();
 }
 
-let cleanupWorkflowTokens: GitHubActionsTokenVerifier | undefined;
-
-// The preview cleanup workflow's job, which runs from main on pull_request_target, so no branch can
-// change it. Built on first use, since only a preview's cleanup asks, and Vercel names the repository
-// on Git deployments alone.
-function getCleanupWorkflowTokens(): GitHubActionsTokenVerifier {
-	const { VERCEL_GIT_REPO_OWNER: owner, VERCEL_GIT_REPO_SLUG: name } = env;
-	if (owner === undefined || name === undefined) {
-		throw new Error('Only a Git deployment knows the repository its cleanup workflow runs in');
-	}
-
-	cleanupWorkflowTokens ??= new GitHubActionsTokenVerifier({
-		// GitHub's default audience, the repository owner's URL, which the workflow asks for.
-		audience: `https://github.com/${owner}`,
-		repository: `${owner}/${name}`,
-		workflowRef: `${owner}/${name}/.github/workflows/preview-branch-cleanup.yml@refs/heads/main`,
-		eventName: 'pull_request_target',
-	});
-	return cleanupWorkflowTokens;
-}
-
 const sessionActors = new BetterAuthActorProvider(getAuth, requestHeaders);
 
 // Every service resolves the actor, so a page that calls several reads the session once. React's
@@ -114,7 +104,8 @@ export function getRecipeService(): RecipeService {
 		new DrizzleMemberRepository(db),
 		images,
 		actors,
-		imageFolders
+		imageFolders,
+		new DrizzleImageMoveLock(db)
 	);
 }
 
@@ -128,7 +119,9 @@ export function getRecipeImageService(): RecipeImageService {
 		new DrizzleRecipeImportRepository(db),
 		images,
 		actors,
-		imageFolders
+		imageFolders,
+		new DrizzleImageMoveLock(db),
+		after
 	);
 }
 
@@ -168,7 +161,7 @@ export function getInviteService(): InviteService {
 }
 
 export function getMemberService(): MemberService {
-	return new MemberService(new DrizzleMemberRepository(db), actors);
+	return new MemberService(new DrizzleMemberRepository(db), actors, env.ADMIN_EMAIL);
 }
 
 // Better Auth's endpoint, which the Route Handler at /api/auth/[...all] mounts.
@@ -185,10 +178,4 @@ export function handleImageUploadRequest(request: Request): Promise<Response> {
 		authorizeUpload: (pathname) => getRecipeImageService().authorizeUpload(pathname),
 	});
 	return uploads.handle(request);
-}
-
-// Whether a GitHub Actions token is the cleanup workflow's own, which the Route Handler at
-// /api/preview-images requires.
-export function verifyCleanupWorkflowToken(token: string): Promise<boolean> {
-	return getCleanupWorkflowTokens().verify(token);
 }

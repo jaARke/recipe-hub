@@ -13,6 +13,7 @@ import type { Member } from '@/domain/member/member';
 import { sampleRecipeContents } from '@/domain/recipe/samples/sample-recipes';
 import { slugify } from '@/domain/recipe/slug';
 import { pinFullSslVerification } from '@/infrastructure/db/connection-string';
+import { DrizzleImageMoveLock } from '@/infrastructure/db/drizzle-image-move-lock';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
@@ -79,14 +80,8 @@ async function seed(recipes: RecipeService, images: ImageStore): Promise<void> {
 
 	// The list shows the newest first, so inserting in reverse keeps the samples' order.
 	for (const content of sampleRecipeContents.toReversed()) {
-		const slug = slugify(content.title);
-		if ((await recipes.getRecipe(slug)) !== null) {
-			logger.info('Seed recipe skipped', { slug });
-			recipesSkipped += 1;
-			continue;
-		}
-
-		// Photos go first, so a seeded recipe never points at a missing photo.
+		// Photos go first, so a seeded recipe never points at a missing photo. An existing recipe's
+		// missing photos are uploaded too, as for a seeded database given a new store.
 		for (const { pathname } of content.images) {
 			if (await images.has(pathname)) {
 				continue;
@@ -96,6 +91,13 @@ async function seed(recipes: RecipeService, images: ImageStore): Promise<void> {
 			await images.put(pathname, body, photoContentType);
 			logger.info('Seed photo uploaded', { pathname });
 			photosUploaded += 1;
+		}
+
+		const slug = slugify(content.title);
+		if ((await recipes.getRecipe(slug)) !== null) {
+			logger.info('Seed recipe skipped', { slug });
+			recipesSkipped += 1;
+			continue;
 		}
 
 		await recipes.createRecipe({ content });
@@ -138,7 +140,8 @@ if (env.VERCEL_ENV === 'production') {
 					members,
 					images,
 					new SeedActorProvider(contributor),
-					folders
+					folders,
+					new DrizzleImageMoveLock(db)
 				),
 				images
 			);

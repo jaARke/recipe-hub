@@ -7,12 +7,13 @@ import {
 	ImportPageUnavailableError,
 	ImportPausedError,
 	ImportRateLimitedError,
+	ImportTimedOutError,
 	ImportUnavailableError,
 } from '@/application/ingestion/errors';
 import {
-	LastAdminError,
 	MemberNotFoundError,
 	MemberRoleConflictError,
+	OwnerProtectedError,
 	SelfRemovalError,
 } from '@/application/members/errors';
 import {
@@ -67,8 +68,8 @@ describe('toFormError', () => {
 			message: "That member's role already changed. Reload the page to see the latest.",
 		},
 		{
-			error: new LastAdminError(),
-			message: "You can't remove the last admin. Make someone else an admin first.",
+			error: new OwnerProtectedError(),
+			message: "The owner's account always stays an admin and can't be removed.",
 		},
 		{
 			error: new SelfRemovalError(),
@@ -106,6 +107,10 @@ describe('toFormError', () => {
 		{
 			error: new ImportFailedError(),
 			message: "The import didn't finish. Try again in a moment.",
+		},
+		{
+			error: new ImportTimedOutError(),
+			message: 'The import took too long. Try again in a moment.',
 		},
 	])('gives $error.code its copy', ({ error, message }) => {
 		expect(toFormError(error)).toEqual({ status: 'error', message, fieldErrors: {} });

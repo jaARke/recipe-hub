@@ -21,13 +21,18 @@ export class AiPageRecipeExtractor implements PageRecipeExtractor {
 		this.model = model;
 	}
 
-	extract(page: WebPage, requester: ExtractionRequester): Promise<Extraction> {
+	extract(
+		page: WebPage,
+		requester: ExtractionRequester,
+		signal?: AbortSignal
+	): Promise<Extraction> {
 		return extractWithModel({
 			model: this.model,
 			instructions: pageInstructions,
 			schema: pageOutputSchema,
 			content: [{ type: 'text', text: pagePrompt(pageText(page)) }],
 			requester,
+			signal,
 		});
 	}
 }

@@ -214,9 +214,6 @@ importers:
       iso8601-duration:
         specifier: ^2.2.0
         version: 2.2.0
-      jose:
-        specifier: ^6.2.12
-        version: 6.2.12
       lucide-react:
         specifier: ^1.54.0
         version: 1.54.0(@types/react@19.3.0)(react@19.3.0)

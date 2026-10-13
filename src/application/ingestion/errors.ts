@@ -52,6 +52,15 @@ export class ImportFailedError extends AppError {
 	}
 }
 
+// The import passed its time limit, so it stopped before the platform would end it unrecorded.
+export class ImportTimedOutError extends AppError {
+	readonly code = 'import.timed-out';
+
+	constructor() {
+		super('Import took too long');
+	}
+}
+
 // One error for an import that is not the member's, did not succeed, was saved already, or expired,
 // so the review form tells the member only to import the recipe again.
 export class ImportUnavailableError extends AppError {

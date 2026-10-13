@@ -123,6 +123,17 @@ export class InMemoryRecipeImportRepository implements RecipeImportRepository {
 		return cleared;
 	}
 
+	async failRunningCreatedBefore(cutoff: Date, failure: string): Promise<number> {
+		let failed = 0;
+		for (const stored of this.imports.values()) {
+			if (stored.status === 'running' && stored.createdAt < cutoff) {
+				this.imports.set(stored.id, { ...stored, status: 'failed', failure });
+				failed += 1;
+			}
+		}
+		return failed;
+	}
+
 	// Stands in for a test moving created_at back in the database.
 	backdate(id: RecipeImportId, createdAt: Date): void {
 		const stored = this.imports.get(id);

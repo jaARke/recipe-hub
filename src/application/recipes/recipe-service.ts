@@ -4,6 +4,7 @@ import { requireMember } from '@/application/authorization';
 import { ImportUnavailableError } from '@/application/ingestion/errors';
 import { paginationSchema } from '@/application/pagination';
 import type { ActorProvider } from '@/application/ports/actor-provider';
+import type { ImageMoveLock } from '@/application/ports/image-move-lock';
 import type { ImageStore } from '@/application/ports/image-store';
 import type { MemberRepository } from '@/application/ports/member-repository';
 import type { RecipeImportRepository } from '@/application/ports/recipe-import-repository';
@@ -82,6 +83,7 @@ export class RecipeService {
 	private readonly images: ImageStore;
 	private readonly actors: ActorProvider;
 	private readonly folders: ImageFolders;
+	private readonly moveLock: ImageMoveLock;
 
 	constructor(
 		recipes: RecipeRepository,
@@ -89,7 +91,8 @@ export class RecipeService {
 		members: MemberRepository,
 		images: ImageStore,
 		actors: ActorProvider,
-		folders: ImageFolders
+		folders: ImageFolders,
+		moveLock: ImageMoveLock
 	) {
 		this.recipes = recipes;
 		this.imports = imports;
@@ -97,6 +100,7 @@ export class RecipeService {
 		this.images = images;
 		this.actors = actors;
 		this.folders = folders;
+		this.moveLock = moveLock;
 	}
 
 	// Public reads never ask for the actor, so pages can cache them. An old slug finds the recipe too,
@@ -339,7 +343,8 @@ export class RecipeService {
 	// After the write commits, so a failure leaves an unused photo for the image sweep rather than a
 	// recipe pointing at a missing one. Other environments' photos, such as production's on a preview's
 	// copy, are kept, and so is a photo another recipe still lists or a draft awaiting review names, as
-	// importing the same scans twice does.
+	// importing the same scans twice does. The check and the removal hold the image move lock, so no
+	// sweep restores a photo midway through its removal; a wait that times out leaves them to the sweep.
 	private async removeImages(recipeId: RecipeId, images: readonly RecipeImage[]): Promise<void> {
 		const ownPathnames = images
 			.map(({ pathname }) => pathname)
@@ -349,17 +354,19 @@ export class RecipeService {
 		}
 
 		try {
-			const inUse = await imagesInUse(ownPathnames, this.recipes, this.imports, new Date());
-			const pathnames = ownPathnames.filter((pathname) => !inUse.has(pathname));
-			const keptPathnames = ownPathnames.filter((pathname) => inUse.has(pathname));
-			if (pathnames.length > 0) {
-				await this.images.remove(pathnames);
-			}
+			await this.moveLock.run(async () => {
+				const inUse = await imagesInUse(ownPathnames, this.recipes, this.imports, new Date());
+				const pathnames = ownPathnames.filter((pathname) => !inUse.has(pathname));
+				const keptPathnames = ownPathnames.filter((pathname) => inUse.has(pathname));
+				if (pathnames.length > 0) {
+					await this.images.remove(pathnames);
+				}
 
-			logger.info('Recipe images removed', {
-				recipeId,
-				pathnames,
-				...(keptPathnames.length > 0 && { keptPathnames }),
+				logger.info('Recipe images removed', {
+					recipeId,
+					pathnames,
+					...(keptPathnames.length > 0 && { keptPathnames }),
+				});
 			});
 		} catch (err) {
 			logger.warn('Recipe images could not be removed', { recipeId, pathnames: ownPathnames, err });

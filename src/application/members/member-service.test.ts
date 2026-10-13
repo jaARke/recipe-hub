@@ -1,19 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { ForbiddenError, SignInRequiredError } from '@/application/authorization';
 import {
-	LastAdminError,
 	MemberNotFoundError,
 	MemberRoleConflictError,
+	OwnerProtectedError,
 	SelfRemovalError,
 } from '@/application/members/errors';
 import { MemberService } from '@/application/members/member-service';
 import type { Actor } from '@/application/ports/actor-provider';
 import { actorFor, anonymousActor, memberActor } from '@/application/testing/actors';
 import { FixedActorProvider } from '@/application/testing/fixed-actor-provider';
+import { InMemoryInviteRepository } from '@/application/testing/in-memory-invite-repository';
 import { InMemoryMemberRepository } from '@/application/testing/in-memory-member-repository';
 
 const missingId = '0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e';
 const malformedId = 'not-a-member-id';
+
+// Configured as it might be typed; the service compares it as Better Auth stores addresses.
+const ownerEmail = ' Owner@Example.com ';
 
 const refusedActors = [
 	{ who: 'an anonymous visitor', actor: anonymousActor(), error: SignInRequiredError },
@@ -21,8 +25,9 @@ const refusedActors = [
 ];
 
 function createMembers() {
-	const members = new InMemoryMemberRepository();
-	const serviceFor = (actor: Actor) => new MemberService(members, new FixedActorProvider(actor));
+	const members = new InMemoryMemberRepository(new InMemoryInviteRepository());
+	const serviceFor = (actor: Actor) =>
+		new MemberService(members, new FixedActorProvider(actor), ownerEmail);
 	return { members, serviceFor };
 }
 
@@ -45,6 +50,17 @@ async function membersWithGrace() {
 		role: 'admin',
 	});
 	return { ...context, grace, graceService: context.serviceFor(actorFor(grace)) };
+}
+
+// Ada is a member, Grace an admin, and Olive the owner.
+async function membersWithOwner() {
+	const context = await membersWithGrace();
+	const owner = await context.members.create({
+		email: 'owner@example.com',
+		displayName: 'Olive',
+		role: 'admin',
+	});
+	return { ...context, owner, ownerService: context.serviceFor(actorFor(owner)) };
 }
 
 let consoleInfo: MockInstance<typeof console.info>;
@@ -101,8 +117,8 @@ describe('listMembers', () => {
 		await expect(serviceFor(actor).listMembers()).rejects.toThrow(error);
 	});
 
-	it('lists every member oldest first for an admin, marking the admin', async () => {
-		const { ada, grace, graceService } = await membersWithGrace();
+	it('lists every member oldest first for an admin, marking the admin and the owner', async () => {
+		const { ada, grace, owner, graceService } = await membersWithOwner();
 
 		expect(await graceService.listMembers()).toEqual([
 			{
@@ -112,6 +128,7 @@ describe('listMembers', () => {
 				role: 'member',
 				createdAt: ada.createdAt,
 				isCurrentMember: false,
+				isOwner: false,
 			},
 			{
 				id: grace.id,
@@ -120,6 +137,16 @@ describe('listMembers', () => {
 				role: 'admin',
 				createdAt: grace.createdAt,
 				isCurrentMember: true,
+				isOwner: false,
+			},
+			{
+				id: owner.id,
+				displayName: 'Olive',
+				email: 'owner@example.com',
+				role: 'admin',
+				createdAt: owner.createdAt,
+				isCurrentMember: false,
+				isOwner: true,
 			},
 		]);
 	});
@@ -257,31 +284,38 @@ describe('removeAdmin', () => {
 		expect(await members.findById(grace.id)).toMatchObject({ role: 'admin' });
 	});
 
-	it('lets an admin remove their own role while another admin remains', async () => {
+	it('lets an admin remove their own role', async () => {
 		const { members, grace, graceService } = await membersWithGrace();
-		await members.create({ email: 'lin@example.com', displayName: 'Lin', role: 'admin' });
 
 		await graceService.removeAdmin(grace.id);
 
 		expect(await members.findById(grace.id)).toMatchObject({ role: 'member' });
 	});
 
-	it('refuses to remove the last admin and logs the refusal by ids alone', async () => {
-		const { members, grace, graceService } = await membersWithGrace();
+	it('refuses to remove the owner and logs the refusal by ids alone', async () => {
+		const { members, grace, owner, graceService } = await membersWithOwner();
 
-		await expect(graceService.removeAdmin(grace.id)).rejects.toThrow(LastAdminError);
+		await expect(graceService.removeAdmin(owner.id)).rejects.toThrow(OwnerProtectedError);
 
-		expect(await members.findById(grace.id)).toMatchObject({ role: 'admin' });
+		expect(await members.findById(owner.id)).toMatchObject({ role: 'admin' });
 		expect(loggedLines()).toEqual([
 			{
 				level: 'warn',
 				logger: 'members',
 				message: 'Admin role removal refused',
 				memberId: grace.id,
-				targetMemberId: grace.id,
-				failure: 'member.last-admin',
+				targetMemberId: owner.id,
+				failure: 'member.owner',
 			},
 		]);
+	});
+
+	it('refuses the owner removing their own role', async () => {
+		const { members, owner, ownerService } = await membersWithOwner();
+
+		await expect(ownerService.removeAdmin(owner.id)).rejects.toThrow(OwnerProtectedError);
+
+		expect(await members.findById(owner.id)).toMatchObject({ role: 'admin' });
 	});
 
 	it('reports a member who is not an admin as a role conflict', async () => {
@@ -353,7 +387,6 @@ describe('removeMember', () => {
 
 	it('refuses an admin removing themselves and logs the refusal by ids alone', async () => {
 		const { members, grace, graceService } = await membersWithGrace();
-		await members.create({ email: 'lin@example.com', displayName: 'Lin', role: 'admin' });
 
 		await expect(graceService.removeMember(grace.id)).rejects.toThrow(SelfRemovalError);
 
@@ -370,27 +403,20 @@ describe('removeMember', () => {
 		]);
 	});
 
-	it('refuses to remove the last admin after the acting admin lost their role, and logs it', async () => {
-		const { members, grace, graceService } = await membersWithGrace();
-		const lin = await members.create({
-			email: 'lin@example.com',
-			displayName: 'Lin',
-			role: 'admin',
-		});
-		// Lin removed admin from Grace after Grace's page loaded.
-		await members.setRole(grace.id, 'member');
+	it('refuses to remove the owner and logs the refusal by ids alone', async () => {
+		const { members, grace, owner, graceService } = await membersWithOwner();
 
-		await expect(graceService.removeMember(lin.id)).rejects.toThrow(LastAdminError);
+		await expect(graceService.removeMember(owner.id)).rejects.toThrow(OwnerProtectedError);
 
-		expect(await members.listAdmins()).toEqual([lin]);
+		expect(await members.findById(owner.id)).not.toHaveProperty('removedAt');
 		expect(loggedLines()).toEqual([
 			{
 				level: 'warn',
 				logger: 'members',
 				message: 'Member removal refused',
 				memberId: grace.id,
-				targetMemberId: lin.id,
-				failure: 'member.last-admin',
+				targetMemberId: owner.id,
+				failure: 'member.owner',
 			},
 		]);
 	});
@@ -425,58 +451,88 @@ describe('removeMember', () => {
 	});
 });
 
-describe('ensureAdmin', () => {
-	it('does nothing when an admin exists', async () => {
-		const { members, ada, serviceFor } = await membersWithAda();
-		await members.create({ email: 'grace@example.com', displayName: 'Grace', role: 'admin' });
+describe('ensureOwner', () => {
+	it('creates the owner as an admin named Admin when no account has the address', async () => {
+		const { members, serviceFor } = await membersWithGrace();
 
-		await serviceFor(anonymousActor()).ensureAdmin('ada@example.com');
+		await serviceFor(anonymousActor()).ensureOwner();
 
-		expect(await members.findById(ada.id)).toMatchObject({ role: 'member' });
-		expect(await members.list()).toHaveLength(2);
-		expect(consoleInfo).not.toHaveBeenCalled();
-	});
-
-	it('promotes the account that has the address', async () => {
-		const { members, ada, serviceFor } = await membersWithAda();
-
-		await serviceFor(anonymousActor()).ensureAdmin(' Ada@Example.com ');
-
-		expect(await members.listAdmins()).toEqual([{ ...ada, role: 'admin' }]);
-		expect(JSON.parse(String(consoleInfo.mock.calls[0]?.[0]))).toEqual({
-			level: 'info',
-			logger: 'members',
-			message: 'Admin bootstrapped',
-			memberId: ada.id,
-			created: false,
-		});
-	});
-
-	it('creates an admin named Admin when no account has the address', async () => {
-		const { members, serviceFor } = await membersWithAda();
-
-		await serviceFor(anonymousActor()).ensureAdmin('owner@example.com');
-
-		const [admin] = await members.listAdmins();
-		expect(admin).toMatchObject({ email: 'owner@example.com', displayName: 'Admin' });
-		expect(await members.list()).toHaveLength(2);
+		const owner = await members.findByEmail('owner@example.com');
+		expect(owner).toMatchObject({ displayName: 'Admin', role: 'admin' });
+		expect(await members.list()).toHaveLength(3);
 		const line = String(consoleInfo.mock.calls[0]?.[0]);
 		expect(JSON.parse(line)).toEqual({
 			level: 'info',
 			logger: 'members',
-			message: 'Admin bootstrapped',
-			memberId: admin?.id,
+			message: 'Owner bootstrapped',
+			memberId: owner?.id,
 			created: true,
 		});
 		expect(line).not.toContain('owner@example.com');
 	});
 
+	it('promotes the member at the address, although another admin exists', async () => {
+		const { members, serviceFor } = await membersWithGrace();
+		const owner = await members.create({
+			email: 'owner@example.com',
+			displayName: 'Olive',
+			role: 'member',
+		});
+
+		await serviceFor(anonymousActor()).ensureOwner();
+
+		expect(await members.findById(owner.id)).toEqual({ ...owner, role: 'admin' });
+		expect(await members.list()).toHaveLength(3);
+		expect(loggedLines()).toEqual([
+			{
+				level: 'info',
+				logger: 'members',
+				message: 'Owner bootstrapped',
+				memberId: owner.id,
+				created: false,
+			},
+		]);
+	});
+
+	it('changes nothing and logs nothing when the owner is an admin', async () => {
+		const { members, owner, serviceFor } = await membersWithOwner();
+
+		await serviceFor(anonymousActor()).ensureOwner();
+
+		expect(await members.findById(owner.id)).toEqual(owner);
+		expect(await members.list()).toHaveLength(3);
+		expect(loggedLines()).toEqual([]);
+	});
+
+	it('lets two runs at once on a store with no admin both succeed, with one owner', async () => {
+		const { members, serviceFor } = await membersWithAda();
+		const service = serviceFor(anonymousActor());
+
+		await Promise.all([service.ensureOwner(), service.ensureOwner()]);
+
+		expect(await members.listAdmins()).toEqual([
+			expect.objectContaining({ email: 'owner@example.com' }),
+		]);
+	});
+
+	it('creates a new owner account when the old one was removed, leaving that one removed', async () => {
+		const { members, owner, serviceFor } = await membersWithOwner();
+		await members.remove(owner.id);
+
+		await serviceFor(anonymousActor()).ensureOwner();
+
+		const current = await members.findByEmail('owner@example.com');
+		expect(current).toMatchObject({ displayName: 'Admin', role: 'admin' });
+		expect(current?.id).not.toBe(owner.id);
+		expect(await members.findById(owner.id)).toMatchObject({ removedAt: expect.any(Date) });
+	});
+
 	it('never asks who is calling', async () => {
 		const actors = new FixedActorProvider(memberActor());
 
-		await new MemberService(new InMemoryMemberRepository(), actors).ensureAdmin(
-			'owner@example.com'
-		);
+		const members = new InMemoryMemberRepository(new InMemoryInviteRepository());
+
+		await new MemberService(members, actors, ownerEmail).ensureOwner();
 
 		expect(actors.wasAsked).toBe(false);
 	});

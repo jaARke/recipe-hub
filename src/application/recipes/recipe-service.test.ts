@@ -13,7 +13,9 @@ import { ImageFolders } from '@/application/recipes/image-folders';
 import { RecipeService, type CreateRecipeInput } from '@/application/recipes/recipe-service';
 import { actorFor, adminActor, anonymousActor, memberActor } from '@/application/testing/actors';
 import { FixedActorProvider } from '@/application/testing/fixed-actor-provider';
+import { InMemoryImageMoveLock } from '@/application/testing/in-memory-image-move-lock';
 import { InMemoryImageStore } from '@/application/testing/in-memory-image-store';
+import { InMemoryInviteRepository } from '@/application/testing/in-memory-invite-repository';
 import { InMemoryMemberRepository } from '@/application/testing/in-memory-member-repository';
 import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
@@ -61,6 +63,9 @@ const unstoredImageMessage = "This photo didn't upload. Remove it and add it aga
 
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 
+// How long a removal waits for the image move lock before leaving its images to the sweep.
+const moveLockWaitMs = 10_000;
+
 const unavailableImportId = '0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d70';
 
 // What each mode's import recorded for review. A photo import's draft keeps the scan it read.
@@ -86,8 +91,9 @@ function manualEntry(content: RecipeContentInput): CreateRecipeInput {
 async function createCatalog() {
 	const recipes = new InMemoryRecipeRepository();
 	const imports = new InMemoryRecipeImportRepository(recipes);
-	const members = new InMemoryMemberRepository();
+	const members = new InMemoryMemberRepository(new InMemoryInviteRepository());
 	const images = new InMemoryImageStore(folders);
+	const moveLock = new InMemoryImageMoveLock(moveLockWaitMs);
 	const storedImages = [
 		...sampleRecipeContents.flatMap((content) => content.images),
 		dishPhoto,
@@ -100,7 +106,15 @@ async function createCatalog() {
 	}
 
 	const serviceFor = (actor: Actor) =>
-		new RecipeService(recipes, imports, members, images, new FixedActorProvider(actor), folders);
+		new RecipeService(
+			recipes,
+			imports,
+			members,
+			images,
+			new FixedActorProvider(actor),
+			folders,
+			moveLock
+		);
 	// The version an editor that loaded the recipe just now sends back with its save.
 	const versionOf = async (id: RecipeId) => {
 		const recipe = await recipes.findById(id);
@@ -137,6 +151,7 @@ async function createCatalog() {
 		imports,
 		members,
 		images,
+		moveLock,
 		serviceFor,
 		addMember,
 		versionOf,
@@ -204,12 +219,13 @@ afterEach(() => {
 
 describe('public reads', () => {
 	it('never ask who is calling, so pages can cache them', async () => {
-		const { recipes, imports, members, images, serviceFor, addMember } = await createCatalog();
+		const { recipes, imports, members, images, moveLock, serviceFor, addMember } =
+			await createCatalog();
 		const ref = await serviceFor(await addMember('Ada')).createRecipe(
 			manualEntry(sampleTomatoSalad)
 		);
 		const actors = new FixedActorProvider(memberActor());
-		const reader = new RecipeService(recipes, imports, members, images, actors, folders);
+		const reader = new RecipeService(recipes, imports, members, images, actors, folders, moveLock);
 
 		await reader.getRecipe(ref.slug);
 		await reader.listRecipes({ limit: 10, offset: 0, sort: 'newest' });
@@ -1315,5 +1331,84 @@ describe('deleteRecipe', () => {
 		const admin = (await createCatalog()).serviceFor(adminActor());
 
 		await expect(admin.deleteRecipe(id)).rejects.toThrow(RecipeNotFoundError);
+	});
+});
+
+describe('removing images while an image sweep holds the image move lock', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	// A sweep that holds the lock until the returned function ends it.
+	function sweepHolding(lock: InMemoryImageMoveLock): () => Promise<void> {
+		const sweep = Promise.withResolvers<void>();
+		const sweeping = lock.tryRun(() => sweep.promise);
+		return async () => {
+			sweep.resolve();
+			await sweeping;
+		};
+	}
+
+	it('waits for the sweep to end, then removes them', async () => {
+		const { images, moveLock, serviceFor, author, recipe } = await catalogWithStoredImages([
+			dishPhoto,
+		]);
+		const endSweep = sweepHolding(moveLock);
+
+		const deleting = serviceFor(author).deleteRecipe(recipe.id);
+		await vi.waitFor(() => expect(moveLock.waitingCount).toBe(1));
+		expect(images.removedPathnames).toEqual([]);
+		await endSweep();
+
+		expect(await deleting).toEqual({ id: recipe.id, slug: recipe.slug });
+		expect(images.removedPathnames).toEqual([dishPhoto.pathname]);
+	});
+
+	it('checks which are in use only once it holds the lock, so a photo saved meanwhile is kept', async () => {
+		const { recipes, images, moveLock, serviceFor, author, recipe } = await catalogWithStoredImages(
+			[dishPhoto]
+		);
+		const endSweep = sweepHolding(moveLock);
+
+		const deleting = serviceFor(author).deleteRecipe(recipe.id);
+		await vi.waitFor(() => expect(moveLock.waitingCount).toBe(1));
+		// Another recipe saved while the removal waits lists the photo.
+		const content = recipeContentSchema.parse({ ...sampleTomatoSalad, images: [dishPhoto] });
+		await recipes.create({
+			content,
+			provenance: { entryMode: 'manual' },
+			contributorId: author.memberId,
+			slugBase: slugify(content.title),
+		});
+		await endSweep();
+		await deleting;
+
+		expect(images.removedPathnames).toEqual([]);
+		expect(await images.has(dishPhoto.pathname)).toBe(true);
+	});
+
+	it('leaves them for the sweep and logs a warning when the lock stays held past its wait', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		const { images, moveLock, serviceFor, author, recipe } = await catalogWithStoredImages([
+			dishPhoto,
+		]);
+		sweepHolding(moveLock);
+
+		const deleting = serviceFor(author).deleteRecipe(recipe.id);
+		await vi.advanceTimersByTimeAsync(moveLockWaitMs);
+
+		expect(await deleting).toEqual({ id: recipe.id, slug: recipe.slug });
+		expect(await images.has(dishPhoto.pathname)).toBe(true);
+		expect(images.removedPathnames).toEqual([]);
+		expect(logLines(consoleWarn)).toEqual([
+			expect.objectContaining({
+				level: 'warn',
+				logger: 'recipes',
+				message: 'Recipe images could not be removed',
+				recipeId: recipe.id,
+				pathnames: [dishPhoto.pathname],
+				err: expect.objectContaining({ message: 'Timed out waiting for the image move lock' }),
+			}),
+		]);
 	});
 });

@@ -160,7 +160,8 @@ export const users = pgTable(
 		inviteId: uuid('invite_id')
 			.unique()
 			.references((): AnyPgColumn => invites.id),
-		// Set when an admin removes the member. The row stays, so their recipes keep naming them.
+		// Set when an admin removes the member, whose email then becomes removedMemberEmail's address.
+		// The row stays, so their recipes keep naming them.
 		removedAt: timestamp('removed_at', { withTimezone: true }),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

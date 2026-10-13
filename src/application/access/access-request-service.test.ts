@@ -7,6 +7,7 @@ import { actorFor, anonymousActor, memberActor } from '@/application/testing/act
 import { FixedActorProvider } from '@/application/testing/fixed-actor-provider';
 import { InMemoryAccessRequestRepository } from '@/application/testing/in-memory-access-request-repository';
 import { InMemoryEmailSender } from '@/application/testing/in-memory-email-sender';
+import { InMemoryInviteRepository } from '@/application/testing/in-memory-invite-repository';
 import { InMemoryMemberRepository } from '@/application/testing/in-memory-member-repository';
 import type { AccessRequestFields } from '@/domain/member/access-request';
 
@@ -27,7 +28,7 @@ const refusedActors = [
 
 function createAccess() {
 	const requests = new InMemoryAccessRequestRepository();
-	const members = new InMemoryMemberRepository();
+	const members = new InMemoryMemberRepository(new InMemoryInviteRepository());
 	const emails = new InMemoryEmailSender();
 	const serviceFor = (actor: Actor) =>
 		new AccessRequestService(requests, members, emails, new FixedActorProvider(actor), appUrl);

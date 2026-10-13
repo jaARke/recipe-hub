@@ -60,6 +60,15 @@ export class DrizzleInviteRepository implements InviteRepository {
 		return rows.length > 0;
 	}
 
+	// Not on the port: only a member's removal revokes this way, inside its own transaction. Migration
+	// 0008_free-removed-member-emails.sql revokes the same way for members removed before it.
+	async revokeOpenByEmail(email: string, now: Date): Promise<void> {
+		await this.db
+			.update(invites)
+			.set({ revokedAt: now })
+			.where(and(eq(invites.email, email), this.isOpen(now)));
+	}
+
 	// Each invite with the account it created, if any.
 	private selectInvites() {
 		return this.db

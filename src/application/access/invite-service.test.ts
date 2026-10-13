@@ -33,7 +33,7 @@ const refusedActors = [
 function createInvites() {
 	const invites = new InMemoryInviteRepository();
 	const requests = new InMemoryAccessRequestRepository();
-	const members = new InMemoryMemberRepository();
+	const members = new InMemoryMemberRepository(invites);
 	const emails = new InMemoryEmailSender();
 	const serviceFor = (actor: Actor) =>
 		new InviteService(invites, requests, members, emails, new FixedActorProvider(actor), appUrl);

@@ -68,4 +68,7 @@ export interface RecipeImportRepository {
 	// Clears the draft and source URL of every import started before the given time, and returns how
 	// many imports it cleared.
 	clearDraftsCreatedBefore(cutoff: Date): Promise<number>;
+	// Records every import still running that started before the given time as failed with the given
+	// code, and returns how many it recorded.
+	failRunningCreatedBefore(cutoff: Date, failure: string): Promise<number>;
 }

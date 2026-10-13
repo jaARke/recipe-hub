@@ -13,7 +13,8 @@ export class FixedWebPageFetcher implements WebPageFetcher {
 		return this.urls;
 	}
 
-	async fetch(url: string): Promise<WebPage> {
+	async fetch(url: string, signal?: AbortSignal): Promise<WebPage> {
+		signal?.throwIfAborted();
 		this.urls.push(url);
 		if (this.result instanceof Error) {
 			throw this.result;

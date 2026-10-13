@@ -3,6 +3,7 @@
 import * as React from 'react';
 import type { MemberDto } from '@/application/members/member-dtos';
 import { adminFieldNames } from '@/components/admin/admin-forms';
+import { memberRowActions } from '@/components/admin/member-row-actions';
 import { ConfirmActionDialog } from '@/components/forms/confirm-action-dialog';
 import { focusFellToPage } from '@/components/forms/focus-fell-to-page';
 import type { FormAction } from '@/components/forms/form-state';
@@ -82,7 +83,6 @@ type RemoveMemberActionProps = {
 	removeMember: FormAction;
 };
 
-// Offered on every row but the admin's own: another admin removes them.
 function RemoveMemberAction({ member, removeMember }: RemoveMemberActionProps) {
 	return (
 		<ConfirmActionDialog
@@ -93,7 +93,7 @@ function RemoveMemberAction({ member, removeMember }: RemoveMemberActionProps) {
 				</>
 			}
 			title={`Remove ${member.displayName}?`}
-			description="They're signed out on every device and can't sign in again. Their recipes stay, still credited to them."
+			description="They're signed out on every device and can't sign in again unless you invite them again, as a new account. Their recipes stay, still credited to them."
 			cancelLabel="Keep member"
 			confirmLabel="Remove member"
 			pendingLabel="Removing member"
@@ -113,6 +113,7 @@ type MemberRowProps = RoleActionProps & {
 function MemberRow({ member, makeAdmin, removeAdmin, removeMember }: MemberRowProps) {
 	const nameRef = React.useRef<HTMLParagraphElement>(null);
 	const previousRole = React.useRef(member.role);
+	const actions = memberRowActions(member);
 
 	// A role change swaps the row's action, and focus in the dialog it unmounts drops to the page, so
 	// the member's name takes it, with the new role's badge beside it.
@@ -130,6 +131,7 @@ function MemberRow({ member, makeAdmin, removeAdmin, removeMember }: MemberRowPr
 				<p ref={nameRef} tabIndex={-1} className="flex flex-wrap items-center gap-2 font-medium">
 					{member.displayName}
 					{member.role === 'admin' && <Badge variant="secondary">Admin</Badge>}
+					{member.isOwner && <Badge variant="secondary">Owner</Badge>}
 				</p>
 				<div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
 					<p className="wrap-anywhere">{member.email}</p>
@@ -139,18 +141,22 @@ function MemberRow({ member, makeAdmin, removeAdmin, removeMember }: MemberRowPr
 					</p>
 				</div>
 			</div>
-			<div className="flex flex-col gap-2 sm:flex-row">
-				{/* Keyed by role, so a change mounts the other dialog closed instead of reusing this one. */}
-				<RoleAction
-					key={member.role}
-					member={member}
-					makeAdmin={makeAdmin}
-					removeAdmin={removeAdmin}
-				/>
-				{!member.isCurrentMember && (
-					<RemoveMemberAction member={member} removeMember={removeMember} />
-				)}
-			</div>
+			{(actions.changeRole || actions.removeMember) && (
+				<div className="flex flex-col gap-2 sm:flex-row">
+					{/* Keyed by role, so a change mounts the other dialog closed instead of reusing this one. */}
+					{actions.changeRole && (
+						<RoleAction
+							key={member.role}
+							member={member}
+							makeAdmin={makeAdmin}
+							removeAdmin={removeAdmin}
+						/>
+					)}
+					{actions.removeMember && (
+						<RemoveMemberAction member={member} removeMember={removeMember} />
+					)}
+				</div>
+			)}
 		</li>
 	);
 }

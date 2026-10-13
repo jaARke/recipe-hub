@@ -383,4 +383,47 @@ export function describeRecipeImportRepositoryContract(
 			expect(await imports.clearDraftsCreatedBefore(cutoff)).toBe(0);
 		});
 	});
+
+	describe('failRunningCreatedBefore', () => {
+		it('records imports still running that started before the time as failed, and counts them', async () => {
+			const { imports, otherMemberId, backdate } = fixture();
+			const cutoff = new Date(Date.now() - hourMs);
+			const before = new Date(cutoff.getTime() - 1);
+			const interrupted = await start('photo');
+			await backdate(interrupted.id, before);
+			const othersInterrupted = await start('url', otherMemberId);
+			await backdate(othersInterrupted.id, before);
+			const succeeded = await startSucceeded();
+			await backdate(succeeded.id, before);
+			const failed = await start();
+			await imports.recordFailure(failed.id, { failure: 'import.failed', costUsd: 0.01 });
+			await backdate(failed.id, before);
+			const running = await start();
+			await backdate(running.id, cutoff);
+			const recorded = [
+				await imports.findById(succeeded.id),
+				await imports.findById(failed.id),
+				await imports.findById(running.id),
+			];
+
+			expect(await imports.failRunningCreatedBefore(cutoff, 'import.interrupted')).toBe(2);
+
+			expect(await imports.findById(interrupted.id)).toEqual({
+				...interrupted,
+				status: 'failed',
+				failure: 'import.interrupted',
+				createdAt: before,
+			});
+			expect(await imports.findById(othersInterrupted.id)).toMatchObject({
+				status: 'failed',
+				failure: 'import.interrupted',
+			});
+			expect([
+				await imports.findById(succeeded.id),
+				await imports.findById(failed.id),
+				await imports.findById(running.id),
+			]).toEqual(recorded);
+			expect(await imports.failRunningCreatedBefore(cutoff, 'import.interrupted')).toBe(0);
+		});
+	});
 }

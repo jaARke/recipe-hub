@@ -16,7 +16,7 @@ import {
 import { DrizzleAccessRequestRepository } from '@/infrastructure/db/drizzle-access-request-repository';
 import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
-import { passkeys, rateLimits, sessions, users } from '@/infrastructure/db/schema';
+import { passkeys, rateLimits, sessions, users, verifications } from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 
 const clientIp = '198.51.100.7';
@@ -280,6 +280,27 @@ describe('accepting an invite', () => {
 		expect(await members.findByEmail('grace@example.com')).toBeNull();
 	});
 
+	it('creates a new account for a removed member invited again, and closes the new invite', async () => {
+		const { service } = await inviteGrace();
+		await signIn('grace@example.com');
+		const removed = await members.findByEmail('grace@example.com');
+		await members.remove(removed!.id);
+		const reissued = await service.issueInvite({ displayName: 'Grace' });
+		const token = new URL(reissued.link).hash.slice(1);
+		await service.bindInviteEmail(token, 'grace@example.com');
+
+		const response = await signIn('grace@example.com');
+		const grace = await members.findByEmail('grace@example.com');
+
+		expect(emails.sentMessages.filter(({ to }) => to === 'grace@example.com')).toHaveLength(2);
+		expect(response.status).toBe(200);
+		expect(grace).toMatchObject({ displayName: 'Grace', role: 'member' });
+		expect(grace?.id).not.toBe(removed?.id);
+		expect(await storedUser('grace@example.com')).toMatchObject({ inviteId: reissued.id });
+		expect(await members.findById(removed!.id)).toMatchObject({ removedAt: expect.any(Date) });
+		expect(await service.getInvitePreview(token)).toBeNull();
+	});
+
 	it('refuses a second account on an accepted invite', async () => {
 		const { service, token } = await inviteGrace();
 		await signIn('grace@example.com');
@@ -434,5 +455,66 @@ describe('logging', () => {
 			message: 'Better Auth reported an error',
 			detail: 'Failed query: select 1 where email = $1',
 		});
+	});
+});
+
+describe('pruning expired sessions and verifications', () => {
+	const past = new Date('2020-01-01T00:00:00Z');
+	const future = new Date('2100-01-01T00:00:00Z');
+
+	it('deletes every expired session and verification when a member signs in', async () => {
+		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
+		const grace = await members.create({
+			email: 'grace@example.com',
+			displayName: 'Grace',
+			role: 'member',
+		});
+		await db.insert(sessions).values([
+			{ userId: grace.id, token: 'expired-session', expiresAt: past },
+			{ userId: grace.id, token: 'live-session', expiresAt: future },
+		]);
+		await db.insert(verifications).values([
+			{ identifier: 'expired-challenge', value: '{}', expiresAt: past },
+			{ identifier: 'live-challenge', value: '{}', expiresAt: future },
+		]);
+
+		const response = await signIn('ada@example.com');
+		const { token } = (await response.json()) as { token: string };
+		await backgroundWork();
+
+		const remainingSessions = await db.select({ token: sessions.token }).from(sessions);
+		expect(remainingSessions.map((row) => row.token).toSorted()).toEqual(
+			[token, 'live-session'].toSorted()
+		);
+		expect(await db.select({ identifier: verifications.identifier }).from(verifications)).toEqual([
+			{ identifier: 'live-challenge' },
+		]);
+	});
+
+	it('signs the member in and logs a warning when the deletion fails', async () => {
+		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
+		await db.execute(sql`
+			create function refuse_deletion() returns trigger language plpgsql
+			as $$ begin raise exception 'deletion refused'; end $$
+		`);
+		await db.execute(sql`
+			create trigger refuse_session_deletion before delete on sessions
+			for each statement execute function refuse_deletion()
+		`);
+		const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		const response = await signIn('ada@example.com');
+		await backgroundWork();
+
+		expect(response.status).toBe(200);
+		const logged = consoleWarn.mock.calls.map(([line]) => JSON.parse(String(line)));
+		expect(logged).toContainEqual(
+			expect.objectContaining({
+				message: 'Expired sessions and verifications could not be deleted',
+				err: expect.objectContaining({
+					cause: expect.objectContaining({ message: 'deletion refused' }),
+				}),
+			})
+		);
 	});
 });

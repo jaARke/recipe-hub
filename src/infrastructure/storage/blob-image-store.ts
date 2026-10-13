@@ -24,7 +24,7 @@ const deleteBatchSize = 100;
 type BlobImageStoreOptions = {
 	storeId: string;
 	// The only folders it lists, moves, and deletes in, so a deployment never touches another
-	// environment's images.
+	// environment's images but the old ones in the expiring environments' folders.
 	folders: ImageFolders;
 };
 
@@ -40,6 +40,11 @@ type Move = {
 
 function trashPathname(pathname: string): string {
 	return `${trashFolder}${pathname}`;
+}
+
+// The pathname a blob in the trash had before it was removed.
+function pathnameBeforeTrash(trashedPathname: string): string {
+	return trashedPathname.slice(trashFolder.length);
 }
 
 function batches(pathnames: readonly string[]): string[][] {
@@ -72,12 +77,14 @@ export class BlobImageStore implements ImageStore {
 		this.folders = options.folders;
 	}
 
-	async get(pathname: string): Promise<StoredImage | null> {
+	// The signal reaches the read's fetch, so it stops the body's stream too.
+	async get(pathname: string, signal?: AbortSignal): Promise<StoredImage | null> {
 		// Past Blob's cache, so an image removed moments ago is not served and cached for another year.
 		const result = await getBlob(pathname, {
 			access: 'private',
 			storeId: this.storeId,
 			useCache: false,
+			abortSignal: signal,
 		});
 		if (result === null) {
 			return null;
@@ -140,7 +147,7 @@ export class BlobImageStore implements ImageStore {
 		const blobs = await this.list(this.folders.environmentFolders().map(trashPathname));
 		return blobs
 			.map(({ pathname, uploadedAt }) => ({
-				pathname: pathname.slice(trashFolder.length),
+				pathname: pathnameBeforeTrash(pathname),
 				removedAt: uploadedAt,
 			}))
 			.filter(({ pathname }) => this.folders.contains(pathname));
@@ -162,15 +169,24 @@ export class BlobImageStore implements ImageStore {
 		await this.delete(pathnames.map(trashPathname));
 	}
 
-	async deleteAll(): Promise<number> {
+	// A removed image's uploadedAt is when it was removed, so each copy goes by its own date. Nothing is
+	// purged: production, which expires these folders, never serves them, and a preview's cached copies
+	// are test data behind its deployment's protection that leave with its deployments.
+	async deleteExpired(cutoff: Date): Promise<string[]> {
+		const folders = this.folders.expiringFolders();
 		const [stored, removed] = await Promise.all([
-			this.list(this.folders.environmentFolders()),
-			this.list(this.folders.environmentFolders().map(trashPathname)),
+			this.list(folders),
+			this.list(folders.map(trashPathname)),
 		]);
-		const storedPathnames = stored.map(({ pathname }) => pathname);
-		await this.delete([...storedPathnames, ...removed.map(({ pathname }) => pathname)]);
-		await purgeCaches(storedPathnames);
-		return stored.length + removed.length;
+		const isExpired = ({ pathname, uploadedAt }: ListedBlob) =>
+			this.folders.isExpiring(pathname) && uploadedAt < cutoff;
+		const storedPathnames = stored.filter(isExpired).map(({ pathname }) => pathname);
+		const removedPathnames = removed
+			.map(({ pathname, uploadedAt }) => ({ pathname: pathnameBeforeTrash(pathname), uploadedAt }))
+			.filter(isExpired)
+			.map(({ pathname }) => pathname);
+		await this.delete([...storedPathnames, ...removedPathnames.map(trashPathname)]);
+		return [...storedPathnames, ...removedPathnames];
 	}
 
 	private assertInFolders(pathnames: readonly string[]): void {

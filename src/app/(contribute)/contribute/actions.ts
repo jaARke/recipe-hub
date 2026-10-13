@@ -16,7 +16,11 @@ import {
 } from '@/components/recipe-import/recipe-import-forms';
 import { recipeImportPath } from '@/components/recipe-import/recipe-import-paths';
 import { recipePath } from '@/components/recipe/recipe-paths';
-import { getRecipeImportService, getRecipeService } from '@/composition/services';
+import {
+	getRecipeImageService,
+	getRecipeImportService,
+	getRecipeService,
+} from '@/composition/services';
 
 // The new slug's tag clears a cached miss for it, such as a visit before the recipe existed.
 // Redirects to the saved recipe, so the editor sees it rendered fresh in this response; a
@@ -32,6 +36,7 @@ export async function createRecipe(_state: FormState, formData: FormData): Promi
 		return toFormError(error);
 	}
 
+	getRecipeImageService().scheduleSweep();
 	updateTag(recipeCacheTags.list);
 	updateTag(recipeCacheTags.recipe(recipe.slug));
 	redirect(recipePath(recipe.slug));
@@ -49,6 +54,7 @@ export async function importFromUrl(_state: FormState, formData: FormData): Prom
 		return toFormError(error);
 	}
 
+	getRecipeImageService().scheduleSweep();
 	redirect(recipeImportPath(recipeImport.id));
 }
 
@@ -61,5 +67,6 @@ export async function importFromScans(_state: FormState, formData: FormData): Pr
 		return toFormError(error);
 	}
 
+	getRecipeImageService().scheduleSweep();
 	redirect(recipeImportPath(recipeImport.id));
 }

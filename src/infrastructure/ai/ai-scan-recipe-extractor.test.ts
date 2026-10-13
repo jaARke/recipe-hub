@@ -133,7 +133,7 @@ describe('extract', () => {
 		]);
 	});
 
-	it('asks for the output schema with no sampling parameters', async () => {
+	it('asks for the output schema in at most 16,000 tokens, with no sampling parameters', async () => {
 		const model = new MockLanguageModelV4({ doGenerate: answer(cardOutput) });
 
 		await new AiScanRecipeExtractor(model).extract(scans, requester);
@@ -144,6 +144,7 @@ describe('extract', () => {
 			name: 'recipe',
 			schema: { type: 'object', properties: { transcription: { type: 'string' } } },
 		});
+		expect(call?.maxOutputTokens).toBe(16_000);
 		expect(call?.temperature).toBeUndefined();
 		expect(call?.topP).toBeUndefined();
 		expect(call?.topK).toBeUndefined();
@@ -399,5 +400,24 @@ describe('extract failures', () => {
 		expect(timeoutSpy).toHaveBeenCalledWith(90_000);
 		expect(await failure).toBeInstanceOf(ImportFailedError);
 		expect(((await failure) as ImportFailedError).cause).toEqual({ name: 'TimeoutError' });
+	});
+
+	it("stops the call once the caller's signal aborts", async () => {
+		const caller = new AbortController();
+		const model = new MockLanguageModelV4({
+			doGenerate: ({ abortSignal }) =>
+				new Promise((_, reject) => {
+					abortSignal?.addEventListener('abort', () => reject(abortSignal.reason));
+				}),
+		});
+
+		const failure = new AiScanRecipeExtractor(model)
+			.extract(scans, requester, caller.signal)
+			.catch((caught: unknown) => caught);
+		await vi.waitFor(() => expect(model.doGenerateCalls).toHaveLength(1));
+		caller.abort();
+
+		expect(await failure).toBeInstanceOf(ImportFailedError);
+		expect(((await failure) as ImportFailedError).cause).toEqual({ name: 'AbortError' });
 	});
 });

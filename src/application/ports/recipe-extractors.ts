@@ -18,11 +18,16 @@ export type ExtractionRequester = {
 	memberId: MemberId;
 };
 
-// Reads a recipe from a web page: its structured data, or an AI model reading its text.
+// Reads a recipe from a web page: its structured data, or an AI model reading its text. An extractor
+// that waits on a model stops once the signal aborts.
 export interface PageRecipeExtractor {
 	// Null only when the extractor found nothing without a paid call. A model that found no recipe
 	// still returns its reading, with no ingredients or steps, and its cost.
-	extract(page: WebPage, requester: ExtractionRequester): Promise<Extraction | null>;
+	extract(
+		page: WebPage,
+		requester: ExtractionRequester,
+		signal?: AbortSignal
+	): Promise<Extraction | null>;
 }
 
 export type ScanImage = {
@@ -30,9 +35,14 @@ export type ScanImage = {
 	mediaType: 'image/jpeg';
 };
 
-// Reads a recipe from photos of a written or printed recipe, given in page order.
+// Reads a recipe from photos of a written or printed recipe, given in page order. It stops once the
+// signal aborts.
 export interface ScanRecipeExtractor {
 	// Null only when the extractor found nothing without a paid call. A model that found no recipe
 	// still returns its reading, with no ingredients or steps, and its cost.
-	extract(scans: readonly ScanImage[], requester: ExtractionRequester): Promise<Extraction | null>;
+	extract(
+		scans: readonly ScanImage[],
+		requester: ExtractionRequester,
+		signal?: AbortSignal
+	): Promise<Extraction | null>;
 }

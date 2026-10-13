@@ -1,5 +1,6 @@
 import type { ImageStore, RemovedImage, StoredImage } from '@/application/ports/image-store';
 import type { ImageFolders } from '@/application/recipes/image-folders';
+import { stalledCall } from '@/application/testing/stalled-call';
 
 type InMemoryImage = {
 	body: Uint8Array;
@@ -13,20 +14,32 @@ type RemovedInMemoryImage = {
 	removedAt: Date;
 };
 
+// Every environment's images, stored and removed, as the one Blob store holds them.
+type InMemoryImages = {
+	stored: Map<string, InMemoryImage>;
+	removed: Map<string, RemovedInMemoryImage>;
+};
+
 // One environment's view of the store, which also holds other environments' images, as Blob does. It
 // records whether it was read, so tests can prove that refused pathnames never reach the store, and
-// what it removed. A test can make removing fail, as an unreachable store would.
+// what it removed. A test can make removing fail, or reading stall, as an unreachable store would.
 export class InMemoryImageStore implements ImageStore {
-	private readonly images = new Map<string, InMemoryImage>();
-	private readonly removed = new Map<string, RemovedInMemoryImage>();
+	private readonly images: Map<string, InMemoryImage>;
+	private readonly removed: Map<string, RemovedInMemoryImage>;
 	private readonly removedHistory: string[] = [];
 	private readonly folders: ImageFolders;
 	private read = false;
 	private removesFail = false;
+	private readsStall = false;
 
 	// The folders that listing, removing, restoring, and deleting stay inside.
-	constructor(folders: ImageFolders) {
+	constructor(
+		folders: ImageFolders,
+		images: InMemoryImages = { stored: new Map(), removed: new Map() }
+	) {
 		this.folders = folders;
+		this.images = images.stored;
+		this.removed = images.removed;
 	}
 
 	get wasRead(): boolean {
@@ -40,6 +53,16 @@ export class InMemoryImageStore implements ImageStore {
 
 	failRemoves(): void {
 		this.removesFail = true;
+	}
+
+	// Reads then never answer, and stop only when their signal aborts.
+	stallReads(): void {
+		this.readsStall = true;
+	}
+
+	// Another environment's view of the same images, as another deployment sees the one store.
+	viewAs(folders: ImageFolders): InMemoryImageStore {
+		return new InMemoryImageStore(folders, { stored: this.images, removed: this.removed });
 	}
 
 	// Stands in for an image uploaded at an earlier time.
@@ -62,8 +85,13 @@ export class InMemoryImageStore implements ImageStore {
 		this.removed.set(pathname, { ...removed, removedAt });
 	}
 
-	async get(pathname: string): Promise<StoredImage | null> {
+	async get(pathname: string, signal?: AbortSignal): Promise<StoredImage | null> {
 		this.read = true;
+		if (this.readsStall) {
+			return stalledCall(signal);
+		}
+
+		signal?.throwIfAborted();
 		const image = this.images.get(pathname);
 		if (image === undefined) {
 			return null;
@@ -126,11 +154,11 @@ export class InMemoryImageStore implements ImageStore {
 			.map(([pathname, { removedAt }]) => ({ pathname, removedAt }));
 	}
 
-	// A restored image counts as uploaded now, as Blob stores it again.
 	async hasRemoved(pathname: string): Promise<boolean> {
 		return this.removed.has(pathname);
 	}
 
+	// A restored image counts as uploaded now, as Blob stores it again.
 	async restore(pathnames: readonly string[]): Promise<void> {
 		this.assertInFolders(pathnames);
 		for (const pathname of pathnames) {
@@ -149,17 +177,22 @@ export class InMemoryImageStore implements ImageStore {
 		}
 	}
 
-	async deleteAll(): Promise<number> {
-		let deleted = 0;
-		for (const stored of [this.images, this.removed]) {
-			for (const pathname of [...stored.keys()]) {
-				if (this.folders.contains(pathname)) {
-					stored.delete(pathname);
-					deleted += 1;
-				}
-			}
+	async deleteExpired(cutoff: Date): Promise<string[]> {
+		const stored = [...this.images]
+			.filter(([pathname, image]) => this.folders.isExpiring(pathname) && image.uploadedAt < cutoff)
+			.map(([pathname]) => pathname);
+		const removed = [...this.removed]
+			.filter(
+				([pathname, { removedAt }]) => this.folders.isExpiring(pathname) && removedAt < cutoff
+			)
+			.map(([pathname]) => pathname);
+		for (const pathname of stored) {
+			this.images.delete(pathname);
 		}
-		return deleted;
+		for (const pathname of removed) {
+			this.removed.delete(pathname);
+		}
+		return [...stored, ...removed];
 	}
 
 	// As the Blob adapter refuses them.

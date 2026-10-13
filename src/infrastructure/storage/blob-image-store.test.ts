@@ -241,24 +241,53 @@ describe('deleteRemoved', () => {
 	});
 });
 
-describe('deleteAll', () => {
-	it("deletes everything in this environment's folders and their trash, and nothing else", async () => {
-		const preview = 'preview/feature-x-1a2b3c4d';
+describe('deleteExpired', () => {
+	it("deletes the expiring folders' images and trash from before the cutoff, and nothing else", async () => {
 		store([
-			`dish/${preview}/a.jpg`,
-			`dish/${preview}/b.jpg`,
-			`dish/${preview}/c.jpg`,
-			`scan/${preview}/d.jpg`,
-			`trash/dish/${preview}/e.jpg`,
-			'dish/preview/feature-x-1a2b3c4d-2/f.jpg',
-			'dish/production/g.jpg',
+			'dish/preview/feature-x-1a2b3c4d/a.jpg',
+			'scan/preview/feature-y-5e6f7a8b/b.jpg',
+			'trash/dish/preview/feature-x-1a2b3c4d/c.jpg',
+			'dish/production/d.jpg',
+			'trash/scan/production/e.jpg',
+			'dish/seed/f.jpg',
+			'dish/development/g.jpg',
 		]);
+		store(
+			['dish/preview/feature-x-1a2b3c4d/recent.jpg', 'trash/scan/preview/feature-y-5e6f7a8b/h.jpg'],
+			recently
+		);
+		const production = new BlobImageStore({
+			storeId: 'store_test',
+			folders: new ImageFolders('production', [], ['preview/']),
+		});
 
-		expect(await storeFor(preview).deleteAll()).toBe(5);
-		expect([...blobs.keys()].sort()).toEqual([
-			'dish/preview/feature-x-1a2b3c4d-2/f.jpg',
-			'dish/production/g.jpg',
+		expect(await production.deleteExpired(cutoff)).toEqual([
+			'dish/preview/feature-x-1a2b3c4d/a.jpg',
+			'scan/preview/feature-y-5e6f7a8b/b.jpg',
+			'dish/preview/feature-x-1a2b3c4d/c.jpg',
 		]);
+		expect([...blobs.keys()].sort()).toEqual([
+			'dish/development/g.jpg',
+			'dish/preview/feature-x-1a2b3c4d/recent.jpg',
+			'dish/production/d.jpg',
+			'dish/seed/f.jpg',
+			'trash/scan/preview/feature-y-5e6f7a8b/h.jpg',
+			'trash/scan/production/e.jpg',
+		]);
+		expect(received.flatMap(({ params }) => params.prefix ?? []).sort()).toEqual([
+			'dish/preview/',
+			'scan/preview/',
+			'trash/dish/preview/',
+			'trash/scan/preview/',
+		]);
+	});
+
+	it('lists and deletes nothing in a deployment that expires no other environment', async () => {
+		store(['dish/preview/feature-y-5e6f7a8b/a.jpg', 'dish/production/b.jpg']);
+
+		expect(await storeFor('preview/feature-x-1a2b3c4d').deleteExpired(cutoff)).toEqual([]);
+		expect(blobs.size).toBe(2);
+		expect(received).toEqual([]);
 	});
 });
 

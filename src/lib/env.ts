@@ -3,9 +3,9 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import {
 	developmentImageEnvironment,
+	imageEnvironmentAccess,
 	previewImageEnvironmentPrefix,
 	productionImageEnvironment,
-	seedImageEnvironment,
 } from '@/lib/image-paths';
 
 const envSchema = z
@@ -21,10 +21,6 @@ const envSchema = z
 		VERCEL_BRANCH_URL: z.hostname().optional(),
 		// Set by Vercel on Git deployments: the branch, which names a preview's image folders.
 		VERCEL_GIT_COMMIT_REF: z.string().min(1).optional(),
-		// Set by Vercel on Git deployments: the GitHub account and repository the deployment was built
-		// from, which a preview's cleanup workflow runs in.
-		VERCEL_GIT_REPO_OWNER: z.string().min(1).optional(),
-		VERCEL_GIT_REPO_SLUG: z.string().min(1).optional(),
 		// Pooled connection for the app; migrations use the unpooled URL through drizzle.config.ts.
 		DATABASE_URL: z.url(),
 		// The image store; the Blob SDK reads and refreshes Vercel's OIDC token itself.
@@ -37,12 +33,12 @@ const envSchema = z
 		BETTER_AUTH_SECRETS: z.never().optional(),
 		// Must stay unset: Better Auth reads it itself and would trust its origins beyond our hosts.
 		BETTER_AUTH_TRUSTED_ORIGINS: z.never().optional(),
+		// The owner's address. Their account is always an admin and is never removed.
+		ADMIN_EMAIL: z.email(),
 		// Resend's key, from the Vercel integration.
 		RESEND_API_KEY: z.string().min(1),
 		// The verified sending domain, from the Vercel integration; mail comes from an address on it.
 		RESEND_EMAIL_DOMAIN: z.hostname(),
-		// Vercel sends it as a bearer token with each cron request, which the image sweep's route checks.
-		CRON_SECRET: z.string().min(32).optional(),
 	})
 	.refine((vars) => vars.VERCEL_ENV !== 'preview' || vars.VERCEL_URL !== undefined, {
 		message: 'Vercel sets VERCEL_URL on every preview deployment',
@@ -51,10 +47,6 @@ const envSchema = z
 	.refine((vars) => vars.VERCEL_ENV !== 'preview' || vars.VERCEL_GIT_COMMIT_REF !== undefined, {
 		message: 'Vercel sets VERCEL_GIT_COMMIT_REF on every Git deployment',
 		path: ['VERCEL_GIT_COMMIT_REF'],
-	})
-	.refine((vars) => vars.VERCEL_ENV !== 'production' || vars.CRON_SECRET !== undefined, {
-		message: 'Production needs CRON_SECRET to authenticate its cron jobs',
-		path: ['CRON_SECRET'],
 	});
 
 export const env = envSchema.parse(process.env);
@@ -86,8 +78,8 @@ function branchFolder(branch: string): string {
 	return readable === '' ? hash : `${readable}-${hash}`;
 }
 
-// Where this deployment's images go under each role's folder. One store serves every environment, so
-// each writes and deletes only in its own: production, a preview's branch, or development.
+// Where this deployment's images go under each role's folder: production, a preview's branch, or
+// development. Production and previews share a store, so each writes and deletes only in its own.
 export const imageEnvironment =
 	env.VERCEL_ENV === 'production'
 		? productionImageEnvironment
@@ -95,8 +87,11 @@ export const imageEnvironment =
 			? `${previewImageEnvironmentPrefix}${branchFolder(env.VERCEL_GIT_COMMIT_REF!)}`
 			: developmentImageEnvironment;
 
-// The other environments whose images this deployment serves. Previews and development read
-// production's, whose recipes their databases copy, and the seed's (dish/seed/), which seeds them;
-// production reads only its own.
-export const readableImageEnvironments =
-	env.VERCEL_ENV === 'production' ? [] : [productionImageEnvironment, seedImageEnvironment];
+// What this deployment reaches besides its own images. Next.js run directly is local development.
+const imageAccess = imageEnvironmentAccess[env.VERCEL_ENV ?? 'development'];
+
+// The other environments whose images this deployment serves.
+export const readableImageEnvironments = imageAccess.readableEnvironments;
+
+// The prefixes of the other environments whose old images this deployment deletes.
+export const expiringImageEnvironmentPrefixes = imageAccess.expiringEnvironmentPrefixes;

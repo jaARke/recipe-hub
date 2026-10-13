@@ -15,7 +15,7 @@ const errorMessages: Partial<Record<string, string>> = {
 		'That request was already handled. Reload the page to see the latest.',
 	'member.not-found': 'That account was removed. Reload the page to see the latest.',
 	'member.role-conflict': "That member's role already changed. Reload the page to see the latest.",
-	'member.last-admin': "You can't remove the last admin. Make someone else an admin first.",
+	'member.owner': "The owner's account always stays an admin and can't be removed.",
 	'member.self-removal': "You can't remove yourself. Ask another admin to remove you.",
 	'recipe.not-found':
 		'That recipe was deleted, or this page is out of date. Reload the page and try again.',
@@ -30,6 +30,7 @@ const errorMessages: Partial<Record<string, string>> = {
 		"You've reached today's limit of 50 imports. Try again tomorrow, or enter the recipe manually.",
 	'import.paused': 'Imports are paused. You can still enter the recipe manually.',
 	'import.failed': "The import didn't finish. Try again in a moment.",
+	'import.timed-out': 'The import took too long. Try again in a moment.',
 };
 
 // Next logs a rethrown error in full, causes included, so a database error is replaced by one that

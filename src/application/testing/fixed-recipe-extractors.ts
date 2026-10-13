@@ -6,6 +6,7 @@ import type {
 	ScanRecipeExtractor,
 } from '@/application/ports/recipe-extractors';
 import type { WebPage } from '@/application/ports/web-page-fetcher';
+import { stalledCall } from '@/application/testing/stalled-call';
 
 // What a fixed extractor answers: an extraction, null for nothing found, or an error to fail with.
 type FixedExtractorResult = Extraction | null | Error;
@@ -19,11 +20,12 @@ function answer(result: FixedExtractorResult): Extraction | null {
 }
 
 // Answers every page alike and records the pages it read, so tests can prove it was never asked, and
-// whom it read each for.
+// whom it read each for. A test can make it stall, as a model that never answers would.
 export class FixedPageRecipeExtractor implements PageRecipeExtractor {
 	private readonly result: FixedExtractorResult;
 	private readonly pages: WebPage[] = [];
 	private readonly requesters: ExtractionRequester[] = [];
+	private stalled = false;
 
 	constructor(result: FixedExtractorResult) {
 		this.result = result;
@@ -37,10 +39,20 @@ export class FixedPageRecipeExtractor implements PageRecipeExtractor {
 		return this.requesters;
 	}
 
-	async extract(page: WebPage, requester: ExtractionRequester): Promise<Extraction | null> {
+	// Reads then never answer, and stop only when their signal aborts.
+	stall(): void {
+		this.stalled = true;
+	}
+
+	async extract(
+		page: WebPage,
+		requester: ExtractionRequester,
+		signal?: AbortSignal
+	): Promise<Extraction | null> {
+		signal?.throwIfAborted();
 		this.pages.push(page);
 		this.requesters.push(requester);
-		return answer(this.result);
+		return this.stalled ? stalledCall(signal) : answer(this.result);
 	}
 }
 
@@ -64,8 +76,10 @@ export class FixedScanRecipeExtractor implements ScanRecipeExtractor {
 
 	async extract(
 		scans: readonly ScanImage[],
-		requester: ExtractionRequester
+		requester: ExtractionRequester,
+		signal?: AbortSignal
 	): Promise<Extraction | null> {
+		signal?.throwIfAborted();
 		this.scanSets.push(scans);
 		this.requesters.push(requester);
 		return answer(this.result);

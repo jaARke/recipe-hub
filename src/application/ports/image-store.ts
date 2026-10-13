@@ -12,10 +12,11 @@ export type RemovedImage = {
 	removedAt: Date;
 };
 
-// Every operation but get, has, hasRemoved, and put stays inside this environment's folders.
+// Every operation but get, has, hasRemoved, put, and deleteExpired stays inside this environment's
+// folders; deleteExpired stays inside the expiring environments' folders.
 export interface ImageStore {
-	// Returns null when no image has this pathname.
-	get(pathname: string): Promise<StoredImage | null>;
+	// Returns null when no image has this pathname. The read and its body stop once the signal aborts.
+	get(pathname: string, signal?: AbortSignal): Promise<StoredImage | null>;
 	has(pathname: string): Promise<boolean>;
 	// Never overwrites: putting a pathname that is already taken fails.
 	put(pathname: string, body: Uint8Array, contentType: string): Promise<void>;
@@ -32,7 +33,8 @@ export interface ImageStore {
 	restore(pathnames: readonly string[]): Promise<void>;
 	// Deletes removed images for good.
 	deleteRemoved(pathnames: readonly string[]): Promise<void>;
-	// Deletes every image in this environment's folders for good, removed ones included, and returns
-	// how many it deleted.
-	deleteAll(): Promise<number>;
+	// Deletes for good the images in the expiring environments' folders uploaded before the cutoff, and
+	// the removed ones there removed before it, and returns the pathnames they had. It purges no caches,
+	// since the deployment that expires those folders never serves them.
+	deleteExpired(cutoff: Date): Promise<string[]>;
 }

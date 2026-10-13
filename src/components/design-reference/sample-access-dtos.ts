@@ -29,6 +29,15 @@ const sampleAdmin = memberSchema.parse({
 	createdAt: new Date('2026-10-01T15:00:00.000Z'),
 });
 
+// The owner, who always stays an admin, so their row offers no controls.
+const sampleOwner = memberSchema.parse({
+	id: 'a1c3e5f7-2b4d-4f6a-8c0e-1d3f5a7b9c2e',
+	displayName: 'Morgan',
+	email: 'morgan@example.com',
+	role: 'admin',
+	createdAt: new Date('2026-09-28T13:00:00.000Z'),
+});
+
 // An open invite from the sample admin, with the usual lifetime.
 function sampleInvite({
 	createdAt,
@@ -50,6 +59,7 @@ function sampleInvite({
 
 // Oldest first, as the admin page lists them for the sample admin.
 export const sampleMembers: MemberDto[] = [
+	sampleOwner,
 	sampleAdmin,
 	memberSchema.parse({
 		id: sampleSam.memberId,
@@ -66,7 +76,12 @@ export const sampleMembers: MemberDto[] = [
 		createdAt: new Date('2026-10-08T12:15:00.000Z'),
 	}),
 	sampleContributor,
-].map((member) => toMemberDto(member, member.id === sampleAdmin.id));
+].map((member) =>
+	toMemberDto(member, {
+		isCurrentMember: member.id === sampleAdmin.id,
+		isOwner: member.id === sampleOwner.id,
+	})
+);
 
 // The header's view of a member and of an admin.
 export const sampleHeaderMember: HeaderMember = {

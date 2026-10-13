@@ -73,8 +73,8 @@ export class AccountService {
 	}
 
 	// Members sign in with codes; an invitee confirms the address bound to their open invite. A
-	// removed member's address gets none, even with an open invite: its code would sign in to the
-	// removed account.
+	// removed member's account holds an address on the .invalid domain, which gets none, and their own
+	// address is free, so a new invite to it lets them confirm it like any invitee.
 	private async mayReceiveCode(email: string): Promise<boolean> {
 		const member = await this.members.findByEmail(email);
 		if (member !== null) {

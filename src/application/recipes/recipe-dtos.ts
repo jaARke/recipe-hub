@@ -70,16 +70,13 @@ export type ImageUploadGrant = {
 	maximumSizeInBytes: number;
 };
 
-// How many images one sweep restored, deleted for good, and removed.
+// How many images one sweep restored, deleted for good, and removed, and how many in expiring
+// environments' folders it deleted for good.
 export type ImageSweepCounts = {
 	restoredCount: number;
 	deletedCount: number;
 	removedCount: number;
-};
-
-// How many images deleting a closed preview's folders deleted for good, removed ones included.
-export type PreviewImageCounts = {
-	deletedCount: number;
+	expiredCount: number;
 };
 
 export function toPublicRecipeDto(recipe: Recipe, contributor: Member): PublicRecipeDto {

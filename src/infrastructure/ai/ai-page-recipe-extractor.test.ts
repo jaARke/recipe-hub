@@ -1,5 +1,6 @@
 import { MockLanguageModelV4 } from 'ai/test';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { ImportFailedError } from '@/application/ingestion/errors';
 import type { ExtractionRequester } from '@/application/ports/recipe-extractors';
 import type { WebPage } from '@/application/ports/web-page-fetcher';
 import { memberIdSchema } from '@/domain/member/member';
@@ -88,7 +89,7 @@ describe('extract', () => {
 		expect(call?.providerOptions?.gateway?.safetyIdentifier).toHaveLength(64);
 	});
 
-	it('asks for the page schema, which has no transcription', async () => {
+	it('asks for the page schema, which has no transcription, in at most 16,000 tokens', async () => {
 		const model = new MockLanguageModelV4({ doGenerate: answer(pageOutput) });
 
 		await new AiPageRecipeExtractor(model).extract(page, requester);
@@ -96,6 +97,26 @@ describe('extract', () => {
 		const [call] = model.doGenerateCalls;
 		expect(call?.responseFormat).toMatchObject({ type: 'json', name: 'recipe' });
 		expect(call?.responseFormat).not.toHaveProperty('schema.properties.transcription');
+		expect(call?.maxOutputTokens).toBe(16_000);
+	});
+
+	it("stops the call once the caller's signal aborts", async () => {
+		const caller = new AbortController();
+		const model = new MockLanguageModelV4({
+			doGenerate: ({ abortSignal }) =>
+				new Promise((_, reject) => {
+					abortSignal?.addEventListener('abort', () => reject(abortSignal.reason));
+				}),
+		});
+
+		const failure = new AiPageRecipeExtractor(model)
+			.extract(page, requester, caller.signal)
+			.catch((caught: unknown) => caught);
+		await vi.waitFor(() => expect(model.doGenerateCalls).toHaveLength(1));
+		caller.abort();
+
+		expect(await failure).toBeInstanceOf(ImportFailedError);
+		expect(((await failure) as ImportFailedError).cause).toEqual({ name: 'AbortError' });
 	});
 
 	it('maps the output into an extracted recipe', async () => {

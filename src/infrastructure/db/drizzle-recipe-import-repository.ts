@@ -136,6 +136,15 @@ export class DrizzleRecipeImportRepository implements RecipeImportRepository {
 		return rows.length;
 	}
 
+	async failRunningCreatedBefore(cutoff: Date, failure: string): Promise<number> {
+		const rows = await this.db
+			.update(recipeImports)
+			.set({ status: 'failed', failure, updatedAt: sql`now()` })
+			.where(and(eq(recipeImports.status, 'running'), lt(recipeImports.createdAt, cutoff)))
+			.returning({ id: recipeImports.id });
+		return rows.length;
+	}
+
 	// Only a running import finishes, and only once.
 	private async finish(
 		id: RecipeImportId,

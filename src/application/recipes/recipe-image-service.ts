@@ -1,18 +1,20 @@
 import 'server-only';
 import { requireMember } from '@/application/authorization';
 import type { ActorProvider } from '@/application/ports/actor-provider';
+import type { ImageMoveLock, LockAttempt } from '@/application/ports/image-move-lock';
 import type { ImageStore, StoredImage } from '@/application/ports/image-store';
 import type { RecipeImportRepository } from '@/application/ports/recipe-import-repository';
 import type { RecipeRepository } from '@/application/ports/recipe-repository';
+import type { TaskScheduler } from '@/application/ports/task-scheduler';
 import { InvalidImageUploadError } from '@/application/recipes/errors';
 import type { ImageFolders } from '@/application/recipes/image-folders';
 import { imagesInUse } from '@/application/recipes/images-in-use';
-import type {
-	ImageSweepCounts,
-	ImageUploadGrant,
-	PreviewImageCounts,
-} from '@/application/recipes/recipe-dtos';
-import { removedImageCutoff, unusedImageCutoff } from '@/domain/recipe/image-retention';
+import type { ImageSweepCounts, ImageUploadGrant } from '@/application/recipes/recipe-dtos';
+import {
+	expiringImageCutoff,
+	removedImageCutoff,
+	unusedImageCutoff,
+} from '@/domain/recipe/image-retention';
 import {
 	isPublicImagePathname,
 	isRecipeImageContentType,
@@ -29,7 +31,7 @@ const maxUploadSizeInBytes = 8 * 1024 * 1024;
 
 const logger = getLogger('images');
 
-type ImageSweepStep = 'restore' | 'delete' | 'remove';
+type ImageSweepStep = 'restore' | 'delete' | 'remove' | 'expire';
 
 // A step that fails is logged and left for the next sweep, which finds the same images again.
 async function sweepStep(
@@ -50,25 +52,42 @@ async function sweepStep(
 	}
 }
 
+// The store finds expired images as it deletes them, so a failure is logged without pathnames, and
+// the next sweep finds whatever is left.
+async function expireStep(run: () => Promise<string[]>): Promise<string[]> {
+	try {
+		return await run();
+	} catch (err) {
+		logger.warn('Image sweep step failed', { step: 'expire' satisfies ImageSweepStep, err });
+		return [];
+	}
+}
+
 export class RecipeImageService {
 	private readonly recipes: RecipeRepository;
 	private readonly imports: RecipeImportRepository;
 	private readonly images: ImageStore;
 	private readonly actors: ActorProvider;
 	private readonly folders: ImageFolders;
+	private readonly moveLock: ImageMoveLock;
+	private readonly scheduleTask: TaskScheduler;
 
 	constructor(
 		recipes: RecipeRepository,
 		imports: RecipeImportRepository,
 		images: ImageStore,
 		actors: ActorProvider,
-		folders: ImageFolders
+		folders: ImageFolders,
+		moveLock: ImageMoveLock,
+		scheduleTask: TaskScheduler
 	) {
 		this.recipes = recipes;
 		this.imports = imports;
 		this.images = images;
 		this.actors = actors;
 		this.folders = folders;
+		this.moveLock = moveLock;
+		this.scheduleTask = scheduleTask;
 	}
 
 	// Never asks for the actor, so responses can be cached.
@@ -110,11 +129,42 @@ export class RecipeImageService {
 		return { contentType: uploadContentType, maximumSizeInBytes: maxUploadSizeInBytes };
 	}
 
-	// A system use case with no actor, run daily: brings back removed images that a recipe or draft
-	// names again, as after the database is restored; deletes for good those removed long enough ago;
-	// then removes uploads that nothing has named for a day. In that order, so an image both stored and
-	// removed, as an interrupted removal leaves it, ends up removed.
-	async sweepImages(): Promise<ImageSweepCounts> {
+	// Sweeps once the response is sent, so the write that calls it never waits. Every recipe and import
+	// write calls it, so cleanup follows activity rather than a schedule.
+	scheduleSweep(): void {
+		this.scheduleTask(async () => {
+			try {
+				await this.sweepImages();
+			} catch (err) {
+				logger.error('Image sweep failed', { err });
+			}
+		});
+	}
+
+	// A system use case with no actor. Skipped while another image move runs: a running sweep covers
+	// it, and the write whose removal holds the lock sweeps once that removal ends.
+	async sweepImages(): Promise<LockAttempt<ImageSweepCounts>> {
+		const attempt = await this.moveLock.tryRun(() => this.sweep());
+		if (attempt.status === 'skipped') {
+			logger.info('Image sweep skipped while another image move runs');
+		}
+		return attempt;
+	}
+
+	private async isTaken(pathname: string): Promise<boolean> {
+		const [stored, removed] = await Promise.all([
+			this.images.has(pathname),
+			this.images.hasRemoved(pathname),
+		]);
+		return stored || removed;
+	}
+
+	// Brings back removed images that a recipe or draft names again, as after the database is restored
+	// or a save attaches an image an earlier sweep was removing; deletes for good those removed long
+	// enough ago; removes uploads that nothing has named for a day; then deletes old images in the
+	// expiring environments' folders. In that order, so an image both stored and removed, as an
+	// interrupted removal leaves it, ends up removed.
+	private async sweep(): Promise<ImageSweepCounts> {
 		const now = new Date();
 		const [removed, uploaded] = await Promise.all([
 			this.images.listRemoved(),
@@ -145,40 +195,24 @@ export class RecipeImageService {
 			uploaded.filter((pathname) => !inUse.has(pathname)),
 			(pathnames) => this.images.remove(pathnames)
 		);
+		const expiredPathnames = await expireStep(() =>
+			this.images.deleteExpired(expiringImageCutoff(now))
+		);
 
 		const counts: ImageSweepCounts = {
 			restoredCount: restoredPathnames.length,
 			deletedCount: deletedPathnames.length,
 			removedCount: removedPathnames.length,
+			expiredCount: expiredPathnames.length,
 		};
 		logger.info('Images swept', {
 			...counts,
 			restoredPathnames,
 			deletedPathnames,
 			removedPathnames,
+			expiredPathnames,
 		});
 		return counts;
-	}
-
-	// A system use case with no actor, for when a preview's pull request closes: deletes everything in
-	// its folders for good. Refused anywhere else, since other environments' folders outlive any one
-	// deployment.
-	async deletePreviewImages(): Promise<PreviewImageCounts> {
-		if (!this.folders.isPreview()) {
-			throw new Error("Only a preview's images are ever deleted together");
-		}
-
-		const counts: PreviewImageCounts = { deletedCount: await this.images.deleteAll() };
-		logger.info('Preview images deleted', counts);
-		return counts;
-	}
-
-	private async isTaken(pathname: string): Promise<boolean> {
-		const [stored, removed] = await Promise.all([
-			this.images.has(pathname),
-			this.images.hasRemoved(pathname),
-		]);
-		return stored || removed;
 	}
 
 	// Only image types every browser displays are served.

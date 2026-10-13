@@ -1,6 +1,6 @@
 import 'server-only';
 import { passkey } from '@better-auth/passkey';
-import { betterAuth } from 'better-auth';
+import { betterAuth, type DBAdapter, type Where } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { APIError } from 'better-auth/api';
 import { nextCookies } from 'better-auth/next-js';
@@ -102,6 +102,16 @@ function serveEnabledPaths(
 	};
 }
 
+// Better Auth refuses an expired session but keeps its row, IP address and user agent included, and
+// clears expired verifications, such as unused passkey challenges, only when it checks a code.
+async function deleteExpiredRows(adapter: DBAdapter): Promise<void> {
+	const expired: Where[] = [{ field: 'expiresAt', operator: 'lt', value: new Date() }];
+	await Promise.all([
+		adapter.deleteMany({ model: 'session', where: expired }),
+		adapter.deleteMany({ model: 'verification', where: expired }),
+	]);
+}
+
 export function createAuth(options: AuthOptions) {
 	const { accounts: accountHooks } = options;
 
@@ -175,6 +185,25 @@ export function createAuth(options: AuthOptions) {
 						accountHooks.recordSignUp(
 							memberIdSchema.parse(user.id),
 							inviteIdSchema.parse(user.inviteId)
+						);
+					},
+				},
+			},
+			session: {
+				create: {
+					// Each sign-in prunes in the background, and a failed prune is logged rather than failing
+					// the sign-in. Only a session made outside a request has no context; no flow makes one.
+					after: async (_session, context) => {
+						if (context === null) {
+							return;
+						}
+
+						await context.context.runInBackgroundOrAwait(
+							deleteExpiredRows(context.context.adapter).catch((error: unknown) => {
+								logger.warn('Expired sessions and verifications could not be deleted', {
+									err: error,
+								});
+							})
 						);
 					},
 				},

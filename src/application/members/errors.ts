@@ -18,12 +18,12 @@ export class MemberRoleConflictError extends AppError {
 	}
 }
 
-// Without an admin, no one could review requests or make another admin.
-export class LastAdminError extends AppError {
-	readonly code = 'member.last-admin';
+// The owner keeps their account and their admin role, so the site always has an admin.
+export class OwnerProtectedError extends AppError {
+	readonly code = 'member.owner';
 
 	constructor() {
-		super('Last admin cannot be removed');
+		super('Owner cannot be removed or lose admin');
 	}
 }
 

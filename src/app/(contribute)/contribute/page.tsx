@@ -27,7 +27,8 @@ export const metadata: Metadata = {
 };
 
 // The import actions read a page or photos with an AI model, which can take a minute or more. A
-// Server Action runs as long as the page that renders its form allows.
+// Server Action runs as long as the page that renders its form allows, and this caps it below
+// Vercel's 300-second default. The import service's time limit and lease are set against it.
 export const maxDuration = 120;
 
 // The authoritative check: the service refuses a visitor who isn't signed in, and the proxy only

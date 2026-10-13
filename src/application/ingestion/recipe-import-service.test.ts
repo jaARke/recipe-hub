@@ -7,6 +7,7 @@ import {
 	ImportPageUnavailableError,
 	ImportPausedError,
 	ImportRateLimitedError,
+	ImportTimedOutError,
 	InvalidImportError,
 } from '@/application/ingestion/errors';
 import { RecipeImportService } from '@/application/ingestion/recipe-import-service';
@@ -35,6 +36,7 @@ import { sampleTomatoSalad } from '@/domain/recipe/samples/sample-recipes';
 
 const folders = new ImageFolders('development');
 const dayInMilliseconds = 24 * 60 * 60 * 1000;
+const minuteInMilliseconds = 60 * 1000;
 const missingId = '0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e';
 
 const url = 'https://recipes.example.com/fresh-lemonade?ref=newsletter';
@@ -490,6 +492,152 @@ describe('expired drafts', () => {
 		expect(expiredImport).not.toHaveProperty('sourceUrl');
 		expect(await imports.findById(recent)).toMatchObject({ sourceUrl: url });
 		expect(logged('Expired import drafts cleared')).toMatchObject({ importCount: 1 });
+	});
+});
+
+describe('interrupted imports', () => {
+	it('settles imports still running 10 minutes after they started as failed, before starting an import', async () => {
+		const { imports, serviceFor, startImport } = createImports();
+		const member = memberActor();
+		const interrupted = await startImport(member);
+		const othersInterrupted = await startImport(memberActor());
+		const running = await startImport(member);
+		const leaseEnded = new Date(Date.now() - 10 * minuteInMilliseconds - 1);
+		imports.backdate(interrupted, leaseEnded);
+		imports.backdate(othersInterrupted, leaseEnded);
+		imports.backdate(running, new Date(Date.now() - 9 * minuteInMilliseconds));
+
+		await serviceFor(member).importFromUrl(url);
+
+		for (const id of [interrupted, othersInterrupted]) {
+			expect(await imports.findById(id)).toMatchObject({
+				status: 'failed',
+				failure: 'import.interrupted',
+			});
+		}
+		expect(await imports.findById(running)).toMatchObject({ status: 'running' });
+		expect(logged('Interrupted imports settled as failed')).toEqual({
+			level: 'warn',
+			logger: 'imports',
+			message: 'Interrupted imports settled as failed',
+			importCount: 2,
+		});
+	});
+});
+
+describe('import deadline', () => {
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('fails a photo import whose scans never arrive after 110 seconds, before starting it', async () => {
+		const { images, storeScans, scanReader, serviceFor, lastImport } = createImports();
+		await storeScans([scanUpload]);
+		images.stallReads();
+		const reads = vi.spyOn(images, 'get');
+		const member = memberActor();
+
+		const failure = failureOf(serviceFor(member).importFromScans([scanUpload]));
+		const settled = vi.fn();
+		failure.then(settled);
+		await vi.advanceTimersByTimeAsync(110_000 - 1);
+		expect(settled).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1);
+
+		const error = await failure;
+		expect(error).toBeInstanceOf(ImportTimedOutError);
+		expect((error as ImportTimedOutError).code).toBe('import.timed-out');
+		expect(reads.mock.calls[0]?.[1]?.aborted).toBe(true);
+		expect(scanReader.readScanSets).toEqual([]);
+		await expect(lastImport()).rejects.toThrow('No import was started');
+		expect(logged('Import timed out before it started')).toEqual({
+			level: 'warn',
+			logger: 'imports',
+			message: 'Import timed out before it started',
+			memberId: member.memberId,
+			mode: 'photo',
+		});
+	});
+
+	it('records an import whose model call passes the deadline as timed out, a problem to watch', async () => {
+		const pageReader = new FixedPageRecipeExtractor(readLemonade);
+		pageReader.stall();
+		const reads = vi.spyOn(pageReader, 'extract');
+		const { serviceFor, lastImport } = createImports({ pageReader });
+		const member = memberActor();
+
+		const failure = failureOf(serviceFor(member).importFromUrl(url));
+		await vi.advanceTimersByTimeAsync(110_000);
+
+		expect(await failure).toBeInstanceOf(ImportTimedOutError);
+		expect(reads.mock.calls[0]?.[2]?.aborted).toBe(true);
+		const recipeImport = await lastImport();
+		expect(recipeImport).toMatchObject({ status: 'failed', failure: 'import.timed-out' });
+		expect(logged('Import failed')).toEqual({
+			level: 'warn',
+			logger: 'imports',
+			message: 'Import failed',
+			importId: recipeImport.id,
+			memberId: member.memberId,
+			mode: 'url',
+			failure: 'import.timed-out',
+		});
+	});
+
+	it('bounds a database call, which takes no signal, by the same deadline', async () => {
+		const { imports, serviceFor, lastImport } = createImports();
+		vi.spyOn(imports, 'recordSuccess').mockReturnValue(new Promise(() => {}));
+
+		const failure = failureOf(serviceFor(memberActor()).importFromUrl(url));
+		await vi.advanceTimersByTimeAsync(110_000);
+
+		expect(await failure).toBeInstanceOf(ImportTimedOutError);
+		expect(await lastImport()).toMatchObject({ status: 'failed', failure: 'import.timed-out' });
+	});
+
+	it('answers as timed out 5 seconds after the deadline when recording it stalls, leaving it to the lease', async () => {
+		const pageReader = new FixedPageRecipeExtractor(readLemonade);
+		pageReader.stall();
+		const { imports, serviceFor, lastImport } = createImports({ pageReader });
+		vi.spyOn(imports, 'recordFailure').mockReturnValue(new Promise(() => {}));
+		const member = memberActor();
+
+		const failure = failureOf(serviceFor(member).importFromUrl(url));
+		const settled = vi.fn();
+		failure.then(settled);
+		await vi.advanceTimersByTimeAsync(115_000 - 1);
+		expect(settled).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(await failure).toBeInstanceOf(ImportTimedOutError);
+		const recipeImport = await lastImport();
+		expect(recipeImport).toMatchObject({ status: 'running' });
+		expect(logged('Import failure not recorded in time, so its lease settles it later')).toEqual({
+			level: 'warn',
+			logger: 'imports',
+			message: 'Import failure not recorded in time, so its lease settles it later',
+			importId: recipeImport.id,
+			memberId: member.memberId,
+			mode: 'url',
+			failure: 'import.timed-out',
+		});
+	});
+
+	it('asks no model to read a page that arrives after the deadline', async () => {
+		const { pages, pageReader, serviceFor } = createImports();
+		vi.spyOn(pages, 'fetch').mockImplementation(
+			() => new Promise((resolve) => setTimeout(() => resolve(page), 120_000))
+		);
+
+		const failure = failureOf(serviceFor(memberActor()).importFromUrl(url));
+		await vi.advanceTimersByTimeAsync(120_000);
+
+		expect(await failure).toBeInstanceOf(ImportTimedOutError);
+		expect(pageReader.readPages).toEqual([]);
 	});
 });
 

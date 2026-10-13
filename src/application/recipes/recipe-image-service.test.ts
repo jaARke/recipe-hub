@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { SignInRequiredError } from '@/application/authorization';
 import type { Actor } from '@/application/ports/actor-provider';
+import type { TaskScheduler } from '@/application/ports/task-scheduler';
 import { InvalidImageUploadError } from '@/application/recipes/errors';
 import { ImageFolders } from '@/application/recipes/image-folders';
+import type { ImageSweepCounts } from '@/application/recipes/recipe-dtos';
 import { RecipeImageService } from '@/application/recipes/recipe-image-service';
 import { anonymousActor, memberActor } from '@/application/testing/actors';
 import { FixedActorProvider } from '@/application/testing/fixed-actor-provider';
+import { InMemoryImageMoveLock } from '@/application/testing/in-memory-image-move-lock';
 import { InMemoryImageStore } from '@/application/testing/in-memory-image-store';
 import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
@@ -18,17 +21,19 @@ const scan = 'scan/production/soup-card.jpg';
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 const upload = 'dish/development/3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b.jpg';
 const scanUpload = 'scan/development/0b6e2f4a-9c1d-4e8b-a7f3-5d2c1b0a9e8f.jpg';
-// As src/lib/env.ts sets up development, which also reads production's and the seed's images.
+// A deployment that, like a preview, also reads production's and the seed's images.
 const folders = new ImageFolders('development', ['production', 'seed']);
 const dayInMilliseconds = 24 * 60 * 60 * 1000;
 
 let consoleInfo: MockInstance<typeof console.info>;
 let consoleWarn: MockInstance<typeof console.warn>;
+let consoleError: MockInstance<typeof console.error>;
 
 beforeEach(() => {
 	// Keeps log lines out of the test output; the tests that check logging read them here.
 	consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => {});
 	consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+	consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -42,6 +47,15 @@ async function storeWithSoup() {
 	return images;
 }
 
+// Tasks are held until a test runs them, as after() holds them until the response is sent.
+function heldTasks() {
+	const tasks: (() => Promise<void>)[] = [];
+	const scheduleTask: TaskScheduler = (task) => {
+		tasks.push(task);
+	};
+	return { tasks, scheduleTask };
+}
+
 function serviceFor(images: InMemoryImageStore, actor: Actor) {
 	const actors = new FixedActorProvider(actor);
 	const recipes = new InMemoryRecipeRepository();
@@ -52,7 +66,9 @@ function serviceFor(images: InMemoryImageStore, actor: Actor) {
 			new InMemoryRecipeImportRepository(recipes),
 			images,
 			actors,
-			folders
+			folders,
+			new InMemoryImageMoveLock(),
+			heldTasks().scheduleTask
 		),
 	};
 }
@@ -65,7 +81,9 @@ function productionServiceFor(images: InMemoryImageStore, actor: Actor) {
 		new InMemoryRecipeImportRepository(recipes),
 		images,
 		new FixedActorProvider(actor),
-		new ImageFolders('production')
+		new ImageFolders('production'),
+		new InMemoryImageMoveLock(),
+		heldTasks().scheduleTask
 	);
 }
 
@@ -79,8 +97,8 @@ function daysAgo(days: number): Date {
 
 // Images stored two days ago: this environment's, which a recipe lists, a draft awaiting review names,
 // or nothing names, and the seed's and production's beside them. The sweep runs with no actor.
-async function createSweep(environment = 'development') {
-	const sweepFolders = new ImageFolders(environment);
+async function createSweep(environment = 'development', expiringPrefixes: string[] = []) {
+	const sweepFolders = new ImageFolders(environment, [], expiringPrefixes);
 	const recipes = new InMemoryRecipeRepository();
 	const imports = new InMemoryRecipeImportRepository(recipes);
 	const images = new InMemoryImageStore(sweepFolders);
@@ -110,14 +128,46 @@ async function createSweep(environment = 'development') {
 		draft: { content: { title: 'Soup card', images: [drafted] }, problems: [] },
 	});
 
+	const lock = new InMemoryImageMoveLock();
+	const { tasks, scheduleTask } = heldTasks();
 	const service = new RecipeImageService(
 		recipes,
 		imports,
 		images,
 		new FixedActorProvider(anonymousActor()),
-		sweepFolders
+		sweepFolders,
+		lock,
+		scheduleTask
 	);
-	return { images, service, listed: listed.pathname, drafted: drafted.pathname, unused, others };
+	return {
+		images,
+		recipes,
+		lock,
+		tasks,
+		service,
+		listed: listed.pathname,
+		drafted: drafted.pathname,
+		unused,
+		others,
+	};
+}
+
+// Saves a recipe naming the image, as a member's save would.
+async function attach(recipes: InMemoryRecipeRepository, image: RecipeImage) {
+	await recipes.create({
+		content: recipeContentSchema.parse({ ...sampleChickenSoup, images: [image] }),
+		provenance: { entryMode: 'manual' },
+		contributorId: memberActor().memberId,
+		slugBase: 'saved-soup',
+	});
+}
+
+// A sweep that ran, with every count it does not name at zero.
+function sweptCounts(counts: Partial<ImageSweepCounts>) {
+	return {
+		status: 'ran',
+		result: { restoredCount: 0, deletedCount: 0, removedCount: 0, expiredCount: 0, ...counts },
+	};
 }
 
 async function removedPathnames(images: InMemoryImageStore): Promise<string[]> {
@@ -327,11 +377,7 @@ describe('sweepImages', () => {
 		const fresh = 'dish/development/fresh.jpg';
 		await images.put(fresh, jpeg, 'image/jpeg');
 
-		expect(await service.sweepImages()).toEqual({
-			restoredCount: 0,
-			deletedCount: 0,
-			removedCount: 1,
-		});
+		expect(await service.sweepImages()).toEqual(sweptCounts({ removedCount: 1 }));
 		expect(images.removedPathnames).toEqual([unused]);
 		for (const pathname of [listed, drafted, fresh, ...others]) {
 			expect(await images.has(pathname)).toBe(true);
@@ -342,7 +388,7 @@ describe('sweepImages', () => {
 		const { images, service, listed, drafted } = await createSweep();
 		await images.remove([listed, drafted]);
 
-		expect(await service.sweepImages()).toMatchObject({ restoredCount: 2 });
+		expect(await service.sweepImages()).toMatchObject({ result: { restoredCount: 2 } });
 		expect(await images.has(listed)).toBe(true);
 		expect(await images.has(drafted)).toBe(true);
 		expect(await removedPathnames(images)).not.toContain(listed);
@@ -357,7 +403,7 @@ describe('sweepImages', () => {
 		images.backdateRemoval(unused, daysAgo(41));
 		images.backdateRemoval(recentlyRemoved, daysAgo(39));
 
-		expect(await service.sweepImages()).toMatchObject({ deletedCount: 1 });
+		expect(await service.sweepImages()).toMatchObject({ result: { deletedCount: 1 } });
 		expect(await removedPathnames(images)).toEqual([recentlyRemoved]);
 	});
 
@@ -366,11 +412,30 @@ describe('sweepImages', () => {
 		await images.remove([listed]);
 		images.backdateRemoval(listed, daysAgo(41));
 
-		expect(await service.sweepImages()).toMatchObject({ restoredCount: 1, deletedCount: 0 });
+		expect(await service.sweepImages()).toMatchObject({
+			result: { restoredCount: 1, deletedCount: 0 },
+		});
 		expect(await images.has(listed)).toBe(true);
 	});
 
-	it('logs what it restored, deleted, and removed in one line', async () => {
+	it('brings back an image one sweep removed while a save attached it, at the next sweep', async () => {
+		const { images, recipes, service, unused } = await createSweep();
+		// The save lands after the sweep found the upload unused and before it removes it.
+		const remove = images.remove.bind(images);
+		vi.spyOn(images, 'remove').mockImplementationOnce(async (pathnames) => {
+			await attach(recipes, { role: 'dish', pathname: unused });
+			await remove(pathnames);
+		});
+
+		expect(await service.sweepImages()).toEqual(sweptCounts({ removedCount: 1 }));
+		expect(await images.has(unused)).toBe(false);
+
+		expect(await service.sweepImages()).toEqual(sweptCounts({ restoredCount: 1 }));
+		expect(await images.has(unused)).toBe(true);
+		expect(await removedPathnames(images)).toEqual([]);
+	});
+
+	it('logs what it restored, deleted, removed, and expired in one line', async () => {
 		const { images, service, listed, unused } = await createSweep();
 		const longRemoved = 'scan/development/long-removed.jpg';
 		await images.put(longRemoved, jpeg, 'image/jpeg');
@@ -387,9 +452,11 @@ describe('sweepImages', () => {
 				restoredCount: 1,
 				deletedCount: 1,
 				removedCount: 1,
+				expiredCount: 0,
 				restoredPathnames: [listed],
 				deletedPathnames: [longRemoved],
 				removedPathnames: [unused],
+				expiredPathnames: [],
 			},
 		]);
 	});
@@ -399,11 +466,7 @@ describe('sweepImages', () => {
 		await images.remove([listed]);
 		images.failRemoves();
 
-		expect(await service.sweepImages()).toEqual({
-			restoredCount: 1,
-			deletedCount: 0,
-			removedCount: 0,
-		});
+		expect(await service.sweepImages()).toEqual(sweptCounts({ restoredCount: 1 }));
 		expect(await images.has(unused)).toBe(true);
 		expect(logLines(consoleWarn)).toEqual([
 			expect.objectContaining({
@@ -415,35 +478,139 @@ describe('sweepImages', () => {
 			}),
 		]);
 	});
-});
 
-describe('deletePreviewImages', () => {
-	it("deletes every image in a preview's folders for good, removed ones included", async () => {
-		const { images, service, listed, unused, others } = await createSweep(
-			'preview/feature-x-1a2b3c4d'
-		);
-		await images.remove([unused]);
+	it('skips a sweep started while another holds the lock, and logs that it skipped', async () => {
+		const { images, service, unused } = await createSweep();
 
-		expect(await service.deletePreviewImages()).toEqual({ deletedCount: 3 });
-		expect(await images.has(listed)).toBe(false);
-		expect(await removedPathnames(images)).toEqual([]);
-		for (const pathname of others) {
-			expect(await images.has(pathname)).toBe(true);
-		}
+		const [first, second] = await Promise.all([service.sweepImages(), service.sweepImages()]);
+
+		expect(first).toEqual(sweptCounts({ removedCount: 1 }));
+		expect(second).toEqual({ status: 'skipped' });
+		expect(images.removedPathnames).toEqual([unused]);
 		expect(logLines(consoleInfo)).toEqual([
-			{ level: 'info', logger: 'images', message: 'Preview images deleted', deletedCount: 3 },
+			{
+				level: 'info',
+				logger: 'images',
+				message: 'Image sweep skipped while another image move runs',
+			},
+			expect.objectContaining({ message: 'Images swept' }),
 		]);
 	});
 
-	it.each(['production', 'development'])(
-		'refuses %s, whose folders outlive any one deployment',
-		async (environment) => {
-			const { images, service, listed } = await createSweep(environment);
+	it('releases the lock when a sweep throws, so the next one runs', async () => {
+		const { images, lock, service, unused } = await createSweep();
+		vi.spyOn(images, 'listRemoved').mockRejectedValueOnce(new Error('Blob is unreachable'));
 
-			await expect(service.deletePreviewImages()).rejects.toThrow(
-				"Only a preview's images are ever deleted together"
-			);
-			expect(await images.has(listed)).toBe(true);
+		await expect(service.sweepImages()).rejects.toThrow('Blob is unreachable');
+		expect(lock.isHeld).toBe(false);
+		expect(await service.sweepImages()).toEqual(sweptCounts({ removedCount: 1 }));
+		expect(images.removedPathnames).toEqual([unused]);
+	});
+});
+
+describe('sweepImages expiring other environments', () => {
+	const previewImages = {
+		old: 'dish/preview/feature-x-1a2b3c4d/old.jpg',
+		oldScan: 'scan/preview/feature-y-5e6f7a8b/old-card.jpg',
+		oldRemoved: 'dish/preview/feature-x-1a2b3c4d/old-removed.jpg',
+		recent: 'dish/preview/feature-x-1a2b3c4d/recent.jpg',
+		recentRemoved: 'scan/preview/feature-x-1a2b3c4d/recent-removed.jpg',
+	};
+
+	// Previews' images in the one store: some stored or removed more than 30 days ago, others since.
+	// A preview removes its own, through its own view of the store.
+	async function storePreviewImages(images: InMemoryImageStore) {
+		for (const pathname of Object.values(previewImages)) {
+			await images.put(pathname, jpeg, 'image/jpeg');
 		}
-	);
+		await images
+			.viewAs(new ImageFolders('preview/feature-x-1a2b3c4d'))
+			.remove([previewImages.oldRemoved, previewImages.recentRemoved]);
+		images.backdateUpload(previewImages.old, daysAgo(31));
+		images.backdateUpload(previewImages.oldScan, daysAgo(31));
+		images.backdateRemoval(previewImages.oldRemoved, daysAgo(31));
+		images.backdateUpload(previewImages.recent, daysAgo(29));
+		images.backdateRemoval(previewImages.recentRemoved, daysAgo(29));
+	}
+
+	it("deletes production's expired preview images, removed ones included, and keeps the rest", async () => {
+		const { images, service, listed, drafted, unused, others } = await createSweep('production', [
+			'preview/',
+		]);
+		await storePreviewImages(images);
+
+		expect(await service.sweepImages()).toEqual(sweptCounts({ removedCount: 1, expiredCount: 3 }));
+		expect(await images.has(previewImages.old)).toBe(false);
+		expect(await images.has(previewImages.oldScan)).toBe(false);
+		expect(await images.hasRemoved(previewImages.oldRemoved)).toBe(false);
+		expect(await images.has(previewImages.recent)).toBe(true);
+		expect(await images.hasRemoved(previewImages.recentRemoved)).toBe(true);
+		for (const pathname of [listed, drafted, ...others]) {
+			expect(await images.has(pathname)).toBe(true);
+		}
+		expect(await images.hasRemoved(unused)).toBe(true);
+		expect(logLines(consoleInfo)).toEqual([
+			expect.objectContaining({
+				message: 'Images swept',
+				expiredCount: 3,
+				expiredPathnames: [previewImages.old, previewImages.oldScan, previewImages.oldRemoved],
+			}),
+		]);
+	});
+
+	it("never expires another environment's images where nothing expires", async () => {
+		const { images, service } = await createSweep('preview/feature-z-9c8d7e6f');
+		await storePreviewImages(images);
+
+		expect(await service.sweepImages()).toMatchObject({ result: { expiredCount: 0 } });
+		expect(await images.has(previewImages.old)).toBe(true);
+		expect(await images.hasRemoved(previewImages.oldRemoved)).toBe(true);
+	});
+
+	it('logs an expiry that fails and carries on, leaving it for the next sweep', async () => {
+		const { images, service } = await createSweep('production', ['preview/']);
+		await storePreviewImages(images);
+		vi.spyOn(images, 'deleteExpired').mockRejectedValueOnce(new Error('Blob is unreachable'));
+
+		expect(await service.sweepImages()).toEqual(sweptCounts({ removedCount: 1 }));
+		expect(logLines(consoleWarn)).toEqual([
+			expect.objectContaining({
+				message: 'Image sweep step failed',
+				step: 'expire',
+				err: expect.objectContaining({ message: 'Blob is unreachable' }),
+			}),
+		]);
+		expect(await service.sweepImages()).toMatchObject({ result: { expiredCount: 3 } });
+	});
+});
+
+describe('scheduleSweep', () => {
+	it('schedules one sweep, which runs only when the scheduler runs it', async () => {
+		const { images, service, tasks, unused } = await createSweep();
+
+		service.scheduleSweep();
+
+		expect(tasks).toHaveLength(1);
+		expect(await images.has(unused)).toBe(true);
+		await tasks[0]?.();
+		expect(await images.has(unused)).toBe(false);
+		expect(logLines(consoleInfo)).toEqual([expect.objectContaining({ message: 'Images swept' })]);
+	});
+
+	it('logs a sweep that fails rather than letting it escape the scheduled task', async () => {
+		const { images, service, tasks } = await createSweep();
+		vi.spyOn(images, 'listRemoved').mockRejectedValueOnce(new Error('Blob is unreachable'));
+
+		service.scheduleSweep();
+
+		await expect(tasks[0]?.()).resolves.toBeUndefined();
+		expect(logLines(consoleError)).toEqual([
+			expect.objectContaining({
+				level: 'error',
+				logger: 'images',
+				message: 'Image sweep failed',
+				err: expect.objectContaining({ message: 'Blob is unreachable' }),
+			}),
+		]);
+	});
 });

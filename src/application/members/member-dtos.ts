@@ -13,10 +13,12 @@ export type CurrentMemberDto = PublicMemberDto & {
 	role: MemberRole;
 };
 
-// For admins only: every member's email and role, and which member is the admin reading them.
+// For admins only: every member's email and role, which member is the admin reading them, and which
+// is the owner, who cannot be removed or lose admin.
 export type MemberDto = CurrentMemberDto & {
 	createdAt: Date;
 	isCurrentMember: boolean;
+	isOwner: boolean;
 };
 
 // Returned by writes, so callers can invalidate the member's cache tag.
@@ -32,6 +34,9 @@ export function toCurrentMemberDto(member: Member): CurrentMemberDto {
 	return { ...toPublicMemberDto(member), email: member.email, role: member.role };
 }
 
-export function toMemberDto(member: Member, isCurrentMember: boolean): MemberDto {
-	return { ...toCurrentMemberDto(member), createdAt: member.createdAt, isCurrentMember };
+export function toMemberDto(
+	member: Member,
+	standing: Pick<MemberDto, 'isCurrentMember' | 'isOwner'>
+): MemberDto {
+	return { ...toCurrentMemberDto(member), createdAt: member.createdAt, ...standing };
 }
