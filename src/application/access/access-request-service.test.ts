@@ -111,7 +111,7 @@ describe('submitRequest', () => {
 		expect(await requests.listPending()).toEqual([]);
 	});
 
-	it('emails every admin a notification that names who asked and links to the admin page', async () => {
+	it('emails every admin a notification that names who asked and links to the admin page, with no reply-to', async () => {
 		const { requests, members, emails, admin, serviceFor } = await accessWithAdmin();
 		const secondAdmin = await members.create({
 			email: 'grace@example.com',
@@ -123,20 +123,18 @@ describe('submitRequest', () => {
 		await serviceFor(anonymousActor()).submitRequest(adaFields);
 
 		const [request] = await requests.listPending();
-		const text =
-			'Ada Lovelace asked for access to Barb’s Table.\n\n' +
-			'Review the request on the admin page:\nhttps://recipes.example.com/admin';
+		const data = { requesterName: 'Ada Lovelace', reviewLink: 'https://recipes.example.com/admin' };
 		expect(emails.sentMessages).toEqual([
 			{
 				to: 'jake@example.com',
-				subject: 'New access request',
-				text,
+				kind: 'access-request',
+				data,
 				idempotencyKey: `access-request-notification/${request?.id}/${admin.id}`,
 			},
 			{
 				to: 'grace@example.com',
-				subject: 'New access request',
-				text,
+				kind: 'access-request',
+				data,
 				idempotencyKey: `access-request-notification/${request?.id}/${secondAdmin.id}`,
 			},
 		]);

@@ -19,7 +19,6 @@ import { daysInMilliseconds } from '@/lib/dates';
 import { settings } from '@/lib/settings';
 
 const appUrl = new URL('https://recipes.example.com');
-// Evening in New York, so the expiry date in the email shows the site's zone, not UTC.
 const issuedAt = new Date('2026-10-13T01:30:00Z');
 const expiresAt = new Date(
 	issuedAt.getTime() + daysInMilliseconds(settings.accounts.inviteLifetimeDays)
@@ -205,12 +204,8 @@ describe('issueInvite', () => {
 		expect(emails.sentMessages).toEqual([
 			{
 				to: 'ada@example.com',
-				subject: 'Jake invited you to Barb’s Table',
-				text:
-					'Hi Ada,\n\n' +
-					'Jake invited you to Barb’s Table, where you can add recipes to the shared collection.\n\n' +
-					`Open this link to create your account:\n${issued.link}\n\n` +
-					'The link works once and expires on October 19, 2026. To reach Jake, reply to this email.',
+				kind: 'invite',
+				data: { inviteeName: 'Ada', inviterName: 'Jake', link: issued.link, expiresAt },
 				replyTo: 'jake@example.com',
 				idempotencyKey: `invite/${issued.id}`,
 			},

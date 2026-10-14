@@ -97,11 +97,10 @@ async function requestCode(email: string): Promise<Response> {
 
 function codeSentTo(email: string): string {
 	const message = emails.sentMessages.findLast((sent) => sent.to === email);
-	const code = message?.text.match(/sign-in code is:\n\n(\d{6})/)?.[1];
-	if (code === undefined) {
+	if (message?.kind !== 'sign-in-code') {
 		throw new Error('No code was sent to the address');
 	}
-	return code;
+	return message.data.code;
 }
 
 async function signIn(email: string, fields: object = {}): Promise<Response> {

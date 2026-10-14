@@ -17,11 +17,9 @@ import {
 } from '@/domain/member/access-request';
 import type { Member } from '@/domain/member/member';
 import { getLogger } from '@/lib/logger';
-import { siteName } from '@/lib/site';
 
 const logger = getLogger('access');
 
-// Names who asked and nothing more; the request itself stays on the admin page.
 function accessRequestNotification(
 	request: AccessRequest,
 	admin: Member,
@@ -29,11 +27,8 @@ function accessRequestNotification(
 ): EmailMessage {
 	return {
 		to: admin.email,
-		subject: 'New access request',
-		text: [
-			`${request.name} asked for access to ${siteName}.`,
-			`Review the request on the admin page:\n${new URL('/admin', appUrl).href}`,
-		].join('\n\n'),
+		kind: 'access-request',
+		data: { requesterName: request.name, reviewLink: new URL('/admin', appUrl).href },
 		idempotencyKey: `access-request-notification/${request.id}/${admin.id}`,
 	};
 }

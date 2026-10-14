@@ -44,6 +44,7 @@ import { settings } from '@/lib/settings';
 const emails = new ResendEmailSender({
 	apiKey: env.RESEND_API_KEY,
 	domain: env.RESEND_EMAIL_DOMAIN,
+	siteUrl,
 });
 
 const imageFolders = new ImageFolders(
