@@ -1,10 +1,12 @@
 import { Suspense } from 'react';
 import { HeaderSearch, HeaderSearchForm } from '@/components/search/header-search';
-import { recipeSearchHintId } from '@/components/search/recipe-search';
 import { recipeSearchParamNames } from '@/components/search/search-params';
 
 // The site header's search form, which the search page's hidden fields join from outside it.
 const headerSearchFormId = 'header-search';
+
+// The search page's hint, which describes the header's field from outside it.
+const recipeSearchHintId = 'search-hint';
 
 // Until the URL is read, the empty field holds its place.
 function HeaderSearchBar({ formId }: { formId: string }) {
@@ -17,4 +19,4 @@ function HeaderSearchBar({ formId }: { formId: string }) {
 	);
 }
 
-export { HeaderSearchBar, headerSearchFormId };
+export { HeaderSearchBar, headerSearchFormId, recipeSearchHintId };

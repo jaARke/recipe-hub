@@ -3,6 +3,7 @@ import type { RecipeSearchPage } from '@/application/search/recipe-search-dtos';
 import { RecipePagination } from '@/components/recipe/recipe-pagination';
 import { recipeSearchPath } from '@/components/recipe/recipe-paths';
 import { RecipeSortForm, RecipeSortFormSkeleton } from '@/components/recipe/recipe-sort-form';
+import { recipeSearchHintId } from '@/components/search/header-search-bar';
 import { HiddenSearchFields } from '@/components/search/hidden-search-fields';
 import { RecipeSearchActiveFilters } from '@/components/search/recipe-search-active-filters';
 import { RecipeSearchEmptyState } from '@/components/search/recipe-search-empty-state';
@@ -38,9 +39,6 @@ const sortDescriptions: Record<RecipeSearchSort, string> = {
 	newest: 'newest first',
 	title: 'A to Z',
 };
-
-// The header's field on the search page is described by the hint.
-const recipeSearchHintId = 'search-hint';
 
 // Enough rows to fill the first screen while results load.
 const skeletonResultCount = 5;
@@ -203,10 +201,4 @@ function RecipeSearchSkeleton() {
 	);
 }
 
-export {
-	RecipeSearch,
-	RecipeSearchCloseMatches,
-	RecipeSearchHint,
-	recipeSearchHintId,
-	RecipeSearchSkeleton,
-};
+export { RecipeSearch, RecipeSearchCloseMatches, RecipeSearchHint, RecipeSearchSkeleton };
