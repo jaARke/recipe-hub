@@ -7,8 +7,8 @@ import { parseRecipeContent, type RecipeContentInput } from '@/domain/recipe/rec
 import { recipeImageRoleSchema } from '@/domain/recipe/recipe-image';
 import { readYieldAmount } from '@/domain/recipe/recipe-yield';
 
-// Maps what the recipe form sends to the recipe service's input. It defines Zod schemas, so only
-// Server Actions import it, never the form.
+// Maps what the recipe form sends to the recipe service's input, for the Server Actions that
+// receive it.
 
 const payloadSchema = z.object({
 	title: z.string(),
