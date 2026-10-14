@@ -270,6 +270,16 @@ describe('RecipeForm’s review notes', () => {
 	});
 });
 
+describe('RecipeForm’s times', () => {
+	it('names each time with its unit, as its problems name it', () => {
+		renderForm(lemonBars);
+
+		for (const time of ['Prep', 'Cook', 'Total']) {
+			expect(screen.getByRole('textbox', { name: `${time}, in minutes` })).toBeDefined();
+		}
+	});
+});
+
 describe('RecipeForm’s original recipe', () => {
 	it('shows the stored scans beside the form and in the viewer, numbered as the viewer numbers them', async () => {
 		const user = userEvent.setup();

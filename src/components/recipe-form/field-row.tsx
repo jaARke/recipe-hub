@@ -29,7 +29,8 @@ type RowField = {
 
 type RowTextFieldProps = Omit<React.ComponentProps<'input'>, 'id'> & {
 	field: RowField;
-	// Said after the label to assistive technology, such as ", in minutes" where the unit shows.
+	// Said after the label to assistive technology, such as ", in minutes" where the unit shows. The
+	// control's name carries it, since a visually hidden span in the label is named with a space before.
 	hiddenLabel?: string;
 	// Shown at the input's end, such as "min".
 	unit?: string;
@@ -42,6 +43,7 @@ function RowTextField({ field, hiddenLabel, unit, ...inputProps }: RowTextFieldP
 	const invalid = error !== undefined;
 	const controlProps = {
 		id,
+		'aria-label': hiddenLabel === undefined ? undefined : `${label}${hiddenLabel}`,
 		'aria-invalid': invalid ? ('true' as const) : undefined,
 		'aria-describedby': describedBy(
 			description !== undefined && ids.description,
@@ -53,10 +55,7 @@ function RowTextField({ field, hiddenLabel, unit, ...inputProps }: RowTextFieldP
 
 	return (
 		<Field data-invalid={invalid ? 'true' : undefined}>
-			<FieldLabel htmlFor={id}>
-				{label}
-				{hiddenLabel !== undefined && <span className="sr-only">{hiddenLabel}</span>}
-			</FieldLabel>
+			<FieldLabel htmlFor={id}>{label}</FieldLabel>
 			{unit === undefined ? (
 				<Input {...controlProps} />
 			) : (
