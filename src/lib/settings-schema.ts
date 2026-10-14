@@ -46,8 +46,8 @@ export const settingsSchema = z
 		}),
 		accounts: z.object({
 			inviteLifetimeDays: z.int().positive(),
-			// An hour at most, since an unread code can sit in an inbox others see.
-			signInCodeLifetimeMinutes: z.int().positive().max(60),
+			// Two hours at most, since an unread code can sit in an inbox others see.
+			signInCodeLifetimeMinutes: z.int().positive().max(120),
 			// Longer than a day, the age at which Better Auth renews a session; browsers keep a cookie
 			// for 400 days at most.
 			sessionLifetimeDays: z.int().min(2).max(400),

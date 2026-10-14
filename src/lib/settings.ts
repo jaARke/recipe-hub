@@ -40,9 +40,9 @@ export const settings: z.output<typeof settingsSchema> = {
 		// How long an invite link works: long enough for the invitee to get to it, short enough that a
 		// forgotten link stops working.
 		inviteLifetimeDays: 7,
-		// How long an emailed sign-in code works: time to open the email and type the code. Better Auth
-		// enforces it and the email states it.
-		signInCodeLifetimeMinutes: 10,
+		// How long an emailed sign-in code works: time for an unhurried reader to find the email, perhaps
+		// in spam, and type the code. Better Auth enforces it and the email states it.
+		signInCodeLifetimeMinutes: 30,
 		// How long a session lasts without a visit; each day's first visit renews it, so a member who
 		// cooks from the site now and then stays signed in.
 		sessionLifetimeDays: 180,

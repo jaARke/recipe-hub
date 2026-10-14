@@ -39,6 +39,12 @@ describe('settingsSchema', () => {
 		expect(refusedPaths({ ...settings, ai })).toEqual(['ai.extractionTimeoutMs']);
 	});
 
+	it('refuses a sign-in code that works for more than two hours', () => {
+		const accounts = { ...settings.accounts, signInCodeLifetimeMinutes: 121 };
+
+		expect(refusedPaths({ ...settings, accounts })).toEqual(['accounts.signInCodeLifetimeMinutes']);
+	});
+
 	it('refuses a session that ends before Better Auth renews it', () => {
 		const accounts = { ...settings.accounts, sessionLifetimeDays: 1 };
 
