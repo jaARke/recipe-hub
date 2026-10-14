@@ -1,5 +1,6 @@
 import { formatAmount } from '@/domain/recipe/amount-format';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
+import { preparationSeparator } from '@/domain/recipe/ingredient-parser';
 
 // An ingredient as the recipe page shows it, which the recipe form previews under each line.
 function IngredientLineText({ line }: { line: IngredientLine }) {
@@ -8,14 +9,14 @@ function IngredientLineText({ line }: { line: IngredientLine }) {
 		return line.text;
 	}
 
-	const amount = formatAmount(line.amount);
+	const amount = formatAmount(line.amount, line.unit);
 	return (
 		<>
 			<span className="font-semibold">
 				{line.unit === undefined ? amount : `${amount} ${line.unit}`}
 			</span>{' '}
 			{line.item}
-			{line.preparation !== undefined && `, ${line.preparation}`}
+			{line.preparation !== undefined && `${preparationSeparator(line)}${line.preparation}`}
 		</>
 	);
 }

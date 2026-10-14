@@ -1,6 +1,7 @@
 import { parseIngredient, type ParseIngredientOptions } from 'parse-ingredient';
 import type { Amount } from '@/domain/recipe/amount';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
+import { readingOptions, readUnit, sizes } from '@/domain/recipe/ingredient-units';
 
 type ItemParts = Pick<IngredientLine, 'item' | 'preparation'>;
 
@@ -12,14 +13,9 @@ type Measure = {
 };
 
 const libraryOptions: ParseIngredientOptions = {
-	// Sizes describe the item rather than measure it: "1 large egg".
-	ignoreUOMs: ['large', 'lg', 'lg.', 'medium', 'med', 'med.', 'md', 'md.', 'small', 'sm', 'sm.'],
-	// A count unit the library does not list.
-	additionalUOMs: { sheet: { short: 'sheet', plural: 'sheets', type: 'count' } },
+	...readingOptions,
 	// "of" is dropped only after a unit, so "2 of the eggs" keeps it.
 	allowLeadingOf: true,
-	// Exact values, so a third is not stored as 0.333.
-	round: false,
 };
 
 // The longest line the parser reads, since the library's quantity scan slows sharply on long text,
@@ -67,14 +63,25 @@ function readMeasure(line: string): Measure | undefined {
 	}
 
 	const [parsed] = parseIngredient([line], libraryOptions);
-	// The library also reads a quantity from the end of a line ("Juice of 1 lemon"), which is no amount.
-	if (parsed === undefined || parsed.quantity === null || !line.endsWith(parsed.description)) {
+	if (parsed === undefined || parsed.quantity === null) {
 		return undefined;
 	}
 
-	const descriptionStart = line.length - parsed.description.length;
+	let unit = parsed.unitOfMeasure ?? '';
+	let description = parsed.description;
+	// The library ends "fl oz." before its period, which belongs to the unit.
+	if (unit !== '' && /^\.(?:\s|$)/u.test(description)) {
+		unit = `${unit}.`;
+		description = description.slice(1).trimStart();
+	}
+
+	// The library also reads a quantity from the end of a line ("Juice of 1 lemon"), which is no amount.
+	if (!line.endsWith(description)) {
+		return undefined;
+	}
+
+	const descriptionStart = line.length - description.length;
 	const measureText = line.slice(0, descriptionStart).trimEnd();
-	const unit = parsed.unitOfMeasure ?? '';
 	if (!measureText.endsWith(unit)) {
 		return undefined;
 	}
@@ -95,14 +102,19 @@ function readMeasure(line: string): Measure | undefined {
 	}
 
 	if (unit === '') {
-		return { amount, description: parsed.description };
+		// The library reads no unit that ends the line, so "1/4 tsp" would name "tsp" as the item.
+		if (description !== '' && readUnit(description) !== undefined) {
+			return undefined;
+		}
+
+		return { amount, description };
 	}
 
-	const size = unitSize.exec(parsed.description)?.[0] ?? '';
+	const size = unitSize.exec(description)?.[0] ?? '';
 	return {
 		amount,
 		unit: size === '' ? unit : line.slice(unitStart, descriptionStart + size.length),
-		description: parsed.description
+		description: description
 			.slice(size.length)
 			.trimStart()
 			.replace(/^of\s+/iu, ''),
@@ -121,8 +133,9 @@ function withTrailingNote(item: string, preparation = ''): ItemParts {
 	return preparation === '' ? { item } : { item, preparation };
 }
 
-// The preparation follows the first comma outside parentheses: "1 cup (240 ml, warm) milk, divided".
-function splitPreparation(description: string): ItemParts {
+// Where the commas outside parentheses fall: "1 cup (240 ml, warm) milk, divided" has one.
+function topLevelCommas(description: string): number[] {
+	const commas: number[] = [];
 	let depth = 0;
 	for (let index = 0; index < description.length; index += 1) {
 		const character = description[index];
@@ -131,14 +144,37 @@ function splitPreparation(description: string): ItemParts {
 		} else if (character === ')') {
 			depth = Math.max(0, depth - 1);
 		} else if (character === ',' && depth === 0) {
-			return withTrailingNote(
-				description.slice(0, index).trim(),
-				description.slice(index + 1).trim()
-			);
+			commas.push(index);
 		}
 	}
 
-	return withTrailingNote(description.trim());
+	return commas;
+}
+
+// A lone word that describes an item rather than names one, by its shape: a size, a word such as
+// "boneless", or a compound such as "bone-in".
+function isDescribingWord(segment: string): boolean {
+	return /^(?:\p{L}+less|\p{L}+-\p{L}+)$/iu.test(segment) || sizes.includes(segment.toLowerCase());
+}
+
+// The preparation follows the first comma outside parentheses, unless that comma sits in a run of
+// describing words before the item: "boneless, skinless chicken breast, cut into strips".
+function splitPreparation(description: string): ItemParts {
+	const commas = topLevelCommas(description);
+	const segments = [...commas, description.length].map((end, index) =>
+		description.slice(index === 0 ? 0 : (commas[index - 1] ?? 0) + 1, end).trim()
+	);
+	const run = segments.findIndex((segment) => !isDescribingWord(segment));
+	const itemWords = segments[run]?.split(/\s+/u).length ?? 0;
+	const itemEnd = commas[run > 0 && itemWords >= 2 ? run : 0];
+	if (itemEnd === undefined) {
+		return withTrailingNote(description.trim());
+	}
+
+	return withTrailingNote(
+		description.slice(0, itemEnd).trim(),
+		description.slice(itemEnd + 1).trim()
+	);
 }
 
 // The line's structure, read only where it is unambiguous; anything else keeps the text as its item.
@@ -159,6 +195,17 @@ export function parseIngredientLine(text: string): IngredientLine {
 	}
 
 	return { text: line, ...withTrailingNote(line) };
+}
+
+// What the line writes between its item and preparation: the comma in "1 onion, diced", or the space
+// in "6 tablespoons sugar for the tops". A preparation the text does not end with takes a comma.
+export function preparationSeparator(line: IngredientLine): string {
+	if (line.preparation === undefined || !line.text.endsWith(line.preparation)) {
+		return ', ';
+	}
+
+	const before = line.text.slice(0, line.text.length - line.preparation.length);
+	return /[\s,]*$/u.exec(before)?.[0] || ', ';
 }
 
 // An amount on its own, such as a yield of "4 to 6".

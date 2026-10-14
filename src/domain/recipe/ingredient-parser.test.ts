@@ -4,6 +4,7 @@ import {
 	maxReadLineLength,
 	parseAmountText,
 	parseIngredientLine,
+	preparationSeparator,
 } from '@/domain/recipe/ingredient-parser';
 import { sampleRecipeContents } from '@/domain/recipe/samples/sample-recipes';
 
@@ -70,6 +71,79 @@ describe('parseIngredientLine', () => {
 
 	it.each<[string, ParsedParts]>([
 		[
+			'1½ tbls crushed anise Seed',
+			{ amount: { min: 1.5 }, unit: 'tbls', item: 'crushed anise Seed' },
+		],
+		['½ teas soda', { amount: { min: 0.5 }, unit: 'teas', item: 'soda' }],
+		['¼ tea sp. salt', { amount: { min: 0.25 }, unit: 'tea sp.', item: 'salt' }],
+		['6 tsps. chili powder', { amount: { min: 6 }, unit: 'tsps.', item: 'chili powder' }],
+		['1 cupful flour', { amount: { min: 1 }, unit: 'cupful', item: 'flour' }],
+		['3 sq. bitter chocolate', { amount: { min: 3 }, unit: 'sq.', item: 'bitter chocolate' }],
+		['1 pk green tomatoes', { amount: { min: 1 }, unit: 'pk', item: 'green tomatoes' }],
+		['2 level tablespoons salt', { amount: { min: 2 }, unit: 'level tablespoons', item: 'salt' }],
+		['1 tbs oil', { amount: { min: 1 }, unit: 'tbs', item: 'oil' }],
+		['1 Tbs. oil', { amount: { min: 1 }, unit: 'Tbs.', item: 'oil' }],
+		['2 tbsps butter', { amount: { min: 2 }, unit: 'tbsps', item: 'butter' }],
+		['1 T. butter', { amount: { min: 1 }, unit: 'T.', item: 'butter' }],
+		['1 t. salt', { amount: { min: 1 }, unit: 't.', item: 'salt' }],
+		['8 fl. oz. milk', { amount: { min: 8 }, unit: 'fl. oz.', item: 'milk' }],
+		['8 fl oz. milk', { amount: { min: 8 }, unit: 'fl oz.', item: 'milk' }],
+		['4 cl rum', { amount: { min: 4 }, unit: 'cl', item: 'rum' }],
+		['1 litre stock', { amount: { min: 1 }, unit: 'litre', item: 'stock' }],
+	])('reads the old or abbreviated unit in "%s"', (text, parts) => {
+		expect(parseIngredientLine(text)).toStrictEqual({ text, ...parts });
+	});
+
+	it.each<[string, ParsedParts]>([
+		['1 envelope gelatin', { amount: { min: 1 }, unit: 'envelope', item: 'gelatin' }],
+		['2 envelopes gelatin', { amount: { min: 2 }, unit: 'envelopes', item: 'gelatin' }],
+		['1 env. gelatin', { amount: { min: 1 }, unit: 'env.', item: 'gelatin' }],
+		['1 packet yeast', { amount: { min: 1 }, unit: 'packet', item: 'yeast' }],
+		['2 packets yeast', { amount: { min: 2 }, unit: 'packets', item: 'yeast' }],
+		['1 pkt. yeast', { amount: { min: 1 }, unit: 'pkt.', item: 'yeast' }],
+		['1 package cream cheese', { amount: { min: 1 }, unit: 'package', item: 'cream cheese' }],
+		['2 packages cream cheese', { amount: { min: 2 }, unit: 'packages', item: 'cream cheese' }],
+		['1 pkg. cream cheese', { amount: { min: 1 }, unit: 'pkg.', item: 'cream cheese' }],
+		['1 jar salsa', { amount: { min: 1 }, unit: 'jar', item: 'salsa' }],
+		['2 jars salsa', { amount: { min: 2 }, unit: 'jars', item: 'salsa' }],
+		['1 can tomatoes', { amount: { min: 1 }, unit: 'can', item: 'tomatoes' }],
+		['2 cans tomatoes', { amount: { min: 2 }, unit: 'cans', item: 'tomatoes' }],
+		['1 stick butter', { amount: { min: 1 }, unit: 'stick', item: 'butter' }],
+		['2 sticks butter', { amount: { min: 2 }, unit: 'sticks', item: 'butter' }],
+		['1 slice bread', { amount: { min: 1 }, unit: 'slice', item: 'bread' }],
+		['4 slices bacon', { amount: { min: 4 }, unit: 'slices', item: 'bacon' }],
+		['1 strip lemon peel', { amount: { min: 1 }, unit: 'strip', item: 'lemon peel' }],
+		['2 strips bacon', { amount: { min: 2 }, unit: 'strips', item: 'bacon' }],
+		['1 stalk celery', { amount: { min: 1 }, unit: 'stalk', item: 'celery' }],
+		['2 stalks celery', { amount: { min: 2 }, unit: 'stalks', item: 'celery' }],
+		['1 rib celery', { amount: { min: 1 }, unit: 'rib', item: 'celery' }],
+		['2 ribs celery', { amount: { min: 2 }, unit: 'ribs', item: 'celery' }],
+		['1 loaf bread', { amount: { min: 1 }, unit: 'loaf', item: 'bread' }],
+		['2 loaves bread', { amount: { min: 2 }, unit: 'loaves', item: 'bread' }],
+		['1 handful spinach', { amount: { min: 1 }, unit: 'handful', item: 'spinach' }],
+		['2 handfuls spinach', { amount: { min: 2 }, unit: 'handfuls', item: 'spinach' }],
+		['1 knob butter', { amount: { min: 1 }, unit: 'knob', item: 'butter' }],
+		['2 knobs ginger', { amount: { min: 2 }, unit: 'knobs', item: 'ginger' }],
+		['1 clove garlic', { amount: { min: 1 }, unit: 'clove', item: 'garlic' }],
+		['2 cloves garlic', { amount: { min: 2 }, unit: 'cloves', item: 'garlic' }],
+		['1 head lettuce', { amount: { min: 1 }, unit: 'head', item: 'lettuce' }],
+		['2 heads lettuce', { amount: { min: 2 }, unit: 'heads', item: 'lettuce' }],
+		['1 bunch cilantro', { amount: { min: 1 }, unit: 'bunch', item: 'cilantro' }],
+		['2 bunches cilantro', { amount: { min: 2 }, unit: 'bunches', item: 'cilantro' }],
+		['1 sprig rosemary', { amount: { min: 1 }, unit: 'sprig', item: 'rosemary' }],
+		['3 sprigs thyme', { amount: { min: 3 }, unit: 'sprigs', item: 'thyme' }],
+		['1 dash bitters', { amount: { min: 1 }, unit: 'dash', item: 'bitters' }],
+		['2 dashes bitters', { amount: { min: 2 }, unit: 'dashes', item: 'bitters' }],
+		['1 pinch salt', { amount: { min: 1 }, unit: 'pinch', item: 'salt' }],
+		['2 pinches salt', { amount: { min: 2 }, unit: 'pinches', item: 'salt' }],
+		['1 drop vanilla', { amount: { min: 1 }, unit: 'drop', item: 'vanilla' }],
+		['3 drops vanilla', { amount: { min: 3 }, unit: 'drops', item: 'vanilla' }],
+	])('reads the container or count unit in "%s"', (text, parts) => {
+		expect(parseIngredientLine(text)).toStrictEqual({ text, ...parts });
+	});
+
+	it.each<[string, ParsedParts]>([
+		[
 			'1 can (14 ounces) coconut milk',
 			{ amount: { min: 1 }, unit: 'can (14 ounces)', item: 'coconut milk' },
 		],
@@ -93,6 +167,49 @@ describe('parseIngredientLine', () => {
 		['1 cup of sugar', { amount: { min: 1 }, unit: 'cup', item: 'sugar' }],
 		['2 of the eggs', { amount: { min: 2 }, item: 'of the eggs' }],
 	])('splits the item and preparation in "%s"', (text, parts) => {
+		expect(parseIngredientLine(text)).toStrictEqual({ text, ...parts });
+	});
+
+	it.each<[string, ParsedParts]>([
+		[
+			'12 oz boneless, skinless chicken breast, cut into thin strips',
+			{
+				amount: { min: 12 },
+				unit: 'oz',
+				item: 'boneless, skinless chicken breast',
+				preparation: 'cut into thin strips',
+			},
+		],
+		[
+			'1 boneless, skinless chicken breast',
+			{ amount: { min: 1 }, item: 'boneless, skinless chicken breast' },
+		],
+		[
+			'4 bone-in, skin-on chicken thighs',
+			{ amount: { min: 4 }, item: 'bone-in, skin-on chicken thighs' },
+		],
+		[
+			'2 large, ripe avocados, diced',
+			{ amount: { min: 2 }, item: 'large, ripe avocados', preparation: 'diced' },
+		],
+	])('keeps the comma in the run of describing words in "%s" in the item', (text, parts) => {
+		expect(parseIngredientLine(text)).toStrictEqual({ text, ...parts });
+	});
+
+	it.each<[string, ParsedParts]>([
+		[
+			'1 cup half-and-half, warmed',
+			{ amount: { min: 1 }, unit: 'cup', item: 'half-and-half', preparation: 'warmed' },
+		],
+		[
+			'2 cups all-purpose, sifted',
+			{ amount: { min: 2 }, unit: 'cups', item: 'all-purpose', preparation: 'sifted' },
+		],
+		[
+			'1 cup raisins, chopped dates or figs',
+			{ amount: { min: 1 }, unit: 'cup', item: 'raisins', preparation: 'chopped dates or figs' },
+		],
+	])('splits at the comma after a word that names the item in "%s"', (text, parts) => {
 		expect(parseIngredientLine(text)).toStrictEqual({ text, ...parts });
 	});
 
@@ -152,6 +269,35 @@ describe('parseIngredientLine', () => {
 			text: '1 cup, sifted',
 			item: '1 cup, sifted',
 		});
+	});
+
+	it.each(['1/4 tsp', '2 cups', '1 fl oz', '3 tbsp.'])(
+		'keeps "%s", a unit with no item, as written',
+		(text) => {
+			expect(parseIngredientLine(text)).toStrictEqual({ text, item: text });
+		}
+	);
+});
+
+describe('preparationSeparator', () => {
+	it.each([
+		['6 tablespoons sugar for the tops', ' '],
+		['1 onion, diced', ', '],
+		['1 cup walnuts optional, chopped', ' '],
+		['2 cups flour, plus more for dusting', ', '],
+	])('reads what "%s" writes before its preparation', (text, separator) => {
+		expect(preparationSeparator(parseIngredientLine(text))).toBe(separator);
+	});
+
+	it('writes a comma before a preparation the text does not end with', () => {
+		expect(
+			preparationSeparator({
+				text: '1 onion, diced',
+				amount: { min: 1 },
+				item: 'onion',
+				preparation: 'chopped',
+			})
+		).toBe(', ');
 	});
 });
 

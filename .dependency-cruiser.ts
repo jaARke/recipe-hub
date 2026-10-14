@@ -24,7 +24,8 @@ const config: IConfiguration = {
 		},
 		{
 			name: 'domain-is-pure',
-			comment: 'Domain imports only domain, pure src/lib helpers, zod, and parse-ingredient.',
+			comment:
+				'Domain imports only domain, pure src/lib helpers, zod, parse-ingredient, and pluralize.',
 			severity: 'error',
 			from: { path: '^src/domain/', pathNot: TESTS },
 			to: {
@@ -33,6 +34,7 @@ const config: IConfiguration = {
 					PURE_LIB,
 					`${NODE_MODULES}zod/`,
 					`${NODE_MODULES}parse-ingredient/`,
+					`${NODE_MODULES}pluralize/`,
 					`${NODE_MODULES}vitest/`,
 				],
 			},
