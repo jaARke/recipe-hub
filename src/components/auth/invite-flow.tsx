@@ -75,6 +75,12 @@ function takeInviteToken(): string | null {
 	return token === '' ? null : token;
 }
 
+// This page with the token back in its fragment, so loading it again shows the invite.
+function invitePageHref(token: string | null | undefined): string {
+	const page = `${window.location.pathname}${window.location.search}`;
+	return token === null || token === undefined ? page : `${page}#${token}`;
+}
+
 // Accepting an invite: confirm an email address with a code, which creates the account and signs
 // the invitee in, then offer a passkey. An address that already has an account signs in to it.
 function InviteFlow({
@@ -196,7 +202,7 @@ function InviteFlow({
 				<InviteSignedIn
 					displayName={step.displayName}
 					headingLevel={headingLevel}
-					signOutButton={<SignOutButton onSignedOut={loadPreview} />}
+					signOutButton={<SignOutButton destination={() => invitePageHref(token.current)} />}
 				/>
 			);
 		case 'welcome':

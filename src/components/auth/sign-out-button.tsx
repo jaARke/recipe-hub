@@ -5,12 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 
 type SignOutButtonProps = {
-	// Where to go once signed out; without one, the current page renders again signed out.
-	destination?: string;
-	onSignedOut?: () => void;
+	// The page to load once signed out, or a function that names it on the click, for a page that
+	// learns it after rendering.
+	destination: string | (() => string);
 };
 
-function SignOutButton({ destination, onSignedOut }: SignOutButtonProps) {
+function SignOutButton({ destination }: SignOutButtonProps) {
 	const { signOut, pending } = useSignOut();
 
 	return (
@@ -19,7 +19,9 @@ function SignOutButton({ destination, onSignedOut }: SignOutButtonProps) {
 			variant="outline"
 			disabled={pending}
 			focusableWhenDisabled
-			onClick={() => signOut({ destination, onSignedOut })}
+			onClick={() =>
+				signOut({ destination: typeof destination === 'string' ? destination : destination() })
+			}
 		>
 			{pending && <Spinner data-icon="inline-start" />}
 			{pending ? 'Signing out' : 'Sign out'}

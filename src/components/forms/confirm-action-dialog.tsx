@@ -27,8 +27,8 @@ type ConfirmActionDialogProps = {
 	cancelLabel: string;
 	confirmLabel: string;
 	pendingLabel: string;
-	// Said in a toast, because the dialog disappears with the item it changes or removes, or the page
-	// it leaves.
+	// Said in a toast, because the dialog closes once the action succeeds, often with the item it
+	// changes or removes, or the page it leaves.
 	successMessage: string;
 	failureMessage: string;
 	action: FormAction;
@@ -40,36 +40,72 @@ type ConfirmActionDialogProps = {
 	children: React.ReactNode;
 };
 
-// Asks before a destructive or consequential action, and shows a refused one's reason in place.
-function ConfirmActionDialog({
-	trigger,
+type ConfirmActionFormProps = Omit<
+	ConfirmActionDialogProps,
+	'trigger' | 'successMessage' | 'onSuccess'
+>;
+
+// Rendered inside the popup, so closing the dialog clears a refusal's reason.
+function ConfirmActionForm({
 	title,
 	description,
 	cancelLabel,
 	confirmLabel,
 	pendingLabel,
-	successMessage,
 	failureMessage,
+	action,
+	variant,
+	children,
+}: ConfirmActionFormProps) {
+	const [state, formAction, pending] = useFormAction(action, failureMessage);
+
+	return (
+		<form action={formAction} className="grid gap-6">
+			{children}
+			<AlertDialogHeader>
+				<AlertDialogTitle>{title}</AlertDialogTitle>
+				<AlertDialogDescription>{description}</AlertDialogDescription>
+			</AlertDialogHeader>
+			<FormErrorAlert message={state.status === 'error' ? state.message : undefined} />
+			<AlertDialogFooter>
+				<AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
+				<AlertDialogAction type="submit" variant={variant} disabled={pending} focusableWhenDisabled>
+					{pending && <Spinner data-icon="inline-start" />}
+					{pending ? pendingLabel : confirmLabel}
+				</AlertDialogAction>
+			</AlertDialogFooter>
+		</form>
+	);
+}
+
+// Asks before a destructive or consequential action, shows a refused one's reason in place, and
+// closes once it succeeds.
+function ConfirmActionDialog({
+	trigger,
+	successMessage,
 	action,
 	onSuccess,
 	variant,
-	children,
+	...formProps
 }: ConfirmActionDialogProps) {
-	const [state, formAction, pending] = useFormAction(async (previous, formData) => {
-		const next = await action(previous, formData);
-		if (next.status === 'success') {
-			toast.add({ type: 'success', title: successMessage });
-			onSuccess?.();
-		}
-		return next;
-	}, failureMessage);
+	const [open, setOpen] = React.useState(false);
 	const triggerRef = React.useRef<HTMLButtonElement>(null);
 	// Focus returns to the trigger. When the action removed it with its item, Base UI would fall back
 	// to an element focused earlier, so focus is left for the page to place.
 	const returnFocusToTrigger = () => triggerRef.current?.isConnected === true;
 
+	const confirm: FormAction = async (previous, formData) => {
+		const next = await action(previous, formData);
+		if (next.status === 'success') {
+			toast.add({ type: 'success', title: successMessage });
+			setOpen(false);
+			onSuccess?.();
+		}
+		return next;
+	};
+
 	return (
-		<AlertDialog>
+		<AlertDialog open={open} onOpenChange={setOpen}>
 			<AlertDialogTrigger
 				ref={triggerRef}
 				render={<Button variant={variant === 'destructive' ? 'destructive' : 'outline'} />}
@@ -77,26 +113,7 @@ function ConfirmActionDialog({
 				{trigger}
 			</AlertDialogTrigger>
 			<AlertDialogContent finalFocus={returnFocusToTrigger}>
-				<form action={formAction} className="grid gap-6">
-					{children}
-					<AlertDialogHeader>
-						<AlertDialogTitle>{title}</AlertDialogTitle>
-						<AlertDialogDescription>{description}</AlertDialogDescription>
-					</AlertDialogHeader>
-					<FormErrorAlert message={state.status === 'error' ? state.message : undefined} />
-					<AlertDialogFooter>
-						<AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
-						<AlertDialogAction
-							type="submit"
-							variant={variant}
-							disabled={pending}
-							focusableWhenDisabled
-						>
-							{pending && <Spinner data-icon="inline-start" />}
-							{pending ? pendingLabel : confirmLabel}
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</form>
+				<ConfirmActionForm {...formProps} action={confirm} variant={variant} />
 			</AlertDialogContent>
 		</AlertDialog>
 	);

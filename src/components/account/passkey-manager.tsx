@@ -19,6 +19,7 @@ import { formText } from '@/components/forms/form-data';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
 import { FormStatusMessage } from '@/components/forms/form-status-message';
+import { useTransientState } from '@/components/forms/use-transient-state';
 import { PageSection } from '@/components/layout/page-section';
 import { TextLink } from '@/components/layout/text-link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -51,7 +52,7 @@ function StaleSessionAlert() {
 // through the auth endpoint.
 function PasskeyManager() {
 	const { data: passkeys, error: listError, isPending, refetch } = authClient.useListPasskeys();
-	const [outcome, setOutcome] = React.useState<PasskeyOutcome>();
+	const [outcome, setOutcome] = useTransientState<PasskeyOutcome>();
 	const [adding, startAdding] = React.useTransition();
 
 	// Started straight from the click, since Safari only opens the passkey dialog for a user gesture.

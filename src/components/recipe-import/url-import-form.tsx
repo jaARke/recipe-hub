@@ -20,13 +20,13 @@ type UrlImportFormProps = {
 function UrlImportForm({ action }: UrlImportFormProps) {
 	const baseId = React.useId();
 	const formRef = React.useRef<HTMLFormElement>(null);
-	const [state, formAction, pending] = useFormAction(action, failureMessage);
+	const [state, formAction, pending, actionResult] = useFormAction(action, failureMessage);
 	const failure = state.status === 'error' ? state : undefined;
 	const ids = {
 		formError: `${baseId}-form-error`,
 		url: `${baseId}-url`,
 	};
-	useFocusOnFailure(state, formRef, ids.formError);
+	useFocusOnFailure(actionResult, formRef, ids.formError);
 
 	return (
 		<form ref={formRef} action={formAction} noValidate className="flex flex-col gap-8">

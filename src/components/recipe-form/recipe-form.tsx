@@ -230,10 +230,14 @@ function RecipeForm({
 		}
 		return result;
 	};
-	const [state, formAction, pending] = useFormAction(saveRecipe, failureMessage);
+	const [state, formAction, pending, actionResult] = useFormAction(saveRecipe, failureMessage);
 	// About the whole form, such as an edit conflict; the summary lists a save's problems.
 	const formMessage = state.status === 'error' ? state.message : undefined;
-	useFocusOnFailure(state, formRef, formMessage === undefined ? ids.problemSummary : ids.formError);
+	useFocusOnFailure(
+		actionResult,
+		formRef,
+		formMessage === undefined ? ids.problemSummary : ids.formError
+	);
 
 	// The summary lists a save's errors, each linking to where it shows, and takes focus.
 	const problems = recipeFormProblems(values).map(summarizedProblem);

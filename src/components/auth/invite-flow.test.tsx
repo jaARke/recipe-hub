@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CompletedInviteDto } from '@/application/access/access-dtos';
 import { signInWithCode } from '@/components/auth/email-codes';
 import { InviteFlow } from '@/components/auth/invite-flow';
+import { useSignOut } from '@/components/auth/use-sign-out';
 import type { FormState } from '@/components/forms/form-state';
 
 vi.mock('next/navigation', async (importOriginal) => ({
@@ -17,14 +18,18 @@ vi.mock('@/components/auth/email-codes', () => ({
 	signInWithCode: vi.fn(async () => ({ status: 'success' })),
 }));
 
+vi.mock('@/components/auth/use-sign-out', () => ({
+	useSignOut: vi.fn(() => ({ signOut: vi.fn(), pending: false })),
+}));
+
 const token = 'invite-token';
 
 type Complete = (token: string) => Promise<FormState<CompletedInviteDto>>;
 
-function renderFlow(complete: Complete) {
+function renderFlow(complete: Complete, signedInAs: string | null = null) {
 	render(
 		<InviteFlow
-			signedInAs={null}
+			signedInAs={signedInAs}
 			codeLifetimeMinutes={10}
 			headingLevel={2}
 			getPreview={async () => ({ displayName: 'Ada', expiresAt: new Date('2026-10-20') })}
@@ -93,5 +98,16 @@ describe('InviteFlow', () => {
 
 		await expectStepHeading('You’re all set');
 		expect(screen.getByText('You already have an account, and you’re signed in.')).toBeDefined();
+	});
+
+	it('signs a signed-in visitor out to this invite, with its token back in the fragment', async () => {
+		const signOut = vi.fn();
+		vi.mocked(useSignOut).mockReturnValue({ signOut, pending: false });
+		renderFlow(async () => ({ status: 'success', account: 'existing' }), 'Sam');
+
+		await userEvent.setup().click(await screen.findByRole('button', { name: 'Sign out' }));
+
+		expect(window.location.hash).toBe('');
+		expect(signOut).toHaveBeenCalledWith({ destination: `/invite#${token}` });
 	});
 });

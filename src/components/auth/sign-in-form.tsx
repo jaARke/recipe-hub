@@ -19,6 +19,7 @@ import { formText } from '@/components/forms/form-data';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
 import { useFocusOnChange } from '@/components/forms/use-focus-on-change';
+import { useTransientState } from '@/components/forms/use-transient-state';
 import { Button } from '@/components/ui/button';
 import { FieldSeparator } from '@/components/ui/field';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -112,7 +113,7 @@ function SignInForm({ next, codeLifetimeMinutes }: SignInFormProps) {
 	// Null while asking for the address; then the address the code went to.
 	const [email, setEmail] = React.useState<string | null>(null);
 	const [lastEmail, setLastEmail] = React.useState<string>();
-	const [passkeyError, setPasskeyError] = React.useState<string>();
+	const [passkeyError, setPasskeyError] = useTransientState<string>();
 	const [passkeyPending, startPasskey] = React.useTransition();
 	useFocusOnChange(
 		email === null ? 'email' : 'code',

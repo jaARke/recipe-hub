@@ -3,6 +3,15 @@ import nextVitals from 'eslint-config-next/core-web-vitals';
 import nextTs from 'eslint-config-next/typescript';
 import perfectionist from 'eslint-plugin-perfectionist';
 
+const logMessageRestriction = {
+	selector:
+		"CallExpression[callee.object.name='logger'][callee.property.name=/^(info|warn|error)$/][arguments.0.type!='Literal']",
+	message: 'Log a constant message and put values in the fields argument.',
+};
+
+const actionStateMessage =
+	'Call useFormAction from src/components/forms/use-form-action.ts, so what an attempt said lasts only while its page is shown.';
+
 const eslintConfig = defineConfig([
 	...nextVitals,
 	...nextTs,
@@ -41,6 +50,7 @@ const eslintConfig = defineConfig([
 					property: 'process',
 					message: 'Read configuration from src/lib/env.ts instead of process.env.',
 				},
+				{ object: 'React', property: 'useActionState', message: actionStateMessage },
 			],
 			'no-restricted-imports': [
 				'error',
@@ -62,15 +72,24 @@ const eslintConfig = defineConfig([
 	{
 		files: ['src/**/*.{ts,tsx}', 'scripts/**/*.ts'],
 		rules: {
+			// A namespace import of React is everywhere, and no-restricted-imports would refuse it along
+			// with the named import, so the named import is matched here.
 			'no-restricted-syntax': [
 				'error',
+				logMessageRestriction,
 				{
 					selector:
-						"CallExpression[callee.object.name='logger'][callee.property.name=/^(info|warn|error)$/][arguments.0.type!='Literal']",
-					message: 'Log a constant message and put values in the fields argument.',
+						"ImportDeclaration[source.value='react'] > ImportSpecifier[imported.name='useActionState']",
+					message: actionStateMessage,
 				},
 			],
 		},
+	},
+	{
+		// The one caller of useActionState. A later block replaces a rule's options rather than merging
+		// them, so this one restates the rest.
+		files: ['src/components/forms/use-form-action.ts'],
+		rules: { 'no-restricted-syntax': ['error', logMessageRestriction] },
 	},
 	{
 		// Entry points outside Next read their own variables: drizzle-kit's config and tsx scripts.

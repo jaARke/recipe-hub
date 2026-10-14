@@ -7,6 +7,7 @@ import type { FormAction, FormState } from '@/components/forms/form-state';
 import { FormStatusMessage } from '@/components/forms/form-status-message';
 import { TextField } from '@/components/forms/text-field';
 import { useFormAction } from '@/components/forms/use-form-action';
+import { useTransientState } from '@/components/forms/use-transient-state';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 
@@ -82,7 +83,7 @@ function ConfirmCodeForm({
 		action,
 		'We couldn’t check the code. Check your connection and try again.'
 	);
-	const [resendState, setResendState] = React.useState<FormState>({ status: 'idle' });
+	const [resendState, setResendState] = useTransientState<FormState>();
 	const [resending, startResend] = React.useTransition();
 	const failure = state.status === 'error' ? state : undefined;
 
@@ -133,11 +134,11 @@ function ConfirmCodeForm({
 					{pending ? pendingLabel : submitLabel}
 				</Button>
 			</div>
-			<FormErrorAlert message={resendState.status === 'error' ? resendState.message : undefined} />
+			<FormErrorAlert message={resendState?.status === 'error' ? resendState.message : undefined} />
 			<FormStatusMessage
 				kind="confirmation"
 				message={
-					resendState.status === 'success'
+					resendState?.status === 'success'
 						? 'We sent a new code. Use the newest one, since earlier codes no longer work.'
 						: undefined
 				}

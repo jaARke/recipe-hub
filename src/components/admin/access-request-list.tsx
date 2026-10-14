@@ -1,7 +1,6 @@
 'use client';
 
 import { InboxIcon } from 'lucide-react';
-import * as React from 'react';
 import type { AccessRequestDto } from '@/application/access/access-dtos';
 import { adminFieldNames, type IssuedInvite } from '@/components/admin/admin-forms';
 import { DisplayNameField } from '@/components/admin/display-name-field';
@@ -10,6 +9,7 @@ import { ConfirmActionDialog } from '@/components/forms/confirm-action-dialog';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
 import { useFormAction } from '@/components/forms/use-form-action';
+import { useTransientState } from '@/components/forms/use-transient-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -164,12 +164,12 @@ function AccessRequestList({
 	issueInvite,
 	declineRequest,
 }: AccessRequestListProps) {
-	const [issued, setIssued] = React.useState<IssuedInvite | null>(null);
+	const [issued, setIssued] = useTransientState<IssuedInvite>();
 
 	return (
 		<div>
 			<div role="status" aria-live="polite">
-				{issued !== null && <IssuedInviteNotice invite={issued} className="mb-6" />}
+				{issued !== undefined && <IssuedInviteNotice invite={issued} className="mb-6" />}
 			</div>
 			{requests.length === 0 ? (
 				<AccessRequestsEmptyState />

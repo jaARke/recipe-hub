@@ -11,6 +11,7 @@ type FormStatusMessageProps = {
 // A form's confirmation or progress. Always rendered, so screen readers announce the message when it
 // appears, and out of the layout while empty. The explicit aria-live, which the role implies, keeps it
 // announced while a Base UI popup hides everything else from screen readers.
+// useFormAction and useTransientState hold an attempt's message only while its page is shown.
 function FormStatusMessage({ kind, message }: FormStatusMessageProps) {
 	if (message === undefined) {
 		return <p role="status" aria-live="polite" className="sr-only" />;

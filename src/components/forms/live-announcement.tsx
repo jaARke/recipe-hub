@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useTransientState } from '@/components/forms/use-transient-state';
 
 // A message for screen readers, counted so a repeat of the one before is read again.
 export type LiveAnnouncement = {
@@ -8,16 +9,19 @@ export type LiveAnnouncement = {
 	count: number;
 };
 
-// The last thing a form said, and how it says the next.
+const noAnnouncement: LiveAnnouncement = { message: '', count: 0 };
+
+// The last thing a form said, and how it says the next. It lasts only while its page is shown, so a
+// page shown again has nothing to read.
 export function useLiveAnnouncement(): [LiveAnnouncement, (message: string) => void] {
-	const [announcement, setAnnouncement] = React.useState<LiveAnnouncement>({
-		message: '',
-		count: 0,
-	});
-	const announce = React.useCallback((message: string) => {
-		setAnnouncement(({ count }) => ({ message, count: count + 1 }));
-	}, []);
-	return [announcement, announce];
+	const [announcement, setAnnouncement] = useTransientState<LiveAnnouncement>();
+	const announce = React.useCallback(
+		(message: string) => {
+			setAnnouncement((last) => ({ message, count: (last?.count ?? 0) + 1 }));
+		},
+		[setAnnouncement]
+	);
+	return [announcement ?? noAnnouncement, announce];
 }
 
 // A polite live region out of the layout, which says what an edit did, such as a move. Each message

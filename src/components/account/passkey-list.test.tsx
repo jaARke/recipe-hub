@@ -43,4 +43,36 @@ describe('PasskeyList', () => {
 		expect(screen.getByRole('dialog')).toBeDefined();
 		expect(add).not.toHaveBeenCalled();
 	});
+
+	it('opens the rename dialog again without the refusal it closed on', async () => {
+		const refuse: FormAction = async () => ({
+			status: 'error',
+			message: 'Use 60 characters or fewer.',
+			fieldErrors: {},
+		});
+		const user = userEvent.setup();
+		render(<PasskeyList passkeys={passkeys} renamePasskey={refuse} removePasskey={succeed} />);
+
+		await user.click(screen.getByRole('button', { name: 'Rename Work laptop' }));
+		await user.click(await screen.findByRole('button', { name: 'Save name' }));
+		expect(await screen.findByText('Use 60 characters or fewer.')).toBeDefined();
+		await user.click(screen.getByRole('button', { name: 'Cancel' }));
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		await user.click(screen.getByRole('button', { name: 'Rename Work laptop' }));
+
+		expect(await screen.findByRole('dialog')).toBeDefined();
+		expect(screen.queryByText('Use 60 characters or fewer.')).toBeNull();
+	});
+
+	it('closes the removal dialog once the passkey is removed', async () => {
+		const add = vi.spyOn(toast, 'add');
+		const user = userEvent.setup();
+		render(<PasskeyList passkeys={passkeys} renamePasskey={succeed} removePasskey={succeed} />);
+
+		await user.click(screen.getByRole('button', { name: 'Remove Work laptop' }));
+		await user.click(await screen.findByRole('button', { name: 'Remove passkey' }));
+
+		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+		expect(add).toHaveBeenCalledWith({ type: 'success', title: 'Passkey removed' });
+	});
 });

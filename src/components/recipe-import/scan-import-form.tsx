@@ -49,9 +49,9 @@ function ScanImportForm({ action, uploadFolder, uploader = uploadPhoto }: ScanIm
 		}
 		return result;
 	};
-	const [state, formAction, pending] = useFormAction(readRecipe, failureMessage);
+	const [state, formAction, pending, actionResult] = useFormAction(readRecipe, failureMessage);
 	const formMessage = state.status === 'error' ? state.message : undefined;
-	useFocusOnFailure(state, formRef, ids.formError);
+	useFocusOnFailure(actionResult, formRef, ids.formError);
 
 	return (
 		<form ref={formRef} action={formAction} noValidate className="flex flex-col gap-8">
