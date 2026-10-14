@@ -5,6 +5,7 @@ import { FormActions } from '@/components/forms/form-actions';
 import type { FormAction } from '@/components/forms/form-state';
 import { PageSection } from '@/components/layout/page-section';
 import { recipeListPath } from '@/components/recipe/recipe-paths';
+import { FieldGroup } from '@/components/ui/field';
 import { Skeleton } from '@/components/ui/skeleton';
 
 type AccountDetailsProps = {
@@ -18,12 +19,17 @@ function AccountDetails({ displayName, email, renameAction }: AccountDetailsProp
 		<>
 			{/* Save ends its section, so it reads as the name's and not the address's. */}
 			<PageSection id="account-profile" title="Profile">
-				<dl className="flex flex-col gap-2">
-					<dt className="text-sm font-medium">Email</dt>
-					<dd>{email}</dd>
-					<dd className="text-sm text-muted-foreground">Sign-in codes are sent to this address.</dd>
-				</dl>
-				<DisplayNameForm displayName={displayName} action={renameAction} />
+				{/* The address reads as a field above the name's, a field's gap apart. */}
+				<FieldGroup>
+					<dl className="flex flex-col gap-2">
+						<dt className="text-sm font-medium">Email</dt>
+						<dd>{email}</dd>
+						<dd className="text-sm text-muted-foreground">
+							Sign-in codes are sent to this address.
+						</dd>
+					</dl>
+					<DisplayNameForm displayName={displayName} action={renameAction} />
+				</FieldGroup>
 			</PageSection>
 			<PasskeyManager />
 			<PageSection
@@ -46,11 +52,17 @@ function AccountDetailsSkeleton() {
 			<span className="sr-only">Loading your account</span>
 			<div className="flex flex-col gap-4 border-t pt-8">
 				<Skeleton className="h-8 w-32" />
-				<Skeleton className="h-5 w-12" />
-				<Skeleton className="h-5 w-48" />
-				<Skeleton className="h-5 w-28" />
-				<Skeleton className="h-9 w-full" />
-				<Skeleton className="h-9 w-28" />
+				<div className="flex flex-col gap-7">
+					<div className="flex flex-col gap-2">
+						<Skeleton className="h-5 w-12" />
+						<Skeleton className="h-5 w-48" />
+					</div>
+					<div className="flex flex-col gap-4">
+						<Skeleton className="h-5 w-28" />
+						<Skeleton className="h-9 w-full" />
+						<Skeleton className="h-9 w-28" />
+					</div>
+				</div>
 			</div>
 			<div className="flex flex-col gap-4 border-t pt-8">
 				<Skeleton className="h-8 w-32" />
