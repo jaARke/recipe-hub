@@ -166,6 +166,41 @@ describe('scaleIngredientLine', () => {
 	});
 
 	it.each<[string, number, ScaledParts]>([
+		['1 lb 2-inch beef cubes', 2, { amount: { min: 2 }, unit: 'lb', item: '2-inch beef cubes' }],
+	])('leaves the length that opens the item in "%s" as written', (text, factor, parts) => {
+		expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+			line: { text, ...parts },
+		});
+	});
+
+	it.each<[string, number, ScaledParts]>([
+		[
+			'1 cup (1-1/2 ounces) flour',
+			2,
+			{ amount: { min: 2 }, unit: 'cups (3 ounces)', item: 'flour' },
+		],
+		[
+			'1 cup plus 1-1/2 tablespoons flour',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'plus 3 tablespoons flour' },
+		],
+		[
+			'1 cup (2-3/4 ounces) cheese',
+			2,
+			{ amount: { min: 2 }, unit: 'cups (5½ ounces)', item: 'cheese' },
+		],
+		[
+			'1 cup (1-2 ounces) cheese',
+			2,
+			{ amount: { min: 2 }, unit: 'cups (2 to 4 ounces)', item: 'cheese' },
+		],
+	])('reads the hyphenated amount in "%s" as the parser does', (text, factor, parts) => {
+		expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+			line: { text, ...parts },
+		});
+	});
+
+	it.each<[string, number, ScaledParts]>([
 		[
 			'1 whole chicken, about 4 pounds',
 			2,

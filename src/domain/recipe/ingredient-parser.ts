@@ -56,6 +56,19 @@ function toAmount(min: number, max: number | null): Amount | undefined {
 	return Number.isFinite(max) && max > min ? { min, max } : undefined;
 }
 
+// The amount the library's two quantities stand for in the text it read them from, or nothing where
+// they make none, such as a range that falls. "1-1/2" is a mixed number, which the library reads as
+// the quantities 1 and 1/2.
+export function amountOfQuantities(
+	quantity: number,
+	quantity2: number | null,
+	amountText: string
+): Amount | undefined {
+	return quantity2 !== null && quantity2 < 1 && hyphenatedMixedNumber.test(amountText)
+		? toAmount(quantity + quantity2, null)
+		: toAmount(quantity, quantity2);
+}
+
 // The amount and unit that open the line, as the library reads them, or nothing it may misread.
 function readMeasure(line: string): Measure | undefined {
 	if (line.length > maxReadLineLength) {
@@ -88,11 +101,7 @@ function readMeasure(line: string): Measure | undefined {
 
 	const unitStart = measureText.length - unit.length;
 	const amountText = measureText.slice(0, unitStart).trimEnd();
-	const { quantity, quantity2 } = parsed;
-	const amount =
-		quantity2 !== null && quantity2 < 1 && hyphenatedMixedNumber.test(amountText)
-			? toAmount(quantity + quantity2, null)
-			: toAmount(quantity, quantity2);
+	const amount = amountOfQuantities(parsed.quantity, parsed.quantity2, amountText);
 	if (
 		amount === undefined ||
 		!amountPattern.test(amountText) ||

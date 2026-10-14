@@ -15,6 +15,7 @@ import pluralize from 'pluralize';
 import type { Amount } from '@/domain/recipe/amount';
 import { formatAmount } from '@/domain/recipe/amount-format';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
+import { amountOfQuantities } from '@/domain/recipe/ingredient-parser';
 import {
 	isMetricUnit,
 	readingOptions,
@@ -50,10 +51,15 @@ type WrittenUnit = {
 	note?: string;
 };
 
-// A measurement that opens the item: "2 cups plus 2 tablespoons flour" or "1 lb 2 oz beef".
-type OpeningMeasurement = {
-	prefix: string;
+// A measurement found in a line's text, with the amount it reads as.
+type ReadMeasurement = {
 	measurement: Measurement;
+	amount: Amount;
+};
+
+// A measurement that opens the item: "2 cups plus 2 tablespoons flour" or "1 lb 2 oz beef".
+type OpeningMeasurement = ReadMeasurement & {
+	prefix: string;
 	rest: string;
 };
 
@@ -282,11 +288,24 @@ function unitText(written: string, unit: string | undefined, measure: Measure): 
 		: unitNamed(measure.unit, measure.amount);
 }
 
-function measurementAmount(measurement: Measurement): Amount {
-	const { quantity, quantity2 } = measurement;
-	return quantity2 === null || quantity2 <= quantity
-		? { min: quantity }
-		: { min: quantity, max: quantity2 };
+// The quantity's text, without its unit or a hyphen joining them: "1-1/2" in "1-1/2-ounce".
+function quantityText(measurement: Measurement): string {
+	const { text, unitOfMeasure } = measurement;
+	return text.slice(0, text.length - unitOfMeasure.length).replace(/[\s\-\u2010-\u2015]+$/u, '');
+}
+
+// The measurements in the text that scale. A length stays true at any scale, and a quantity the
+// parser would not read as an amount stays as written.
+function scalableMeasurements(text: string): ReadMeasurement[] {
+	return extractMeasurements(text, readingOptions).flatMap((measurement) => {
+		if (measurement.unitType === 'length') {
+			return [];
+		}
+
+		const { quantity, quantity2 } = measurement;
+		const amount = amountOfQuantities(quantity, quantity2, quantityText(measurement));
+		return amount === undefined ? [] : [{ measurement, amount }];
+	});
 }
 
 function writeMeasurement(measurement: Measurement, measure: Measure): string {
@@ -294,20 +313,15 @@ function writeMeasurement(measurement: Measurement, measure: Measure): string {
 	return `${formatAmount(measure.amount, unit)} ${unit}`;
 }
 
-// The text with each measurement other than a length at the scale, and the text the scale left as
-// written: "(340 g)" doubles to "(680 g)".
+// The text with each measurement that scales at the scale, and the text the scale left as written:
+// "(340 g)" doubles to "(680 g)".
 function scaleMeasurements(text: string, factor: number): { scaled: string; unread: string } {
 	let scaled = '';
 	let unread = '';
 	let last = 0;
-	for (const measurement of extractMeasurements(text, readingOptions)) {
-		if (measurement.unitType === 'length') {
-			continue;
-		}
-
+	for (const { measurement, amount } of scalableMeasurements(text)) {
 		const before = text.slice(last, measurement.startIndex);
-		const exact = times(measurementAmount(measurement), factor);
-		const measure = measureAt(exact, measurement.unitOfMeasureID);
+		const measure = measureAt(times(amount, factor), measurement.unitOfMeasureID);
 		scaled += `${before}${writeMeasurement(measurement, measure)}`;
 		unread += `${before} `;
 		last = measurement.endIndex;
@@ -327,12 +341,12 @@ function openingMeasurement(item: string, afterMeasure: boolean): OpeningMeasure
 	}
 
 	const rest = item.slice(prefix.length);
-	const [measurement] = extractMeasurements(rest, readingOptions);
-	if (measurement === undefined || measurement.startIndex !== 0) {
+	const [first] = scalableMeasurements(rest);
+	if (first === undefined || first.measurement.startIndex !== 0) {
 		return undefined;
 	}
 
-	return { prefix, measurement, rest: rest.slice(measurement.endIndex) };
+	return { ...first, prefix, rest: rest.slice(first.measurement.endIndex) };
 }
 
 // Number words a line may spell out, as in "7 eggs plus one egg yolk".
@@ -418,8 +432,8 @@ export function scaleIngredientLine(line: IngredientLine, factor: number): Scale
 		}
 		unread.push(line.item);
 	} else {
-		const { prefix, measurement, rest } = opening;
-		const second = times(measurementAmount(measurement), factor);
+		const { prefix, measurement, amount, rest } = opening;
+		const second = times(amount, factor);
 		const secondInUnit =
 			unit === undefined ? undefined : convert(second, measurement.unitOfMeasureID, unit);
 		const together =
