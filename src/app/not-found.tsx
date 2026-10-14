@@ -22,7 +22,7 @@ export default function NotFound() {
 			<Empty>
 				<EmptyHeader>
 					<EmptyMedia>
-						<Mascot size="xl" />
+						<Mascot size="xl" loading="eager" />
 					</EmptyMedia>
 					{/* EmptyTitle renders a div, so the role makes it this page's heading. */}
 					<EmptyTitle role="heading" aria-level={1}>
