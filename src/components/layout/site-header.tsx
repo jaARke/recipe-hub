@@ -24,7 +24,7 @@ function SiteHeader({ member }: SiteHeaderProps) {
 				className="flex h-14 items-center gap-2 max-lg:has-data-search-open:*:not-data-search-open:hidden"
 			>
 				<Lockup />
-				<div className="hidden self-stretch md:flex">
+				<div className="hidden md:block">
 					<Suspense fallback={<MainNavLinks member={member} />}>
 						<MainNav member={member} />
 					</Suspense>
