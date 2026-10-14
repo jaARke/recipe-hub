@@ -164,8 +164,10 @@ describe('AdminDashboard', () => {
 		await user.click(screen.getByRole('button', { name: 'Decline the request from Casey' }));
 		await user.click(await screen.findByRole('button', { name: 'Decline request' }));
 
-		const heading = screen.getByRole('heading', { name: 'Access requests' });
-		await waitFor(() => expect(document.activeElement).toBe(heading));
+		// The heading is hidden from the accessibility tree until the confirmation closes.
+		await waitFor(() =>
+			expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Access requests' }))
+		);
 		expect(tabNames()).toEqual(['Requests, 1', 'Invites, 1', 'Members, 3']);
 	});
 
@@ -177,7 +179,8 @@ describe('AdminDashboard', () => {
 
 		const panel = screen.getByRole('tabpanel');
 		expect(await within(panel).findByText('Invite for Casey')).toBeDefined();
+		// The lists can commit a render after the notice.
+		await waitFor(() => expect(tabNames()).toEqual(['Requests, 1', 'Invites, 2', 'Members, 3']));
 		expect(screen.getByRole('tab', { selected: true }).textContent).toBe('Requests, 1');
-		expect(tabNames()).toEqual(['Requests, 1', 'Invites, 2', 'Members, 3']);
 	});
 });
