@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { WebPage } from '@/application/ports/web-page-fetcher';
+import { importDraftFromExtractedRecipe } from '@/domain/recipe/extracted-recipe';
 import type { RecipeContentInput } from '@/domain/recipe/recipe';
 import { sampleEclairs } from '@/domain/recipe/samples/baking-and-desserts';
 import {
@@ -478,6 +479,20 @@ describe('extract', () => {
 			yield: expected,
 		});
 	});
+
+	it.each([
+		['Serves 4.', { kind: 'servings', amount: { min: 4 } }],
+		['Makes 12 cookies.', { kind: 'makes', amount: { min: 12 }, unit: 'cookies' }],
+	])(
+		'stores the yield %j, read as written, without the period that ends it',
+		async (recipeYield, stored) => {
+			const extraction = await new JsonLdPageRecipeExtractor().extract(
+				pageWith([recipe({ recipeYield })])
+			);
+
+			expect(importDraftFromExtractedRecipe(extraction!.recipe, []).content.yield).toEqual(stored);
+		}
+	);
 
 	it.each([
 		['PT20M', 20],

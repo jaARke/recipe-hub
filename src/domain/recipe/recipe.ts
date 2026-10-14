@@ -11,7 +11,7 @@ import { recipeImageListSchemaFor } from '@/domain/recipe/recipe-image';
 import { recipeYieldSchemaFor } from '@/domain/recipe/recipe-yield';
 import { slugSchema } from '@/domain/recipe/slug';
 import { tagListSchemaFor } from '@/domain/recipe/tag';
-import { limitMessage } from '@/domain/text';
+import { headingTextSchema, limitMessage } from '@/domain/text';
 import { settings } from '@/lib/settings';
 
 export const recipeIdSchema = z.uuid().brand<'RecipeId'>();
@@ -52,7 +52,7 @@ function sectionListSchema<Section extends z.ZodType>(
 // Stored as one document: add fields as optional, and unknown fields drop.
 function recipeContentSchemaFor(limits: ContentLimits) {
 	return z.object({
-		title: limits.text(settings.recipeLimits.maxTitleLength),
+		title: limits.text(settings.recipeLimits.maxTitleLength, headingTextSchema),
 		description: limits.text(settings.recipeLimits.maxDescriptionLength).optional(),
 		// The story behind the recipe.
 		notes: limits.text(settings.recipeLimits.maxNotesLength).optional(),

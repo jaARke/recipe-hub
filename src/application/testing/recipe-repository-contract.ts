@@ -204,6 +204,34 @@ export function describeRecipeRepositoryContract(fixture: () => RecipeRepository
 		});
 	});
 
+	describe('findStoredById', () => {
+		it('finds the recipe as findById reads it, with its content as saved', async () => {
+			const { repository, contributorId } = fixture();
+			// Saved before its source was tidied, as only a recipe from an earlier release can be.
+			const content = {
+				...recipeContentSchema.parse(sampleLemonIceboxPie),
+				source: 'Grandma\u00a0Rose  Lee',
+			};
+			const created = await repository.create({
+				content,
+				provenance: { entryMode: 'manual' },
+				contributorId,
+				slugBase: slugify(content.title),
+			});
+
+			expect(await repository.findStoredById(created.id)).toEqual({
+				recipe: await repository.findById(created.id),
+				storedContent: expect.objectContaining(content),
+			});
+		});
+
+		it('returns null when no recipe has the id', async () => {
+			await create(sampleLemonIceboxPie);
+
+			expect(await fixture().repository.findStoredById(missingId)).toBeNull();
+		});
+	});
+
 	describe('list', () => {
 		it('pages through recipes newest first', async () => {
 			const created = [];

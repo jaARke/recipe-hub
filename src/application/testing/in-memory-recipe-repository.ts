@@ -5,6 +5,7 @@ import type {
 	RecipeRepository,
 	RecipeSort,
 	RecipeUpdate,
+	StoredRecipe,
 	UpdatedRecipe,
 } from '@/application/ports/recipe-repository';
 import { RecipeEditConflictError } from '@/application/recipes/errors';
@@ -39,6 +40,12 @@ export class InMemoryRecipeRepository implements RecipeRepository {
 
 	async findById(id: RecipeId): Promise<Recipe | null> {
 		return this.recipes.get(id) ?? null;
+	}
+
+	// Recipes are kept as saved and read without tidying, so a recipe is its own stored content.
+	async findStoredById(id: RecipeId): Promise<StoredRecipe | null> {
+		const recipe = this.recipes.get(id);
+		return recipe === undefined ? null : { recipe, storedContent: recipe };
 	}
 
 	async findBySlug(slug: string): Promise<Recipe | null> {

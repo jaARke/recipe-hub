@@ -78,6 +78,12 @@ describe('pageText', () => {
 		expect(pageText(pageWith(blogPost, `${pageUrl}#comments`))).toBe(pageText(pageWith(blogPost)));
 	});
 
+	it('reads a no-break space as a space, as the JSON-LD reader does', () => {
+		const page = pageWith('<p>2&nbsp;cups&nbsp;&nbsp;flour&nbsp;</p><p>&nbsp;Sift.</p>');
+
+		expect(pageText(page)).toBe('2 cups flour\n\nSift.');
+	});
+
 	it('cuts short nesting far deeper than real pages, rather than failing', () => {
 		const body = `<p>Biscuits</p>${'<div>'.repeat(20_000)}lost${'</div>'.repeat(20_000)}`;
 

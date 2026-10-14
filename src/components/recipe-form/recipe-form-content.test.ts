@@ -113,6 +113,46 @@ describe('recipeContentFromForm', () => {
 		expect(contentFrom({ yield: { kind: 'servings', amount: ' ' } }).yield).toBeUndefined();
 	});
 
+	it('stores typed text in its clean form', () => {
+		const content = parseRecipeContent(
+			contentFrom({
+				title: 'Toast  for two:',
+				source: 'Grandma\u00a0 Rose',
+				yield: { kind: 'servings', amount: '4.' },
+				ingredientSections: [
+					{
+						heading: 'For the toast;',
+						lines: ['2 cups flour;', '• 2 eggs', '1. 2 eggs', 'Salt to taste;', '1/4 tsp.'],
+					},
+				],
+				instructionSections: [{ steps: ['Toast  the bread. '] }],
+			})
+		);
+
+		expect(content).toMatchObject({
+			title: 'Toast for two',
+			source: 'Grandma Rose',
+			yield: { kind: 'servings', amount: { min: 4 } },
+			ingredientSections: [
+				{
+					heading: 'For the toast',
+					lines: [
+						{ text: '2 cups flour', amount: { min: 2 }, unit: 'cups', item: 'flour' },
+						{ text: '2 eggs', amount: { min: 2 }, item: 'eggs' },
+						{ text: '2 eggs', amount: { min: 2 }, item: 'eggs' },
+						{ text: 'Salt to taste', item: 'Salt', preparation: 'to taste' },
+						{ text: '1/4 tsp.', item: '1/4 tsp.' },
+					],
+				},
+			],
+			instructionSections: [{ steps: [{ text: 'Toast the bread.' }] }],
+		});
+		expect(
+			parseRecipeContent(contentFrom({ yield: { kind: 'makes', amount: '12;', unit: 'slices.' } }))
+				.yield
+		).toEqual({ kind: 'makes', amount: { min: 12 }, unit: 'slices' });
+	});
+
 	it('refuses a yield it can’t read, with the recipe’s other problems', () => {
 		expect(
 			problemsFrom(() => contentFrom({ title: '', yield: { kind: 'servings', amount: 'a few' } }))

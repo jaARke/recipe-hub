@@ -24,6 +24,8 @@ import {
 	type ExtractedYield,
 } from '@/domain/recipe/extracted-recipe';
 import { maxReadLineLength, parseAmountText } from '@/domain/recipe/ingredient-parser';
+import { withoutListMarkers } from '@/domain/recipe/list-markers';
+import { htmlWhitespaceCharacters, maxHtmlDepth } from '@/infrastructure/web/html-text';
 
 type JsonObject = { readonly [key: string]: unknown };
 
@@ -49,18 +51,13 @@ type ListWalk = {
 // A recipe's ingredients and steps, read in one walk.
 type RecipeLists = Pick<ExtractedRecipe, 'ingredientSections' | 'instructionSections'>;
 
-// How deep into nested elements a string's text reaches. Real strings nest far less, and deeper
-// nesting is cut short rather than overflowing the stack.
-const maxHtmlDepth = 500;
-
 // Text inside JSON-LD strings: entities decoded, tags dropped, and every line break kept, so a list
 // written as one string still comes apart into its items.
 const stringText = compile({
 	wordwrap: false,
 	preserveNewlines: true,
 	limits: { maxDepth: maxHtmlDepth },
-	// The defaults and the no-break space, which entities like &nbsp; leave inside lines.
-	whitespaceCharacters: ' \t\r\n\f\u200b\u00a0',
+	whitespaceCharacters: htmlWhitespaceCharacters,
 	selectors: [
 		{ selector: 'a', options: { ignoreHref: true } },
 		{ selector: 'img', format: 'skip' },
@@ -72,9 +69,6 @@ const stringText = compile({
 
 // Some sites encode entities twice, so one decoding still leaves one.
 const htmlEntity = /&(?:#\d+|#x[\da-f]+|[a-z]+\d*);/i;
-
-// A step numbered in its own text, which the recipe form numbers again.
-const stepNumber = /^(?:step\s*)?\d+[.):]\s+/i;
 
 // WP Recipe Maker writes each ingredient's note in parentheses the page never shows, so a note that
 // opens with a comma or has parentheses of its own reads "onion (, sliced)" or "soda ((optional))".
@@ -359,16 +353,12 @@ function ingredientSections(
 	return lines.length === 0 ? [] : [{ lines }];
 }
 
-function withoutStepNumber(step: string): string {
-	return step.replace(stepNumber, '');
-}
-
 // One step for each HowToStep, even when its text runs over several lines, and one for each line of
 // plain text.
 function steps(value: unknown, walk: ListWalk): string[] {
 	const item = resolved(value, walk.graph);
 	if (!isObject(item)) {
-		return counted(textLines(item, walk), walk).map(withoutStepNumber);
+		return counted(textLines(item, walk), walk).map(withoutListMarkers);
 	}
 	if (hasType(item, 'ItemList') || hasType(item, 'HowToSection')) {
 		return nestedLines(item, walk, steps);
@@ -385,7 +375,7 @@ function steps(value: unknown, walk: ListWalk): string[] {
 			)
 			.join(' ');
 	const written = text === '' ? singleLine(step.name, walk) : text;
-	return written === undefined ? [] : [withoutStepNumber(written)];
+	return written === undefined ? [] : [withoutListMarkers(written)];
 }
 
 // Steps outside a HowToSection gather in a section without a heading, before and after the others.

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
 import {
+	exampleIngredientLine,
 	maxReadLineLength,
 	parseAmountText,
 	parseIngredientLine,
@@ -247,12 +248,57 @@ describe('parseIngredientLine', () => {
 		expect(parseIngredientLine(text)).toStrictEqual({ text, item: text });
 	});
 
-	it('trims the text and keeps it otherwise as written', () => {
-		expect(parseIngredientLine('  2 Cups  Flour ')).toStrictEqual({
-			text: '2 Cups  Flour',
+	it('tidies the spacing and keeps the words and their case as written', () => {
+		expect(parseIngredientLine(' 2\u00a0Cups \t Flour ')).toStrictEqual({
+			text: '2 Cups Flour',
 			amount: { min: 2 },
 			unit: 'Cups',
 			item: 'Flour',
+		});
+	});
+
+	it.each<[string, IngredientLine]>([
+		['2 cups flour;', { text: '2 cups flour', amount: { min: 2 }, unit: 'cups', item: 'flour' }],
+		['2 cups flour,', { text: '2 cups flour', amount: { min: 2 }, unit: 'cups', item: 'flour' }],
+		['2 cups flour.', { text: '2 cups flour', amount: { min: 2 }, unit: 'cups', item: 'flour' }],
+		['2 cups flour ;.', { text: '2 cups flour', amount: { min: 2 }, unit: 'cups', item: 'flour' }],
+		['• 2 eggs', { text: '2 eggs', amount: { min: 2 }, item: 'eggs' }],
+		['1. 2 eggs', { text: '2 eggs', amount: { min: 2 }, item: 'eggs' }],
+		['▢ 1 cup milk,', { text: '1 cup milk', amount: { min: 1 }, unit: 'cup', item: 'milk' }],
+		['Salt to taste;', { text: 'Salt to taste', item: 'Salt', preparation: 'to taste' }],
+		['Juice of 1 lemon.', { text: 'Juice of 1 lemon', item: 'Juice of 1 lemon' }],
+		['2 cups.', { text: '2 cups', item: '2 cups' }],
+		['1 tsp. salt.', { text: '1 tsp. salt', amount: { min: 1 }, unit: 'tsp.', item: 'salt' }],
+	])('stores %j without its list marker or closing punctuation', (text, line) => {
+		expect(parseIngredientLine(text)).toStrictEqual(line);
+	});
+
+	it.each([
+		['1/4 tsp.', '1/4 tsp.'],
+		['1/4 tsp.;', '1/4 tsp.'],
+		['1 T.', '1 T.'],
+		['2 lbs.,', '2 lbs.'],
+	])('keeps the period of the unit that ends %j', (text, kept) => {
+		expect(parseIngredientLine(text)).toStrictEqual({ text: kept, item: kept });
+	});
+
+	it.each([
+		['2 eggs [?];', { text: '2 eggs [?]', amount: { min: 2 }, item: 'eggs [?]' }],
+		[
+			'• [illegible] cups flour',
+			{ text: '[illegible] cups flour', item: '[illegible] cups flour' },
+		],
+	])('keeps the transcription marker in %j', (text, line) => {
+		expect(parseIngredientLine(text)).toStrictEqual(line);
+	});
+
+	it('reads the example line the import asks for into all four parts', () => {
+		expect(parseIngredientLine(exampleIngredientLine)).toStrictEqual({
+			text: exampleIngredientLine,
+			amount: expect.anything(),
+			unit: expect.any(String),
+			item: expect.any(String),
+			preparation: expect.any(String),
 		});
 	});
 

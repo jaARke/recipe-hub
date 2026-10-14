@@ -2,13 +2,10 @@ import 'server-only';
 import { load } from 'cheerio/slim';
 import { compile } from 'html-to-text';
 import type { WebPage } from '@/application/ports/web-page-fetcher';
+import { htmlWhitespaceCharacters, maxHtmlDepth } from '@/infrastructure/web/html-text';
 
 // About 25,000 tokens.
 const maxPageTextLength = 100_000;
-
-// How deep into nested elements the text reaches. Real pages nest far less, and deeper nesting is
-// cut short rather than overflowing the stack.
-const maxHtmlDepth = 500;
 
 // Marks where the URL's fragment points, so the text can start there. No page writes it.
 const fragmentMarker = '\uE000recipe-hub-fragment\uE000';
@@ -19,6 +16,7 @@ const fragmentMarker = '\uE000recipe-hub-fragment\uE000';
 const bodyText = compile({
 	wordwrap: false,
 	limits: { maxDepth: maxHtmlDepth },
+	whitespaceCharacters: htmlWhitespaceCharacters,
 	selectors: [
 		{ selector: 'a', options: { ignoreHref: true } },
 		{ selector: 'img', format: 'skip' },

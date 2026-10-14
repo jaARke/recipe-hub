@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { normalizeText } from '@/domain/text-normalization';
+import { normalizeText, withoutTrailingPunctuation } from '@/domain/text-normalization';
+
+// What a label or a list leaves after a title or heading, as in "For the glaze:".
+const headingSeparators = ';,:';
 
 // Postgres text and jsonb cannot hold a NUL character, which a form or URL can still carry.
 export function hasNoNul(text: string): boolean {
@@ -26,3 +29,9 @@ export function boundedTextSchema(
 ): z.ZodString {
 	return text.max(max, limitMessage(max, 'characters'));
 }
+
+// A title or a section heading, without the separators that end it. Text of nothing else keeps them,
+// so a heading is never left blank once it passed as text.
+export const headingTextSchema = nonEmptyTextSchema.overwrite(
+	(text) => withoutTrailingPunctuation(text, headingSeparators) || text
+);

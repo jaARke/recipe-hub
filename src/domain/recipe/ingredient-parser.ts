@@ -2,6 +2,8 @@ import { parseIngredient, type ParseIngredientOptions } from 'parse-ingredient';
 import type { Amount } from '@/domain/recipe/amount';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
 import { readingOptions, readUnit, sizes } from '@/domain/recipe/ingredient-units';
+import { withoutListMarkers } from '@/domain/recipe/list-markers';
+import { normalizeText, withoutTrailingPunctuation } from '@/domain/text-normalization';
 
 type ItemParts = Pick<IngredientLine, 'item' | 'preparation'>;
 
@@ -21,6 +23,13 @@ const libraryOptions: ParseIngredientOptions = {
 // The longest line the parser reads, since the library's quantity scan slows sharply on long text,
 // which no ingredient needs. A longer line keeps its text as its item.
 export const maxReadLineLength = 500;
+
+// A line written the way the parser reads every part of it: amount, unit, item, and preparation.
+// The import prompt shows it, so its words are ones a card seldom holds.
+export const exampleIngredientLine = '3 ribs celery, sliced';
+
+// Punctuation that only ends a line, as in "2 cups flour;". A period that ends a unit stays.
+const lineEndPunctuation = ';,.';
 
 // One quantity as written: a fraction or mixed number, a vulgar fraction, a decimal, or a whole number.
 const quantitySource = String.raw`(?:\d+(?:\s+\d+)?\s*[/⁄]\s*\d+|\d*\s*[¼-¾⅐-⅞]|\d*\.\d+|\d+)`;
@@ -186,9 +195,33 @@ function splitPreparation(description: string): ItemParts {
 	);
 }
 
+// Whether the text's last word is a unit written with its period, as in "1/4 tsp.". A word longer
+// than any line the library reads is none, since its scan slows on long text.
+function endsWithAbbreviatedUnit(text: string): boolean {
+	const lastWord = text.slice(text.lastIndexOf(' ') + 1);
+	return lastWord.length <= maxReadLineLength && readUnit(lastWord) !== undefined;
+}
+
+// The text without the given punctuation where it only ends the text, keeping the period of a unit
+// written as an abbreviation: "2 cups flour;" ends at "flour", and "1/4 tsp." keeps its period.
+export function withoutClosingPunctuation(text: string, punctuation: string): string {
+	const kept = withoutTrailingPunctuation(text, punctuation);
+	const withPeriod = `${kept}.`;
+	return text.charAt(kept.length) === '.' && endsWithAbbreviatedUnit(withPeriod)
+		? withPeriod
+		: kept;
+}
+
+// The line as stored: tidied as all text is, without the bullet or number a list put before it or
+// the punctuation that only ends it. Words and their case stay as written.
+export function normalizeIngredientLine(text: string): string {
+	const line = withoutListMarkers(normalizeText(text).trim());
+	return withoutClosingPunctuation(line, lineEndPunctuation);
+}
+
 // The line's structure, read only where it is unambiguous; anything else keeps the text as its item.
 export function parseIngredientLine(text: string): IngredientLine {
-	const line = text.trim();
+	const line = normalizeIngredientLine(text);
 	if (line.length > maxReadLineLength) {
 		return { text: line, item: line };
 	}

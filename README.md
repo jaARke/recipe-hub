@@ -47,7 +47,7 @@ The design reference at [localhost:3000/design](http://localhost:3000/design) sh
 | `pnpm db:migrate`             | Apply migrations to the database in `DATABASE_URL_UNPOOLED`     |
 | `pnpm db:bootstrap`           | Make the owner, the account at `ADMIN_EMAIL`, an admin          |
 | `pnpm db:seed`                | Seed synthetic recipes and photos (refused in production)       |
-| `pnpm db:reparse-ingredients` | Diff saved ingredient lines against the parser; `--write` saves |
+| `pnpm db:reparse-ingredients` | Diff saved recipes against tidying and parsing; `--write` saves |
 | `pnpm evaluate`               | Score import models on `scripts/evaluate/` (spends AI credit)   |
 
 ## Database

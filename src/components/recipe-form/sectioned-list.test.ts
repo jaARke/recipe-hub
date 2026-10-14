@@ -199,33 +199,11 @@ describe('rowsFromPastedText', () => {
 		]);
 	});
 
-	it('drops bullets and checkboxes', () => {
-		expect(
-			rowsFromPastedText(
-				'• 2 cups flour\n- 1 teaspoon salt\n* 3 eggs\n▢ 1 cup milk\n☐ 1 lemon\n–2 limes'
-			)
-		).toEqual([
+	it('drops the bullet or step number that starts a line, and a line of nothing else', () => {
+		expect(rowsFromPastedText('• 2 cups flour\n1. Heat the oven.\nStep 5\n1.5 cups milk')).toEqual([
 			line('2 cups flour'),
-			line('1 teaspoon salt'),
-			line('3 eggs'),
-			line('1 cup milk'),
-			line('1 lemon'),
-			line('2 limes'),
-		]);
-	});
-
-	it('drops step numbers, but keeps an amount that starts a line', () => {
-		expect(
-			rowsFromPastedText(
-				'1. Heat the oven.\n2) Mix the flour.\nStep 3: Bake.\nSTEP 4 - Cool.\nStep 5\n1.5 cups milk\n2 eggs'
-			)
-		).toEqual([
 			line('Heat the oven.'),
-			line('Mix the flour.'),
-			line('Bake.'),
-			line('Cool.'),
 			line('1.5 cups milk'),
-			line('2 eggs'),
 		]);
 	});
 

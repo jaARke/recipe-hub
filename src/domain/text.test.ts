@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hasNoNul, nonEmptyTextSchema } from '@/domain/text';
+import { hasNoNul, headingTextSchema, nonEmptyTextSchema } from '@/domain/text';
 
 describe('nonEmptyTextSchema', () => {
 	it('trims the text', () => {
@@ -22,8 +22,8 @@ describe('nonEmptyTextSchema', () => {
 		expect(nonEmptyTextSchema.parse('Crème brûlée')).toBe('Crème brûlée');
 	});
 
-	it('keeps tabs and line breaks inside the text', () => {
-		expect(nonEmptyTextSchema.parse('Stir.\r\n\tThen rest.')).toBe('Stir.\r\n\tThen rest.');
+	it('keeps line breaks inside the text, without the spaces and tabs at their ends', () => {
+		expect(nonEmptyTextSchema.parse('Stir. \r\n\tThen  rest.')).toBe('Stir.\nThen rest.');
 	});
 
 	it('rejects text of only control characters as blank', () => {
@@ -33,6 +33,33 @@ describe('nonEmptyTextSchema', () => {
 
 	it('rejects blank text', () => {
 		expect(nonEmptyTextSchema.safeParse(' \t\n ').success).toBe(false);
+	});
+});
+
+describe('headingTextSchema', () => {
+	it.each([
+		['For the glaze:', 'For the glaze'],
+		['Grandma Rose’s pie;', 'Grandma Rose’s pie'],
+		[' For the crust , ', 'For the crust'],
+		['For the  filling :', 'For the filling'],
+	])('drops the separators that end %j', (text, heading) => {
+		expect(headingTextSchema.parse(text)).toBe(heading);
+	});
+
+	it.each(['Is it done?', 'Pie [?]', 'Pie [illegible]', 'Pie...', 'Mrs. Lee’s pie.'])(
+		'keeps %j as written',
+		(text) => {
+			expect(headingTextSchema.parse(text)).toBe(text);
+		}
+	);
+
+	it('keeps separators that are all the text holds, so it is never left blank', () => {
+		expect(headingTextSchema.parse(' : ')).toBe(':');
+	});
+
+	it('rejects blank text once, as plain text does', () => {
+		const result = headingTextSchema.safeParse(' ');
+		expect(result.error?.issues.map((issue) => issue.message)).toEqual(['Enter some text.']);
 	});
 });
 
