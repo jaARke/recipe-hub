@@ -15,6 +15,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { FieldGroup } from '@/components/ui/field';
 import { Spinner } from '@/components/ui/spinner';
+import { accessRequestBlankMessages } from '@/domain/member/access-request';
 
 const sentNoticeId = 'request-access-sent';
 
@@ -25,7 +26,9 @@ type RequestAccessFormProps = {
 };
 
 function RequestAccessForm({ action, nextSteps }: RequestAccessFormProps) {
-	const [state, formAction, pending] = useFormAction(action, requestAccessFailureMessage);
+	const [state, formProps, pending] = useFormAction(action, requestAccessFailureMessage, {
+		blankMessages: accessRequestBlankMessages,
+	});
 	useFocusOnChange(state.status === 'success' ? 'sent' : 'form', sentNoticeId);
 
 	if (state.status === 'success') {
@@ -43,7 +46,7 @@ function RequestAccessForm({ action, nextSteps }: RequestAccessFormProps) {
 	const value = (name: string) => failure?.values?.[name];
 
 	return (
-		<form action={formAction} noValidate className="flex flex-col gap-8">
+		<form {...formProps} className="flex flex-col gap-8">
 			<FormErrorAlert message={failure?.message} />
 			<FieldGroup>
 				<TextField

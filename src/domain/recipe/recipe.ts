@@ -11,11 +11,25 @@ import { recipeImageListSchemaFor } from '@/domain/recipe/recipe-image';
 import { recipeYieldSchemaFor } from '@/domain/recipe/recipe-yield';
 import { slugSchema } from '@/domain/recipe/slug';
 import { tagListSchemaFor } from '@/domain/recipe/tag';
-import { headingTextSchema, limitMessage } from '@/domain/text';
+import { blankTextMessage, headingTextSchema, limitMessage } from '@/domain/text';
 import { settings } from '@/lib/settings';
 
 export const recipeIdSchema = z.uuid().brand<'RecipeId'>();
 export type RecipeId = z.infer<typeof recipeIdSchema>;
+
+// What a blank title asks for, as its message says it.
+const titleAsked = 'a title';
+
+// A recipe's title, as every path that writes one tidies it.
+export const titleTextSchema = headingTextSchema(titleAsked);
+
+// What a recipe missing something it needs is told, keyed by the path of the problem. The recipe
+// form checks for each before sending and says the same.
+export const missingContentMessages = {
+	title: blankTextMessage(titleAsked),
+	ingredientSections: 'Add at least one ingredient.',
+	instructionSections: 'Add at least one step.',
+} as const;
 
 // A list's sections and what limits them: at least one section, the most sections a list holds, and
 // the most items across them.
@@ -52,7 +66,7 @@ function sectionListSchema<Section extends z.ZodType>(
 // Stored as one document: add fields as optional, and unknown fields drop.
 function recipeContentSchemaFor(limits: ContentLimits) {
 	return z.object({
-		title: limits.text(settings.recipeLimits.maxTitleLength, headingTextSchema),
+		title: limits.text(settings.recipeLimits.maxTitleLength, titleTextSchema),
 		description: limits.text(settings.recipeLimits.maxDescriptionLength).optional(),
 		// The story behind the recipe.
 		notes: limits.text(settings.recipeLimits.maxNotesLength).optional(),
@@ -61,13 +75,13 @@ function recipeContentSchemaFor(limits: ContentLimits) {
 		yield: recipeYieldSchemaFor(limits).optional(),
 		times: recipeTimesSchema,
 		ingredientSections: sectionListSchema(ingredientSectionSchemaFor(limits), limits, {
-			emptyMessage: 'Add at least one ingredient.',
+			emptyMessage: missingContentMessages.ingredientSections,
 			itemCount: (section) => section.lines.length,
 			maxItems: settings.recipeLimits.maxIngredientLinesPerRecipe,
 			itemUnits: 'ingredients',
 		}),
 		instructionSections: sectionListSchema(instructionSectionSchemaFor(limits), limits, {
-			emptyMessage: 'Add at least one step.',
+			emptyMessage: missingContentMessages.instructionSections,
 			itemCount: (section) => section.steps.length,
 			maxItems: settings.recipeLimits.maxStepsPerRecipe,
 			itemUnits: 'steps',

@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/empty';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Spinner } from '@/components/ui/spinner';
+import { inviteBlankMessages } from '@/domain/member/invite';
 import { formatDate } from '@/lib/dates';
 
 // Level 5 nests a request under the design reference's own headings.
@@ -43,13 +44,17 @@ function AccessRequestCard({
 	onIssued,
 }: AccessRequestCardProps) {
 	const idPrefix = `request-${request.id}`;
-	const [state, formAction, pending] = useFormAction<IssuedInvite>(async (previous, formData) => {
-		const next = await issueInvite(previous, formData);
-		if (next.status === 'success') {
-			onIssued(next);
-		}
-		return next;
-	}, 'We couldn’t approve the request. Reload the page and try again.');
+	const [state, formProps, pending] = useFormAction<IssuedInvite>(
+		async (previous, formData) => {
+			const next = await issueInvite(previous, formData);
+			if (next.status === 'success') {
+				onIssued(next);
+			}
+			return next;
+		},
+		'We couldn’t approve the request. Reload the page and try again.',
+		{ blankMessages: inviteBlankMessages }
+	);
 	const failed = state.status === 'error' ? state : undefined;
 	// React resets the form after every submit, returning the checkbox's hidden input to the state it
 	// mounted with. Remounting it with the submitted choice keeps what it shows and sends in step.
@@ -82,7 +87,7 @@ function AccessRequestCard({
 				</dl>
 			</CardContent>
 			<CardContent>
-				<form action={formAction} noValidate className="flex flex-col gap-6">
+				<form {...formProps} className="flex flex-col gap-6">
 					<input type="hidden" name={adminFieldNames.requestId} value={request.id} />
 					<FieldGroup>
 						<DisplayNameField

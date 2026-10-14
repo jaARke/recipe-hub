@@ -26,6 +26,20 @@ describe('PasskeyList', () => {
 		expect(add).toHaveBeenCalledWith({ type: 'success', title: 'Passkey renamed' });
 	});
 
+	it('asks for a name at once when the new one is blank, and never sends it', async () => {
+		const rename = vi.fn(succeed);
+		const user = userEvent.setup();
+		render(<PasskeyList passkeys={passkeys} renamePasskey={rename} removePasskey={succeed} />);
+
+		await user.click(screen.getByRole('button', { name: 'Rename Work laptop' }));
+		await user.clear(await screen.findByLabelText('Name'));
+		await user.click(screen.getByRole('button', { name: 'Save name' }));
+
+		expect(screen.getByText('Enter a name for the passkey.')).toBeDefined();
+		expect(document.activeElement).toBe(screen.getByLabelText('Name'));
+		expect(rename).not.toHaveBeenCalled();
+	});
+
 	it('keeps the dialog open, with no toast, when the rename is refused', async () => {
 		const add = vi.spyOn(toast, 'add');
 		const refuse: FormAction = async () => ({

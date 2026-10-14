@@ -1,6 +1,6 @@
-import { screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DisplayNameForm } from '@/components/account/display-name-form';
 import type { FormAction } from '@/components/forms/form-state';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
@@ -25,6 +25,17 @@ function nameField(): HTMLInputElement {
 }
 
 describe('DisplayNameForm', () => {
+	it('asks for a name at once when it is blank, before any request, with focus on the field', async () => {
+		const action = vi.fn<FormAction>();
+		render(<DisplayNameForm displayName="Ada" action={action} />);
+
+		await saveName('  ');
+
+		expect(screen.getByText('Enter your display name.')).toBeDefined();
+		expect(document.activeElement).toBe(nameField());
+		expect(action).not.toHaveBeenCalled();
+	});
+
 	it('no longer says “Saved.” once its page has been left and shown again', async () => {
 		const page = renderKeptPage(
 			<DisplayNameForm displayName="Ada" action={async () => ({ status: 'success' })} />

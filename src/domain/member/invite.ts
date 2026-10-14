@@ -4,27 +4,39 @@ import { InvalidEmailError, InvalidInviteError } from '@/domain/member/errors';
 import {
 	displayNameSchema,
 	emailAddressSchema,
+	emailBlankMessages,
 	memberIdSchema,
 	memberRoleSchema,
 } from '@/domain/member/member';
 import { problemsFromZodError } from '@/domain/problem';
+import { blankTextMessage } from '@/domain/text';
 import { daysInMilliseconds } from '@/lib/dates';
 import { settings } from '@/lib/settings';
 
 export const inviteIdSchema = z.uuid().brand<'InviteId'>();
 export type InviteId = z.infer<typeof inviteIdSchema>;
 
+// What a blank name on the admin's invite forms asks for, as its message says it.
+const inviteeNameAsked = 'their name';
+
+// What a blank field on the admin's invite forms says, keyed by the field. The browser checks it
+// before sending and says the same.
+export const inviteBlankMessages = { displayName: blankTextMessage(inviteeNameAsked) };
+
 // What an admin enters to invite someone.
 export const inviteFieldsSchema = z.object({
 	// The new member's name.
-	displayName: displayNameSchema,
+	displayName: displayNameSchema(inviteeNameAsked),
 	// Where to email the link; the admin can copy it instead.
 	sendTo: emailAddressSchema.optional(),
 });
 export type InviteFields = z.infer<typeof inviteFieldsSchema>;
 
-// The invite page's form, where the invitee enters the address their account will use.
-const inviteEmailFieldsSchema = z.object({ email: emailAddressSchema });
+// The invite page's form, where the invitee enters the address their account will use. A blank one
+// says what the browser says before sending.
+const inviteEmailFieldsSchema = z.object({
+	email: z.string().trim().min(1, emailBlankMessages.email).pipe(emailAddressSchema),
+});
 
 // A single-use link to create an account. Only a hash of its token is stored.
 export const inviteSchema = z.object({
@@ -32,7 +44,7 @@ export const inviteSchema = z.object({
 	// The approved request it answers; absent when the admin invited someone directly.
 	requestId: accessRequestIdSchema.optional(),
 	// The new member's name, set by the admin; the member can change it later.
-	displayName: displayNameSchema,
+	displayName: displayNameSchema(inviteeNameAsked),
 	role: memberRoleSchema,
 	// Bound when the invitee enters it; the account is created for this address once it is confirmed.
 	email: emailAddressSchema.optional(),

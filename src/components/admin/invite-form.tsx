@@ -10,18 +10,20 @@ import { useFormAction } from '@/components/forms/use-form-action';
 import { Button } from '@/components/ui/button';
 import { FieldGroup } from '@/components/ui/field';
 import { Spinner } from '@/components/ui/spinner';
+import { inviteBlankMessages } from '@/domain/member/invite';
 
 // Invites someone who has not requested access.
 function InviteForm({ issueInvite }: { issueInvite: FormAction<IssuedInvite> }) {
-	const [state, formAction, pending] = useFormAction(
+	const [state, formProps, pending] = useFormAction(
 		issueInvite,
-		'We couldn’t create the invite. Reload the page and try again.'
+		'We couldn’t create the invite. Reload the page and try again.',
+		{ blankMessages: inviteBlankMessages }
 	);
 	const failed = state.status === 'error' ? state : undefined;
 
 	return (
 		<div>
-			<form action={formAction} noValidate className="flex flex-col gap-6">
+			<form {...formProps} className="flex flex-col gap-6">
 				<FieldGroup>
 					<DisplayNameField
 						id="admin-invite-name"

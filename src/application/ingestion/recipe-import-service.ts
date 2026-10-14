@@ -43,12 +43,14 @@ import { maxImportScanSizeInBytes } from '@/domain/recipe/import-limits';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import {
 	importDraftCutoff,
+	noScansMessage,
 	recipeImportIdSchema,
 	reviewableDraft,
+	urlImportBlankMessages,
 	type RecipeImport,
 	type RecipeImportMode,
 } from '@/domain/recipe/recipe-import';
-import { hasNoNul, nonEmptyTextSchema } from '@/domain/text';
+import { hasNoNul, plainTextSchema } from '@/domain/text';
 import { daysInMilliseconds } from '@/lib/dates';
 import { deadlineAfter, settleWithin } from '@/lib/deadline';
 import { AppError } from '@/lib/errors';
@@ -78,7 +80,6 @@ const scanMediaType = 'image/jpeg' satisfies ScanImage['mediaType'];
 const importUrlSchema = z.httpUrl().refine(hasNoNul);
 
 const invalidUrlMessage = 'Enter a web address that starts with http:// or https://.';
-const noScansMessage = 'Add at least one photo.';
 const tooManyScansMessage = `Use ${settings.photos.maxScansPerImport} photos or fewer.`;
 // For a scan this environment never stored: its upload failed, was cut off, or never happened. A scan
 // another member's recipe or draft names gets it too, so the refusal tells nothing about theirs.
@@ -109,7 +110,7 @@ type UnrecordedImport = {
 
 // Text the draft keeps: anything but blanks and control characters.
 function hasText(text: string | undefined): boolean {
-	return text !== undefined && nonEmptyTextSchema.safeParse(text).success;
+	return text !== undefined && plainTextSchema.safeParse(text).success;
 }
 
 function hasIngredients(recipe: ExtractedRecipe): boolean {
@@ -130,8 +131,11 @@ function isComplete(recipe: ExtractedRecipe): boolean {
 	return hasText(recipe.title) && hasIngredients(recipe) && hasSteps(recipe);
 }
 
-// Addresses arrive from forms. A malformed one gets the field's message.
+// Addresses arrive from forms. A blank one says what to enter, and a malformed one how to write it.
 function importUrl(url: string): string {
+	if (url.trim() === '') {
+		throw new InvalidImportError([{ path: 'url', message: urlImportBlankMessages.url }]);
+	}
 	const result = importUrlSchema.safeParse(url);
 	if (!result.success) {
 		throw new InvalidImportError([{ path: 'url', message: invalidUrlMessage }]);

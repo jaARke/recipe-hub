@@ -4,10 +4,10 @@ import * as React from 'react';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
 import { TextField } from '@/components/forms/text-field';
-import { useFocusOnFailure } from '@/components/forms/use-focus-on-failure';
 import { useFormAction } from '@/components/forms/use-form-action';
 import { recipeImportFieldNames } from '@/components/recipe-import/recipe-import-forms';
 import { RecipeImportSubmit } from '@/components/recipe-import/recipe-import-submit';
+import { urlImportBlankMessages } from '@/domain/recipe/recipe-import';
 
 const failureMessage = 'We couldn’t import the recipe. Check your connection and try again.';
 
@@ -18,25 +18,17 @@ type UrlImportFormProps = {
 
 // Imports a recipe from a link to its page.
 function UrlImportForm({ action }: UrlImportFormProps) {
-	const baseId = React.useId();
-	const formRef = React.useRef<HTMLFormElement>(null);
-	const [state, formAction, pending, actionResult] = useFormAction(action, failureMessage);
+	const urlId = React.useId();
+	const [state, formProps, pending] = useFormAction(action, failureMessage, {
+		blankMessages: urlImportBlankMessages,
+	});
 	const failure = state.status === 'error' ? state : undefined;
-	const ids = {
-		formError: `${baseId}-form-error`,
-		url: `${baseId}-url`,
-	};
-	useFocusOnFailure(actionResult, formRef, ids.formError);
 
 	return (
-		<form ref={formRef} action={formAction} noValidate className="flex flex-col gap-8">
-			{failure?.message !== undefined && (
-				<div id={ids.formError} tabIndex={-1}>
-					<FormErrorAlert message={failure.message} />
-				</div>
-			)}
+		<form {...formProps} className="flex flex-col gap-8">
+			<FormErrorAlert message={failure?.message} />
 			<TextField
-				id={ids.url}
+				id={urlId}
 				name={recipeImportFieldNames.url}
 				type="url"
 				label="Recipe link"

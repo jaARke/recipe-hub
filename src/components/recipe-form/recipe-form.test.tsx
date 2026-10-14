@@ -164,6 +164,42 @@ describe('RecipeForm’s review notes', () => {
 		).toEqual([screen.getByRole('textbox', { name: 'Ingredient 1' }).id]);
 	});
 
+	it('shows what the save needs before asking about notes, and asks once it can save', async () => {
+		const action = vi.fn(refuse);
+		const user = userEvent.setup();
+		renderForm({ ...lemonBars, title: undefined }, threeNotes.slice(1), action);
+
+		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+
+		const summary = screen.getByText('Fix 1 thing to save').closest('[role="alert"]');
+		expect(document.activeElement).toBe(summary);
+		expect(screen.getByRole('link', { name: 'Title: Enter a title.' })).toBeDefined();
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(action).not.toHaveBeenCalled();
+
+		await user.type(screen.getByRole('textbox', { name: 'Title' }), 'Lemon bars');
+		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+
+		const dialog = await screen.findByRole('alertdialog');
+		expect(within(dialog).getByText('2 things haven’t been checked')).toBeDefined();
+		expect(action).not.toHaveBeenCalled();
+	});
+
+	it('asks for the ingredients and steps a recipe needs before any request', async () => {
+		const action = vi.fn(refuse);
+		const user = userEvent.setup();
+		renderForm({ title: 'Lemon bars' }, [], action);
+
+		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+
+		expect(screen.getByText('Fix 2 things to save')).toBeDefined();
+		expect(
+			screen.getByRole('link', { name: 'Ingredients: Add at least one ingredient.' })
+		).toBeDefined();
+		expect(screen.getByRole('link', { name: 'Steps: Add at least one step.' })).toBeDefined();
+		expect(action).not.toHaveBeenCalled();
+	});
+
 	it('saves without asking once nothing is left to check', async () => {
 		const action = vi.fn(refuse);
 		const user = userEvent.setup();

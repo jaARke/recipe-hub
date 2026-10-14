@@ -22,6 +22,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from '@/components/ui/toast';
+import { passkeyBlankMessages } from '@/domain/member/member';
 import { formatDate } from '@/lib/dates';
 
 // What the account page shows of a passkey: the server keeps only its public key.
@@ -49,14 +50,15 @@ type RenamePasskeyFormProps = Omit<RenamePasskeyDialogProps, 'label'>;
 
 // Rendered inside the popup, so closing the dialog clears a refusal.
 function RenamePasskeyForm({ passkeyId, name, action }: RenamePasskeyFormProps) {
-	const [state, formAction, pending] = useFormAction(
+	const [state, formProps, pending] = useFormAction(
 		action,
-		'We couldn’t rename that passkey. Check your connection and try again.'
+		'We couldn’t rename that passkey. Check your connection and try again.',
+		{ blankMessages: passkeyBlankMessages }
 	);
 	const failure = state.status === 'error' ? state : undefined;
 
 	return (
-		<form action={formAction} noValidate className="grid gap-6">
+		<form {...formProps} className="grid gap-6">
 			<input type="hidden" name={passkeyFieldNames.id} value={passkeyId} />
 			<DialogHeader>
 				<DialogTitle>Rename passkey</DialogTitle>

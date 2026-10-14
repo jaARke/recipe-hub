@@ -4,7 +4,7 @@ import { formatAmount } from '@/domain/recipe/amount-format';
 import type { ContentLimits } from '@/domain/recipe/content-limits';
 import { parseAmountText, withoutClosingPunctuation } from '@/domain/recipe/ingredient-parser';
 import { itemForAmount, scaleCount } from '@/domain/recipe/ingredient-scaling';
-import { nonEmptyTextSchema } from '@/domain/text';
+import { plainTextSchema } from '@/domain/text';
 import { withoutTrailingPunctuation } from '@/domain/text-normalization';
 import { settings } from '@/lib/settings';
 
@@ -15,7 +15,7 @@ const yieldEndPunctuation = '.,;:';
 // What a recipe makes, without the punctuation that ends the yield: "cookies." is "cookies", and an
 // abbreviated unit keeps its period, as in "2 doz.". Text of nothing else keeps it, so it is never
 // left blank once it passed as text.
-export const yieldUnitTextSchema = nonEmptyTextSchema.overwrite(
+export const yieldUnitTextSchema = plainTextSchema.overwrite(
 	(text) => withoutClosingPunctuation(text, yieldEndPunctuation) || text
 );
 

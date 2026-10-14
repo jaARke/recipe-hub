@@ -57,10 +57,10 @@ function ConfirmActionForm({
 	variant,
 	children,
 }: ConfirmActionFormProps) {
-	const [state, formAction, pending] = useFormAction(action, failureMessage);
+	const [state, formProps, pending] = useFormAction(action, failureMessage);
 
 	return (
-		<form action={formAction} className="grid gap-6">
+		<form {...formProps} className="grid gap-6">
 			{children}
 			<AlertDialogHeader>
 				<AlertDialogTitle>{title}</AlertDialogTitle>

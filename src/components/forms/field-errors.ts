@@ -9,3 +9,8 @@ export function fieldErrorsFrom(problems: readonly Problem[]): FieldErrors {
 	}
 	return fieldErrors;
 }
+
+// Whether any field has a problem, as when a check found something.
+export function hasFieldErrors(fieldErrors: FieldErrors): boolean {
+	return Object.values(fieldErrors).some((message) => message !== undefined);
+}

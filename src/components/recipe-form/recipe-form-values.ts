@@ -4,7 +4,7 @@ import type { Problem } from '@/domain/problem';
 import type { Amount } from '@/domain/recipe/amount';
 import { formatAmount } from '@/domain/recipe/amount-format';
 import { parseAmountText } from '@/domain/recipe/ingredient-parser';
-import type { RecipeContent } from '@/domain/recipe/recipe';
+import { missingContentMessages, type RecipeContent } from '@/domain/recipe/recipe';
 import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
 import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
 import type { RecipeYield } from '@/domain/recipe/recipe-yield';
@@ -633,14 +633,17 @@ export function recipeFormSubmission(values: RecipeFormValues): RecipeFormSubmis
 	return { payload, targets };
 }
 
+// What a recipe needs filled in, by the path a save's problem with it takes.
+type RequiredContent = keyof typeof missingContentMessages;
+
 // A place the form shows, with what it holds there.
 type RecipeFormPlace = {
 	target: RecipeFormLocation;
 	error?: string;
 	// The texts the member edits there, which can hold transcription markers.
 	texts?: readonly string[];
-	// The recipe needs this filled in, and it is empty.
-	emptyRequired?: boolean;
+	// Set where the recipe needs this filled in and it is empty.
+	emptyRequired?: RequiredContent;
 };
 
 function hasItemText(list: RecipeFormList): boolean {
@@ -668,7 +671,7 @@ function fieldPlaces(
 				target: { kind: 'field', field },
 				error: values.fieldErrors[field],
 				texts: fieldTexts(values, field),
-				emptyRequired: field === 'title' && isBlank(values.text.title),
+				emptyRequired: field === 'title' && isBlank(values.text.title) ? field : undefined,
 			},
 		];
 	});
@@ -679,7 +682,11 @@ function fieldPlaces(
 function listPlaces(values: RecipeFormValues, list: RecipeFormListName): RecipeFormPlace[] {
 	const { error, rows } = values[list];
 	const places: RecipeFormPlace[] = [
-		{ target: { kind: 'list', list }, error, emptyRequired: !hasItemText(values[list]) },
+		{
+			target: { kind: 'list', list },
+			error,
+			emptyRequired: hasItemText(values[list]) ? undefined : list,
+		},
 	];
 	rows.forEach((row, index) => {
 		places.push({
@@ -725,11 +732,23 @@ export function recipeFormProblems(values: RecipeFormValues): RecipeFormProblem[
 	);
 }
 
+// What the browser knows a save would be refused for: each place the recipe needs filled in that is
+// empty, with the message the server gives, keyed by the path of the problem.
+export function recipeFormRequiredErrors(values: RecipeFormValues): FieldErrors {
+	const fieldErrors: FieldErrors = {};
+	for (const { emptyRequired } of recipeFormPlaces(values)) {
+		if (emptyRequired !== undefined) {
+			fieldErrors[emptyRequired] = missingContentMessages[emptyRequired];
+		}
+	}
+	return fieldErrors;
+}
+
 // Everything left to check against the original, in the order the form shows it: the open review
 // notes, and the text that still holds a transcription marker.
 export function recipeFormChecks(values: RecipeFormValues): RecipeFormCheck[] {
 	return recipeFormPlaces(values).flatMap(
-		({ target, texts = [], emptyRequired = false }): RecipeFormCheck[] => {
+		({ target, texts = [], emptyRequired }): RecipeFormCheck[] => {
 			const note = values.reviewNotes.get(problemKey(target));
 			const openNote = note?.status === 'open' ? note.message : undefined;
 			// A line apart, so no marker spans two texts.
@@ -742,7 +761,8 @@ export function recipeFormChecks(values: RecipeFormValues): RecipeFormCheck[] {
 					target,
 					note: openNote,
 					markers,
-					confirmable: openNote !== undefined && markers.length === 0 && !emptyRequired,
+					confirmable:
+						openNote !== undefined && markers.length === 0 && emptyRequired === undefined,
 				},
 			];
 		}

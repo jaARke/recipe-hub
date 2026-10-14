@@ -4,6 +4,7 @@ import {
 	hasPhotosInProgress,
 	recipeFormChecks,
 	recipeFormProblems,
+	recipeFormRequiredErrors,
 	recipeFormSubmission,
 	recipeFormValues,
 	tagLabelsFrom,
@@ -726,6 +727,33 @@ describe('recipeFormProblems', () => {
 
 	it('lists nothing for a form without problems', () => {
 		expect(recipeFormProblems(lemonBarsForm())).toEqual([]);
+	});
+});
+
+describe('recipeFormRequiredErrors', () => {
+	it('names each empty place the recipe needs, keyed as a save’s problems are', () => {
+		const values = edited(recipeFormValues({ title: '  ' }), {
+			type: 'setRowKind',
+			list: 'ingredientSections',
+			rowId: 0,
+			kind: 'heading',
+		});
+		const withHeading = edited(values, {
+			type: 'setRowText',
+			list: 'ingredientSections',
+			rowId: 0,
+			text: 'For the glaze',
+		});
+
+		expect(recipeFormRequiredErrors(withHeading)).toEqual({
+			title: 'Enter a title.',
+			ingredientSections: 'Add at least one ingredient.',
+			instructionSections: 'Add at least one step.',
+		});
+	});
+
+	it('finds nothing in a recipe with a title, an ingredient, and a step', () => {
+		expect(recipeFormRequiredErrors(lemonBarsForm())).toEqual({});
 	});
 });
 

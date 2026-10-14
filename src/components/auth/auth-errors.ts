@@ -2,6 +2,7 @@ import { passkeyFieldNames } from '@/components/account/account-forms';
 import type { authClient } from '@/components/auth/auth-client';
 import { authFieldNames } from '@/components/auth/auth-forms';
 import type { FormError } from '@/components/forms/form-state';
+import { invalidEmailMessage } from '@/domain/member/member';
 
 // The failure the auth client returns: Better Auth's code and message when it names them, and the
 // HTTP status, which is 429 when a rate limit refuses the request.
@@ -60,7 +61,7 @@ export function codeRequestError(error: AuthClientError): FormError {
 		return formError(tooManyTriesMessage);
 	}
 	if (hasCode(error, 'INVALID_EMAIL')) {
-		return fieldError(authFieldNames.email, 'Enter an email address, like name@example.com.');
+		return fieldError(authFieldNames.email, invalidEmailMessage);
 	}
 	return formError('We couldn’t send a code. Try again in a moment.');
 }

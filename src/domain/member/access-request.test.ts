@@ -50,6 +50,17 @@ describe('accessRequestFieldsSchema', () => {
 });
 
 describe('parseAccessRequestFields', () => {
+	it('says what to enter in each blank field', () => {
+		expect(() => parseAccessRequestFields({ name: ' ', relationship: '' })).toThrow(
+			expect.objectContaining({
+				problems: [
+					{ path: 'name', message: 'Enter your name.' },
+					{ path: 'relationship', message: 'Enter how you know us.' },
+				],
+			})
+		);
+	});
+
 	it('reports every problem with its field path', () => {
 		expect(() =>
 			parseAccessRequestFields({ name: '', relationship: 'Neighbor', email: 'x' })

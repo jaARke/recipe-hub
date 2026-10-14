@@ -3,6 +3,7 @@ import type { Problem } from '@/domain/problem';
 import { durationMinutesSchema, type RecipeTimes } from '@/domain/recipe/duration';
 import { normalizeIngredientLine, parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import { withoutListMarkers } from '@/domain/recipe/list-markers';
+import { titleTextSchema } from '@/domain/recipe/recipe';
 import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import type { ImportDraft } from '@/domain/recipe/recipe-import';
@@ -11,7 +12,7 @@ import {
 	yieldUnitTextSchema,
 	type RecipeYield,
 } from '@/domain/recipe/recipe-yield';
-import { headingTextSchema, nonEmptyTextSchema } from '@/domain/text';
+import { plainTextSchema, sectionHeadingTextSchema } from '@/domain/text';
 import { settings } from '@/lib/settings';
 
 // A recipe as an extractor read it, before validation: text as written, ingredient lines unparsed.
@@ -154,7 +155,7 @@ export const approximationWord =
 // Text as the domain stores it in a field of the given kind, or undefined when nothing is left of it.
 function storedText(
 	text: string | undefined,
-	schema: z.ZodString = nonEmptyTextSchema
+	schema: z.ZodString = plainTextSchema
 ): string | undefined {
 	if (text === undefined) {
 		return undefined;
@@ -183,7 +184,7 @@ function keptList(
 		if (texts.length === 0) {
 			return undefined;
 		}
-		sections.push({ heading: storedText(section.heading, headingTextSchema), texts });
+		sections.push({ heading: storedText(section.heading, sectionHeadingTextSchema), texts });
 		return { index: sections.length - 1, itemIndexes };
 	});
 	return { name, sections, places };
@@ -354,7 +355,7 @@ export function importDraftFromExtractedRecipe(
 			settings.recipeLimits.maxTitleLength,
 			'title',
 			lossProblems,
-			headingTextSchema
+			titleTextSchema
 		),
 		description: draftText(
 			recipe.description,

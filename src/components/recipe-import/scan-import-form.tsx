@@ -1,9 +1,9 @@
 'use client';
 
 import * as React from 'react';
+import { hasFieldErrors } from '@/components/forms/field-errors';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
-import type { FormAction } from '@/components/forms/form-state';
-import { useFocusOnFailure } from '@/components/forms/use-focus-on-failure';
+import type { FieldErrors, FormAction } from '@/components/forms/form-state';
 import { useFormAction } from '@/components/forms/use-form-action';
 import { PhotoField } from '@/components/recipe-form/photo-field';
 import { uploadPhoto, type PhotoUploader } from '@/components/recipe-form/photo-upload';
@@ -13,6 +13,7 @@ import { RecipeImportSubmit } from '@/components/recipe-import/recipe-import-sub
 import {
 	editScanImport,
 	emptyScanImport,
+	scanImportProblems,
 	scanImportSubmission,
 } from '@/components/recipe-import/scan-import-values';
 import { settings } from '@/lib/settings';
@@ -30,15 +31,10 @@ type ScanImportFormProps = {
 // Reads a recipe from photos of its pages, in the recipe form's own "Original recipe" field: each
 // photo is resized and uploads as it's chosen, and stays with the recipe once it's saved.
 function ScanImportForm({ action, uploadFolder, uploader = uploadPhoto }: ScanImportFormProps) {
-	const baseId = React.useId();
-	const formRef = React.useRef<HTMLFormElement>(null);
+	const photosId = React.useId();
 	const [values, dispatch] = React.useReducer(editScanImport, emptyScanImport);
 	const submission = scanImportSubmission(values);
 	const photosInProgress = hasPhotosInProgress(values);
-	const ids = {
-		formError: `${baseId}-form-error`,
-		photos: `${baseId}-photos`,
-	};
 
 	// A refusal's problems name pages in what it sent, so they land through that submission's targets.
 	const readRecipe: FormAction = async (previous, formData) => {
@@ -49,22 +45,28 @@ function ScanImportForm({ action, uploadFolder, uploader = uploadPhoto }: ScanIm
 		}
 		return result;
 	};
-	const [state, formAction, pending, actionResult] = useFormAction(readRecipe, failureMessage);
-	const formMessage = state.status === 'error' ? state.message : undefined;
-	useFocusOnFailure(actionResult, formRef, ids.formError);
+
+	// Shows what the browser finds before sending as a refusal's problems show.
+	function checkPhotos(): FieldErrors {
+		const fieldErrors = scanImportProblems(values);
+		if (hasFieldErrors(fieldErrors)) {
+			dispatch({ type: 'attachErrors', fieldErrors, targets: submission.targets });
+		}
+		return fieldErrors;
+	}
+
+	const [state, formProps, pending] = useFormAction(readRecipe, failureMessage, {
+		check: checkPhotos,
+	});
 
 	return (
-		<form ref={formRef} action={formAction} noValidate className="flex flex-col gap-8">
-			{formMessage !== undefined && (
-				<div id={ids.formError} tabIndex={-1}>
-					<FormErrorAlert message={formMessage} />
-				</div>
-			)}
+		<form {...formProps} className="flex flex-col gap-8">
+			<FormErrorAlert message={state.status === 'error' ? state.message : undefined} />
 			{submission.pathnames.map((pathname) => (
 				<input key={pathname} type="hidden" name={recipeImportFieldNames.scans} value={pathname} />
 			))}
 			<PhotoField
-				idPrefix={ids.photos}
+				idPrefix={photosId}
 				role="scan"
 				legend="Original recipe"
 				description={`Photos of the recipe as it was written, up to ${settings.photos.maxScansPerImport} pages in order, such as both sides of a recipe card. They stay with the recipe, and only members can see them.`}

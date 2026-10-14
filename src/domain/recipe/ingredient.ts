@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { amountSchema } from '@/domain/recipe/amount';
 import type { ContentLimits } from '@/domain/recipe/content-limits';
-import { headingTextSchema, nonEmptyTextSchema } from '@/domain/text';
+import { plainTextSchema, sectionHeadingTextSchema } from '@/domain/text';
 import { settings } from '@/lib/settings';
 
 export function ingredientLineSchemaFor(limits: ContentLimits) {
@@ -10,9 +10,9 @@ export function ingredientLineSchemaFor(limits: ContentLimits) {
 		text: limits.text(settings.recipeLimits.maxIngredientLineLength),
 		amount: amountSchema.optional(),
 		// Free text as written, such as cups or cloves.
-		unit: nonEmptyTextSchema.optional(),
-		item: nonEmptyTextSchema,
-		preparation: nonEmptyTextSchema.optional(),
+		unit: plainTextSchema.optional(),
+		item: plainTextSchema,
+		preparation: plainTextSchema.optional(),
 	});
 }
 export type IngredientLine = z.infer<ReturnType<typeof ingredientLineSchemaFor>>;
@@ -20,7 +20,7 @@ export type IngredientLine = z.infer<ReturnType<typeof ingredientLineSchemaFor>>
 export function ingredientSectionSchemaFor(limits: ContentLimits) {
 	return z.object({
 		heading: limits
-			.text(settings.recipeLimits.maxSectionHeadingLength, headingTextSchema)
+			.text(settings.recipeLimits.maxSectionHeadingLength, sectionHeadingTextSchema)
 			.optional(),
 		lines: z.array(ingredientLineSchemaFor(limits)).min(1, 'Add at least one ingredient.'),
 	});

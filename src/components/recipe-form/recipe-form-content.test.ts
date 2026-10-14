@@ -161,7 +161,7 @@ describe('recipeContentFromForm', () => {
 				path: 'yield.amount',
 				message: 'We couldn’t read this amount. Use a number, or two numbers for a range.',
 			},
-			{ path: 'title', message: 'Enter some text.' },
+			{ path: 'title', message: 'Enter a title.' },
 		]);
 	});
 

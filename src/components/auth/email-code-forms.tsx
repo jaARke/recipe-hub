@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { authFieldNames } from '@/components/auth/auth-forms';
+import { authFieldNames, codeBlankMessages } from '@/components/auth/auth-forms';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction, FormState } from '@/components/forms/form-state';
 import { FormStatusMessage } from '@/components/forms/form-status-message';
@@ -10,6 +10,7 @@ import { useFormAction } from '@/components/forms/use-form-action';
 import { useTransientState } from '@/components/forms/use-transient-state';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+import { emailBlankMessages } from '@/domain/member/member';
 
 type RequestCodeFormProps = {
 	id: string;
@@ -28,14 +29,15 @@ function RequestCodeForm({
 	defaultEmail,
 	action,
 }: RequestCodeFormProps) {
-	const [state, formAction, pending] = useFormAction(
+	const [state, formProps, pending] = useFormAction(
 		action,
-		'We couldn’t send a code. Check your connection and try again.'
+		'We couldn’t send a code. Check your connection and try again.',
+		{ blankMessages: emailBlankMessages }
 	);
 	const failure = state.status === 'error' ? state : undefined;
 
 	return (
-		<form action={formAction} noValidate className="flex flex-col gap-6">
+		<form {...formProps} className="flex flex-col gap-6">
 			<FormErrorAlert message={failure?.message} />
 			<TextField
 				id={id}
@@ -79,9 +81,10 @@ function ConfirmCodeForm({
 	sendNewCode,
 	onChangeEmail,
 }: ConfirmCodeFormProps) {
-	const [state, formAction, pending] = useFormAction(
+	const [state, formProps, pending] = useFormAction(
 		action,
-		'We couldn’t check the code. Check your connection and try again.'
+		'We couldn’t check the code. Check your connection and try again.',
+		{ blankMessages: codeBlankMessages }
 	);
 	const [resendState, setResendState] = useTransientState<FormState>();
 	const [resending, startResend] = React.useTransition();
@@ -102,7 +105,7 @@ function ConfirmCodeForm({
 	}
 
 	return (
-		<form action={formAction} noValidate className="flex flex-col gap-6">
+		<form {...formProps} className="flex flex-col gap-6">
 			<FormErrorAlert message={failure?.message} />
 			<TextField
 				id={id}

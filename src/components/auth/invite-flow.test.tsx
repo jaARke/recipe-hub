@@ -6,6 +6,7 @@ import { signInWithCode } from '@/components/auth/email-codes';
 import { InviteFlow } from '@/components/auth/invite-flow';
 import { useSignOut } from '@/components/auth/use-sign-out';
 import type { FormState } from '@/components/forms/form-state';
+import { renderKeptPage } from '@/components/forms/testing/kept-page';
 
 vi.mock('next/navigation', async (importOriginal) => ({
 	...(await importOriginal<typeof import('next/navigation')>()),
@@ -18,6 +19,15 @@ vi.mock('@/components/auth/email-codes', () => ({
 	signInWithCode: vi.fn(async () => ({ status: 'success' })),
 }));
 
+// The passkey dialog is the browser's; here it closes without making one.
+vi.mock('@/components/auth/auth-client', () => ({
+	authClient: {
+		passkey: {
+			addPasskey: async () => ({ data: null, error: { status: 400, code: 'AUTH_CANCELLED' } }),
+		},
+	},
+}));
+
 vi.mock('@/components/auth/use-sign-out', () => ({
 	useSignOut: vi.fn(() => ({ signOut: vi.fn(), pending: false })),
 }));
@@ -26,17 +36,25 @@ const token = 'invite-token';
 
 type Complete = (token: string) => Promise<FormState<CompletedInviteDto>>;
 
-function renderFlow(complete: Complete, signedInAs: string | null = null) {
-	render(
+type BindEmail = (token: string, email: string) => Promise<FormState<{ email: string }>>;
+
+const bindAnyEmail: BindEmail = async (_token, email) => ({ status: 'success', email });
+
+function inviteFlow(complete: Complete, signedInAs: string | null, bindEmail = bindAnyEmail) {
+	return (
 		<InviteFlow
 			signedInAs={signedInAs}
 			codeLifetimeMinutes={10}
 			headingLevel={2}
 			getPreview={async () => ({ displayName: 'Ada', expiresAt: new Date('2026-10-20') })}
-			bindEmail={async (_token, email) => ({ status: 'success', email })}
+			bindEmail={bindEmail}
 			complete={complete}
 		/>
 	);
+}
+
+function renderFlow(complete: Complete, signedInAs: string | null = null, bindEmail?: BindEmail) {
+	render(inviteFlow(complete, signedInAs, bindEmail));
 }
 
 // From the welcome step through a code that signs the invitee in.
@@ -90,6 +108,35 @@ describe('InviteFlow', () => {
 			expect(signInWithCode).toHaveBeenCalledOnce();
 		}
 	);
+
+	it('asks for an address at once when none is given, before binding the invite', async () => {
+		const bindEmail = vi.fn(bindAnyEmail);
+		const user = userEvent.setup();
+		renderFlow(async () => ({ status: 'success', account: 'created' }), null, bindEmail);
+
+		await user.click(await screen.findByRole('button', { name: 'Get started' }));
+		await user.click(screen.getByRole('button', { name: 'Email me a code' }));
+
+		expect(screen.getByText('Enter your email address.')).toBeDefined();
+		expect(document.activeElement).toBe(screen.getByLabelText('Email'));
+		expect(bindEmail).not.toHaveBeenCalled();
+	});
+
+	it('drops a failed passkey’s message once its page has been left, keeping the step', async () => {
+		const page = renderKeptPage(
+			inviteFlow(async () => ({ status: 'success', account: 'created' }), null)
+		);
+
+		const user = await signInWithInvite();
+		await expectStepHeading('Create a passkey');
+		await user.click(screen.getByRole('button', { name: 'Create a passkey' }));
+		expect(await screen.findByText('No passkey was created')).toBeDefined();
+		await page.hide();
+		await page.show();
+
+		expect(screen.queryByText('No passkey was created')).toBeNull();
+		expect(screen.getByRole('heading', { name: 'Create a passkey' })).toBeDefined();
+	});
 
 	it('tells an invitee who already had an account so', async () => {
 		renderFlow(async () => ({ status: 'success', account: 'existing' }));

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	editScanImport,
 	emptyScanImport,
+	scanImportProblems,
 	scanImportSubmission,
 	type ScanImportEdit,
 	type ScanImportValues,
@@ -59,6 +60,40 @@ describe('scanImportSubmission', () => {
 		});
 
 		expect(scanImportSubmission(chosen)).toEqual({ pathnames: [], targets: new Map() });
+	});
+});
+
+describe('scanImportProblems', () => {
+	it('asks for a photo when there is none', () => {
+		expect(scanImportProblems(emptyScanImport)).toEqual({ scans: 'Add at least one photo.' });
+	});
+
+	it('asks for photos whose uploads failed to be added again when no page is stored', () => {
+		const failed = (count: number) =>
+			edited(
+				emptyScanImport,
+				{
+					type: 'addPhotos',
+					role: 'scan',
+					fileNames: Array.from({ length: count }, (_, index) => `page-${index}.jpg`),
+				},
+				...Array.from({ length: count }, (_, photoId): ScanImportEdit => ({
+					type: 'failPhoto',
+					photoId,
+					failure: 'upload',
+				}))
+			);
+
+		expect(scanImportProblems(failed(1))).toEqual({
+			scans: 'The photo didn’t upload. Remove it and add it again.',
+		});
+		expect(scanImportProblems(failed(2))).toEqual({
+			scans: 'The photos didn’t upload. Remove them and add them again.',
+		});
+	});
+
+	it('finds nothing once a page is stored, though another failed', () => {
+		expect(scanImportProblems(threePages())).toEqual({});
 	});
 });
 

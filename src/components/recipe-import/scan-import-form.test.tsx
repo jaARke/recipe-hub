@@ -1,0 +1,51 @@
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+import type { FormAction } from '@/components/forms/form-state';
+import type { PhotoUploader } from '@/components/recipe-form/photo-upload';
+import { ScanImportForm } from '@/components/recipe-import/scan-import-form';
+
+// Resizing needs a real browser's canvas, so photos arrive as chosen.
+vi.mock('@/components/recipe-form/photo-processing', async (importOriginal) => ({
+	...(await importOriginal<typeof import('@/components/recipe-form/photo-processing')>()),
+	normalizePhoto: async (file: File) => ({ file, width: 1200, height: 1600 }),
+}));
+
+const failUpload: PhotoUploader = () => Promise.reject(new TypeError('Failed to fetch'));
+
+function renderForm(action: FormAction, uploader: PhotoUploader = failUpload) {
+	render(<ScanImportForm action={action} uploadFolder="scan/development/" uploader={uploader} />);
+}
+
+describe('ScanImportForm', () => {
+	it('asks for a photo at once when it has none, before any request, with focus on the problem', async () => {
+		const action = vi.fn<FormAction>();
+		const user = userEvent.setup();
+		renderForm(action);
+
+		await user.click(screen.getByRole('button', { name: 'Read recipe' }));
+
+		const problem = screen.getByText('Add at least one photo.');
+		expect(document.activeElement).toBe(problem);
+		expect(action).not.toHaveBeenCalled();
+	});
+
+	it('asks for a photo whose upload failed to be added again, not for a photo', async () => {
+		const action = vi.fn<FormAction>();
+		const user = userEvent.setup();
+		renderForm(action);
+		const picker = document.querySelector<HTMLInputElement>('input[type="file"]');
+		if (picker === null) {
+			throw new Error('The form has no file picker.');
+		}
+
+		await user.upload(picker, new File(['jpeg'], 'card.jpg', { type: 'image/jpeg' }));
+		expect(await screen.findByText('Didn’t upload')).toBeDefined();
+		await user.click(screen.getByRole('button', { name: 'Read recipe' }));
+
+		const problem = screen.getByText('The photo didn’t upload. Remove it and add it again.');
+		expect(document.activeElement).toBe(problem);
+		expect(screen.queryByText('Add at least one photo.')).toBeNull();
+		expect(action).not.toHaveBeenCalled();
+	});
+});

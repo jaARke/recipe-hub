@@ -4,10 +4,11 @@ import { cn } from 'cn';
 import { ScanTextIcon } from 'lucide-react';
 import * as React from 'react';
 import { flushSync } from 'react-dom';
+import { hasFieldErrors } from '@/components/forms/field-errors';
 import { FieldNote, type FieldNoteContent } from '@/components/forms/field-note';
 import { focusCentered } from '@/components/forms/focus-centered';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
-import type { FormAction } from '@/components/forms/form-state';
+import type { FieldErrors, FormAction } from '@/components/forms/form-state';
 import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
 import {
 	ProblemSummary,
@@ -16,7 +17,6 @@ import {
 } from '@/components/forms/problem-summary';
 import { TextField, textFieldIds } from '@/components/forms/text-field';
 import { TextareaField } from '@/components/forms/textarea-field';
-import { useFocusOnFailure } from '@/components/forms/use-focus-on-failure';
 import { useFormAction } from '@/components/forms/use-form-action';
 import { wideContentProps } from '@/components/layout/page-container';
 import { OriginalRecipePane } from '@/components/recipe-form/original-recipe-pane';
@@ -37,6 +37,7 @@ import {
 	problemKey,
 	recipeFormChecks,
 	recipeFormProblems,
+	recipeFormRequiredErrors,
 	recipeFormSubmission,
 	type ProblemTarget,
 	type RecipeFormCheck,
@@ -201,15 +202,12 @@ function RecipeForm({
 	submitLabel,
 }: RecipeFormProps) {
 	const baseId = React.useId();
-	const formRef = React.useRef<HTMLFormElement>(null);
 	const [values, dispatch] = React.useReducer(editRecipeForm, initial);
 	const hydrated = useHydrated();
 	const submission = recipeFormSubmission(values);
 	const isEditing = editing !== undefined;
 	const photosInProgress = hasPhotosInProgress(values);
 	const ids = {
-		formError: `${baseId}-form-error`,
-		problemSummary: `${baseId}-problem-summary`,
 		reviewIntro: `${baseId}-review-intro`,
 		formNote: `${baseId}-form-note`,
 		save: `${baseId}-save`,
@@ -230,14 +228,10 @@ function RecipeForm({
 		}
 		return result;
 	};
-	const [state, formAction, pending, actionResult] = useFormAction(saveRecipe, failureMessage);
-	// About the whole form, such as an edit conflict; the summary lists a save's problems.
-	const formMessage = state.status === 'error' ? state.message : undefined;
-	useFocusOnFailure(
-		actionResult,
-		formRef,
-		formMessage === undefined ? ids.problemSummary : ids.formError
-	);
+	const [state, formProps, pending] = useFormAction(saveRecipe, failureMessage, {
+		check: checkRequired,
+		onSubmit: warnBeforeSaving,
+	});
 
 	// The summary lists a save's errors, each linking to where it shows, and takes focus.
 	const problems = recipeFormProblems(values).map(summarizedProblem);
@@ -371,8 +365,18 @@ function RecipeForm({
 		};
 	}
 
+	// What the browser knows a save would be refused for, shown as a save's errors are, so the warning
+	// about what is left to check comes only once the save can succeed.
+	function checkRequired(): FieldErrors {
+		const fieldErrors = recipeFormRequiredErrors(values);
+		if (hasFieldErrors(fieldErrors)) {
+			dispatch({ type: 'attachErrors', fieldErrors, targets: submission.targets });
+		}
+		return fieldErrors;
+	}
+
 	// Saving with anything left to check asks first, unless the member chose to save anyway.
-	function warnBeforeSaving(event: React.FormEvent<HTMLFormElement>) {
+	function warnBeforeSaving(event: React.SubmitEvent<HTMLFormElement>) {
 		if (savingAnyway.current) {
 			savingAnyway.current = false;
 			return;
@@ -386,7 +390,7 @@ function RecipeForm({
 	// Submits through the Save button, as a click on it does.
 	function saveAnyway() {
 		savingAnyway.current = true;
-		formRef.current?.requestSubmit(document.getElementById(ids.save));
+		formProps.ref.current?.requestSubmit(document.getElementById(ids.save));
 	}
 
 	const [firstCheck] = checks;
@@ -396,23 +400,10 @@ function RecipeForm({
 	const hasOriginal = originalImages.length > 0;
 
 	const form = (
-		<form
-			ref={formRef}
-			action={formAction}
-			onSubmit={warnBeforeSaving}
-			noValidate
-			className="flex flex-col gap-8"
-		>
-			{formMessage !== undefined && (
-				<div id={ids.formError} tabIndex={-1}>
-					<FormErrorAlert message={formMessage} />
-				</div>
-			)}
-			{problems.length > 0 && (
-				<div id={ids.problemSummary} tabIndex={-1}>
-					<ProblemSummary problems={problems} />
-				</div>
-			)}
+		<form {...formProps} className="flex flex-col gap-8">
+			{/* About the whole form, such as an edit conflict; the summary lists a save's problems. */}
+			<FormErrorAlert message={state.status === 'error' ? state.message : undefined} />
+			<ProblemSummary problems={problems} />
 			{firstCheck !== undefined && (
 				<div className="flex flex-col gap-3">
 					<ReviewNotesIntro
