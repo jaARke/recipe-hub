@@ -9,7 +9,7 @@ import { ForbiddenError, SignInRequiredError } from '@/application/authorization
 import type { EditableRecipeDto } from '@/application/recipes/recipe-dtos';
 import { signInHref } from '@/components/auth/auth-paths';
 import { FormActions } from '@/components/forms/form-actions';
-import { PageContainer, readingWidthClassName } from '@/components/layout/page-container';
+import { PageContainer, readingPartWidthClassName } from '@/components/layout/page-container';
 import { PageSection } from '@/components/layout/page-section';
 import { DeleteRecipeDialog } from '@/components/recipe-form/delete-recipe-dialog';
 import { RecipeForm, RecipeFormSkeleton } from '@/components/recipe-form/recipe-form';
@@ -117,7 +117,7 @@ async function RecipeEditor({ params }: Pick<PageProps<'/recipes/[slug]/edit'>, 
 				id="delete-recipe"
 				title="Delete recipe"
 				// The form beside the original widens the page; this section keeps reading width.
-				className={readingWidthClassName}
+				className={readingPartWidthClassName}
 				description="Deleting the recipe also deletes its photos, and it can’t be undone."
 			>
 				<FormActions>

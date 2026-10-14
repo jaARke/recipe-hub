@@ -1,7 +1,7 @@
 import type * as React from 'react';
 import type { UnsavedImportDto } from '@/application/ingestion/recipe-import-dtos';
 import { CountBadge } from '@/components/layout/count-badge';
-import { readingWidthClassName } from '@/components/layout/page-container';
+import { readingPartWidthClassName } from '@/components/layout/page-container';
 import { RecipeFormSkeleton } from '@/components/recipe-form/recipe-form';
 import { UnsavedImportList } from '@/components/recipe-import/unsaved-import-list';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -23,8 +23,8 @@ const draftsTab = 'drafts';
 // panel keeps reading width.
 const panelClassNames = {
 	manual: undefined,
-	url: readingWidthClassName,
-	photo: readingWidthClassName,
+	url: readingPartWidthClassName,
+	photo: readingPartWidthClassName,
 } as const satisfies Record<EntryMode, string | undefined>;
 
 type RecipeEntryTabsProps = {
@@ -69,7 +69,7 @@ function RecipeEntryTabs({ forms, unsavedImports, now }: RecipeEntryTabsProps) {
 				value={draftsTab}
 				keepMounted
 				tabIndex={draftCount > 0 ? -1 : undefined}
-				className={readingWidthClassName}
+				className={readingPartWidthClassName}
 			>
 				<UnsavedImportList imports={unsavedImports} now={now} />
 			</TabsContent>
