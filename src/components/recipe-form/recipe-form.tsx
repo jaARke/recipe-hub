@@ -170,7 +170,11 @@ function markedText(text: string): React.ReactNode {
 // transcription marker.
 function ingredientPreview(text: string): React.ReactNode {
 	const line = parseIngredientLine(text);
-	if (line.amount === undefined && transcriptionMarkersIn(text).length === 0) {
+	if (
+		line.amount === undefined &&
+		line.text === text.trim() &&
+		transcriptionMarkersIn(text).length === 0
+	) {
 		return undefined;
 	}
 	return (

@@ -359,6 +359,19 @@ describe('RecipeForm’s lists', () => {
 		await user.click(await screen.findByRole('menuitem', { name: action }));
 	}
 
+	it('shows how a line without an amount reads once tidied, and nothing when it reads as typed', () => {
+		renderForm({
+			...lemonBars,
+			ingredientSections: [{ lines: [{ text: 'Salt to taste;' }, { text: 'Pepper to taste' }] }],
+		});
+
+		const previews = Array.from(
+			screen.getByRole('list', { name: 'Ingredients' }).querySelectorAll('[id$="-preview"]'),
+			(preview) => preview.textContent
+		);
+		expect(previews).toEqual(['Shows as Salt to taste']);
+	});
+
 	it('adds a line below on Enter and removes an empty one on Backspace, announcing each', async () => {
 		const user = userEvent.setup();
 		renderForm(lemonBars);
