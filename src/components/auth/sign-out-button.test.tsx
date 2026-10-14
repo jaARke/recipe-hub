@@ -31,6 +31,21 @@ describe('SignOutButton', () => {
 		expect(reload).not.toHaveBeenCalled();
 	});
 
+	it('removes what this browser kept for the member before loading the destination', async () => {
+		window.history.replaceState(null, '', '/account');
+		const { assign } = stubPageLoads();
+		localStorage.setItem('member:recipe-form:new', '{}');
+		localStorage.setItem('theme', 'dark');
+		render(<SignOutButton destination="/" />);
+
+		await userEvent.setup().click(screen.getByRole('button', { name: 'Sign out' }));
+
+		await waitFor(() => expect(assign).toHaveBeenCalledWith('/'));
+		expect(localStorage.getItem('member:recipe-form:new')).toBeNull();
+		expect(localStorage.getItem('theme')).toBe('dark');
+		localStorage.clear();
+	});
+
 	it('loads this page again at a destination that differs from it only in its fragment', async () => {
 		window.history.replaceState(null, '', '/invite');
 		const { assign, reload } = stubPageLoads();

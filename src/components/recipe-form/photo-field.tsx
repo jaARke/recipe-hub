@@ -163,8 +163,8 @@ function photoStatus(photo: RecipeFormPhoto, isCover: boolean): string | undefin
 
 // The photos the viewer shows, in the field's order: each stored one, saved or just uploaded, so the
 // member can see one larger or read the original while checking the form. A photo uploaded but not
-// saved shows from its file. A dish photo shows its description as it will be saved, and a scan saves
-// none.
+// saved shows from its file while the page holds it. A dish photo shows its description as it will be
+// saved, and a scan saves none.
 function photoViewerImages(
 	photos: readonly RecipeFormPhoto[],
 	role: RecipeImageRole
@@ -285,6 +285,17 @@ function PhotoField({
 			uploads.clear();
 		};
 	}, [dispatch]);
+
+	// A photo that leaves the form without its own Remove, as when unsaved changes are discarded, stops
+	// too. Ids are never given twice, so one from nextId on was chosen after this render.
+	React.useEffect(() => {
+		const shown = new Set(photos.map(({ id }) => id));
+		for (const [photoId, controller] of uploadsRef.current) {
+			if (photoId < nextId && !shown.has(photoId)) {
+				controller.abort();
+			}
+		}
+	}, [photos, nextId]);
 
 	async function processPhoto(photoId: number, file: File) {
 		const controller = new AbortController();

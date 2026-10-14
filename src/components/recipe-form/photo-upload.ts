@@ -1,8 +1,14 @@
 // The one presentation module that imports the Blob SDK, because photos upload from the browser.
 import { uploadPresigned } from '@vercel/blob/client';
+import { recipeImageSrc } from '@/components/recipe/recipe-paths';
+import { deadlineAfter } from '@/lib/deadline';
 
 // Authorizes each upload and answers with its presigned URL.
 const uploadRoutePath = '/api/uploads';
+
+// Long enough for a slow connection to answer, and short enough that unsaved changes waiting on the
+// answer come back soon.
+const photoLookupTimeLimitMs = 10_000;
 
 // Reports progress from 0 to 1, and rejects when the upload fails or the signal aborts it.
 export type PhotoUploader = (
@@ -26,3 +32,16 @@ export const uploadPhoto: PhotoUploader = async (pathname, file, { onProgress, s
 		abortSignal: signal,
 	});
 };
+
+// Whether an upload is still stored, since the image sweep removes one that nothing has named for a
+// day: false only when the image route answers that it isn't found. Rejects when the request fails
+// or outlasts its time limit.
+export async function isPhotoStored(pathname: string): Promise<boolean> {
+	const response = await fetch(recipeImageSrc(pathname), {
+		method: 'HEAD',
+		// Asks storage, never a copy this browser kept.
+		cache: 'no-store',
+		signal: deadlineAfter(photoLookupTimeLimitMs),
+	});
+	return response.status !== 404;
+}

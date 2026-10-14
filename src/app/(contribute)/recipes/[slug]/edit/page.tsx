@@ -110,6 +110,7 @@ async function RecipeEditor({ params }: Pick<PageProps<'/recipes/[slug]/edit'>, 
 					version: recipe.updatedAt.toISOString(),
 					respellableTags: recipe.respellableTags,
 				}}
+				autosave
 				submitLabel="Save changes"
 			/>
 			<PageSection

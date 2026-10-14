@@ -657,6 +657,21 @@ describe('editRecipeForm', () => {
 			added.photos.dish
 		);
 	});
+
+	it('replaces the whole form, going on from the higher next id so no id is given twice', () => {
+		const loaded = recipeFormValues();
+		const added = edited(
+			loaded,
+			{ type: 'setText', field: 'title', text: 'Lemon bars' },
+			{ type: 'addRow', list: 'ingredientSections', kind: 'item' },
+			{ type: 'addTags', labels: ['Dessert'] }
+		);
+
+		const replaced = edited(added, { type: 'replaceForm', values: loaded });
+
+		expect(replaced).toEqual({ ...loaded, nextId: 4 });
+		expect(edited(replaced, { type: 'replaceForm', values: lemonBarsForm() }).nextId).toBe(12);
+	});
 });
 
 describe('recipeFormProblems', () => {

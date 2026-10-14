@@ -58,6 +58,7 @@ async function ContributeForMember() {
 						action={createRecipe}
 						uploadFolders={uploadFolders}
 						tagLabels={tagLabels}
+						autosave
 						submitLabel="Save recipe"
 					/>
 				),

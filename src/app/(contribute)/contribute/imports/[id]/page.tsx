@@ -98,6 +98,7 @@ async function ImportReview({ params }: Pick<PageProps<'/contribute/imports/[id]
 				uploadFolders={getRecipeImageService().uploadFolders()}
 				tagLabels={tagLabels}
 				importId={draft.id}
+				autosave
 				submitLabel="Save recipe"
 			/>
 		</div>

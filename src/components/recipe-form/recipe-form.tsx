@@ -1,14 +1,15 @@
 'use client';
 
 import { cn } from 'cn';
-import { ScanTextIcon } from 'lucide-react';
+import { HistoryIcon, ScanTextIcon } from 'lucide-react';
+import { unstable_rethrow } from 'next/navigation';
 import * as React from 'react';
 import { flushSync } from 'react-dom';
 import { FieldNote, type FieldNoteContent } from '@/components/forms/field-note';
 import { focusCentered } from '@/components/forms/focus-centered';
 import { FormActions } from '@/components/forms/form-actions';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
-import type { FormAction } from '@/components/forms/form-state';
+import type { FormAction, FormState } from '@/components/forms/form-state';
 import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
 import {
 	ProblemSummary,
@@ -31,6 +32,7 @@ import {
 	photoViewerImages,
 } from '@/components/recipe-form/photo-field';
 import { uploadPhoto, type PhotoUploader } from '@/components/recipe-form/photo-upload';
+import { recipeFormSubject } from '@/components/recipe-form/recipe-form-autosave';
 import {
 	recipeFormFieldNames,
 	type EditedRecipe,
@@ -64,12 +66,14 @@ import {
 	sectionedListFieldIds,
 } from '@/components/recipe-form/sectioned-list-field';
 import { TagsField, tagsFieldIds, tagsFieldLabel } from '@/components/recipe-form/tags-field';
+import { useRecipeFormAutosave } from '@/components/recipe-form/use-recipe-form-autosave';
 import { IngredientLineText } from '@/components/recipe/ingredient-line-text';
 import {
 	RecipeImageViewer,
 	RecipeImageViewerButton,
 } from '@/components/recipe/recipe-image-viewer';
 import { HighlightedSegments } from '@/components/search/highlighted-segments';
+import { Alert, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field';
 import {
@@ -91,6 +95,8 @@ import {
 import { settings } from '@/lib/settings';
 
 const failureMessage = 'We couldn’t save the recipe. Check your connection and try again.';
+
+const restoredMessage = 'Restored your unsaved changes';
 
 const yieldKindItems = [
 	{ value: 'servings', label: 'Serves' },
@@ -154,6 +160,8 @@ type RecipeFormProps = {
 	// The import whose draft the form reviews, which the saved recipe takes its provenance from. The
 	// review's intro takes focus as the page loads.
 	importId?: string;
+	// Keeps unsaved changes in this browser and brings them back as the form loads again.
+	autosave?: boolean;
 	submitLabel: string;
 };
 
@@ -219,11 +227,22 @@ function RecipeForm({
 	uploader = uploadPhoto,
 	editing,
 	importId,
+	autosave = false,
 	submitLabel,
 }: RecipeFormProps) {
 	const baseId = React.useId();
 	const [values, dispatch] = React.useReducer(editRecipeForm, initial);
 	const hydrated = useHydrated();
+	// Announced as "Looks right" clears a note and as unsaved changes come back or go, and never as a
+	// draft loads.
+	const [announcement, announce] = useLiveAnnouncement();
+	const autosaved = useRecipeFormAutosave({
+		subject: autosave ? recipeFormSubject({ editing, importId }) : undefined,
+		initial,
+		values,
+		dispatch,
+		onRestore: () => announce(`${restoredMessage}.`),
+	});
 	const submission = recipeFormSubmission(values);
 	const isEditing = editing !== undefined;
 	const photosInProgress = hasPhotosInProgress(values);
@@ -241,9 +260,21 @@ function RecipeForm({
 	};
 
 	// A save's problems name places in what it sent, so they land through that submission's targets.
+	// A save that succeeds leads to the recipe through Next's redirect, the one error unstable_rethrow
+	// passes on here. The form remounts as the page goes, so its unsaved changes are cleared first.
 	const saveRecipe: FormAction = async (previous, formData) => {
 		const { targets } = submission;
-		const result = await action(previous, formData);
+		let result: FormState;
+		try {
+			result = await action(previous, formData);
+		} catch (error) {
+			try {
+				unstable_rethrow(error);
+			} catch {
+				autosaved.clear();
+			}
+			throw error;
+		}
 		if (result.status === 'error') {
 			dispatch({ type: 'attachErrors', fieldErrors: result.fieldErrors, targets });
 		}
@@ -264,8 +295,6 @@ function RecipeForm({
 	// looks right; saving with any left asks first.
 	const checks = recipeFormChecks(values);
 	const checksByKey = new Map(checks.map((check) => [problemKey(check.target), check]));
-	// Announced as "Looks right" clears a note, and never as a draft loads.
-	const [reviewAnnouncement, announceReview] = useLiveAnnouncement();
 	const [warningOpen, setWarningOpen] = React.useState(false);
 	// Set by "Save anyway", so the save it starts skips the warning.
 	const savingAnyway = React.useRef(false);
@@ -371,7 +400,7 @@ function RecipeForm({
 		const left = checks.filter((other) => other !== check);
 		flushSync(() => {
 			dispatch({ type: 'resolveReviewNote', target: check.target });
-			announceReview(checkedAnnouncement(left.length));
+			announce(checkedAnnouncement(left.length));
 		});
 		focusCheckAt(left, index);
 	}
@@ -447,6 +476,13 @@ function RecipeForm({
 		formProps.ref.current?.requestSubmit(document.getElementById(ids.save));
 	}
 
+	// The notice goes with its button, so focus moves to the form's first field.
+	function discardChanges() {
+		autosaved.discard();
+		announce('Discarded your unsaved changes.');
+		document.getElementById(ids.field('title'))?.focus();
+	}
+
 	const [firstCheck] = checks;
 	const formNote = noteFor({ kind: 'form' });
 	// The scans to read beside the form from lg, which widen the page, or in the viewer below lg.
@@ -477,6 +513,7 @@ function RecipeForm({
 
 	const form = (
 		<form {...formProps} onFocus={rememberFocus} className="flex flex-col gap-4">
+			{autosaved.restored && <RestoredChangesNotice onDiscard={discardChanges} />}
 			{/* About the whole form, such as an edit conflict; the summary lists a save's problems. */}
 			<FormErrorAlert message={state.status === 'error' ? state.message : undefined} />
 			<ProblemSummary problems={problems} />
@@ -498,7 +535,7 @@ function RecipeForm({
 					</RecipeImageViewerButton>
 				</RecipeImageViewer>
 			)}
-			<LiveAnnouncer announcement={reviewAnnouncement} />
+			<LiveAnnouncer announcement={announcement} />
 			<input
 				type="hidden"
 				name={recipeFormFieldNames.recipe}
@@ -714,6 +751,27 @@ function RecipeForm({
 		>
 			{form}
 		</BesideOriginal>
+	);
+}
+
+// Heads the form while it holds unsaved changes kept in this browser from an earlier visit, and
+// discards them. Restoring them is announced, so nothing reads this out as it appears.
+function RestoredChangesNotice({ onDiscard }: { onDiscard: () => void }) {
+	return (
+		<Alert role={undefined} aria-live={undefined}>
+			<HistoryIcon aria-hidden="true" />
+			<AlertTitle>{restoredMessage}</AlertTitle>
+			<Button
+				type="button"
+				variant="outline"
+				size="sm"
+				className="col-start-2 mt-2 justify-self-start"
+				aria-label="Discard unsaved changes"
+				onClick={onDiscard}
+			>
+				Discard
+			</Button>
+		</Alert>
 	);
 }
 

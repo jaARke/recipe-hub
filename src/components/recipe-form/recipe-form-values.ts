@@ -53,12 +53,13 @@ export type RecipeFormTag = {
 
 export type PhotoFailure = 'unreadable' | 'upload';
 
-// From choosing a photo to storing it. A photo the recipe already has is saved.
+// From choosing a photo to storing it. A photo the recipe already has is saved. An uploaded photo
+// shows from its file while the page holds it, and from storage once unsaved changes come back.
 export type PhotoUpload =
 	| { status: 'saved'; pathname: string }
 	| { status: 'processing' }
 	| { status: 'uploading'; pathname: string; file: File; fraction: number }
-	| { status: 'uploaded'; pathname: string; file: File }
+	| { status: 'uploaded'; pathname: string; file?: File }
 	| { status: 'failed'; failure: PhotoFailure };
 
 export type RecipeFormPhoto = {
@@ -210,7 +211,10 @@ export type RecipeFormEdit =
 	| PhotoEdit
 	| { type: 'attachErrors'; fieldErrors: FieldErrors; targets: ProblemTargets }
 	// The member says the place looks right as it is, which resolves its note.
-	| { type: 'resolveReviewNote'; target: ProblemTarget | { kind: 'form' } };
+	| { type: 'resolveReviewNote'; target: ProblemTarget | { kind: 'form' } }
+	// The whole form, as unsaved changes come back or are discarded. Ids go on from the higher next id,
+	// so none the form has given out is given again.
+	| { type: 'replaceForm'; values: RecipeFormValues };
 
 // Each list's items, under the name the recipe content gives them.
 const itemKeys = {
@@ -1106,5 +1110,7 @@ function editedRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): Recip
 			return withErrors(values, edit.fieldErrors, edit.targets);
 		case 'resolveReviewNote':
 			return values;
+		case 'replaceForm':
+			return { ...edit.values, nextId: Math.max(edit.values.nextId, values.nextId) };
 	}
 }
