@@ -151,6 +151,7 @@ function PasskeyManager() {
 					{adding ? 'Adding passkey' : 'Add a passkey'}
 				</Button>
 				<FormStatusMessage
+					kind="confirmation"
 					message={
 						outcome?.kind === 'added'
 							? 'Passkey added. Next time, you can sign in with it.'

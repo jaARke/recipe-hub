@@ -77,7 +77,7 @@ function RecipeImportSubmit({
 			</div>
 			{pending && <Progress value={null} aria-label={stage} />}
 			<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 sm:justify-end">
-				<FormStatusMessage message={pending ? stage : undefined} />
+				<FormStatusMessage kind="progress" message={pending ? stage : undefined} />
 				{pending && <ElapsedSeconds />}
 			</div>
 		</div>

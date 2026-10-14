@@ -35,7 +35,10 @@ function DisplayNameForm({ displayName, action }: DisplayNameFormProps) {
 				defaultValue={failure?.values?.[profileFieldNames.displayName] ?? displayName}
 			/>
 			<div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
-				<FormStatusMessage message={state.status === 'success' ? 'Saved.' : undefined} />
+				<FormStatusMessage
+					kind="confirmation"
+					message={state.status === 'success' ? 'Saved.' : undefined}
+				/>
 				<Button type="submit" disabled={pending} focusableWhenDisabled>
 					{pending && <Spinner data-icon="inline-start" />}
 					{pending ? 'Saving name' : 'Save name'}

@@ -133,7 +133,10 @@ function FormFeedbackSpecimen() {
 				<FormErrorAlert message="That request was already handled. Reload the page to see the latest." />
 			</Specimen>
 			<Specimen label="FormStatusMessage: a confirmation, announced as it appears">
-				<FormStatusMessage message="Saved." />
+				<FormStatusMessage kind="confirmation" message="Saved." />
+			</Specimen>
+			<Specimen label="FormStatusMessage: progress, with no check">
+				<FormStatusMessage kind="progress" message="Reading the page…" />
 			</Specimen>
 		</div>
 	);

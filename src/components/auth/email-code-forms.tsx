@@ -135,6 +135,7 @@ function ConfirmCodeForm({
 			</div>
 			<FormErrorAlert message={resendState.status === 'error' ? resendState.message : undefined} />
 			<FormStatusMessage
+				kind="confirmation"
 				message={
 					resendState.status === 'success'
 						? 'We sent a new code. Use the newest one, since earlier codes no longer work.'
