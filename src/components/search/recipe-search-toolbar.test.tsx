@@ -21,6 +21,9 @@ function renderToolbar() {
 				}
 				filters={
 					<form aria-label="Filters" onSubmit={(event) => event.preventDefault()}>
+						<label>
+							<input type="checkbox" name="tag" value="Baking" /> Baking
+						</label>
 						<button type="submit">Apply filters</button>
 					</form>
 				}
@@ -51,6 +54,18 @@ describe('RecipeSearchToolbar', () => {
 		expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Results' }));
 		await waitFor(() => expect(screen.queryByRole('form', { name: 'Filters' })).toBeNull());
 		expect(trigger.getAttribute('aria-expanded')).toBe('false');
+	});
+
+	it('keeps a filter chosen but not applied when the panel closes and opens again', async () => {
+		const trigger = renderToolbar();
+		await userEvent.click(trigger);
+		await userEvent.click(screen.getByRole('checkbox', { name: 'Baking' }));
+
+		await userEvent.click(trigger);
+		await waitFor(() => expect(screen.queryByRole('checkbox', { name: 'Baking' })).toBeNull());
+		await userEvent.click(trigger);
+
+		expect(screen.getByRole<HTMLInputElement>('checkbox', { name: 'Baking' }).checked).toBe(true);
 	});
 
 	it('leaves the filters open and focus in place when the order changes', async () => {

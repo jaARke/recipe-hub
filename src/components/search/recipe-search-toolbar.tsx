@@ -60,7 +60,9 @@ function RecipeSearchToolbar({
 			{/* Below the open filters below lg, and before the order from lg. */}
 			<div className="max-lg:order-last max-lg:basis-full">{count}</div>
 			{sort}
-			<CollapsibleContent className="basis-full lg:hidden" onSubmit={closeOnApply}>
+			{/* Kept mounted, so a choice not yet applied survives closing. Base UI hides it while
+			    closed. */}
+			<CollapsibleContent keepMounted className="basis-full lg:hidden" onSubmit={closeOnApply}>
 				{filters}
 			</CollapsibleContent>
 		</Collapsible>

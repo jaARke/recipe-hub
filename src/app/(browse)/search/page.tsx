@@ -6,6 +6,7 @@ import type { RecipeSearchInput, RecipeSearchPage } from '@/application/search/r
 import { PageContainer } from '@/components/layout/page-container';
 import { headerSearchFormId } from '@/components/search/header-search-bar';
 import { HiddenSearchFields } from '@/components/search/hidden-search-fields';
+import { KeptPageFields } from '@/components/search/kept-page-fields';
 import {
 	RecipeSearch,
 	RecipeSearchHint,
@@ -50,7 +51,9 @@ async function SearchResults({ searchParams }: Pick<PageProps<'/search'>, 'searc
 		<>
 			{/* The header's field holds the query here, and these join its form, so a new query keeps
 			    the filters and the order. */}
-			<HiddenSearchFields state={state} editedFields={['text']} form={headerSearchFormId} />
+			<KeptPageFields>
+				<HiddenSearchFields state={state} editedFields={['text']} form={headerSearchFormId} />
+			</KeptPageFields>
 			<RecipeSearch state={state} results={results} pageCount={pageCount} headingLevel={2} />
 		</>
 	);
