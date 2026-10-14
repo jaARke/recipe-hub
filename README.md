@@ -4,13 +4,13 @@ Barb’s Table is a recipe catalog for our family's recipes. Anyone can browse a
 
 ## Stack
 
-- [Next.js 16](https://nextjs.org/docs) (App Router, TypeScript) on Vercel
+- [Next.js 16](https://nextjs.org/docs) (App Router, TypeScript) on Vercel, at [barbtable.com](https://barbtable.com), whose DNS is in Route 53
 - [Neon](https://neon.com/docs) Postgres via the Vercel Marketplace, which also powers search, through [Drizzle ORM](https://orm.drizzle.team/docs/overview)
 - [Vercel Blob](https://vercel.com/docs/vercel-blob) (private store) for recipe images
 - The [AI SDK](https://ai-sdk.dev/docs) through the [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) for reading recipe photos and pages into drafts
 - [shadcn/ui](https://ui.shadcn.com/docs) on [Base UI](https://base-ui.com) primitives, with Tailwind CSS v4 tokens
 - [Better Auth](https://www.better-auth.com/docs) with email codes and passkeys, sessions in Postgres
-- [Resend](https://resend.com/docs) for email, through the Vercel Marketplace, sending from `recipes.jakerichard.tech`
+- [Resend](https://resend.com/docs) for email, through the Vercel Marketplace, sending as `Barb’s Table <recipes@mail.barbtable.com>`
 - [Vercel BotID](https://vercel.com/docs/botid) on the access request form and sign-in code requests
 
 ## Development
