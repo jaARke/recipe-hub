@@ -27,15 +27,9 @@ import { Spinner } from '@/components/ui/spinner';
 
 type PasskeyOutcome =
 	| { kind: 'added' }
-	| { kind: 'renamed' }
 	| { kind: 'failed'; message: string }
 	// Adding a passkey needs a recent sign-in.
 	| { kind: 'stale-session' };
-
-const outcomeMessages = {
-	added: 'Passkey added. Next time, you can sign in with it.',
-	renamed: 'Passkey renamed.',
-} as const;
 
 function StaleSessionAlert() {
 	return (
@@ -87,7 +81,6 @@ function PasskeyManager() {
 		if (error !== null) {
 			return passkeyRenameError(error);
 		}
-		setOutcome({ kind: 'renamed' });
 		return { status: 'success' };
 	};
 
@@ -140,14 +133,9 @@ function PasskeyManager() {
 			{list}
 			{outcome?.kind === 'stale-session' && <StaleSessionAlert />}
 			<FormErrorAlert message={outcome?.kind === 'failed' ? outcome.message : undefined} />
-			<FormStatusMessage
-				message={
-					outcome?.kind === 'added' || outcome?.kind === 'renamed'
-						? outcomeMessages[outcome.kind]
-						: undefined
-				}
-			/>
-			<div>
+			{/* The confirmation sits beside the button that added the passkey, as "Saved." does beside a
+			    form's button. */}
+			<div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
 				<Button
 					type="button"
 					variant="outline"
@@ -162,6 +150,13 @@ function PasskeyManager() {
 					)}
 					{adding ? 'Adding passkey' : 'Add a passkey'}
 				</Button>
+				<FormStatusMessage
+					message={
+						outcome?.kind === 'added'
+							? 'Passkey added. Next time, you can sign in with it.'
+							: undefined
+					}
+				/>
 			</div>
 		</PageSection>
 	);
