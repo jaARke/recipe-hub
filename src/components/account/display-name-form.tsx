@@ -17,7 +17,7 @@ type DisplayNameFormProps = {
 function DisplayNameForm({ displayName, action }: DisplayNameFormProps) {
 	const [state, formAction, pending] = useFormAction(
 		action,
-		"We couldn't save your name. Check your connection and try again."
+		'We couldn’t save your name. Check your connection and try again.'
 	);
 	const failure = state.status === 'error' ? state : undefined;
 

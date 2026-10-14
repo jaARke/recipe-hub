@@ -125,17 +125,17 @@ const reviewNotePaths = {
 
 const missingTitleProblem: Problem = {
 	path: 'title',
-	message: "Add a title. The original doesn't show one.",
+	message: 'Add a title. The original doesn’t show one.',
 };
 
 const missingIngredientsProblem: Problem = {
 	path: 'ingredientSections',
-	message: "Add the ingredients. The original doesn't show any.",
+	message: 'Add the ingredients. The original doesn’t show any.',
 };
 
 const missingStepsProblem: Problem = {
 	path: 'instructionSections',
-	message: "Add the steps. The original doesn't show any.",
+	message: 'Add the steps. The original doesn’t show any.',
 };
 
 // The second half of a character written as two UTF-16 code units, such as an emoji.

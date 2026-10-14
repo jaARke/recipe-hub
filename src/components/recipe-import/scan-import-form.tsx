@@ -17,7 +17,7 @@ import {
 } from '@/components/recipe-import/scan-import-values';
 import { settings } from '@/lib/settings';
 
-const failureMessage = "We couldn't read the recipe. Check your connection and try again.";
+const failureMessage = 'We couldn’t read the recipe. Check your connection and try again.';
 
 type ScanImportFormProps = {
 	// Opens the draft for review once the photos are read.

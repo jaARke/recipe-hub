@@ -49,7 +49,7 @@ function AccessRequestCard({
 			onIssued(next);
 		}
 		return next;
-	}, "We couldn't approve the request. Reload the page and try again.");
+	}, 'We couldn’t approve the request. Reload the page and try again.');
 	const failed = state.status === 'error' ? state : undefined;
 	// React resets the form after every submit, returning the checkbox's hidden input to the state it
 	// mounted with. Remounting it with the submitted choice keeps what it shows and sends in step.
@@ -116,7 +116,7 @@ function AccessRequestCard({
 							confirmLabel="Decline request"
 							pendingLabel="Declining"
 							successMessage="Request declined"
-							failureMessage="We couldn't decline the request. Reload the page and try again."
+							failureMessage="We couldn’t decline the request. Reload the page and try again."
 							action={declineRequest}
 						>
 							<input type="hidden" name={adminFieldNames.requestId} value={request.id} />

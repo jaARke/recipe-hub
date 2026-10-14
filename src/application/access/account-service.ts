@@ -21,7 +21,7 @@ function signInCodeEmail(to: string, code: string): EmailMessage {
 		subject: 'Your sign-in code',
 		text: [
 			`Your ${siteName} sign-in code is:\n\n${code}`,
-			`It expires in ${settings.accounts.signInCodeLifetimeMinutes} minutes. If you didn't ask for a code, you can ignore this email.`,
+			`It expires in ${settings.accounts.signInCodeLifetimeMinutes} minutes. If you didn’t ask for a code, you can ignore this email.`,
 		].join('\n\n'),
 	};
 }

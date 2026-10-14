@@ -156,7 +156,7 @@ function CardSpecimen() {
 			<Specimen label='size="default" with header, action, content, and footer' frame="bare">
 				<Card>
 					<CardHeader>
-						<CardTitle>Grandpa Lou&apos;s kitchen</CardTitle>
+						<CardTitle>Grandpa Lou’s kitchen</CardTitle>
 						<CardDescription>Twelve recipes, most of them soups.</CardDescription>
 						<CardAction>
 							<Button variant="ghost" size="icon-sm" aria-label="Collection actions">
@@ -207,7 +207,7 @@ function AlertSpecimen() {
 			<Specimen label='variant="destructive" with an icon, title, and description' frame="bare">
 				<Alert variant="destructive">
 					<OctagonXIcon aria-hidden="true" />
-					<AlertTitle>We couldn&apos;t save the recipe</AlertTitle>
+					<AlertTitle>We couldn’t save the recipe</AlertTitle>
 					<AlertDescription>Check your connection and try again.</AlertDescription>
 				</Alert>
 			</Specimen>

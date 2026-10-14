@@ -80,7 +80,7 @@ const card: ExtractedRecipe = {
 	times: {},
 	ingredientSections: [{ lines: ['1 c. flour', '2 eggs'] }],
 	instructionSections: [{ steps: ['Press crust into pan.'] }],
-	reviewNotes: [{ field: 'title', note: "Check the title. The card's top edge is torn." }],
+	reviewNotes: [{ field: 'title', note: 'Check the title. The card’s top edge is torn.' }],
 };
 const readCard: Extraction = { recipe: card, model: 'example/vision-model', costUsd: 0.012 };
 
@@ -88,7 +88,7 @@ const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 const backOfCard = new Uint8Array([0xff, 0xd8, 0xff, 0x02, 0xd9]);
 const scanUpload = 'scan/development/0b6e2f4a-9c1d-4e8b-a7f3-5d2c1b0a9e8f.jpg';
 const secondScanUpload = 'scan/development/3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b.jpg';
-const unstoredScanMessage = "This photo didn't upload. Remove it and add it again.";
+const unstoredScanMessage = 'This photo didn’t upload. Remove it and add it again.';
 
 type ImportFakes = {
 	pages?: FixedWebPageFetcher;

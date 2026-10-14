@@ -29,7 +29,7 @@ function RequestCodeForm({
 }: RequestCodeFormProps) {
 	const [state, formAction, pending] = useFormAction(
 		action,
-		"We couldn't send a code. Check your connection and try again."
+		'We couldn’t send a code. Check your connection and try again.'
 	);
 	const failure = state.status === 'error' ? state : undefined;
 
@@ -80,7 +80,7 @@ function ConfirmCodeForm({
 }: ConfirmCodeFormProps) {
 	const [state, formAction, pending] = useFormAction(
 		action,
-		"We couldn't check the code. Check your connection and try again."
+		'We couldn’t check the code. Check your connection and try again.'
 	);
 	const [resendState, setResendState] = React.useState<FormState>({ status: 'idle' });
 	const [resending, startResend] = React.useTransition();
@@ -93,7 +93,7 @@ function ConfirmCodeForm({
 			} catch {
 				setResendState({
 					status: 'error',
-					message: "We couldn't send a new code. Check your connection and try again.",
+					message: 'We couldn’t send a new code. Check your connection and try again.',
 					fieldErrors: {},
 				});
 			}

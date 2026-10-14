@@ -29,7 +29,7 @@ export default function NotFound() {
 						Page not found
 					</EmptyTitle>
 					<EmptyDescription>
-						This page doesn&apos;t exist. The link may be broken, or the page may have moved.
+						This page doesn’t exist. The link may be broken, or the page may have moved.
 					</EmptyDescription>
 				</EmptyHeader>
 				<EmptyContent>

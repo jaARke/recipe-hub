@@ -26,7 +26,7 @@ export default function ErrorPage({ retry }: { retry: () => void }) {
 						Something went wrong
 					</EmptyTitle>
 					<EmptyDescription>
-						This page couldn&apos;t load. Try again, or go back to the recipes.
+						This page couldn’t load. Try again, or go back to the recipes.
 					</EmptyDescription>
 				</EmptyHeader>
 				<EmptyContent>

@@ -20,12 +20,12 @@ function DeleteRecipeDialog({ recipeId, title, action }: DeleteRecipeDialogProps
 			variant="destructive"
 			trigger="Delete recipe"
 			title={`Delete “${title}”?`}
-			description="The recipe and its photos are deleted. This can't be undone."
+			description="The recipe and its photos are deleted. This can’t be undone."
 			cancelLabel="Keep recipe"
 			confirmLabel="Delete recipe"
 			pendingLabel="Deleting"
 			successMessage="Recipe deleted"
-			failureMessage="We couldn't delete the recipe. Reload the page and try again."
+			failureMessage="We couldn’t delete the recipe. Reload the page and try again."
 			action={action}
 			// The edit page is gone, so the list takes its place in the history.
 			onSuccess={() => router.replace(recipeListPath)}

@@ -82,7 +82,7 @@ const noScansMessage = 'Add at least one photo.';
 const tooManyScansMessage = `Use ${settings.photos.maxScansPerImport} photos or fewer.`;
 // For a scan this environment never stored: its upload failed, was cut off, or never happened. A scan
 // another member's recipe or draft names gets it too, so the refusal tells nothing about theirs.
-const unstoredScanMessage = "This photo didn't upload. Remove it and add it again.";
+const unstoredScanMessage = 'This photo didn’t upload. Remove it and add it again.';
 const repeatedScanMessage = 'This photo is already attached.';
 const largeScanMessage = 'This photo is too large to read. Crop it to the recipe and add it again.';
 

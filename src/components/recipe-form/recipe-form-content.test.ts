@@ -36,7 +36,7 @@ function problemsFrom(read: () => unknown): readonly Problem[] {
 }
 
 const unreadablePayload = [
-	{ path: '', message: "We couldn't read the recipe. Reload the page and try again." },
+	{ path: '', message: 'We couldn’t read the recipe. Reload the page and try again.' },
 ];
 
 describe('recipeContentFromForm', () => {
@@ -119,7 +119,7 @@ describe('recipeContentFromForm', () => {
 		).toEqual([
 			{
 				path: 'yield.amount',
-				message: "We couldn't read this amount. Use a number, or two numbers for a range.",
+				message: 'We couldn’t read this amount. Use a number, or two numbers for a range.',
 			},
 			{ path: 'title', message: 'Enter some text.' },
 		]);

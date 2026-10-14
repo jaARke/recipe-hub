@@ -67,7 +67,7 @@ function EditNotAllowedEmptyState({ slug }: { slug: string }) {
 				<EmptyMedia variant="icon">
 					<LockIcon aria-hidden="true" />
 				</EmptyMedia>
-				<EmptyTitle>You can&apos;t edit this recipe</EmptyTitle>
+				<EmptyTitle>You can’t edit this recipe</EmptyTitle>
 				<EmptyDescription>
 					Only the person who added this recipe, or an admin, can edit it.
 				</EmptyDescription>
@@ -114,7 +114,7 @@ async function RecipeEditor({ params }: Pick<PageProps<'/recipes/[slug]/edit'>, 
 			<PageSection
 				id="delete-recipe"
 				title="Delete recipe"
-				description="Deleting the recipe also deletes its photos, and it can't be undone."
+				description="Deleting the recipe also deletes its photos, and it can’t be undone."
 			>
 				<div>
 					<DeleteRecipeDialog recipeId={recipe.id} title={recipe.title} action={deleteRecipe} />

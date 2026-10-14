@@ -46,7 +46,7 @@ export default function SignInPage({ searchParams }: PageProps<'/sign-in'>) {
 				<SignInWithReturn searchParams={searchParams} />
 			</Suspense>
 			<p className="text-muted-foreground">
-				Don&apos;t have an account? <TextLink href={requestAccessPath}>Request access</TextLink>.
+				Don’t have an account? <TextLink href={requestAccessPath}>Request access</TextLink>.
 			</p>
 		</PageContainer>
 	);

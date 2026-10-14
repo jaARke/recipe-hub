@@ -55,7 +55,7 @@ import { parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
 import { settings } from '@/lib/settings';
 
-const failureMessage = "We couldn't save the recipe. Check your connection and try again.";
+const failureMessage = 'We couldn’t save the recipe. Check your connection and try again.';
 
 const yieldKindItems = [
 	{ value: 'servings', label: 'Serves' },
@@ -336,7 +336,7 @@ function RecipeForm({
 						autoComplete="off"
 						description={
 							isEditing
-								? "Changing the title changes the recipe's link. Old links keep working."
+								? 'Changing the title changes the recipe’s link. Old links keep working.'
 								: undefined
 						}
 					/>
@@ -368,7 +368,7 @@ function RecipeForm({
 								{...textFieldProps('totalMinutes')}
 								label={textFieldLabels.totalMinutes}
 								inputMode="numeric"
-								description="Only if it's longer than prep and cook together, such as time to chill."
+								description="Only if it’s longer than prep and cook together, such as time to chill."
 							/>
 						</div>
 						<div className="grid gap-4 sm:grid-cols-3">
@@ -418,7 +418,7 @@ function RecipeForm({
 						nextId={values.nextId}
 						dispatch={dispatch}
 						{...listFieldLabels.ingredientSections}
-						description="One ingredient per field, as you'd write it. Add a section for a separate part, such as a glaze."
+						description="One ingredient per field, as you’d write it. Add a section for a separate part, such as a glaze."
 						itemPlaceholder="2½ cups all-purpose flour"
 						headingPlaceholder="For the glaze"
 						itemPreview={ingredientPreview}
@@ -456,7 +456,7 @@ function RecipeForm({
 						idPrefix={ids.photos('dish')}
 						role="dish"
 						legend={photoFieldLegends.dish}
-						description="Photos of the finished dish, which anyone can see. The first is the cover. Describe each one for people who can't see it."
+						description="Photos of the finished dish, which anyone can see. The first is the cover. Describe each one for people who can’t see it."
 						limit={settings.photos.maxDishPhotosPerRecipe}
 						photos={values.photos.dish}
 						nextId={values.nextId}

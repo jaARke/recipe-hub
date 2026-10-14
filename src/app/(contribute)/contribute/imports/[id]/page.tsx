@@ -53,7 +53,7 @@ function ImportUnavailableEmptyState() {
 				<EmptyMedia variant="icon">
 					<FileXIcon aria-hidden="true" />
 				</EmptyMedia>
-				<EmptyTitle>This draft isn&apos;t available</EmptyTitle>
+				<EmptyTitle>This draft isn’t available</EmptyTitle>
 				<EmptyDescription>
 					A draft can be reviewed for {settings.imports.importDraftLifetimeDays} days by the member
 					who imported it. Import the recipe again to get a new draft.

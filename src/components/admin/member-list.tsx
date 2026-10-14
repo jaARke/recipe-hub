@@ -35,7 +35,7 @@ function RoleAction({ member, makeAdmin, removeAdmin }: RoleActionProps) {
 				confirmLabel="Make admin"
 				pendingLabel="Making admin"
 				successMessage={`${member.displayName} is now an admin`}
-				failureMessage={`We couldn't make ${member.displayName} an admin. Reload the page and try again.`}
+				failureMessage={`We couldn’t make ${member.displayName} an admin. Reload the page and try again.`}
 				action={makeAdmin}
 			>
 				{memberIdInput}
@@ -47,16 +47,16 @@ function RoleAction({ member, makeAdmin, removeAdmin }: RoleActionProps) {
 		? {
 				title: 'Remove your admin access?',
 				description:
-					"You stay a member but can no longer review access requests, invite people, change who is an admin, or edit other members' recipes. Another admin can make you an admin again.",
-				successMessage: "You're no longer an admin",
-				failureMessage: "We couldn't remove your admin access. Reload the page and try again.",
+					'You stay a member but can no longer review access requests, invite people, change who is an admin, or edit other members’ recipes. Another admin can make you an admin again.',
+				successMessage: 'You’re no longer an admin',
+				failureMessage: 'We couldn’t remove your admin access. Reload the page and try again.',
 			}
 		: {
 				title: `Remove admin from ${member.displayName}?`,
 				description:
-					"They stay a member but can no longer review access requests, invite people, change who is an admin, or edit other members' recipes.",
+					'They stay a member but can no longer review access requests, invite people, change who is an admin, or edit other members’ recipes.',
 				successMessage: `${member.displayName} is no longer an admin`,
-				failureMessage: `We couldn't remove admin from ${member.displayName}. Reload the page and try again.`,
+				failureMessage: `We couldn’t remove admin from ${member.displayName}. Reload the page and try again.`,
 			};
 
 	return (
@@ -93,12 +93,12 @@ function RemoveMemberAction({ member, removeMember }: RemoveMemberActionProps) {
 				</>
 			}
 			title={`Remove ${member.displayName}?`}
-			description="They're signed out on every device and can't sign in again unless you invite them again, as a new account. Their recipes stay, still credited to them."
+			description="They’re signed out on every device and can’t sign in again unless you invite them again, as a new account. Their recipes stay, still credited to them."
 			cancelLabel="Keep member"
 			confirmLabel="Remove member"
 			pendingLabel="Removing member"
 			successMessage={`${member.displayName} is no longer a member`}
-			failureMessage={`We couldn't remove ${member.displayName}. Reload the page and try again.`}
+			failureMessage={`We couldn’t remove ${member.displayName}. Reload the page and try again.`}
 			action={removeMember}
 		>
 			<input type="hidden" name={adminFieldNames.memberId} value={member.id} />

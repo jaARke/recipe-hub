@@ -63,7 +63,7 @@ const versionSchema = z.iso.datetime().transform((value) => new Date(value));
 
 // For an image this environment never stored: its upload failed, was cut off, or never happened. A
 // save naming another member's photo gets it too, so the refusal tells nothing about their photos.
-const unstoredImageMessage = "This photo didn't upload. Remove it and add it again.";
+const unstoredImageMessage = 'This photo didn’t upload. Remove it and add it again.';
 
 const logger = getLogger('recipes');
 

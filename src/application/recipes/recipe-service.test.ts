@@ -58,7 +58,7 @@ const productionPhoto: RecipeImage = { role: 'dish', pathname: 'dish/production/
 // In this environment's folder, but its upload never finished.
 const unfinishedPhoto: RecipeImage = { role: 'dish', pathname: 'dish/seed/half-sent.jpg' };
 
-const unstoredImageMessage = "This photo didn't upload. Remove it and add it again.";
+const unstoredImageMessage = 'This photo didn’t upload. Remove it and add it again.';
 
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 

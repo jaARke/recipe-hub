@@ -136,7 +136,7 @@ const sampleDraft: { content: RecipeDraftContent; problems: Problem[] } = {
 		tags: ['Dessert'],
 	},
 	problems: [
-		{ path: 'title', message: "Add a title. The original doesn't show one." },
+		{ path: 'title', message: 'Add a title. The original doesn’t show one.' },
 		{
 			path: 'ingredientSections.1.lines.2',
 			message: 'Check this line against the original. Part of it was hard to read.',
@@ -178,7 +178,7 @@ const subsections = [
 		id: 'recipe-grid',
 		title: 'Recipe grid',
 		description:
-			"One column on phones, two on tablets, three on desktop. Each card is a single link to its recipe, and a recipe without a photo keeps the photo's box.",
+			'One column on phones, two on tablets, three on desktop. Each card is a single link to its recipe, and a recipe without a photo keeps the photo’s box.',
 		Content: RecipeGridSpecimen,
 	},
 	{
@@ -191,14 +191,14 @@ const subsections = [
 		id: 'recipe-pagination',
 		title: 'Recipe pagination',
 		description:
-			"Previous and Next only where they lead somewhere, the first and last pages, and the current page with one on each side. Each page's link comes from the page, so it keeps the rest of the URL, such as the order. Here every link stays on this page.",
+			'Previous and Next only where they lead somewhere, the first and last pages, and the current page with one on each side. Each page’s link comes from the page, so it keeps the rest of the URL, such as the order. Here every link stays on this page.',
 		Content: RecipePaginationSpecimen,
 	},
 	{
 		id: 'recipe-detail',
 		title: 'Recipe detail',
 		description:
-			"Reading width, with ingredients and steps in text-lg. The cover and the row of other photos each open a viewer of every photo, and the pencil beside the title, for the contributor and admins, opens the edit page. Its headings start at h4 here, under this page's own.",
+			'Reading width, with ingredients and steps in text-lg. The cover and the row of other photos each open a viewer of every photo, and the pencil beside the title, for the contributor and admins, opens the edit page. Its headings start at h4 here, under this page’s own.',
 		Content: RecipeDetailSpecimen,
 	},
 	{
@@ -238,14 +238,14 @@ const subsections = [
 		id: 'recipe-form',
 		title: 'Recipe form',
 		description:
-			"For adding and editing a recipe, and for reviewing an import, whose problems a summary at the top lists and links to until the first save; on the review page it takes focus. The member can mark each problem as checked, in the summary or beside its field, which dims it and counts it but never holds up saving. Ingredients and steps are lists of growing fields in sections, and each item's menu moves or removes it; each ingredient shows how it will read. Tags show as chips and suggest the labels in use, still taking new ones, and editing can respell a tag no other recipe uses (here, Slow cooked on the pot roast). Chosen photos are resized and upload at once, and pages of the original recipe move up and down. Here uploads are simulated, and saving checks the recipe as the site does but saves nothing.",
+			'For adding and editing a recipe, and for reviewing an import, whose problems a summary at the top lists and links to until the first save; on the review page it takes focus. The member can mark each problem as checked, in the summary or beside its field, which dims it and counts it but never holds up saving. Ingredients and steps are lists of growing fields in sections, and each item’s menu moves or removes it; each ingredient shows how it will read. Tags show as chips and suggest the labels in use, still taking new ones, and editing can respell a tag no other recipe uses (here, Slow cooked on the pot roast). Chosen photos are resized and upload at once, and pages of the original recipe move up and down. Here uploads are simulated, and saving checks the recipe as the site does but saves nothing.',
 		Content: RecipeFormSpecimen,
 	},
 	{
 		id: 'recipe-entry',
 		title: 'Adding a recipe',
 		description:
-			"Three ways in, one tab each, and a fourth for the member's unsaved drafts, counted in its label; hidden tabs keep what was entered. A link or photos of the pages, which upload as they're chosen, are read into a draft that opens in the recipe form for review. Reading takes up to a minute or two, so the form shows what it's reading and for how long, announcing the stage once and not each second. Here each import waits four seconds and then shows its error, since nothing is imported.",
+			'Three ways in, one tab each, and a fourth for the member’s unsaved drafts, counted in its label; hidden tabs keep what was entered. A link or photos of the pages, which upload as they’re chosen, are read into a draft that opens in the recipe form for review. Reading takes up to a minute or two, so the form shows what it’s reading and for how long, announcing the stage once and not each second. Here each import waits four seconds and then shows its error, since nothing is imported.',
 		Content: RecipeEntrySpecimen,
 	},
 ] as const;

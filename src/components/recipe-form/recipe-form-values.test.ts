@@ -962,30 +962,30 @@ describe('attaching errors', () => {
 	it('puts problems with fields, tags, and photos on them', () => {
 		const values = failedSave(lemonBarsForm(), {
 			'times.prepMinutes': 'Enter whole minutes.',
-			'yield.amount': "We couldn't read this amount. Use a number, or two numbers for a range.",
+			'yield.amount': 'We couldn’t read this amount. Use a number, or two numbers for a range.',
 			'yield.unit': 'Enter some text.',
 			'tags.1': 'Enter a tag.',
-			'images.2.pathname': "This photo didn't upload. Remove it and add it again.",
+			'images.2.pathname': 'This photo didn’t upload. Remove it and add it again.',
 		});
 
 		expect(values.fieldErrors).toEqual({
 			prepMinutes: 'Enter whole minutes.',
-			yieldAmount: "We couldn't read this amount. Use a number, or two numbers for a range.",
+			yieldAmount: 'We couldn’t read this amount. Use a number, or two numbers for a range.',
 			yieldUnit: 'Enter some text.',
 			tags: 'Enter a tag.',
 		});
 		expect(values.photos.scan[0]?.error).toBe(
-			"This photo didn't upload. Remove it and add it again."
+			'This photo didn’t upload. Remove it and add it again.'
 		);
 	});
 
 	it('shows a problem that names nothing in the form as one with the whole recipe', () => {
 		const values = failedSave(lemonBarsForm(), {
-			'': "We couldn't read the recipe. Reload the page and try again.",
+			'': 'We couldn’t read the recipe. Reload the page and try again.',
 			provenance: 'Something else.',
 		});
 
-		expect(values.formError).toBe("We couldn't read the recipe. Reload the page and try again.");
+		expect(values.formError).toBe('We couldn’t read the recipe. Reload the page and try again.');
 	});
 
 	it('clears earlier errors', () => {

@@ -15,7 +15,7 @@ import { Spinner } from '@/components/ui/spinner';
 function InviteForm({ issueInvite }: { issueInvite: FormAction<IssuedInvite> }) {
 	const [state, formAction, pending] = useFormAction(
 		issueInvite,
-		"We couldn't create the invite. Reload the page and try again."
+		'We couldn’t create the invite. Reload the page and try again.'
 	);
 	const failed = state.status === 'error' ? state : undefined;
 

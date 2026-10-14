@@ -56,7 +56,7 @@ function RenamePasskeyDialog({ passkeyId, name, label, action }: RenamePasskeyDi
 			setOpen(false);
 		}
 		return next;
-	}, "We couldn't rename that passkey. Check your connection and try again.");
+	}, 'We couldn’t rename that passkey. Check your connection and try again.');
 	const failure = state.status === 'error' ? state : undefined;
 
 	return (
@@ -98,7 +98,7 @@ function RenamePasskeyDialog({ passkeyId, name, label, action }: RenamePasskeyDi
 
 function PasskeyList({ passkeys, renamePasskey, removePasskey }: PasskeyListProps) {
 	if (passkeys.length === 0) {
-		return <p className="text-muted-foreground">You haven&apos;t added a passkey yet.</p>;
+		return <p className="text-muted-foreground">You haven’t added a passkey yet.</p>;
 	}
 
 	return (
@@ -138,12 +138,12 @@ function PasskeyList({ passkeys, renamePasskey, removePasskey }: PasskeyListProp
 									</>
 								}
 								title={`Remove “${name}”?`}
-								description="You can't sign in with it anymore, and your password manager may delete it from your devices too."
+								description="You can’t sign in with it anymore, and your password manager may delete it from your devices too."
 								cancelLabel="Keep passkey"
 								confirmLabel="Remove passkey"
 								pendingLabel="Removing"
 								successMessage="Passkey removed"
-								failureMessage="We couldn't remove that passkey. Reload the page and try again."
+								failureMessage="We couldn’t remove that passkey. Reload the page and try again."
 								action={removePasskey}
 							>
 								<input type="hidden" name={passkeyFieldNames.id} value={passkey.id} />

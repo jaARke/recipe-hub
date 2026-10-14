@@ -54,8 +54,8 @@ import { Spinner } from '@/components/ui/spinner';
 import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
 
 const failureMessages: Record<PhotoFailure, string> = {
-	unreadable: "This browser can't read this photo. Try Safari, or save it as a JPEG first.",
-	upload: "This photo didn't upload. Remove it and add it again.",
+	unreadable: 'This browser can’t read this photo. Try Safari, or save it as a JPEG first.',
+	upload: 'This photo didn’t upload. Remove it and add it again.',
 };
 
 type PhotoFieldProps = {
@@ -128,7 +128,7 @@ function photoStatus(photo: RecipeFormPhoto, isCover: boolean): string | undefin
 		case 'uploading':
 			return 'Uploading';
 		case 'failed':
-			return photo.upload.failure === 'unreadable' ? "Can't read this photo" : "Didn't upload";
+			return photo.upload.failure === 'unreadable' ? 'Can’t read this photo' : 'Didn’t upload';
 		case 'uploaded':
 			return isCover ? 'Cover photo' : 'Uploaded';
 		case 'saved':
@@ -285,7 +285,7 @@ function PhotoField({
 		}
 		const sentences = [
 			added.length > 0 && `Added ${countPhotos(added.length)}.`,
-			leftOut > 0 && `${countPhotos(leftOut)} didn't fit. ${limitMessage}`,
+			leftOut > 0 && `${countPhotos(leftOut)} didn’t fit. ${limitMessage}`,
 		];
 		setAnnouncement(sentences.filter((sentence) => typeof sentence === 'string').join(' '));
 	}

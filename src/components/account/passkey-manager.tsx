@@ -39,8 +39,8 @@ function StaleSessionAlert() {
 			<AlertDescription>
 				<p>
 					For your security, adding a passkey needs a sign-in from the last day.{' '}
-					<TextLink href={signInHref(accountPath)}>Sign in with an email code</TextLink>, and
-					you&apos;ll come back here.
+					<TextLink href={signInHref(accountPath)}>Sign in with an email code</TextLink>, and you’ll
+					come back here.
 				</p>
 			</AlertDescription>
 		</Alert>
@@ -106,7 +106,7 @@ function PasskeyManager() {
 	} else if (listError !== null) {
 		list = (
 			<div className="flex flex-col items-start gap-3">
-				<FormErrorAlert message="We couldn't load your passkeys. Check your connection and try again." />
+				<FormErrorAlert message="We couldn’t load your passkeys. Check your connection and try again." />
 				<Button type="button" variant="outline" onClick={() => refetch()}>
 					Try again
 				</Button>
@@ -126,7 +126,7 @@ function PasskeyManager() {
 		<PageSection
 			id="account-passkeys"
 			title="Passkeys"
-			description="A passkey lets you sign in with your face, fingerprint, or screen lock instead of an email code. Don't add one on a device other people use."
+			description="A passkey lets you sign in with your face, fingerprint, or screen lock instead of an email code. Don’t add one on a device other people use."
 			// A removed passkey's row leaves with its dialog, which held focus.
 			itemCount={passkeys?.length}
 		>

@@ -16,7 +16,7 @@ function deliveryMessage({ delivery }: IssuedInvite): string {
 		case 'sent':
 			return `We emailed the invite to ${delivery.to}.`;
 		case 'failed':
-			return `We couldn't email the invite to ${delivery.to}. Copy the link and send it to them yourself.`;
+			return `We couldn’t email the invite to ${delivery.to}. Copy the link and send it to them yourself.`;
 	}
 }
 
@@ -27,7 +27,7 @@ async function copyLink(link: string) {
 	} catch {
 		toast.add({
 			type: 'error',
-			title: "Couldn't copy the link",
+			title: 'Couldn’t copy the link',
 			description: 'Select the link and copy it yourself.',
 		});
 	}
@@ -61,8 +61,7 @@ function IssuedInviteNotice({ invite, className }: { invite: IssuedInvite; class
 						</Button>
 					</div>
 					<FieldDescription id={noteId}>
-						This link won&apos;t be shown again. If it&apos;s lost, revoke the invite and create a
-						new one.
+						This link won’t be shown again. If it’s lost, revoke the invite and create a new one.
 					</FieldDescription>
 				</Field>
 			</CardContent>

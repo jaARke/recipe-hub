@@ -66,39 +66,39 @@ describe('toFormError', () => {
 		},
 		{
 			error: new MemberRoleConflictError(),
-			message: "That member's role already changed. Reload the page to see the latest.",
+			message: 'That member’s role already changed. Reload the page to see the latest.',
 		},
 		{
 			error: new OwnerProtectedError(),
-			message: "The owner's account always stays an admin and can't be removed.",
+			message: 'The owner’s account always stays an admin and can’t be removed.',
 		},
 		{
 			error: new SelfRemovalError(),
-			message: "You can't remove yourself. Ask another admin to remove you.",
+			message: 'You can’t remove yourself. Ask another admin to remove you.',
 		},
 		{
 			error: new InvalidImageUploadError(),
-			message: "This photo didn't upload. Remove it and add it again.",
+			message: 'This photo didn’t upload. Remove it and add it again.',
 		},
 		{
 			error: new ImportUnavailableError(),
-			message: "This import can't be saved anymore. Import the recipe again.",
+			message: 'This import can’t be saved anymore. Import the recipe again.',
 		},
 		{
 			error: new ImportPageRefusedError(403),
-			message: "This website doesn't support importing recipes.",
+			message: 'This website doesn’t support importing recipes.',
 		},
 		{
 			error: new ImportPageUnavailableError('timed-out'),
-			message: "We couldn't open that page. Check the link and try again.",
+			message: 'We couldn’t open that page. Check the link and try again.',
 		},
 		{
 			error: new ImportNoRecipeError(),
-			message: "We couldn't find a recipe to import.",
+			message: 'We couldn’t find a recipe to import.',
 		},
 		{
 			error: new ImportRateLimitedError(),
-			message: `You've reached the limit of ${settings.imports.maxImportsPerDay} imports in 24 hours. Try again later, or enter the recipe manually.`,
+			message: `You’ve reached the limit of ${settings.imports.maxImportsPerDay} imports in 24 hours. Try again later, or enter the recipe manually.`,
 		},
 		{
 			error: new ImportPausedError(),
@@ -106,7 +106,7 @@ describe('toFormError', () => {
 		},
 		{
 			error: new ImportFailedError(),
-			message: "The import didn't finish. Try again in a moment.",
+			message: 'The import didn’t finish. Try again in a moment.',
 		},
 		{
 			error: new ImportTimedOutError(),

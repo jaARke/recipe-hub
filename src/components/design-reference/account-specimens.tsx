@@ -75,7 +75,7 @@ const subsections = [
 		id: 'header-account',
 		title: 'Header account controls',
 		description:
-			"From lg, Sign in or the account menu, whose button shows the member's initial and holds only the account. Below lg, one menu holds the navigation (with Add recipe, and Admin for admins), the account items, and the theme. Sign out in these menus is real: it signs this browser out.",
+			'From lg, Sign in or the account menu, whose button shows the member’s initial and holds only the account. Below lg, one menu holds the navigation (with Add recipe, and Admin for admins), the account items, and the theme. Sign out in these menus is real: it signs this browser out.',
 		Content: HeaderAccountSpecimen,
 	},
 	{
@@ -96,7 +96,7 @@ const subsections = [
 		id: 'invite',
 		title: 'Accept an invite',
 		description:
-			"One step at a time. Choose a step, or move through them with each step's buttons: here any well-formed address gets a code, any code creates the account, and creating a passkey succeeds. Each step's heading is an h4 here.",
+			'One step at a time. Choose a step, or move through them with each step’s buttons: here any well-formed address gets a code, any code creates the account, and creating a passkey succeeds. Each step’s heading is an h4 here.',
 		Content: InviteStepsSpecimen,
 	},
 	{
@@ -260,7 +260,7 @@ function AdminSpecimen() {
 				))}
 			</div>
 			<div className="grid gap-6 md:grid-cols-2">
-				<Specimen label="For a member who isn't an admin" frame="bare">
+				<Specimen label="For a member who isn’t an admin" frame="bare">
 					<AdminOnlyEmptyState />
 				</Specimen>
 				<Specimen label="Loading">

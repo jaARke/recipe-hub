@@ -64,7 +64,7 @@ describe('sendSignInCode', () => {
 				subject: 'Your sign-in code',
 				text:
 					'Your Barb’s Table sign-in code is:\n\n482915\n\n' +
-					`It expires in ${settings.accounts.signInCodeLifetimeMinutes} minutes. If you didn't ask for a code, you can ignore this email.`,
+					`It expires in ${settings.accounts.signInCodeLifetimeMinutes} minutes. If you didn’t ask for a code, you can ignore this email.`,
 			},
 		]);
 	});

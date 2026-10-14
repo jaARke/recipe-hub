@@ -76,7 +76,7 @@ describe('InviteFlow', () => {
 			renderFlow(complete);
 
 			const user = await signInWithInvite();
-			await expectStepHeading("We couldn't finish accepting your invite");
+			await expectStepHeading('We couldn’t finish accepting your invite');
 			await user.click(screen.getByRole('button', { name: 'Try again' }));
 
 			await expectStepHeading('Create a passkey');
@@ -91,7 +91,7 @@ describe('InviteFlow', () => {
 
 		await signInWithInvite();
 
-		await expectStepHeading("You're all set");
-		expect(screen.getByText("You already have an account, and you're signed in.")).toBeDefined();
+		await expectStepHeading('You’re all set');
+		expect(screen.getByText('You already have an account, and you’re signed in.')).toBeDefined();
 	});
 });
