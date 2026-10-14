@@ -57,7 +57,6 @@ type SectionedListFieldProps = {
 	headingPlaceholder: string;
 	// Steps are numbered, restarting in each section as on the recipe page.
 	numbered?: boolean;
-	maxItemLength?: number;
 	// Shown under an item's field and read with it, such as how an ingredient reads on the recipe
 	// page; nothing shows where it returns undefined.
 	itemPreview?: (text: string) => React.ReactNode;
@@ -101,7 +100,6 @@ function SectionedListField({
 	itemPlaceholder,
 	headingPlaceholder,
 	numbered = false,
-	maxItemLength,
 	itemPreview,
 	problemCheck,
 }: SectionedListFieldProps) {
@@ -206,7 +204,6 @@ function SectionedListField({
 						rows={1}
 						value={item.text}
 						placeholder={itemPlaceholder}
-						maxLength={maxItemLength}
 						aria-invalid={invalid ? 'true' : undefined}
 						aria-describedby={describedBy(
 							hasPreview && ids.itemPreview(item.id),

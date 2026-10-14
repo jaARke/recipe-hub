@@ -1,4 +1,5 @@
 import { getSessionCookie } from 'better-auth/cookies';
+import { checkBotId } from 'botid/server';
 import { eq, sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { InviteUnavailableError } from '@/application/access/errors';
@@ -13,14 +14,16 @@ import {
 	testHost,
 	testOrigin,
 } from '@/infrastructure/auth/testing/test-auth';
+import { passkeyRegistrationResponse } from '@/infrastructure/auth/testing/test-passkeys';
 import { DrizzleAccessRequestRepository } from '@/infrastructure/db/drizzle-access-request-repository';
 import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { passkeys, rateLimits, sessions, users, verifications } from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
+import { settings } from '@/lib/settings';
 
 const clientIp = '198.51.100.7';
-const sessionLifetimeSeconds = 180 * 24 * 60 * 60;
+const sessionLifetimeSeconds = settings.accounts.sessionLifetimeDays * 24 * 60 * 60;
 
 // The routes the sign-in, invite, and account flows call; every other route answers 404.
 const enabledPaths = [
@@ -34,7 +37,12 @@ const enabledPaths = [
 	'/passkey/verify-authentication',
 	'/passkey/list-user-passkeys',
 	'/passkey/delete-passkey',
+	'/passkey/update-passkey',
 ];
+
+// AAGUIDs from the community list of passkey providers that Better Auth's names follow.
+const googlePasswordManagerAaguid = 'ea9b8d66-4d01-1d21-3ce4-b6b48cb575d4';
+const anonymousAaguid = '00000000-0000-0000-0000-000000000000';
 
 type Route = { path: string; method: string };
 
@@ -152,6 +160,58 @@ async function storedUser(email: string) {
 	return row;
 }
 
+// Registers a passkey, made by an authenticator with this AAGUID, for the signed-in member. A name
+// is sent only as a crafted request would; the site's own form sends none.
+async function registerPasskey(
+	sessionCookie: string,
+	aaguid: string,
+	name?: string
+): Promise<Response> {
+	const options = await request(
+		'GET',
+		'/passkey/generate-register-options',
+		undefined,
+		sessionCookie
+	);
+	const { challenge } = (await options.json()) as { challenge: string };
+	const response = passkeyRegistrationResponse({ challenge, origin: testOrigin, aaguid });
+
+	return request(
+		'POST',
+		'/passkey/verify-registration',
+		{ response, name },
+		`${sessionCookie}; ${cookiesFrom(options.headers)}`
+	);
+}
+
+// Ada, signed in, with one passkey of this name.
+async function adaWithPasskey(name: string) {
+	const ada = await members.create({
+		email: 'ada@example.com',
+		displayName: 'Ada',
+		role: 'member',
+	});
+	const [stored] = await db
+		.insert(passkeys)
+		.values({
+			name,
+			publicKey: 'public-key',
+			userId: ada.id,
+			credentialID: 'ada-credential',
+			counter: 0,
+			deviceType: 'multiDevice',
+			backedUp: true,
+		})
+		.returning({ id: passkeys.id });
+	const signedIn = await signIn('ada@example.com');
+	return { passkeyId: stored!.id, sessionCookie: cookiesFrom(signedIn.headers) };
+}
+
+async function passkeyNames(): Promise<(string | null)[]> {
+	const rows = await db.select({ name: passkeys.name }).from(passkeys);
+	return rows.map((row) => row.name);
+}
+
 describe('sending a sign-in code', () => {
 	it('emails a member a code', async () => {
 		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
@@ -189,15 +249,96 @@ describe('sending a sign-in code', () => {
 		expect(await forRemoved.json()).toEqual(await forStranger.json());
 		expect(emails.sentMessages).toEqual([]);
 	});
+});
 
-	it('refuses a fourth request from one client within a minute', async () => {
-		const statuses: number[] = [];
-		for (let attempt = 0; attempt < 4; attempt += 1) {
-			statuses.push((await requestCode('ada@example.com')).status);
-		}
-
-		expect(statuses).toEqual([200, 200, 200, 429]);
+describe('BotID on code requests', () => {
+	// BotID reports that no browser check came with the request, which a test cannot send.
+	beforeEach(() => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
 	});
+
+	it('refuses a request BotID classifies as a bot, with no email, and logs it', async () => {
+		({ auth, emails, backgroundWork } = createTestAuth(db, {
+			checkBotId: () => checkBotId({ developmentOptions: { bypass: 'BAD-BOT' } }),
+		}));
+		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
+		const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		const response = await requestCode('ada@example.com');
+
+		expect(response.status).toBe(403);
+		expect(emails.sentMessages).toEqual([]);
+		const logged = consoleWarn.mock.calls.map(([line]) => JSON.parse(String(line)));
+		expect(logged).toContainEqual(
+			expect.objectContaining({ message: 'Sign-in code request refused as automated' })
+		);
+	});
+
+	it('sends a code to a request BotID classifies as human', async () => {
+		({ auth, emails, backgroundWork } = createTestAuth(db, {
+			checkBotId: () => checkBotId({ developmentOptions: { bypass: 'HUMAN' } }),
+		}));
+		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
+
+		const response = await requestCode('ada@example.com');
+
+		expect(response.status).toBe(200);
+		expect(codeSentTo('ada@example.com')).toMatch(/^\d{6}$/);
+	});
+
+	it('checks no other route', async () => {
+		({ auth, emails, backgroundWork } = createTestAuth(db, {
+			checkBotId: () => checkBotId({ developmentOptions: { bypass: 'BAD-BOT' } }),
+		}));
+
+		const session = await request('GET', '/get-session');
+		const passkeyOptions = await request('GET', '/passkey/generate-authenticate-options');
+
+		expect([session.status, passkeyOptions.status]).toEqual([200, 200]);
+	});
+});
+
+describe('rate limits', () => {
+	// The forms ask a refused visitor to wait a minute.
+	it.each([
+		{
+			routes: 'code requests',
+			limit: 3,
+			method: 'POST',
+			path: '/email-otp/send-verification-otp',
+			body: { email: 'ada@example.com', type: 'sign-in' },
+		},
+		{
+			routes: 'code sign-ins',
+			limit: 3,
+			method: 'POST',
+			path: '/sign-in/email-otp',
+			body: { email: 'ada@example.com', otp: '000000' },
+		},
+		{
+			routes: 'passkey routes',
+			limit: 10,
+			method: 'GET',
+			path: '/passkey/generate-authenticate-options',
+			body: undefined,
+		},
+	])(
+		'refuses $routes past $limit a minute from one client, for a minute at most',
+		async ({ limit, method, path, body }) => {
+			const statuses: number[] = [];
+			for (let attempt = 0; attempt < limit; attempt += 1) {
+				statuses.push((await request(method, path, body)).status);
+			}
+			const refused = await request(method, path, body);
+			await backgroundWork();
+
+			expect(statuses).not.toContain(429);
+			expect(refused.status).toBe(429);
+			const retryAfterSeconds = Number(refused.headers.get('x-retry-after'));
+			expect(retryAfterSeconds).toBeGreaterThan(0);
+			expect(retryAfterSeconds).toBeLessThanOrEqual(60);
+		}
+	);
 });
 
 describe('signing in with a code', () => {
@@ -338,7 +479,7 @@ describe('passkeys', () => {
 
 		expect(response.status).toBe(200);
 		expect(await response.json()).toMatchObject({
-			rp: { name: 'Recipe Hub', id: 'localhost' },
+			rp: { name: 'Barb’s Table', id: 'localhost' },
 			authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
 		});
 	});
@@ -388,6 +529,93 @@ describe('passkeys', () => {
 		expect(response.status).toBe(401);
 		expect(await response.json()).toMatchObject({ code: 'PASSKEY_NOT_FOUND' });
 		expect(await db.$count(sessions)).toBe(0);
+	});
+
+	it('names a new passkey for the password manager that made it', async () => {
+		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
+		const signedIn = await signIn('ada@example.com');
+
+		const response = await registerPasskey(
+			cookiesFrom(signedIn.headers),
+			googlePasswordManagerAaguid
+		);
+
+		expect(response.status).toBe(200);
+		expect(await passkeyNames()).toEqual(['Google Password Manager']);
+	});
+
+	it('leaves a passkey unnamed when its authenticator does not say what it is', async () => {
+		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
+		const signedIn = await signIn('ada@example.com');
+
+		const response = await registerPasskey(cookiesFrom(signedIn.headers), anonymousAaguid);
+
+		expect(response.status).toBe(200);
+		expect(await passkeyNames()).toEqual([null]);
+	});
+
+	it('renames a passkey, trimmed as a display name is', async () => {
+		const { passkeyId, sessionCookie } = await adaWithPasskey('Passkey');
+
+		const response = await request(
+			'POST',
+			'/passkey/update-passkey',
+			{ id: passkeyId, name: '  Kitchen iPad  ' },
+			sessionCookie
+		);
+
+		expect(response.status).toBe(200);
+		expect(await passkeyNames()).toEqual(['Kitchen iPad']);
+	});
+
+	it.each([
+		['an empty name', '   ', 'Enter some text.'],
+		['a name over 60 characters', 'a'.repeat(61), 'Use 60 characters or fewer.'],
+	])('refuses %s, saying why', async (_, name, message) => {
+		const { passkeyId, sessionCookie } = await adaWithPasskey('Passkey');
+
+		const response = await request(
+			'POST',
+			'/passkey/update-passkey',
+			{ id: passkeyId, name },
+			sessionCookie
+		);
+
+		expect(response.status).toBe(400);
+		expect(await response.json()).toMatchObject({ code: 'VALIDATION_ERROR', message });
+		expect(await passkeyNames()).toEqual(['Passkey']);
+	});
+
+	it('refuses a registration that names its passkey with over 60 characters', async () => {
+		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
+		const signedIn = await signIn('ada@example.com');
+
+		const response = await registerPasskey(
+			cookiesFrom(signedIn.headers),
+			googlePasswordManagerAaguid,
+			'a'.repeat(61)
+		);
+
+		expect(response.status).toBe(400);
+		expect(await response.json()).toMatchObject({
+			code: 'VALIDATION_ERROR',
+			message: 'Use 60 characters or fewer.',
+		});
+		expect(await passkeyNames()).toEqual([]);
+	});
+
+	it('stores a name a registration sends, trimmed as a display name is', async () => {
+		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
+		const signedIn = await signIn('ada@example.com');
+
+		const response = await registerPasskey(
+			cookiesFrom(signedIn.headers),
+			googlePasswordManagerAaguid,
+			'  Work laptop  '
+		);
+
+		expect(response.status).toBe(200);
+		expect(await passkeyNames()).toEqual(['Work laptop']);
 	});
 });
 
@@ -456,6 +684,20 @@ describe('logging', () => {
 			detail: 'Failed query: select 1 where email = $1',
 		});
 	});
+
+	it('logs the cause of an error a plugin passes inside an object', () => {
+		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		auth.options.logger.log('error', 'CAPTCHA service unavailable', {
+			endpoint: 'http://localhost:3000/api/auth/email-otp/send-verification-otp',
+			message: new Error('CAPTCHA service unavailable', { cause: new Error('No OIDC token') }),
+		});
+
+		expect(JSON.parse(String(consoleError.mock.calls[0]?.[0]))).toMatchObject({
+			message: 'Better Auth reported an error',
+			err: { message: 'CAPTCHA service unavailable', cause: { message: 'No OIDC token' } },
+		});
+	});
 });
 
 describe('pruning expired sessions and verifications', () => {
@@ -512,7 +754,8 @@ describe('pruning expired sessions and verifications', () => {
 			expect.objectContaining({
 				message: 'Expired sessions and verifications could not be deleted',
 				err: expect.objectContaining({
-					cause: expect.objectContaining({ message: 'deletion refused' }),
+					// raise_exception, the code the trigger's refusal carries; its message stays out of logs.
+					cause: expect.objectContaining({ code: 'P0001' }),
 				}),
 			})
 		);

@@ -2,7 +2,6 @@ import { cacheLife } from 'next/cache';
 import { notFound } from 'next/navigation';
 import { connection } from 'next/server';
 import {
-	openGraphColors,
 	openGraphFontFamilies,
 	openGraphImageContentType,
 	openGraphImageSize,
@@ -13,6 +12,7 @@ import type { PublicRecipeDto } from '@/application/recipes/recipe-dtos';
 import { getRecipeImageService } from '@/composition/services';
 import { coverImage } from '@/domain/recipe/recipe-image';
 import { siteName } from '@/lib/site';
+import { tokenColors } from '@/lib/token-colors';
 
 type ImageProps = {
 	params: Promise<{ slug: string }>;
@@ -113,11 +113,11 @@ function ShareCard({ title, source, photo }: ShareCardProps) {
 				display: 'flex',
 				width: '100%',
 				height: '100%',
-				backgroundColor: openGraphColors.background,
-				color: openGraphColors.foreground,
+				backgroundColor: tokenColors.light.background,
+				color: tokenColors.light.foreground,
 			}}
 		>
-			<div style={{ width: 24, height: '100%', backgroundColor: openGraphColors.primary }} />
+			<div style={{ width: 24, height: '100%', backgroundColor: tokenColors.light.primary }} />
 			<div
 				style={{
 					display: 'flex',
@@ -131,7 +131,7 @@ function ShareCard({ title, source, photo }: ShareCardProps) {
 					style={{
 						fontFamily: openGraphFontFamilies.heading,
 						fontSize: 32,
-						color: openGraphColors.primary,
+						color: tokenColors.light.primary,
 					}}
 				>
 					{siteName}
@@ -157,7 +157,7 @@ function ShareCard({ title, source, photo }: ShareCardProps) {
 								lineClamp: 2,
 								fontFamily: openGraphFontFamilies.body,
 								fontSize: 32,
-								color: openGraphColors.mutedForeground,
+								color: tokenColors.light.mutedForeground,
 							}}
 						>
 							{`From ${source}`}

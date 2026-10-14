@@ -1,13 +1,12 @@
 import type { Problem } from '@/domain/problem';
 import { durationMinutesSchema, type RecipeTimes } from '@/domain/recipe/duration';
-import type { IngredientLine } from '@/domain/recipe/ingredient';
-import { maxIngredientLineLength } from '@/domain/recipe/ingredient-limits';
 import { parseAmountText, parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import type { ImportDraft } from '@/domain/recipe/recipe-import';
 import type { RecipeYield } from '@/domain/recipe/recipe-yield';
 import { nonEmptyTextSchema } from '@/domain/text';
+import { settings } from '@/lib/settings';
 
 // A recipe as an extractor read it, before validation: text as written, ingredient lines unparsed.
 // Every entry mode's extractor produces this shape, and one domain function turns it into a draft.
@@ -139,8 +138,6 @@ const missingStepsProblem: Problem = {
 	message: "Add the steps. The original doesn't show any.",
 };
 
-const shortenedLineMessage = `Check this line against the original. It was cut to ${maxIngredientLineLength} characters, the most a line can hold.`;
-
 // The second half of a character written as two UTF-16 code units, such as an emoji.
 const lowSurrogate = /[\uDC00-\uDFFF]/;
 
@@ -182,6 +179,18 @@ function itemPath(list: DraftListName, sectionIndex: number, itemIndex: number):
 	return `${list}.${sectionIndex}.${itemKeys[list]}.${itemIndex}`;
 }
 
+// A kept section's heading, fitted to its limit.
+function draftHeading(
+	list: DraftListName,
+	sectionIndex: number,
+	heading: string | undefined,
+	problems: Problem[]
+): string | undefined {
+	const max = settings.recipeLimits.maxSectionHeadingLength;
+	const path = `${list}.${sectionIndex}.heading`;
+	return heading === undefined ? undefined : fittedText(heading, max, path, problems);
+}
+
 // The item a note points at, or the section or list around it when that was dropped or is missing.
 function listNotePlace(list: KeptList, section?: number, item?: number): NotePlace {
 	const place = section === undefined ? undefined : list.places[section];
@@ -206,21 +215,30 @@ function notePlace(note: ReviewNote, ingredients: KeptList, instructions: KeptLi
 	}
 }
 
-// As much of the line's start as a line can hold, never splitting a character in two.
-function shortenedLine(text: string): string {
-	const end = lowSurrogate.test(text.charAt(maxIngredientLineLength))
-		? maxIngredientLineLength - 1
-		: maxIngredientLineLength;
+// Text past its field's limit keeps as much of its start as the field holds, never splitting a
+// character in two, with a note to check it. The member finishes it rather than retyping it, and the
+// draft reaches review rather than failing its save.
+function fittedText(text: string, max: number, path: string, problems: Problem[]): string {
+	if (text.length <= max) {
+		return text;
+	}
+	problems.push({
+		path,
+		message: `Check this against the original. It was cut to ${max} characters, the most it can hold.`,
+	});
+	const end = lowSurrogate.test(text.charAt(max)) ? max - 1 : max;
 	return text.slice(0, end).trimEnd();
 }
 
-// A line too long to store keeps its start, so the member finishes it rather than retyping it.
-function draftLine(text: string, path: string, problems: Problem[]): IngredientLine {
-	if (text.length <= maxIngredientLineLength) {
-		return parseIngredientLine(text);
-	}
-	problems.push({ path, message: shortenedLineMessage });
-	return parseIngredientLine(shortenedLine(text));
+// Text as the draft keeps it, fitted to its field's limit, or undefined when nothing is left of it.
+function draftText(
+	text: string | undefined,
+	max: number,
+	path: string,
+	problems: Problem[]
+): string | undefined {
+	const stored = storedText(text);
+	return stored === undefined ? undefined : fittedText(stored, max, path, problems);
 }
 
 // Read like the form's yield field. An approximate amount keeps its number, and one that isn't a
@@ -233,8 +251,8 @@ function draftYield(
 	if (extracted === undefined || amountText === undefined) {
 		return undefined;
 	}
-	const unit = extracted.kind === 'makes' ? storedText(extracted.unit) : undefined;
-	const original = unit === undefined ? amountText : `${amountText} ${unit}`;
+	const writtenUnit = extracted.kind === 'makes' ? storedText(extracted.unit) : undefined;
+	const original = writtenUnit === undefined ? amountText : `${amountText} ${writtenUnit}`;
 	const exactAmount = parseAmountText(amountText);
 	const amount = exactAmount ?? parseAmountText(amountText.replace(approximationWord, ''));
 	if (amount === undefined) {
@@ -250,9 +268,14 @@ function draftYield(
 			message: `The original says “${original}”. Check the yield.`,
 		});
 	}
-	return extracted.kind === 'servings'
-		? { kind: 'servings', amount }
-		: { kind: 'makes', amount, unit };
+	if (extracted.kind === 'servings') {
+		return { kind: 'servings', amount };
+	}
+	const unit =
+		writtenUnit === undefined
+			? undefined
+			: fittedText(writtenUnit, settings.recipeLimits.maxYieldUnitLength, 'yield.unit', problems);
+	return { kind: 'makes', amount, unit };
 }
 
 // Minutes the domain refuses, such as 7.5, are left to the member, with what the original said.
@@ -308,21 +331,40 @@ export function importDraftFromExtractedRecipe(
 		recipe.instructionSections.map(({ heading, steps }) => ({ heading, texts: steps }))
 	);
 	const content: RecipeDraftContent = {
-		title: storedText(recipe.title),
-		description: storedText(recipe.description),
-		notes: storedText(recipe.notes),
-		source: storedText(recipe.source),
+		title: draftText(recipe.title, settings.recipeLimits.maxTitleLength, 'title', lossProblems),
+		description: draftText(
+			recipe.description,
+			settings.recipeLimits.maxDescriptionLength,
+			'description',
+			lossProblems
+		),
+		notes: draftText(recipe.notes, settings.recipeLimits.maxNotesLength, 'notes', lossProblems),
+		source: draftText(recipe.source, settings.recipeLimits.maxSourceLength, 'source', lossProblems),
 		yield: draftYield(recipe.yield, lossProblems),
 		times: draftTimes(recipe.times, lossProblems),
 		ingredientSections: ingredientList.sections.map((section, sectionIndex) => ({
-			heading: section.heading,
+			heading: draftHeading('ingredientSections', sectionIndex, section.heading, lossProblems),
 			lines: section.texts.map((text, lineIndex) =>
-				draftLine(text, itemPath('ingredientSections', sectionIndex, lineIndex), lossProblems)
+				parseIngredientLine(
+					fittedText(
+						text,
+						settings.recipeLimits.maxIngredientLineLength,
+						itemPath('ingredientSections', sectionIndex, lineIndex),
+						lossProblems
+					)
+				)
 			),
 		})),
-		instructionSections: instructionList.sections.map((section) => ({
-			heading: section.heading,
-			steps: section.texts.map((text) => ({ text })),
+		instructionSections: instructionList.sections.map((section, sectionIndex) => ({
+			heading: draftHeading('instructionSections', sectionIndex, section.heading, lossProblems),
+			steps: section.texts.map((text, stepIndex) => ({
+				text: fittedText(
+					text,
+					settings.recipeLimits.maxStepLength,
+					itemPath('instructionSections', sectionIndex, stepIndex),
+					lossProblems
+				),
+			})),
 		})),
 		tags: [],
 		images: [...images],

@@ -4,7 +4,7 @@ import { Fraunces, Hanken_Grotesk, JetBrains_Mono } from 'next/font/google';
 import { Suspense } from 'react';
 import { readHeaderMember } from '@/app/_lib/read-header-member';
 import { SessionRenewal } from '@/components/auth/session-renewal';
-import { HeaderAccount, HeaderAccountPlaceholder } from '@/components/layout/header-account';
+import type { HeaderMember } from '@/components/layout/header-member';
 import { SiteHeader } from '@/components/layout/site-header';
 import { ThemeProvider } from '@/components/layout/theme-provider';
 import { Toaster } from '@/components/ui/toast';
@@ -41,18 +41,16 @@ export const metadata: Metadata = {
 	robots: { index: false, follow: true },
 };
 
-// Reads the session, so it streams in behind its own boundary instead of holding up the page.
-async function SiteHeaderAccount() {
-	const member = await readHeaderMember(() => getMemberService().getCurrentMember());
-	return (
-		<>
-			<HeaderAccount member={member} />
-			{member !== null && <SessionRenewal />}
-		</>
-	);
+// Renews a signed-in member's session once the read resolves, behind its own boundary.
+async function MemberSessionRenewal({ member }: { member: Promise<HeaderMember | null> }) {
+	return (await member) === null ? null : <SessionRenewal />;
 }
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
+	// Read once and not awaited here: each part that shows it streams in behind its own boundary,
+	// so the session never holds up the page.
+	const member = readHeaderMember(() => getMemberService().getCurrentMember());
+
 	return (
 		<html
 			lang="en"
@@ -75,13 +73,10 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
 				<ThemeProvider>
 					<TooltipProvider>
 						<Toaster>
-							<SiteHeader
-								account={
-									<Suspense fallback={<HeaderAccountPlaceholder />}>
-										<SiteHeaderAccount />
-									</Suspense>
-								}
-							/>
+							<SiteHeader member={member} />
+							<Suspense>
+								<MemberSessionRenewal member={member} />
+							</Suspense>
 							<main id="main" className="flex-1">
 								{children}
 							</main>

@@ -2,7 +2,8 @@ import 'server-only';
 import { fieldErrorsFrom } from '@/components/forms/field-errors';
 import type { FormError } from '@/components/forms/form-state';
 import { InvalidInputError } from '@/domain/problem';
-import { AppError, findQueryError, withoutQueryParameters } from '@/lib/errors';
+import { AppError } from '@/lib/errors';
+import { settings } from '@/lib/settings';
 
 // The copy for each expected failure a form can meet, keyed by error code.
 const errorMessages: Partial<Record<string, string>> = {
@@ -26,22 +27,14 @@ const errorMessages: Partial<Record<string, string>> = {
 	'import.page-refused': "This website doesn't support importing recipes.",
 	'import.page-unavailable': "We couldn't open that page. Check the link and try again.",
 	'import.no-recipe': "We couldn't find a recipe to import.",
-	'import.rate-limited':
-		"You've reached today's limit of 50 imports. Try again tomorrow, or enter the recipe manually.",
+	'import.rate-limited': `You've reached the limit of ${settings.imports.maxImportsPerDay} imports in 24 hours. Try again later, or enter the recipe manually.`,
 	'import.paused': 'Imports are paused. You can still enter the recipe manually.',
 	'import.failed': "The import didn't finish. Try again in a moment.",
 	'import.timed-out': 'The import took too long. Try again in a moment.',
 };
 
-// Next logs a rethrown error in full, causes included, so a database error is replaced by one that
-// names the failed query without its parameters, which hold what the visitor typed.
-function withoutPersonalData(error: unknown): unknown {
-	const queryError = findQueryError(error);
-	return queryError === undefined ? error : new Error(withoutQueryParameters(queryError.message));
-}
-
-// Turns an expected failure into the form's error state. Anything else is rethrown: Next logs it, and
-// the form shows its failure message.
+// Turns an expected failure into the form's error state. Anything else is rethrown: Next logs it, which
+// prints a failed query without its parameters, and the form shows its failure message.
 export function toFormError(error: unknown): FormError {
 	if (error instanceof InvalidInputError) {
 		return { status: 'error', fieldErrors: fieldErrorsFrom(error.problems) };
@@ -49,7 +42,7 @@ export function toFormError(error: unknown): FormError {
 
 	const message = error instanceof AppError ? errorMessages[error.code] : undefined;
 	if (message === undefined) {
-		throw withoutPersonalData(error);
+		throw error;
 	}
 
 	return { status: 'error', message, fieldErrors: {} };

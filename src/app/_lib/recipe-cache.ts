@@ -4,6 +4,7 @@ import type { RecipeSort } from '@/application/ports/recipe-repository';
 import type { PublicRecipeDto, RecipeSummaryPage } from '@/application/recipes/recipe-dtos';
 import { getRecipeService } from '@/composition/services';
 import type { MemberId } from '@/domain/member/member';
+import { settings } from '@/lib/settings';
 
 // The one home for recipe cache tags: Server Actions invalidate these names after a write.
 export const recipeCacheTags = {
@@ -14,8 +15,6 @@ export const recipeCacheTags = {
 	// Every recipe page showing the member's name, so a rename reaches them all.
 	member: (id: MemberId) => `member:${id}`,
 };
-
-export const recipesPerPage = 24;
 
 // Tagged with the slug asked for, so a miss clears once a recipe takes it, and with the current
 // slug. Writes invalidate the tags; revalidating a day after caching catches edits made outside
@@ -40,8 +39,8 @@ export async function getCachedRecipePage(
 	cacheTag(recipeCacheTags.list);
 	cacheLife('days');
 	return getRecipeService().listRecipes({
-		limit: recipesPerPage,
-		offset: (page - 1) * recipesPerPage,
+		limit: settings.display.recipesPerPage,
+		offset: (page - 1) * settings.display.recipesPerPage,
 		sort,
 	});
 }

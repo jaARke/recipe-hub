@@ -6,6 +6,7 @@ import { InMemoryInviteRepository } from '@/application/testing/in-memory-invite
 import { InMemoryMemberRepository } from '@/application/testing/in-memory-member-repository';
 import { inviteExpiry, type Invite } from '@/domain/member/invite';
 import { removedMemberEmail } from '@/domain/member/member';
+import { settings } from '@/lib/settings';
 
 const now = new Date('2026-10-12T15:00:00Z');
 const minute = 60 * 1000;
@@ -62,8 +63,8 @@ describe('sendSignInCode', () => {
 				to: 'ada@example.com',
 				subject: 'Your sign-in code',
 				text:
-					'Your Recipe Hub sign-in code is:\n\n482915\n\n' +
-					"It expires in 10 minutes. If you didn't ask for a code, you can ignore this email.",
+					'Your Barb’s Table sign-in code is:\n\n482915\n\n' +
+					`It expires in ${settings.accounts.signInCodeLifetimeMinutes} minutes. If you didn't ask for a code, you can ignore this email.`,
 			},
 		]);
 	});

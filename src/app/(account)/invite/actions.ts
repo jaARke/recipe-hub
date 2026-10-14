@@ -1,7 +1,7 @@
 'use server';
 
 import { toFormError } from '@/app/_lib/form-errors';
-import type { InvitePreviewDto } from '@/application/access/access-dtos';
+import type { CompletedInviteDto, InvitePreviewDto } from '@/application/access/access-dtos';
 import type { FormState } from '@/components/forms/form-state';
 import { getInviteService } from '@/composition/services';
 
@@ -21,6 +21,16 @@ export async function bindInviteEmail(
 			status: 'success',
 			email: await getInviteService().bindInviteEmail(token, email),
 		};
+	} catch (error) {
+		return toFormError(error);
+	}
+}
+
+// Called once the invitee signs in with a code; revokes the invite when the address already had an
+// account.
+export async function completeInvite(token: string): Promise<FormState<CompletedInviteDto>> {
+	try {
+		return { status: 'success', ...(await getInviteService().completeInvite(token)) };
 	} catch (error) {
 		return toFormError(error);
 	}

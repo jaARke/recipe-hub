@@ -9,11 +9,12 @@ export const testOrigin = 'http://localhost:3000';
 // Server-side calls name the host, which Better Auth resolves the base URL from.
 export const testHost = new URL(testOrigin).host;
 
-// Better Auth on a test database with the real account services. Emails are recorded, and work
-// Better Auth runs after answering is kept so a test can wait for it.
+// Better Auth on a test database with the real account services. Emails are recorded, work Better
+// Auth runs after answering is kept so a test can wait for it, and BotID finds every request human
+// unless a test passes its own check.
 export function createTestAuth(
 	db: TestDatabase,
-	options: Pick<AuthOptions, 'productionHost'> = {}
+	options: Pick<AuthOptions, 'productionHost'> & Partial<Pick<AuthOptions, 'checkBotId'>> = {}
 ) {
 	const emails = new InMemoryEmailSender();
 	const background: Promise<unknown>[] = [];
@@ -29,6 +30,7 @@ export function createTestAuth(
 		runInBackground: (task) => {
 			background.push(task);
 		},
+		checkBotId: async () => ({ isBot: false }),
 		...options,
 	});
 

@@ -60,6 +60,7 @@ function SelectContent({
 	sideOffset = 4,
 	align = 'center',
 	alignOffset = 0,
+	// Opens below the trigger, as touch input already does, instead of laying the selection over it.
 	alignItemWithTrigger = false,
 	...props
 }: SelectPrimitive.Popup.Props &

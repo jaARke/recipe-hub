@@ -9,7 +9,7 @@ type Reply = { status: number; body: object };
 
 const message: EmailMessage = {
 	to: 'grace@example.com',
-	subject: 'Jake invited you to Recipe Hub',
+	subject: 'Jake invited you to Barb’s Table',
 	text: 'Open this link to create your account.',
 	replyTo: 'jake@example.com',
 	idempotencyKey: 'invite/0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e',
@@ -58,7 +58,7 @@ describe('send', () => {
 			path: '/emails',
 			headers: { 'idempotency-key': message.idempotencyKey },
 			body: {
-				from: 'Recipe Hub <recipes@recipes.example.com>',
+				from: 'Barb’s Table <recipes@recipes.example.com>',
 				to: 'grace@example.com',
 				subject: message.subject,
 				text: message.text,

@@ -10,7 +10,8 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from '@/components/ui/empty';
-import { importDraftLifetimeDays, type RecipeImportMode } from '@/domain/recipe/recipe-import';
+import type { RecipeImportMode } from '@/domain/recipe/recipe-import';
+import { settings } from '@/lib/settings';
 
 // Where each draft came from.
 const importModeLabels = {
@@ -27,7 +28,8 @@ function UnsavedImportsEmptyState() {
 				</EmptyMedia>
 				<EmptyTitle>No drafts</EmptyTitle>
 				<EmptyDescription>
-					Imports you haven&apos;t saved stay here for {importDraftLifetimeDays} days.
+					Imports you haven&apos;t saved stay here for {settings.imports.importDraftLifetimeDays}{' '}
+					days.
 				</EmptyDescription>
 			</EmptyHeader>
 		</Empty>

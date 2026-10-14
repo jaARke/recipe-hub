@@ -1,13 +1,13 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
-import { recipesPerPage } from '@/app/_lib/recipe-cache';
 import { InvalidRecipeSearchError } from '@/application/search/errors';
 import type { RecipeSearchInput, RecipeSearchPage } from '@/application/search/recipe-search-dtos';
 import { PageContainer } from '@/components/layout/page-container';
 import { RecipeSearch, RecipeSearchSkeleton } from '@/components/search/recipe-search';
 import { parseRecipeSearchParams, toRecipeSearchInput } from '@/components/search/search-params';
 import { getRecipeSearchService } from '@/composition/services';
+import { settings } from '@/lib/settings';
 
 // Results pages stay out of search engines even once recipes are indexed; their links are followed.
 export const metadata: Metadata = {
@@ -34,8 +34,8 @@ async function SearchResults({ searchParams }: Pick<PageProps<'/search'>, 'searc
 		notFound();
 	}
 
-	const results = await searchRecipes(toRecipeSearchInput(state, recipesPerPage));
-	const pageCount = Math.max(1, Math.ceil(results.total / recipesPerPage));
+	const results = await searchRecipes(toRecipeSearchInput(state, settings.display.recipesPerPage));
+	const pageCount = Math.max(1, Math.ceil(results.total / settings.display.recipesPerPage));
 	if (state.page > pageCount) {
 		notFound();
 	}
@@ -46,7 +46,7 @@ async function SearchResults({ searchParams }: Pick<PageProps<'/search'>, 'searc
 export default function SearchPage({ searchParams }: PageProps<'/search'>) {
 	return (
 		<PageContainer width="wide" className="flex flex-col gap-8 py-12 sm:py-16">
-			<h1 className="font-heading text-4xl font-medium">Search</h1>
+			<h1 className="font-heading text-4xl font-semibold">Search</h1>
 			<Suspense fallback={<RecipeSearchSkeleton />}>
 				<SearchResults searchParams={searchParams} />
 			</Suspense>

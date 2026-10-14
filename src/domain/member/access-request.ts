@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { InvalidAccessRequestError } from '@/domain/member/errors';
 import { displayNameSchema, emailAddressSchema } from '@/domain/member/member';
 import { problemsFromZodError } from '@/domain/problem';
-import { nonEmptyTextSchema } from '@/domain/text';
+import { boundedTextSchema } from '@/domain/text';
 
 export const accessRequestIdSchema = z.uuid().brand<'AccessRequestId'>();
 export type AccessRequestId = z.infer<typeof accessRequestIdSchema>;
@@ -11,7 +11,7 @@ export type AccessRequestId = z.infer<typeof accessRequestIdSchema>;
 export const accessRequestFieldsSchema = z.object({
 	name: displayNameSchema,
 	// How the person knows the site's members, so the admin can tell who is asking.
-	relationship: nonEmptyTextSchema.max(500, 'Use 500 characters or fewer.'),
+	relationship: boundedTextSchema(500),
 	// Where to send the invite if the request is approved.
 	email: emailAddressSchema.optional(),
 });

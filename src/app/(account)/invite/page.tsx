@@ -1,11 +1,11 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import { bindInviteEmail, getInvitePreview } from '@/app/(account)/invite/actions';
+import { bindInviteEmail, completeInvite, getInvitePreview } from '@/app/(account)/invite/actions';
 import { InviteFlow } from '@/components/auth/invite-flow';
 import { InviteFlowSkeleton } from '@/components/auth/invite-steps';
 import { PageContainer } from '@/components/layout/page-container';
 import { getMemberService } from '@/composition/services';
-import { signInCodeLifetimeMinutes } from '@/domain/member/member';
+import { settings } from '@/lib/settings';
 
 export const metadata: Metadata = {
 	title: 'Accept your invite',
@@ -17,10 +17,11 @@ async function InviteForVisitor() {
 	return (
 		<InviteFlow
 			signedInAs={member?.displayName ?? null}
-			codeLifetimeMinutes={signInCodeLifetimeMinutes}
+			codeLifetimeMinutes={settings.accounts.signInCodeLifetimeMinutes}
 			headingLevel={2}
 			getPreview={getInvitePreview}
 			bindEmail={bindInviteEmail}
+			complete={completeInvite}
 		/>
 	);
 }
@@ -28,7 +29,7 @@ async function InviteForVisitor() {
 export default function InvitePage() {
 	return (
 		<PageContainer width="reading" className="flex flex-col gap-8 py-12 sm:py-16">
-			<h1 className="font-heading text-4xl font-medium">Accept your invite</h1>
+			<h1 className="font-heading text-4xl font-semibold">Accept your invite</h1>
 			<Suspense fallback={<InviteFlowSkeleton />}>
 				<InviteForVisitor />
 			</Suspense>

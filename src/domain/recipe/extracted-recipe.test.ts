@@ -7,13 +7,14 @@ import {
 	type ExtractedYield,
 	type ReviewNote,
 } from '@/domain/recipe/extracted-recipe';
-import { maxIngredientLineLength } from '@/domain/recipe/ingredient-limits';
 import { parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import { recipeContentSchema, type RecipeContentInput } from '@/domain/recipe/recipe';
+import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import { importDraftSchema, type ImportDraft } from '@/domain/recipe/recipe-import';
 import type { RecipeYield } from '@/domain/recipe/recipe-yield';
 import { sampleRecipeContents } from '@/domain/recipe/samples/sample-recipes';
+import { settings } from '@/lib/settings';
 
 const emptyExtraction: ExtractedRecipe = {
 	times: {},
@@ -39,8 +40,9 @@ const missingProblems = {
 	steps: { path: 'instructionSections', message: "Add the steps. The original doesn't show any." },
 } satisfies Record<string, Problem>;
 
-const shortenedLineMessage =
-	'Check this line against the original. It was cut to 500 characters, the most a line can hold.';
+function cutMessage(max: number): string {
+	return `Check this against the original. It was cut to ${max} characters, the most it can hold.`;
+}
 
 // Every draft is already in the form the schema keeps, so parsing it changes nothing.
 function draftFrom(recipe: ExtractedRecipe, images: readonly RecipeImage[] = []): ImportDraft {
@@ -194,7 +196,7 @@ describe('importDraftFromExtractedRecipe', () => {
 		});
 
 		it('keeps a line at the length limit whole', () => {
-			const line = 'a'.repeat(maxIngredientLineLength);
+			const line = 'a'.repeat(settings.recipeLimits.maxIngredientLineLength);
 			const draft = draftWith({ ingredientSections: [{ lines: [line] }] });
 
 			expect(draft.content.ingredientSections?.[0]?.lines[0]?.text).toBe(line);
@@ -206,25 +208,118 @@ describe('importDraftFromExtractedRecipe', () => {
 			const draft = draftWith({
 				ingredientSections: [{ lines: ['  '] }, { lines: ['', '1 egg', line] }],
 			});
-			const kept = line.slice(0, maxIngredientLineLength).trimEnd();
+			const kept = line.slice(0, settings.recipeLimits.maxIngredientLineLength).trimEnd();
 
 			expect(draft.content.ingredientSections).toEqual([
 				{ lines: [parseIngredientLine('1 egg'), parseIngredientLine(kept)] },
 			]);
 			expect(draft.problems).toEqual([
-				{ path: 'ingredientSections.0.lines.1', message: shortenedLineMessage },
+				{
+					path: 'ingredientSections.0.lines.1',
+					message: cutMessage(settings.recipeLimits.maxIngredientLineLength),
+				},
 			]);
 		});
 
 		it('never cuts a character written as two code units in half', () => {
 			const draft = draftWith({
-				ingredientSections: [{ lines: [`${'a'.repeat(maxIngredientLineLength - 1)}🥚 eggs`] }],
+				ingredientSections: [
+					{ lines: [`${'a'.repeat(settings.recipeLimits.maxIngredientLineLength - 1)}🥚 eggs`] },
+				],
 			});
 
 			expect(draft.content.ingredientSections?.[0]?.lines[0]?.text).toBe(
-				'a'.repeat(maxIngredientLineLength - 1)
+				'a'.repeat(settings.recipeLimits.maxIngredientLineLength - 1)
 			);
 		});
+	});
+
+	describe('limits', () => {
+		function pastLimit(max: number): string {
+			return 'a'.repeat(max + 1);
+		}
+
+		it.each<
+			[
+				string,
+				number,
+				Partial<ExtractedRecipe>,
+				string,
+				(content: RecipeDraftContent) => string | undefined,
+			]
+		>([
+			[
+				'title',
+				settings.recipeLimits.maxTitleLength,
+				{ title: pastLimit(settings.recipeLimits.maxTitleLength) },
+				'title',
+				(content) => content.title,
+			],
+			[
+				'description',
+				settings.recipeLimits.maxDescriptionLength,
+				{ description: pastLimit(settings.recipeLimits.maxDescriptionLength) },
+				'description',
+				(content) => content.description,
+			],
+			[
+				'notes',
+				settings.recipeLimits.maxNotesLength,
+				{ notes: pastLimit(settings.recipeLimits.maxNotesLength) },
+				'notes',
+				(content) => content.notes,
+			],
+			[
+				'source',
+				settings.recipeLimits.maxSourceLength,
+				{ source: pastLimit(settings.recipeLimits.maxSourceLength) },
+				'source',
+				(content) => content.source,
+			],
+			[
+				'yield unit',
+				settings.recipeLimits.maxYieldUnitLength,
+				{
+					yield: {
+						kind: 'makes',
+						amount: '12',
+						unit: pastLimit(settings.recipeLimits.maxYieldUnitLength),
+					},
+				},
+				'yield.unit',
+				(content) => (content.yield?.kind === 'makes' ? content.yield.unit : undefined),
+			],
+			[
+				'section heading',
+				settings.recipeLimits.maxSectionHeadingLength,
+				{
+					instructionSections: [
+						{
+							heading: pastLimit(settings.recipeLimits.maxSectionHeadingLength),
+							steps: ['Toast the bread.'],
+						},
+					],
+				},
+				'instructionSections.0.heading',
+				(content) => content.instructionSections?.[0]?.heading,
+			],
+			[
+				'step',
+				settings.recipeLimits.maxStepLength,
+				{ instructionSections: [{ steps: [pastLimit(settings.recipeLimits.maxStepLength)] }] },
+				'instructionSections.0.steps.0',
+				(content) => content.instructionSections?.[0]?.steps[0]?.text,
+			],
+		])(
+			'cuts a %s past its limit to the limit, with a note, so the draft can be saved',
+			(_field, max, changes, path, fieldOf) => {
+				const draft = draftWith(changes);
+
+				expect(fieldOf(draft.content)).toBe('a'.repeat(max));
+				expect(draft.problems).toEqual([{ path, message: cutMessage(max) }]);
+				expect(recipeContentSchema.safeParse(draft.content).success).toBe(true);
+			}
+		);
 	});
 
 	describe('steps', () => {
@@ -455,7 +550,9 @@ describe('importDraftFromExtractedRecipe', () => {
 			const draft = draftWith({
 				yield: { kind: 'servings', amount: 'a crowd' },
 				times: { totalMinutes: 90.5 },
-				ingredientSections: [{ lines: ['x'.repeat(maxIngredientLineLength + 1)] }],
+				ingredientSections: [
+					{ lines: ['x'.repeat(settings.recipeLimits.maxIngredientLineLength + 1)] },
+				],
 				reviewNotes: [
 					{ field: 'yield', note: 'The yield is a guess.' },
 					{ field: 'times', note: 'The card gives no times.' },

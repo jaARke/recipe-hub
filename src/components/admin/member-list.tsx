@@ -142,7 +142,7 @@ function MemberRow({ member, makeAdmin, removeAdmin, removeMember }: MemberRowPr
 				</div>
 			</div>
 			{(actions.changeRole || actions.removeMember) && (
-				<div className="flex flex-col gap-2 sm:flex-row">
+				<div className="flex flex-wrap gap-2 sm:shrink-0">
 					{/* Keyed by role, so a change mounts the other dialog closed instead of reusing this one. */}
 					{actions.changeRole && (
 						<RoleAction

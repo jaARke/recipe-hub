@@ -1,6 +1,6 @@
-import { CompassIcon } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { Mascot } from '@/components/brand/mascot';
 import { PageContainer } from '@/components/layout/page-container';
 import { buttonVariants } from '@/components/ui/button';
 import {
@@ -21,8 +21,8 @@ export default function NotFound() {
 		<PageContainer width="wide" className="py-12 sm:py-16">
 			<Empty>
 				<EmptyHeader>
-					<EmptyMedia variant="icon">
-						<CompassIcon aria-hidden="true" />
+					<EmptyMedia>
+						<Mascot size="xl" />
 					</EmptyMedia>
 					{/* EmptyTitle renders a div, so the role makes it this page's heading. */}
 					<EmptyTitle role="heading" aria-level={1}>

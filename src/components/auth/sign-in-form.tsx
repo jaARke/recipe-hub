@@ -6,6 +6,7 @@ import * as React from 'react';
 import { authClient } from '@/components/auth/auth-client';
 import {
 	isPasskeyCancellation,
+	isUnknownPasskeyError,
 	passkeySignInErrorMessage,
 	settleAuthCall,
 	type AuthClientError,
@@ -13,6 +14,7 @@ import {
 import { authFieldNames } from '@/components/auth/auth-forms';
 import { ConfirmCodeForm, RequestCodeForm } from '@/components/auth/email-code-forms';
 import { requestSignInCode, signInWithCode } from '@/components/auth/email-codes';
+import { signalUnknownPasskey } from '@/components/auth/signal-unknown-passkey';
 import { formText } from '@/components/forms/form-data';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
@@ -49,8 +51,22 @@ async function canAutofillPasskeys(): Promise<boolean> {
 	);
 }
 
+type PasskeySignInResult = { error: AuthClientError | null };
+
 // Null where the browser can't offer passkeys in the email field's autofill.
-type PasskeyAutofillResult = { error: AuthClientError | null } | null;
+type PasskeyAutofillResult = PasskeySignInResult | null;
+
+// When the site no longer knows the passkey picked, the browser is told, so the password manager can
+// stop offering it.
+async function requestPasskeySignIn(autoFill: boolean): Promise<PasskeySignInResult> {
+	const result = await settleAuthCall(
+		authClient.signIn.passkey({ autoFill, returnWebAuthnResponse: true })
+	);
+	if (result.error !== null && isUnknownPasskeyError(result.error) && 'webauthn' in result) {
+		void signalUnknownPasskey(result.webauthn.response.id);
+	}
+	return result;
+}
 
 // Resolves once the visitor picks a saved passkey from the email field's autofill, or the request
 // ends.
@@ -58,7 +74,7 @@ async function signInWithPasskeyAutofill(): Promise<PasskeyAutofillResult> {
 	if (!(await canAutofillPasskeys())) {
 		return null;
 	}
-	return settleAuthCall(authClient.signIn.passkey({ autoFill: true }));
+	return requestPasskeySignIn(true);
 }
 
 // The passkey alternative below the email code; the caller makes the passkey request.
@@ -135,7 +151,7 @@ function SignInForm({ next, codeLifetimeMinutes }: SignInFormProps) {
 	function signInWithPasskey() {
 		setPasskeyError(undefined);
 		startPasskey(async () => {
-			const { error } = await settleAuthCall(authClient.signIn.passkey({ autoFill: false }));
+			const { error } = await requestPasskeySignIn(false);
 			if (error === null) {
 				finishSignIn();
 				return;

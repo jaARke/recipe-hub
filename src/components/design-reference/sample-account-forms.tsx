@@ -1,17 +1,20 @@
 'use client';
 
 import { useState, type ComponentProps } from 'react';
-import { accessRequestFieldNames, profileFieldNames } from '@/components/account/account-forms';
+import {
+	accessRequestFieldNames,
+	passkeyFieldNames,
+	profileFieldNames,
+} from '@/components/account/account-forms';
 import { DisplayNameForm } from '@/components/account/display-name-form';
 import { PasskeyList } from '@/components/account/passkey-list';
 import { RequestAccessForm } from '@/components/account/request-access-form';
 import { inputProblems, standIn } from '@/components/design-reference/stand-in-actions';
 import { formText, optionalFormText } from '@/components/forms/form-data';
 import type { FormAction, FormState } from '@/components/forms/form-state';
-import { toast } from '@/components/ui/toast';
 import { parseAccessRequestFields } from '@/domain/member/access-request';
-import { inviteLifetimeDays } from '@/domain/member/invite';
-import { parseDisplayName } from '@/domain/member/member';
+import { displayNameSchema, parseDisplayName } from '@/domain/member/member';
+import { settings } from '@/lib/settings';
 
 // Checks the request as the service does and sends any valid one.
 const sendRequest: FormAction = (_state, formData) =>
@@ -37,7 +40,7 @@ function SampleRequestAccessForm() {
 	return (
 		<RequestAccessForm
 			action={sendRequest}
-			nextSteps={`An admin will review it. If it's approved, you'll get an invite link to create your account, by email if you gave an address. The link works for ${inviteLifetimeDays} days.`}
+			nextSteps={`An admin will review it. If it's approved, you'll get an invite link to create your account, by email if you gave an address. The link works for ${settings.accounts.inviteLifetimeDays} days.`}
 		/>
 	);
 }
@@ -46,27 +49,42 @@ function SampleDisplayNameForm({ displayName }: { displayName: string }) {
 	return <DisplayNameForm displayName={displayName} action={saveName} />;
 }
 
-// Shows a passkey's removing state, then says nothing was removed, as the sample recipe form does
-// for saving.
+// Checks a new name as the server does, and renames and removes passkeys in the list as the account
+// page would; reloading restores them.
 function SamplePasskeyList({
-	passkeys,
+	passkeys: initialPasskeys,
 }: {
 	passkeys: ComponentProps<typeof PasskeyList>['passkeys'];
 }) {
-	const [removingId, setRemovingId] = useState<string>();
+	const [passkeys, setPasskeys] = useState(initialPasskeys);
 
-	async function removePasskey(id: string) {
-		setRemovingId(id);
+	const renamePasskey: FormAction = async (_state, formData) => {
+		const id = formText(formData, passkeyFieldNames.id);
+		const name = displayNameSchema.safeParse(formText(formData, passkeyFieldNames.name));
+		if (!name.success) {
+			return standIn<FormState>({
+				status: 'error',
+				fieldErrors: { [passkeyFieldNames.name]: name.error.issues[0]?.message },
+			});
+		}
+
 		await standIn(null);
-		setRemovingId(undefined);
-		toast.add({
-			type: 'info',
-			title: 'Nothing was removed',
-			description: 'This sample list shows the layout only.',
-		});
-	}
+		setPasskeys((current) =>
+			current.map((passkey) => (passkey.id === id ? { ...passkey, name: name.data } : passkey))
+		);
+		return { status: 'success' };
+	};
 
-	return <PasskeyList passkeys={passkeys} removingId={removingId} onRemove={removePasskey} />;
+	const removePasskey: FormAction = async (_state, formData) => {
+		const id = formText(formData, passkeyFieldNames.id);
+		await standIn(null);
+		setPasskeys((current) => current.filter((passkey) => passkey.id !== id));
+		return { status: 'success' };
+	};
+
+	return (
+		<PasskeyList passkeys={passkeys} renamePasskey={renamePasskey} removePasskey={removePasskey} />
+	);
 }
 
 export { SampleDisplayNameForm, SamplePasskeyList, SampleRequestAccessForm };

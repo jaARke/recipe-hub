@@ -1,15 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import {
-	accountPath,
-	adminPath,
-	requestAccessPath,
-	signInPath,
-} from '@/components/auth/auth-paths';
+import { accountPath, requestAccessPath, signInPath } from '@/components/auth/auth-paths';
 import { useSignOut } from '@/components/auth/use-sign-out';
 import type { HeaderMember } from '@/components/layout/header-member';
-import { contributePath, recipeListPath } from '@/components/recipe/recipe-paths';
+import { recipeListPath } from '@/components/recipe/recipe-paths';
 import { Button } from '@/components/ui/button';
 import {
 	DropdownMenu,
@@ -20,14 +15,16 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Skeleton } from '@/components/ui/skeleton';
 
-// The account part of a menu, shared by the phone menu and the account menu.
+// The account part of a menu, shared by the phone menu and the account menu. It holds only the
+// account: the site's pages are in the navigation.
 function AccountMenuItems({ member }: { member: HeaderMember | null }) {
 	const { signOut } = useSignOut();
 
 	if (member === null) {
 		return (
-			<DropdownMenuGroup>
+			<DropdownMenuGroup aria-label="Account">
 				<DropdownMenuItem render={<Link href={signInPath} />}>Sign in</DropdownMenuItem>
 				<DropdownMenuItem render={<Link href={requestAccessPath} />}>
 					Request access
@@ -39,16 +36,22 @@ function AccountMenuItems({ member }: { member: HeaderMember | null }) {
 	return (
 		<DropdownMenuGroup>
 			<DropdownMenuLabel>Signed in as {member.displayName}</DropdownMenuLabel>
-			<DropdownMenuItem render={<Link href={contributePath} />}>Add recipe</DropdownMenuItem>
 			<DropdownMenuItem render={<Link href={accountPath} />}>Account</DropdownMenuItem>
-			{member.role === 'admin' && (
-				<DropdownMenuItem render={<Link href={adminPath} />}>Admin</DropdownMenuItem>
-			)}
 			<DropdownMenuSeparator />
 			<DropdownMenuItem onClick={() => signOut({ destination: recipeListPath })}>
 				Sign out
 			</DropdownMenuItem>
 		</DropdownMenuGroup>
+	);
+}
+
+// Holds the account items' place while the session is read.
+function AccountMenuItemsSkeleton() {
+	return (
+		<div aria-hidden="true" className="flex flex-col gap-3 px-2 py-2.5">
+			<Skeleton className="h-3 w-28" />
+			<Skeleton className="h-3 w-20" />
+		</div>
 	);
 }
 
@@ -82,4 +85,4 @@ function AccountMenu({ member }: { member: HeaderMember }) {
 	);
 }
 
-export { AccountMenu, AccountMenuItems };
+export { AccountMenu, AccountMenuItems, AccountMenuItemsSkeleton };

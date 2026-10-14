@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { problemsFromZodError } from '@/domain/problem';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
-import { maxIngredientLineLength } from '@/domain/recipe/ingredient-limits';
-import { parseRecipeContent, recipeContentSchema, recipeSchema } from '@/domain/recipe/recipe';
+import {
+	parseRecipeContent,
+	recipeContentSchema,
+	recipeSchema,
+	storedRecipeContentSchema,
+} from '@/domain/recipe/recipe';
 import {
 	sampleButtermilkBiscuits,
 	sampleChickenSoup,
 	sampleRecipeContents,
 } from '@/domain/recipe/samples/sample-recipes';
+import { settings } from '@/lib/settings';
 
 function problemPaths(input: unknown): string[] {
 	const result = recipeContentSchema.safeParse(input);
@@ -16,6 +21,55 @@ function problemPaths(input: unknown): string[] {
 
 function withLines(lines: unknown[]): unknown {
 	return { ...sampleButtermilkBiscuits, ingredientSections: [{ lines }] };
+}
+
+function pastLimit(max: number): string {
+	return 'a'.repeat(max + 1);
+}
+
+function characterLimit(path: string, max: number) {
+	return { path, message: `Use ${max} characters or fewer.` };
+}
+
+// One past every text limit, as a recipe saved before the limits were lowered could be.
+const pastEveryTextLimit = {
+	...sampleChickenSoup,
+	title: pastLimit(settings.recipeLimits.maxTitleLength),
+	description: pastLimit(settings.recipeLimits.maxDescriptionLength),
+	notes: pastLimit(settings.recipeLimits.maxNotesLength),
+	source: pastLimit(settings.recipeLimits.maxSourceLength),
+	yield: {
+		kind: 'makes',
+		amount: { min: 12 },
+		unit: pastLimit(settings.recipeLimits.maxYieldUnitLength),
+	},
+	ingredientSections: [
+		{
+			heading: pastLimit(settings.recipeLimits.maxSectionHeadingLength),
+			lines: [{ text: pastLimit(settings.recipeLimits.maxIngredientLineLength), item: 'flour' }],
+		},
+	],
+	instructionSections: [
+		{
+			heading: pastLimit(settings.recipeLimits.maxSectionHeadingLength),
+			steps: [{ text: pastLimit(settings.recipeLimits.maxStepLength) }],
+		},
+	],
+	tags: [pastLimit(settings.recipeLimits.maxTagLength)],
+	images: [
+		{
+			role: 'dish',
+			pathname: 'dish/soup.jpg',
+			alt: pastLimit(settings.recipeLimits.maxImageAltLength),
+		},
+	],
+};
+
+const egg = { text: '1 egg', amount: { min: 1 }, item: 'egg' };
+const step = { text: 'Stir.' };
+
+function copies<Item>(item: Item, count: number): Item[] {
+	return Array.from({ length: count }, () => item);
 }
 
 describe('recipeContentSchema', () => {
@@ -54,7 +108,7 @@ describe('recipeContentSchema', () => {
 
 	it('accepts an ingredient line up to the length limit and rejects a longer one', () => {
 		const line = (text: string) => ({ text, item: text });
-		const longest = 'a'.repeat(maxIngredientLineLength);
+		const longest = 'a'.repeat(settings.recipeLimits.maxIngredientLineLength);
 
 		expect(problemPaths(withLines([line(longest)]))).toEqual([]);
 		expect(problemPaths(withLines([line(`${longest}a`)]))).toEqual([
@@ -84,6 +138,77 @@ describe('recipeContentSchema', () => {
 		expect(problemPaths({ ...sampleChickenSoup, images })).toEqual(['images.2.pathname']);
 	});
 
+	it('refuses text past each limit, naming its field', () => {
+		const result = recipeContentSchema.safeParse(pastEveryTextLimit);
+
+		expect(result.success ? [] : problemsFromZodError(result.error)).toEqual([
+			characterLimit('title', settings.recipeLimits.maxTitleLength),
+			characterLimit('description', settings.recipeLimits.maxDescriptionLength),
+			characterLimit('notes', settings.recipeLimits.maxNotesLength),
+			characterLimit('source', settings.recipeLimits.maxSourceLength),
+			characterLimit('yield.unit', settings.recipeLimits.maxYieldUnitLength),
+			characterLimit('ingredientSections.0.heading', settings.recipeLimits.maxSectionHeadingLength),
+			characterLimit(
+				'ingredientSections.0.lines.0.text',
+				settings.recipeLimits.maxIngredientLineLength
+			),
+			characterLimit(
+				'instructionSections.0.heading',
+				settings.recipeLimits.maxSectionHeadingLength
+			),
+			characterLimit('instructionSections.0.steps.0.text', settings.recipeLimits.maxStepLength),
+			characterLimit('tags.0', settings.recipeLimits.maxTagLength),
+			characterLimit('images.0.alt', settings.recipeLimits.maxImageAltLength),
+		]);
+	});
+
+	it.each([
+		{
+			what: 'sections',
+			change: {
+				ingredientSections: copies({ lines: [egg] }, settings.recipeLimits.maxSectionsPerList + 1),
+			},
+			problem: {
+				path: 'ingredientSections',
+				message: `Use ${settings.recipeLimits.maxSectionsPerList} sections or fewer.`,
+			},
+		},
+		{
+			what: 'ingredients',
+			change: {
+				ingredientSections: copies(
+					{
+						lines: copies(
+							egg,
+							Math.ceil((settings.recipeLimits.maxIngredientLinesPerRecipe + 1) / 2)
+						),
+					},
+					2
+				),
+			},
+			problem: {
+				path: 'ingredientSections',
+				message: `Use ${settings.recipeLimits.maxIngredientLinesPerRecipe} ingredients or fewer.`,
+			},
+		},
+		{
+			what: 'steps',
+			change: {
+				instructionSections: [{ steps: copies(step, settings.recipeLimits.maxStepsPerRecipe + 1) }],
+			},
+			problem: {
+				path: 'instructionSections',
+				message: `Use ${settings.recipeLimits.maxStepsPerRecipe} steps or fewer.`,
+			},
+		},
+	])('refuses more $what than a recipe keeps, counting across sections', ({ change, problem }) => {
+		const result = recipeContentSchema.safeParse({ ...sampleChickenSoup, ...change });
+
+		expect(result.success ? [] : problemsFromZodError(result.error)).toEqual([problem]);
+	});
+});
+
+describe('storedRecipeContentSchema', () => {
 	it('reads stored content that carries fields it does not know', () => {
 		const [section] = sampleChickenSoup.ingredientSections;
 		const stored = {
@@ -92,7 +217,24 @@ describe('recipeContentSchema', () => {
 			ingredientSections: [{ ...section, collapsed: true }],
 		};
 
-		expect(recipeContentSchema.parse(stored)).toEqual(sampleChickenSoup);
+		expect(storedRecipeContentSchema.parse(stored)).toEqual(sampleChickenSoup);
+	});
+
+	it('reads stored content past every limit unchanged', () => {
+		const stored = {
+			...pastEveryTextLimit,
+			ingredientSections: copies(
+				{ lines: copies(egg, 11) },
+				settings.recipeLimits.maxSectionsPerList + 1
+			),
+			instructionSections: [{ steps: copies(step, settings.recipeLimits.maxStepsPerRecipe + 1) }],
+			tags: Array.from(
+				{ length: settings.recipeLimits.maxTagsPerRecipe + 1 },
+				(_, index) => `Tag ${index}`
+			),
+		};
+
+		expect(storedRecipeContentSchema.parse(stored)).toEqual(stored);
 	});
 });
 

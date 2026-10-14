@@ -15,7 +15,7 @@ import {
 	emptyScanImport,
 	scanImportSubmission,
 } from '@/components/recipe-import/scan-import-values';
-import { maxImportScans } from '@/domain/recipe/import-limits';
+import { settings } from '@/lib/settings';
 
 const failureMessage = "We couldn't read the recipe. Check your connection and try again.";
 
@@ -67,8 +67,8 @@ function ScanImportForm({ action, uploadFolder, uploader = uploadPhoto }: ScanIm
 				idPrefix={ids.photos}
 				role="scan"
 				legend="Original recipe"
-				description={`Photos of the recipe as it was written, up to ${maxImportScans} pages in order, such as both sides of a recipe card. They stay with the recipe, and only members can see them.`}
-				limit={maxImportScans}
+				description={`Photos of the recipe as it was written, up to ${settings.photos.maxScansPerImport} pages in order, such as both sides of a recipe card. They stay with the recipe, and only members can see them.`}
+				limit={settings.photos.maxScansPerImport}
 				photos={values.photos.scan}
 				nextId={values.nextId}
 				dispatch={dispatch}

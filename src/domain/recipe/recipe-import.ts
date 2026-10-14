@@ -5,6 +5,8 @@ import type { Provenance } from '@/domain/recipe/provenance';
 import { recipeDraftContentSchema, type RecipeDraft } from '@/domain/recipe/recipe-draft';
 import { slugSchema } from '@/domain/recipe/slug';
 import { nonEmptyTextSchema } from '@/domain/text';
+import { daysInMilliseconds } from '@/lib/dates';
+import { settings } from '@/lib/settings';
 
 export const recipeImportIdSchema = z.uuid().brand<'RecipeImportId'>();
 export type RecipeImportId = z.infer<typeof recipeImportIdSchema>;
@@ -13,9 +15,6 @@ export const recipeImportModes = ['url', 'photo'] as const;
 export type RecipeImportMode = (typeof recipeImportModes)[number];
 
 export const recipeImportStatuses = ['running', 'succeeded', 'failed'] as const;
-
-// How long a member has to review an import's draft and save it as a recipe.
-export const importDraftLifetimeDays = 7;
 
 // What an import produced for review. The problems include the model's notes on what to check.
 export const importDraftSchema = z.object({
@@ -48,7 +47,7 @@ export type RecipeImport = z.infer<typeof recipeImportSchema>;
 
 // Drafts of imports started before this time have expired.
 export function importDraftCutoff(now: Date): Date {
-	return new Date(now.getTime() - importDraftLifetimeDays * 24 * 60 * 60 * 1000);
+	return new Date(now.getTime() - daysInMilliseconds(settings.imports.importDraftLifetimeDays));
 }
 
 // A URL import's provenance needs its source URL, which is cleared with the draft.

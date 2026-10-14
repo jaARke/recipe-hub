@@ -34,7 +34,7 @@ function ReferenceSection({
 			className="flex scroll-mt-20 flex-col gap-10 border-t pt-12"
 		>
 			<header className="flex flex-col gap-2">
-				<h2 id={`${id}-heading`} className="font-heading text-3xl font-medium">
+				<h2 id={`${id}-heading`} className="font-heading text-3xl font-semibold">
 					{title}
 				</h2>
 				<p className="max-w-2xl text-muted-foreground">{description}</p>
@@ -58,7 +58,7 @@ function ReferenceSubsection({
 	return (
 		<div id={id} className="flex scroll-mt-20 flex-col gap-4">
 			<div className="flex flex-col gap-1">
-				<h3 className="font-heading text-xl font-medium">{title}</h3>
+				<h3 className="font-heading text-xl font-semibold">{title}</h3>
 				{description && <p className="text-sm text-muted-foreground">{description}</p>}
 			</div>
 			{children}

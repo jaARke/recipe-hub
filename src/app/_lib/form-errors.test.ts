@@ -22,6 +22,7 @@ import {
 	RecipeNotFoundError,
 } from '@/application/recipes/errors';
 import { InvalidAccessRequestError } from '@/domain/member/errors';
+import { settings } from '@/lib/settings';
 
 describe('toFormError', () => {
 	it('maps problems to the fields they name, keeping the first for each', () => {
@@ -97,8 +98,7 @@ describe('toFormError', () => {
 		},
 		{
 			error: new ImportRateLimitedError(),
-			message:
-				"You've reached today's limit of 50 imports. Try again tomorrow, or enter the recipe manually.",
+			message: `You've reached the limit of ${settings.imports.maxImportsPerDay} imports in 24 hours. Try again later, or enter the recipe manually.`,
 		},
 		{
 			error: new ImportPausedError(),
@@ -120,26 +120,5 @@ describe('toFormError', () => {
 		const error = new Error('Something broke');
 
 		expect(() => toFormError(error)).toThrow(error);
-	});
-
-	it('rethrows a database error without its parameters or cause', () => {
-		const queryError = new Error(
-			'Failed query: insert into "access_requests" values ($1, $2)\nparams: Ada,ada@example.com',
-			{ cause: new Error('connection refused') }
-		);
-
-		let thrown: unknown;
-		try {
-			toFormError(new Error('Wrapped', { cause: queryError }));
-		} catch (error) {
-			thrown = error;
-		}
-
-		expect(thrown).toBeInstanceOf(Error);
-		expect((thrown as Error).message).toBe(
-			'Failed query: insert into "access_requests" values ($1, $2)'
-		);
-		expect((thrown as Error).cause).toBeUndefined();
-		expect(String((thrown as Error).stack)).not.toContain('ada@example.com');
 	});
 });

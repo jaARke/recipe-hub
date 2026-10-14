@@ -15,17 +15,18 @@ import {
 } from '@/application/search/recipe-search-dtos';
 import { parseRecipeTextQuery } from '@/application/search/recipe-text-query';
 import { memberIdSchema } from '@/domain/member/member';
-import { tagListSchema } from '@/domain/recipe/tag';
+import { storedTagListSchema } from '@/domain/recipe/tag';
 import { hasNoNul, nonEmptyTextSchema } from '@/domain/text';
 
-// A public URL supplies every value, so the query and the tag list are bounded. A source stays
-// unbounded, because the filters offer every source recipes use.
+// A public URL supplies every value, so the query and the tag list are bounded. Tags and the source
+// are matched as stored, whatever the recipe limits are now, because the filters offer every one
+// recipes use.
 const maxTextLength = 200;
 const maxTagCount = 20;
 
 const recipeSearchInputSchema = paginationSchema.extend({
 	text: z.string().trim().max(maxTextLength).refine(hasNoNul).optional(),
-	tags: tagListSchema.max(maxTagCount),
+	tags: storedTagListSchema.max(maxTagCount),
 	source: nonEmptyTextSchema.optional(),
 	// Lowercased, as Postgres prints ids, so the chosen id matches the contributor facet's.
 	contributorId: z.string().trim().toLowerCase().pipe(memberIdSchema).optional(),

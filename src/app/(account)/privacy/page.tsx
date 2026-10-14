@@ -1,9 +1,7 @@
 import type { Metadata } from 'next';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageSection } from '@/components/layout/page-section';
-import { sessionLifetimeDays, signInCodeLifetimeMinutes } from '@/domain/member/member';
-import { removedImageLifetimeDays } from '@/domain/recipe/image-retention';
-import { importDraftLifetimeDays } from '@/domain/recipe/recipe-import';
+import { settings } from '@/lib/settings';
 import { siteName } from '@/lib/site';
 
 export const metadata: Metadata = {
@@ -16,7 +14,7 @@ export default function PrivacyPage() {
 	return (
 		<PageContainer width="reading" className="flex flex-col gap-8 py-12 sm:py-16">
 			<div className="flex flex-col gap-3">
-				<h1 className="font-heading text-4xl font-medium">Privacy</h1>
+				<h1 className="font-heading text-4xl font-semibold">Privacy</h1>
 				<p className="text-lg text-muted-foreground">
 					What {siteName} stores about the people who use it, and why. Recipes and dish photos are
 					public. Everything else on this page stays private unless it says otherwise.
@@ -45,7 +43,7 @@ export default function PrivacyPage() {
 					</li>
 					<li>
 						A sign-in code is stored encrypted until it&apos;s used, or deleted after{' '}
-						{signInCodeLifetimeMinutes} minutes.
+						{settings.accounts.signInCodeLifetimeMinutes} minutes.
 					</li>
 					<li>
 						If you add a passkey, the site stores only its public key, which can&apos;t sign you in
@@ -53,7 +51,8 @@ export default function PrivacyPage() {
 					</li>
 					<li>
 						Each sign-in starts a session, which records the IP address and browser it began from. A
-						session ends when you sign out, or after {sessionLifetimeDays} days without a visit.
+						session ends when you sign out, or after {settings.accounts.sessionLifetimeDays} days
+						without a visit.
 					</li>
 					<li>
 						To slow down guessing, the site briefly counts sign-in attempts from each IP address.
@@ -74,7 +73,7 @@ export default function PrivacyPage() {
 					</li>
 					<li>
 						An import&apos;s draft is kept until you save it as a recipe, or deleted after{' '}
-						{importDraftLifetimeDays} days.
+						{settings.imports.importDraftLifetimeDays} days.
 					</li>
 					<li>
 						A record of each import is kept: who started it, when, which AI model read it, and what
@@ -89,8 +88,8 @@ export default function PrivacyPage() {
 						short-lived cookie for that step.
 					</li>
 					<li>
-						The request form uses Vercel BotID, which runs a check in your browser to tell people
-						from automated programs.
+						The request form and requests for a sign-in code use Vercel BotID, which runs a check in
+						your browser to tell people from automated programs.
 					</li>
 					<li>
 						Your choice of light or dark theme is saved in your browser and never sent to the site.
@@ -106,7 +105,7 @@ export default function PrivacyPage() {
 					</li>
 					<li>
 						A photo or scan that&apos;s removed, or that belongs to a deleted recipe, is deleted for
-						good after {removedImageLifetimeDays} days.
+						good after {settings.retention.removedImageLifetimeDays} days.
 					</li>
 					<li>Imports are read by AI models through Vercel&apos;s AI Gateway.</li>
 					<li>

@@ -1,0 +1,186 @@
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import * as React from 'react';
+import { describe, expect, it } from 'vitest';
+import type { AccessRequestDto, InviteDto } from '@/application/access/access-dtos';
+import type { MemberDto } from '@/application/members/member-dtos';
+import { AdminDashboard } from '@/components/admin/admin-dashboard';
+import { adminFieldNames, type AdminActions } from '@/components/admin/admin-forms';
+import type { AdminTab } from '@/components/admin/admin-tabs';
+import { formText } from '@/components/forms/form-data';
+import type { FormAction } from '@/components/forms/form-state';
+import { accessRequestIdSchema } from '@/domain/member/access-request';
+import { inviteIdSchema } from '@/domain/member/invite';
+import { memberIdSchema } from '@/domain/member/member';
+
+const createdAt = new Date('2026-10-01T12:00:00.000Z');
+const expiresAt = new Date('2026-10-08T12:00:00.000Z');
+
+const sampleRequests: AccessRequestDto[] = [
+	{
+		id: accessRequestIdSchema.parse('0199d0a1-6e2f-7a3b-9c00-000000000001'),
+		name: 'Casey',
+		relationship: "Sam's neighbor.",
+		email: 'casey@example.com',
+		createdAt,
+	},
+	{
+		id: accessRequestIdSchema.parse('0199d0a1-6e2f-7a3b-9c00-000000000002'),
+		name: 'Theo',
+		relationship: "Jordan's cousin.",
+		createdAt,
+	},
+];
+
+const sampleInvites: InviteDto[] = [
+	{
+		id: inviteIdSchema.parse('0199d0a1-6e2f-7a3b-9d00-000000000001'),
+		displayName: 'Jamie',
+		createdAt,
+		expiresAt,
+	},
+];
+
+function member(id: string, displayName: string, standing: Partial<MemberDto>): MemberDto {
+	return {
+		id: memberIdSchema.parse(id),
+		displayName,
+		email: `${displayName.toLowerCase()}@example.com`,
+		role: 'member',
+		createdAt,
+		isCurrentMember: false,
+		isOwner: false,
+		...standing,
+	};
+}
+
+const sampleMembers: MemberDto[] = [
+	member('0199d0a1-6e2f-7a3b-9e00-000000000001', 'Avery', {
+		role: 'admin',
+		isCurrentMember: true,
+		isOwner: true,
+	}),
+	member('0199d0a1-6e2f-7a3b-9e00-000000000002', 'Sam', {}),
+	member('0199d0a1-6e2f-7a3b-9e00-000000000003', 'Jordan', {}),
+];
+
+const succeed: FormAction = async () => ({ status: 'success' });
+
+type DashboardProps = {
+	initialTab?: AdminTab;
+	requests?: AccessRequestDto[];
+};
+
+// The dashboard with its tab in state, and actions that change its lists as the page's refresh would.
+function Dashboard({
+	initialTab = 'requests',
+	requests: initialRequests = sampleRequests,
+}: DashboardProps) {
+	const [tab, setTab] = React.useState(initialTab);
+	const [requests, setRequests] = React.useState(initialRequests);
+	const [invites, setInvites] = React.useState(sampleInvites);
+	const actions: AdminActions = {
+		issueInvite: async (_state, formData) => {
+			const requestId = formText(formData, adminFieldNames.requestId);
+			const displayName = formText(formData, adminFieldNames.displayName);
+			setRequests((current) => current.filter((request) => request.id !== requestId));
+			setInvites((current) => [
+				{
+					id: inviteIdSchema.parse('0199d0a1-6e2f-7a3b-9d00-000000000002'),
+					displayName,
+					createdAt,
+					expiresAt,
+				},
+				...current,
+			]);
+			return {
+				status: 'success',
+				displayName,
+				link: 'https://recipes.example/invite#token',
+				delivery: { status: 'not-requested' },
+			};
+		},
+		declineRequest: async (_state, formData) => {
+			const requestId = formText(formData, adminFieldNames.requestId);
+			setRequests((current) => current.filter((request) => request.id !== requestId));
+			return { status: 'success' };
+		},
+		revokeInvite: succeed,
+		makeAdmin: succeed,
+		removeAdmin: succeed,
+		removeMember: succeed,
+	};
+
+	return (
+		<AdminDashboard
+			requests={requests}
+			invites={invites}
+			members={sampleMembers}
+			actions={actions}
+			headingLevel={2}
+			tab={tab}
+			onTabChange={setTab}
+		/>
+	);
+}
+
+function tabNames(): (string | null)[] {
+	return screen.getAllByRole('tab').map((tab) => tab.textContent);
+}
+
+describe('AdminDashboard', () => {
+	it('opens the tab its owner names', () => {
+		render(<Dashboard initialTab="members" />);
+
+		expect(screen.getByRole('tab', { selected: true }).textContent).toBe('Members, 3');
+		const panel = screen.getByRole('tabpanel');
+		expect(within(panel).getByRole('heading', { name: 'Members' })).toBeDefined();
+		expect(screen.queryByRole('heading', { name: 'Access requests' })).toBeNull();
+	});
+
+	it('hands a change of tab to its owner, from a click or an arrow key', async () => {
+		const user = userEvent.setup();
+		render(<Dashboard />);
+
+		await user.click(screen.getByRole('tab', { name: /^Invites/ }));
+		expect(screen.getByRole('tab', { selected: true }).textContent).toBe('Invites, 1');
+		expect(screen.getByRole('heading', { name: 'Invite someone' })).toBeDefined();
+
+		await user.keyboard('{ArrowRight}');
+		expect(screen.getByRole('tab', { selected: true }).textContent).toBe('Members, 3');
+		expect(screen.getByRole('heading', { name: 'Members' })).toBeDefined();
+	});
+
+	it("shows each tab's count in its label, read after a comma, and none for an empty list", () => {
+		render(<Dashboard requests={[]} />);
+
+		expect(tabNames()).toEqual(['Requests', 'Invites, 1', 'Members, 3']);
+	});
+
+	it("moves focus to the Requests panel's heading after declining a request", async () => {
+		const user = userEvent.setup();
+		render(<Dashboard />);
+
+		await user.click(screen.getByRole('button', { name: 'Decline the request from Casey' }));
+		await user.click(await screen.findByRole('button', { name: 'Decline request' }));
+
+		// The heading is hidden from the accessibility tree until the confirmation closes.
+		await waitFor(() =>
+			expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Access requests' }))
+		);
+		expect(tabNames()).toEqual(['Requests, 1', 'Invites, 1', 'Members, 3']);
+	});
+
+	it('keeps the issued invite in view on Requests after an approval and counts the new invite', async () => {
+		const user = userEvent.setup();
+		render(<Dashboard />);
+
+		await user.click(screen.getByRole('button', { name: 'Approve the request from Casey' }));
+
+		const panel = screen.getByRole('tabpanel');
+		expect(await within(panel).findByText('Invite for Casey')).toBeDefined();
+		// The lists can commit a render after the notice.
+		await waitFor(() => expect(tabNames()).toEqual(['Requests, 1', 'Invites, 2', 'Members, 3']));
+		expect(screen.getByRole('tab', { selected: true }).textContent).toBe('Requests, 1');
+	});
+});

@@ -90,6 +90,22 @@ const config: IConfiguration = {
 			to: { path: '^src/(domain|application|infrastructure|composition|app|components)/' },
 		},
 		{
+			name: 'settings-import-only-zod',
+			comment:
+				'Client code, scripts, and next.config.ts import the settings, so they and their schema import only zod.',
+			severity: 'error',
+			from: { path: '^src/lib/settings(-schema)?\\.ts$' },
+			to: { pathNot: [`${NODE_MODULES}zod/`, '^src/lib/settings-schema\\.ts$'] },
+		},
+		{
+			name: 'settings-schema-only-in-settings',
+			comment:
+				'The schema brings zod, so only the settings, by type, and their test import it; next.config.ts parses with it.',
+			severity: 'error',
+			from: { pathNot: '^src/lib/settings(\\.test)?\\.ts$' },
+			to: { path: '^src/lib/settings-schema\\.ts$' },
+		},
+		{
 			name: 'testing-kits-only-in-tests',
 			comment: 'Test kits are imported only by tests and other test kits.',
 			severity: 'error',

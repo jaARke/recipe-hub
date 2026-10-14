@@ -27,9 +27,9 @@ type HierarchyRole = {
 const fontFamilies: readonly FontFamily[] = [
 	{
 		utility: 'font-heading',
-		family: 'Fraunces, soft',
+		family: 'Fraunces, soft, weight 600',
 		usage: 'Headings and recipe titles.',
-		sampleClassName: 'font-heading text-3xl font-medium',
+		sampleClassName: 'font-heading text-3xl font-semibold',
 		sample: 'Weeknight chicken soup',
 	},
 	{
@@ -48,17 +48,17 @@ const fontFamilies: readonly FontFamily[] = [
 	},
 ];
 
-// Steps from 2xl up are set in the heading family, where they are used.
+// Steps from 2xl up are set as the headings that use them are: Fraunces at weight 600.
 const typeScale: readonly TypeStep[] = [
 	{ name: 'text-xs', sampleClassName: 'text-xs', tracked: false },
 	{ name: 'text-sm', sampleClassName: 'text-sm', tracked: false },
 	{ name: 'text-base', sampleClassName: 'text-base', tracked: false },
 	{ name: 'text-lg', sampleClassName: 'text-lg', tracked: false },
 	{ name: 'text-xl', sampleClassName: 'text-xl', tracked: false },
-	{ name: 'text-2xl', sampleClassName: 'font-heading text-2xl', tracked: true },
-	{ name: 'text-3xl', sampleClassName: 'font-heading text-3xl', tracked: true },
-	{ name: 'text-4xl', sampleClassName: 'font-heading text-4xl', tracked: true },
-	{ name: 'text-5xl', sampleClassName: 'font-heading text-5xl', tracked: true },
+	{ name: 'text-2xl', sampleClassName: 'font-heading text-2xl font-semibold', tracked: true },
+	{ name: 'text-3xl', sampleClassName: 'font-heading text-3xl font-semibold', tracked: true },
+	{ name: 'text-4xl', sampleClassName: 'font-heading text-4xl font-semibold', tracked: true },
+	{ name: 'text-5xl', sampleClassName: 'font-heading text-5xl font-semibold', tracked: true },
 ];
 
 const hierarchy: readonly HierarchyRole[] = [

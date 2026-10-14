@@ -124,7 +124,7 @@ describe('submitRequest', () => {
 
 		const [request] = await requests.listPending();
 		const text =
-			'Ada Lovelace asked for access to Recipe Hub.\n\n' +
+			'Ada Lovelace asked for access to Barb’s Table.\n\n' +
 			'Review the request on the admin page:\nhttps://recipes.example.com/admin';
 		expect(emails.sentMessages).toEqual([
 			{

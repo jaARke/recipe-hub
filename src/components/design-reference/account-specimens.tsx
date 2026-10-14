@@ -7,6 +7,7 @@ import { AdminOnlyEmptyState } from '@/components/admin/admin-only-empty-state';
 import { IssuedInviteNotice } from '@/components/admin/issued-invite-notice';
 import { SignInFormSkeleton } from '@/components/auth/sign-in-form';
 import { sampleInviteLink } from '@/components/design-reference/fixtures';
+import { PendingSiteMenu } from '@/components/design-reference/pending-site-menu';
 import {
 	ReferenceSubsection,
 	ReferenceSubsectionNav,
@@ -74,7 +75,7 @@ const subsections = [
 		id: 'header-account',
 		title: 'Header account controls',
 		description:
-			"From sm, Sign in or the account menu, whose button shows the member's initial. Below sm, one menu holds the nav, the account items, and the theme. Sign out in these menus is real: it signs this browser out.",
+			"From lg, Sign in or the account menu, whose button shows the member's initial and holds only the account. Below lg, one menu holds the navigation (with Add recipe, and Admin for admins), the account items, and the theme. Sign out in these menus is real: it signs this browser out.",
 		Content: HeaderAccountSpecimen,
 	},
 	{
@@ -109,7 +110,7 @@ const subsections = [
 		id: 'admin',
 		title: 'Admin',
 		description:
-			'The admin page as Avery sees it, its headings from h4 here. Approving, declining, revoking, inviting, and making or removing admins change the lists as the page does, and reloading restores them. Each new invite shows its notice once; below are the notices for each delivery state.',
+			'The admin page as Avery sees it, in three tabs with their counts, its headings from h4 here. Approving, declining, revoking, inviting, and making or removing admins change the lists and counts as the page does, and reloading restores them. Each new invite shows its notice once; below are the notices for each delivery state.',
 		Content: AdminSpecimen,
 	},
 ] as const;
@@ -140,24 +141,25 @@ function FormFeedbackSpecimen() {
 
 function HeaderAccountSpecimen() {
 	return (
-		<div className="grid gap-6 sm:grid-cols-3">
-			<Specimen label="Signed out">
-				<HeaderAccount member={null} />
+		<div className="grid gap-6 lg:grid-cols-3">
+			<Specimen label="From lg, signed out" figureClassName="max-lg:hidden">
+				<HeaderAccount member={Promise.resolve(null)} />
 			</Specimen>
-			<Specimen label="Member">
-				<HeaderAccount member={sampleHeaderMember} />
+			<Specimen label="From lg, member" figureClassName="max-lg:hidden">
+				<HeaderAccount member={Promise.resolve(sampleHeaderMember)} />
 			</Specimen>
-			<Specimen label="Admin">
-				<HeaderAccount member={sampleHeaderAdmin} />
+			<Specimen label="From lg, admin" figureClassName="max-lg:hidden">
+				<HeaderAccount member={Promise.resolve(sampleHeaderAdmin)} />
 			</Specimen>
 			<Specimen
-				label="Below sm, the phone menu: signed out, member, and admin"
-				figureClassName="sm:col-span-3"
+				label="Below lg, the phone menu: signed out, member, admin, and before the session resolves"
+				figureClassName="lg:col-span-3"
 			>
 				<div className="flex gap-3">
-					<SiteMenu member={null} />
-					<SiteMenu member={sampleHeaderMember} />
-					<SiteMenu member={sampleHeaderAdmin} />
+					<SiteMenu member={Promise.resolve(null)} />
+					<SiteMenu member={Promise.resolve(sampleHeaderMember)} />
+					<SiteMenu member={Promise.resolve(sampleHeaderAdmin)} />
+					<PendingSiteMenu />
 				</div>
 			</Specimen>
 		</div>

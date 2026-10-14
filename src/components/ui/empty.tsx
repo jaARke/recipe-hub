@@ -58,7 +58,8 @@ function EmptyTitle({ className, ...props }: React.ComponentProps<'div'>) {
 	return (
 		<div
 			data-slot="empty-title"
-			className={cn('font-heading text-lg font-medium tracking-tight', className)}
+			// The brand sets headings in Fraunces at weight 600.
+			className={cn('font-heading text-lg font-semibold tracking-tight', className)}
 			{...props}
 		/>
 	);

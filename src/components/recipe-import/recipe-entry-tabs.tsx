@@ -1,8 +1,8 @@
 import type * as React from 'react';
 import type { UnsavedImportDto } from '@/application/ingestion/recipe-import-dtos';
+import { CountBadge } from '@/components/layout/count-badge';
 import { RecipeFormSkeleton } from '@/components/recipe-form/recipe-form';
 import { UnsavedImportList } from '@/components/recipe-import/unsaved-import-list';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { Provenance } from '@/domain/recipe/provenance';
@@ -42,12 +42,7 @@ function RecipeEntryTabs({ forms, unsavedImports, now }: RecipeEntryTabsProps) {
 				))}
 				<TabsTrigger value={draftsTab}>
 					Drafts
-					{draftCount > 0 && (
-						<Badge variant="outline">
-							<span className="sr-only">, </span>
-							{draftCount}
-						</Badge>
-					)}
+					<CountBadge count={draftCount} />
 				</TabsTrigger>
 			</TabsList>
 			{entryModeTabs.map(({ mode }) => (

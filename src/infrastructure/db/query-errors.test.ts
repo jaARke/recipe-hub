@@ -4,7 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { printQueryErrorsWithoutParameters } from '@/infrastructure/db/query-errors';
 import { users } from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
-import { findQueryError, withoutQueryParameters } from '@/lib/errors';
+import { isQueryError, withoutQueryParameters } from '@/lib/errors';
 import { getLogger } from '@/lib/logger';
 
 const email = 'ada@example.com';
@@ -36,7 +36,7 @@ async function duplicateAccount(): Promise<DrizzleQueryError> {
 }
 
 describe('failed queries', () => {
-	it('carry their parameters where the logger and form errors expect them', async () => {
+	it('carry their parameters where the logger and the print patch expect them', async () => {
 		const error = await duplicateAccount();
 
 		expect(error.message).toMatch(
@@ -44,7 +44,7 @@ describe('failed queries', () => {
 		);
 		expect(error.params).toEqual(['Ada', email]);
 		expect(error.cause).toMatchObject({ code: '23505', detail: expect.stringContaining(email) });
-		expect(findQueryError(new Error('Sign-up failed', { cause: error }))).toBe(error);
+		expect(isQueryError(error)).toBe(true);
 		expect(withoutQueryParameters(error.message)).not.toContain(email);
 	});
 
@@ -69,16 +69,25 @@ describe('failed queries', () => {
 		expect(String(error)).toBe(`Error: ${withoutQueryParameters(error.message)}`);
 	});
 
-	it('print no value their cause quotes', async () => {
+	it('log and print no value their cause quotes', async () => {
+		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const canary = 'secret-value-canary';
 		const error = await db
 			.insert(users)
-			.values({ displayName: 'Grace', email: 'grace@example.com', inviteId: 'not-a-uuid' })
+			.values({ displayName: 'Grace', email: 'grace@example.com', inviteId: canary })
 			.catch((caught: unknown) => caught);
-
 		expect(error).toBeInstanceOf(DrizzleQueryError);
 		expect((error as DrizzleQueryError).cause).toMatchObject({
-			message: expect.stringContaining('not-a-uuid'),
+			message: expect.stringContaining(canary),
 		});
-		expect(inspect(error)).not.toContain('not-a-uuid');
+		const wrapped = new Error('Sign-up failed', { cause: error });
+
+		getLogger('test').error('Sign-up failed', { err: wrapped });
+
+		const line = String(consoleError.mock.calls[0]?.[0]);
+		expect(line).not.toContain(canary);
+		expect(JSON.parse(line).err.cause.cause).toEqual({ name: 'error', code: '22P02' });
+		expect(inspect(wrapped)).not.toContain(canary);
+		expect(String(error)).not.toContain(canary);
 	});
 });

@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { maxImportScans } from '@/domain/recipe/import-limits';
+import { storedContent, writtenContent } from '@/domain/recipe/content-limits';
 import {
 	coverImage,
 	dishImages,
 	isPublicImagePathname,
 	isScanImagePathname,
-	recipeImageListSchema,
+	recipeImageListSchemaFor,
 	recipeImageSchema,
 	scanImages,
 	type RecipeImage,
 	type RecipeImageRole,
 } from '@/domain/recipe/recipe-image';
-import { maxDishPhotos, maxScans } from '@/domain/recipe/recipe-image-limits';
+import { settings } from '@/lib/settings';
 
 describe('recipeImageSchema', () => {
 	it('accepts an image stored under its role', () => {
@@ -45,7 +45,9 @@ describe('recipeImageSchema', () => {
 	});
 });
 
-describe('recipeImageListSchema', () => {
+describe('recipeImageListSchemaFor', () => {
+	const recipeImageListSchema = recipeImageListSchemaFor(writtenContent);
+
 	function images(role: RecipeImageRole, count: number): RecipeImage[] {
 		return Array.from({ length: count }, (_, index) => ({
 			role,
@@ -54,25 +56,52 @@ describe('recipeImageListSchema', () => {
 	}
 
 	it('accepts as many dish photos and scans as a recipe keeps', () => {
-		const list = [...images('dish', maxDishPhotos), ...images('scan', maxScans)];
+		const list = [
+			...images('dish', settings.photos.maxDishPhotosPerRecipe),
+			...images('scan', settings.photos.maxScansPerRecipe),
+		];
 
 		expect(recipeImageListSchema.safeParse(list).success).toBe(true);
 	});
 
 	it('refuses each role past its limit once, on its first image past it', () => {
-		const list = [...images('dish', maxDishPhotos + 1), ...images('scan', maxScans + 2)];
+		const list = [
+			...images('dish', settings.photos.maxDishPhotosPerRecipe + 1),
+			...images('scan', settings.photos.maxScansPerRecipe + 2),
+		];
 
 		expect(recipeImageListSchema.safeParse(list).error?.issues).toEqual([
-			expect.objectContaining({ path: [maxDishPhotos], message: 'Use 12 photos or fewer.' }),
 			expect.objectContaining({
-				path: [maxDishPhotos + 1 + maxScans],
-				message: 'Use 12 photos or fewer.',
+				path: [settings.photos.maxDishPhotosPerRecipe],
+				message: `Use ${settings.photos.maxDishPhotosPerRecipe} photos or fewer.`,
+			}),
+			expect.objectContaining({
+				path: [settings.photos.maxDishPhotosPerRecipe + 1 + settings.photos.maxScansPerRecipe],
+				message: `Use ${settings.photos.maxScansPerRecipe} photos or fewer.`,
 			}),
 		]);
 	});
 
-	it("holds every scan an import reads, so the draft's recipe can be saved", () => {
-		expect(maxImportScans).toBeLessThanOrEqual(maxScans);
+	it('refuses alt text past its limit when written, and reads any stored', () => {
+		const alt = 'a'.repeat(settings.recipeLimits.maxImageAltLength + 1);
+		const list = [{ role: 'dish', pathname: 'dish/plated.jpg', alt }];
+
+		expect(recipeImageListSchema.safeParse(list).error?.issues).toEqual([
+			expect.objectContaining({
+				path: [0, 'alt'],
+				message: `Use ${settings.recipeLimits.maxImageAltLength} characters or fewer.`,
+			}),
+		]);
+		expect(recipeImageListSchemaFor(storedContent).parse(list)).toEqual(list);
+	});
+
+	it("reads stored images past either role's limit", () => {
+		const list = [
+			...images('dish', settings.photos.maxDishPhotosPerRecipe + 1),
+			...images('scan', settings.photos.maxScansPerRecipe + 1),
+		];
+
+		expect(recipeImageListSchemaFor(storedContent).parse(list)).toEqual(list);
 	});
 });
 

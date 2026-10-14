@@ -11,6 +11,7 @@ import { authFieldNames } from '@/components/auth/auth-forms';
 import { ConfirmCodeForm, RequestCodeForm } from '@/components/auth/email-code-forms';
 import {
 	InviteCodeStep,
+	InviteCompleteFailed,
 	InviteDone,
 	InviteEmailStep,
 	InviteFlowSkeleton,
@@ -38,7 +39,7 @@ import {
 	SelectValue,
 } from '@/components/ui/select';
 import { parseInviteEmail } from '@/domain/member/invite';
-import { signInCodeLifetimeMinutes } from '@/domain/member/member';
+import { settings } from '@/lib/settings';
 
 // What the auth client reports when the passkey dialog is closed, and for a wrong code.
 const closedPasskeyDialog: AuthClientError = { code: 'AUTH_CANCELLED', status: 400 };
@@ -53,7 +54,9 @@ const inviteSteps = [
 	{ value: 'passkey-failed', label: 'Passkey not created' },
 	{ value: 'done-with-passkey', label: 'Done, with a passkey' },
 	{ value: 'done', label: 'Done, without a passkey' },
+	{ value: 'done-existing', label: 'Done, with an existing account' },
 	{ value: 'load-failed', label: "Couldn't load" },
+	{ value: 'complete-failed', label: "Couldn't finish" },
 	{ value: 'unavailable', label: 'Unavailable' },
 	{ value: 'signed-in', label: 'Already signed in' },
 ] as const;
@@ -150,7 +153,7 @@ function SampleSignIn({ idPrefix, codeSentTo, passkeyDialogClosed = false }: Sam
 			) : (
 				<ConfirmCodeForm
 					id={ids.code}
-					description={`If ${email} has an account, we sent it a sign-in code. The code works for ${signInCodeLifetimeMinutes} minutes.`}
+					description={`If ${email} has an account, we sent it a sign-in code. The code works for ${settings.accounts.signInCodeLifetimeMinutes} minutes.`}
 					submitLabel="Sign in"
 					pendingLabel="Signing in"
 					action={refuseCode}
@@ -240,7 +243,7 @@ function SampleInviteSteps({ preview, inviteeEmail, signedInAs }: SampleInviteSt
 					<InviteCodeStep headingLevel={inviteHeadingLevel}>
 						<ConfirmCodeForm
 							id={inviteFieldIds.code}
-							description={`We sent a code to ${email ?? inviteeEmail}. It works for ${signInCodeLifetimeMinutes} minutes.`}
+							description={`We sent a code to ${email ?? inviteeEmail}. It works for ${settings.accounts.signInCodeLifetimeMinutes} minutes.`}
 							submitLabel="Create account"
 							pendingLabel="Creating account"
 							action={createAccount}
@@ -261,12 +264,21 @@ function SampleInviteSteps({ preview, inviteeEmail, signedInAs }: SampleInviteSt
 					/>
 				);
 			case 'done-with-passkey':
-				return <InviteDone passkeyCreated headingLevel={inviteHeadingLevel} />;
+				return <InviteDone outcome="created-with-passkey" headingLevel={inviteHeadingLevel} />;
 			case 'done':
-				return <InviteDone passkeyCreated={false} headingLevel={inviteHeadingLevel} />;
+				return <InviteDone outcome="created" headingLevel={inviteHeadingLevel} />;
+			case 'done-existing':
+				return <InviteDone outcome="existing" headingLevel={inviteHeadingLevel} />;
 			case 'load-failed':
 				return (
 					<InviteLoadFailed headingLevel={inviteHeadingLevel} onRetry={() => moveTo('welcome')} />
+				);
+			case 'complete-failed':
+				return (
+					<InviteCompleteFailed
+						headingLevel={inviteHeadingLevel}
+						onRetry={() => moveTo('passkey')}
+					/>
 				);
 			case 'unavailable':
 				return <InviteUnavailable headingLevel={inviteHeadingLevel} />;

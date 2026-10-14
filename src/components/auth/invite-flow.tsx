@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
-import type { InvitePreviewDto } from '@/application/access/access-dtos';
+import type { CompletedInviteDto, InvitePreviewDto } from '@/application/access/access-dtos';
 import { authClient } from '@/components/auth/auth-client';
 import { settleAuthCall } from '@/components/auth/auth-errors';
 import { authFieldNames } from '@/components/auth/auth-forms';
@@ -10,6 +10,7 @@ import { ConfirmCodeForm, RequestCodeForm } from '@/components/auth/email-code-f
 import { requestSignInCode, signInWithCode } from '@/components/auth/email-codes';
 import {
 	InviteCodeStep,
+	InviteCompleteFailed,
 	InviteDone,
 	InviteEmailStep,
 	InviteFlowSkeleton,
@@ -20,6 +21,7 @@ import {
 	InviteUnavailable,
 	InviteWelcome,
 	type InviteHeadingLevel,
+	type InviteOutcome,
 } from '@/components/auth/invite-steps';
 import { SignOutButton } from '@/components/auth/sign-out-button';
 import { formText } from '@/components/forms/form-data';
@@ -39,8 +41,9 @@ type InviteFlowStep =
 	| { kind: 'welcome'; preview: InvitePreviewDto }
 	| { kind: 'email' }
 	| { kind: 'code'; email: string }
+	| { kind: 'complete-failed' }
 	| { kind: 'passkey'; failed: boolean }
-	| { kind: 'done'; passkeyCreated: boolean };
+	| { kind: 'done'; outcome: InviteOutcome };
 
 type InviteFlowProps = {
 	// The visitor's name if they were signed in when the page loaded. Only the first render reads
@@ -50,6 +53,7 @@ type InviteFlowProps = {
 	headingLevel: InviteHeadingLevel;
 	getPreview: (token: string) => Promise<InvitePreviewDto | null>;
 	bindEmail: (token: string, email: string) => Promise<FormState<{ email: string }>>;
+	complete: (token: string) => Promise<FormState<CompletedInviteDto>>;
 };
 
 function focusTargetId(kind: InviteFlowStep['kind']): string {
@@ -72,13 +76,14 @@ function takeInviteToken(): string | null {
 }
 
 // Accepting an invite: confirm an email address with a code, which creates the account and signs
-// the invitee in, then offer a passkey.
+// the invitee in, then offer a passkey. An address that already has an account signs in to it.
 function InviteFlow({
 	signedInAs,
 	codeLifetimeMinutes,
 	headingLevel,
 	getPreview,
 	bindEmail,
+	complete,
 }: InviteFlowProps) {
 	const router = useRouter();
 	// Undefined until read on mount; null when the link carried none.
@@ -135,24 +140,46 @@ function InviteFlow({
 		return sent;
 	};
 
-	// Signing in with the first code creates the account; the header then renders signed in.
-	const confirmCode =
-		(email: string): FormAction =>
-		async (_state, formData) => {
-			const result = await signInWithCode(email, formText(formData, authFieldNames.code));
-			if (result.status === 'success') {
-				router.refresh();
-				setStep({ kind: 'passkey', failed: false });
+	// Asks whether this invite created the account the code signed in to.
+	async function completionStep(): Promise<InviteFlowStep> {
+		try {
+			const completed = await complete(token.current ?? '');
+			if (completed.status !== 'success') {
+				return { kind: 'complete-failed' };
 			}
-			return result;
-		};
+			return completed.account === 'created'
+				? { kind: 'passkey', failed: false }
+				: { kind: 'done', outcome: 'existing' };
+		} catch {
+			return { kind: 'complete-failed' };
+		}
+	}
+
+	function retryCompletion() {
+		setStep({ kind: 'loading' });
+		void completionStep().then(setStep);
+	}
+
+	// Signing in with the first code creates the account, unless the address already had one; the
+	// header then renders signed in. The code is spent from here on, so failures leave the form.
+	async function confirmCode(email: string, formData: FormData): Promise<FormState> {
+		const signedIn = await signInWithCode(email, formText(formData, authFieldNames.code));
+		if (signedIn.status !== 'success') {
+			return signedIn;
+		}
+		router.refresh();
+		setStep(await completionStep());
+		return signedIn;
+	}
 
 	// Started straight from the click, since Safari only opens the passkey dialog for a user gesture.
 	function createPasskey() {
 		startCreatingPasskey(async () => {
 			const { error } = await settleAuthCall(authClient.passkey.addPasskey());
 			setStep(
-				error === null ? { kind: 'done', passkeyCreated: true } : { kind: 'passkey', failed: true }
+				error === null
+					? { kind: 'done', outcome: 'created-with-passkey' }
+					: { kind: 'passkey', failed: true }
 			);
 		});
 	}
@@ -200,12 +227,14 @@ function InviteFlow({
 						description={`We sent a code to ${step.email}. It works for ${codeLifetimeMinutes} minutes.`}
 						submitLabel="Create account"
 						pendingLabel="Creating account"
-						action={confirmCode(step.email)}
+						action={(_state, formData) => confirmCode(step.email, formData)}
 						sendNewCode={() => requestSignInCode(step.email)}
 						onChangeEmail={() => setStep({ kind: 'email' })}
 					/>
 				</InviteCodeStep>
 			);
+		case 'complete-failed':
+			return <InviteCompleteFailed headingLevel={headingLevel} onRetry={retryCompletion} />;
 		case 'passkey':
 			return (
 				<InvitePasskeyOffer
@@ -213,11 +242,11 @@ function InviteFlow({
 					pending={creatingPasskey}
 					headingLevel={headingLevel}
 					onCreate={createPasskey}
-					onSkip={() => setStep({ kind: 'done', passkeyCreated: false })}
+					onSkip={() => setStep({ kind: 'done', outcome: 'created' })}
 				/>
 			);
 		case 'done':
-			return <InviteDone passkeyCreated={step.passkeyCreated} headingLevel={headingLevel} />;
+			return <InviteDone outcome={step.outcome} headingLevel={headingLevel} />;
 	}
 }
 

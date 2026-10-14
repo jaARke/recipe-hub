@@ -11,14 +11,6 @@ export const openGraphImageSize = { width: 1200, height: 630 };
 // for a link preview. As JPEG the same card is under a tenth of that.
 export const openGraphImageContentType = 'image/jpeg';
 
-// Mirror the light theme tokens in globals.css as sRGB, since Satori reads no CSS variables or oklch.
-export const openGraphColors = {
-	background: '#fcfcfb',
-	foreground: '#191816',
-	mutedForeground: '#61605e',
-	primary: '#1b626e',
-};
-
 export const openGraphFontFamilies = {
 	heading: 'Fraunces',
 	body: 'Hanken Grotesk',

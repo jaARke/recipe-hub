@@ -1,5 +1,5 @@
-import { SearchXIcon } from 'lucide-react';
 import Link from 'next/link';
+import { Mascot } from '@/components/brand/mascot';
 import { RecipesEmptyState } from '@/components/recipe/recipes-empty-state';
 import {
 	appliedFilterCount,
@@ -39,8 +39,8 @@ function RecipeSearchEmptyState({ state }: { state: RecipeSearchState }) {
 	return (
 		<Empty className="border">
 			<EmptyHeader>
-				<EmptyMedia variant="icon">
-					<SearchXIcon aria-hidden="true" />
+				<EmptyMedia>
+					<Mascot size="lg" />
 				</EmptyMedia>
 				<EmptyTitle>{title}</EmptyTitle>
 				<EmptyDescription>{advice.join(' ')}</EmptyDescription>

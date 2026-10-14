@@ -12,9 +12,7 @@ import { z } from 'zod';
 import { ImportFailedError, ImportPausedError } from '@/application/ingestion/errors';
 import type { Extraction, ExtractionRequester } from '@/application/ports/recipe-extractors';
 import { toExtractedRecipe, type RecipeOutput } from '@/infrastructure/ai/recipe-output';
-
-// Bounds a call and its retries. Several pages of handwriting take the longest.
-const extractionTimeoutMs = 90_000;
+import { settings } from '@/lib/settings';
 
 // Caps what a runaway answer costs. The largest evaluation answer is under 1,000 tokens, and six dense
 // pages with their transcription come to several thousand, so this leaves room for the reasoning some
@@ -86,7 +84,7 @@ export async function extractWithModel(request: ModelExtractionRequest): Promise
 			output: Output.object({ name: 'recipe', schema: request.schema }),
 			providerOptions: gatewayOptions(request.requester),
 			maxOutputTokens: maxExtractionOutputTokens,
-			timeout: extractionTimeoutMs,
+			timeout: settings.ai.extractionTimeoutMs,
 			abortSignal: request.signal,
 		});
 	} catch (error) {

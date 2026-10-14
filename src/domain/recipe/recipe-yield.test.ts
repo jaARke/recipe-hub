@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { formatYield, recipeYieldSchema } from '@/domain/recipe/recipe-yield';
+import { writtenContent } from '@/domain/recipe/content-limits';
+import { formatYield, recipeYieldSchemaFor } from '@/domain/recipe/recipe-yield';
+
+const recipeYieldSchema = recipeYieldSchemaFor(writtenContent);
 
 describe('formatYield', () => {
 	it('writes servings', () => {

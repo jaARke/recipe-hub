@@ -2,6 +2,7 @@ import { cn } from 'cn';
 import { Specimen, SpecimenLabel } from '@/components/design-reference/reference-section';
 import { TokenValue } from '@/components/design-reference/token-value';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 
@@ -43,7 +44,7 @@ function ShapeSpecimens() {
 				<ul className="grid grid-cols-2 gap-6 lg:grid-cols-4">
 					{shadowSteps.map((step) => (
 						<li key={step} className="flex flex-col gap-3">
-							<div className={cn('h-20 rounded-xl bg-card ring-1 ring-foreground/10', step)} />
+							<Card className={cn('h-20', step)} />
 							<SpecimenLabel>{step}</SpecimenLabel>
 						</li>
 					))}

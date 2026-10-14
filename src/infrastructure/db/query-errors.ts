@@ -1,24 +1,13 @@
 import 'server-only';
 import { inspect, type InspectOptionsStylized } from 'node:util';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
-import { z } from 'zod';
-import { withoutQueryParameters } from '@/lib/errors';
-
-// What a failed query's cause tells an operator. Postgres's message, `detail`, and `where` can quote a
-// value, and PGlite's cause repeats the parameters, so it keeps only the names of what failed.
-const causeSchema = z.object({
-	name: z.string().optional(),
-	code: z.string().optional(),
-	constraint: z.string().optional(),
-	table: z.string().optional(),
-	column: z.string().optional(),
-});
+import { queryErrorCause, withoutQueryParameters } from '@/lib/errors';
 
 // The query's SQL and what failed, as an error Node prints the usual way.
 function printableQueryError(error: DrizzleQueryError): Error {
 	const message = withoutQueryParameters(error.message);
-	const cause = causeSchema.safeParse(error.cause);
-	const printable = new Error(message, cause.success ? { cause: cause.data } : undefined);
+	const cause = queryErrorCause(error);
+	const printable = new Error(message, cause === undefined ? undefined : { cause });
 	printable.stack = error.stack?.replace(error.message, message);
 	return printable;
 }

@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
-import { maxIngredientLineLength } from '@/domain/recipe/ingredient-limits';
-import { parseAmountText, parseIngredientLine } from '@/domain/recipe/ingredient-parser';
+import {
+	maxReadLineLength,
+	parseAmountText,
+	parseIngredientLine,
+} from '@/domain/recipe/ingredient-parser';
 import { sampleRecipeContents } from '@/domain/recipe/samples/sample-recipes';
 
 type ParsedParts = Omit<IngredientLine, 'text'>;
@@ -136,8 +139,8 @@ describe('parseIngredientLine', () => {
 		});
 	});
 
-	it('leaves a line longer than the limit unread', () => {
-		const text = '1-'.repeat(maxIngredientLineLength * 20);
+	it('leaves a line longer than it reads unread', () => {
+		const text = '1-'.repeat(maxReadLineLength * 20);
 		const started = performance.now();
 
 		expect(parseIngredientLine(text)).toStrictEqual({ text, item: text });

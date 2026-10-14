@@ -8,11 +8,11 @@ import {
 	memberRoleSchema,
 } from '@/domain/member/member';
 import { problemsFromZodError } from '@/domain/problem';
+import { daysInMilliseconds } from '@/lib/dates';
+import { settings } from '@/lib/settings';
 
 export const inviteIdSchema = z.uuid().brand<'InviteId'>();
 export type InviteId = z.infer<typeof inviteIdSchema>;
-
-export const inviteLifetimeDays = 7;
 
 // What an admin enters to invite someone.
 export const inviteFieldsSchema = z.object({
@@ -59,7 +59,7 @@ export function inviteStatus(invite: Invite, now: Date): InviteStatus {
 }
 
 export function inviteExpiry(createdAt: Date): Date {
-	return new Date(createdAt.getTime() + inviteLifetimeDays * 24 * 60 * 60 * 1000);
+	return new Date(createdAt.getTime() + daysInMilliseconds(settings.accounts.inviteLifetimeDays));
 }
 
 export function parseInviteFields(input: unknown): InviteFields {

@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getRecipeImageService, getRecipeImportService } from '@/composition/services';
-import { importDraftLifetimeDays } from '@/domain/recipe/recipe-import';
+import { settings } from '@/lib/settings';
 
 export const metadata: Metadata = {
 	title: 'Review the import',
@@ -55,8 +55,8 @@ function ImportUnavailableEmptyState() {
 				</EmptyMedia>
 				<EmptyTitle>This draft isn&apos;t available</EmptyTitle>
 				<EmptyDescription>
-					A draft can be reviewed for {importDraftLifetimeDays} days by the member who imported it.
-					Import the recipe again to get a new draft.
+					A draft can be reviewed for {settings.imports.importDraftLifetimeDays} days by the member
+					who imported it. Import the recipe again to get a new draft.
 				</EmptyDescription>
 			</EmptyHeader>
 			<EmptyContent>
@@ -117,7 +117,7 @@ function ImportReviewSkeleton() {
 export default function ImportReviewPage({ params }: PageProps<'/contribute/imports/[id]'>) {
 	return (
 		<PageContainer width="reading" className="flex flex-col gap-8 py-12 sm:py-16">
-			<h1 className="font-heading text-4xl font-medium">Review the import</h1>
+			<h1 className="font-heading text-4xl font-semibold">Review the import</h1>
 			<Suspense fallback={<ImportReviewSkeleton />}>
 				<ImportReview params={params} />
 			</Suspense>

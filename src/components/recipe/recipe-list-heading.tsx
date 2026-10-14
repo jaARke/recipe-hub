@@ -15,7 +15,7 @@ function RecipeListHeading({ id, children }: RecipeListHeadingProps) {
 	useFocusOnReplace(ref);
 
 	return (
-		<h1 ref={ref} id={id} tabIndex={-1} className="font-heading text-4xl font-medium">
+		<h1 ref={ref} id={id} tabIndex={-1} className="font-heading text-4xl font-semibold">
 			{children}
 		</h1>
 	);

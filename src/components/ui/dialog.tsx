@@ -101,7 +101,8 @@ function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
 	return (
 		<DialogPrimitive.Title
 			data-slot="dialog-title"
-			className={cn('font-heading leading-none font-medium', className)}
+			// The brand sets headings in Fraunces at weight 600.
+			className={cn('font-heading leading-none font-semibold', className)}
 			{...props}
 		/>
 	);

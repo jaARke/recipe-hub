@@ -20,8 +20,8 @@ import { formatDate } from '@/lib/dates';
 // The recipe page's text hierarchy, shared with the typography specimen.
 const recipeTextStyles = {
 	// Long words wrap rather than push a control beside the title off a narrow screen.
-	title: 'min-w-0 font-heading text-4xl font-medium wrap-anywhere md:text-5xl',
-	section: 'font-heading text-2xl font-medium',
+	title: 'min-w-0 font-heading text-4xl font-semibold wrap-anywhere md:text-5xl',
+	section: 'font-heading text-2xl font-semibold',
 	subsection: 'text-lg font-semibold',
 	body: 'text-lg',
 	supporting: 'text-lg text-muted-foreground',

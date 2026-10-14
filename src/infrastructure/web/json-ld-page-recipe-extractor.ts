@@ -23,8 +23,7 @@ import {
 	type ExtractedRecipe,
 	type ExtractedYield,
 } from '@/domain/recipe/extracted-recipe';
-import { maxIngredientLineLength } from '@/domain/recipe/ingredient-limits';
-import { parseAmountText } from '@/domain/recipe/ingredient-parser';
+import { maxReadLineLength, parseAmountText } from '@/domain/recipe/ingredient-parser';
 
 type JsonObject = { readonly [key: string]: unknown };
 
@@ -462,13 +461,13 @@ function yieldKind(labelWord: string | undefined, unit: string): ExtractedYield[
 }
 
 // How many words the opening amount takes: the longest run the parser reads, four in "1 1/2 to 2
-// servings". The parser reads no amount longer than an ingredient line.
+// servings". The parser reads no amount longer than a line it reads.
 function amountWordCount(words: readonly string[]): number {
 	let count = 0;
 	let amount = '';
 	for (const [index, word] of words.entries()) {
 		amount = index === 0 ? word : `${amount} ${word}`;
-		if (amount.length > maxIngredientLineLength) {
+		if (amount.length > maxReadLineLength) {
 			break;
 		}
 		if (parseAmountText(amount) !== undefined) {
