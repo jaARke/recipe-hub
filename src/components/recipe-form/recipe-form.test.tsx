@@ -64,7 +64,7 @@ describe('RecipeForm’s review notes', () => {
 		expect(screen.getByText('3 things need a second look')).toBeDefined();
 		expect(screen.getAllByText('Check')).toHaveLength(3);
 		expect(screen.getAllByRole('button', { name: /^Looks right/ })).toHaveLength(3);
-		expect(screen.queryByText(/^Check \d+ things?$/)).toBeNull();
+		expect(screen.queryByText(/^Fix \d+ things? to save$/)).toBeNull();
 		expect(document.querySelector('[aria-invalid="true"]')).toBeNull();
 		expect(
 			screen.getByRole('textbox', { name: 'Ingredient 2' }).getAttribute('aria-describedby')
@@ -144,7 +144,7 @@ describe('RecipeForm’s review notes', () => {
 		await user.click(within(dialog).getByRole('button', { name: 'Save anyway' }));
 
 		await waitFor(() => expect(action).toHaveBeenCalledOnce());
-		expect(await screen.findByText('Check 1 thing')).toBeDefined();
+		expect(await screen.findByText('Fix 1 thing to save')).toBeDefined();
 		expect(screen.getByText('Check the title.')).toBeDefined();
 		expect(screen.getByText('Check this line.')).toBeDefined();
 		expect(screen.queryByText('Check this step.')).toBeNull();

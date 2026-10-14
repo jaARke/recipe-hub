@@ -49,7 +49,7 @@ function ProblemSummary({ problems }: { problems: readonly SummarizedProblem[] }
 	return (
 		<Alert variant="destructive">
 			<TriangleAlertIcon aria-hidden="true" />
-			<AlertTitle>Check {countThings(problems.length)}</AlertTitle>
+			<AlertTitle>Fix {countThings(problems.length)} to save</AlertTitle>
 			<AlertDescription>
 				<ul className="flex list-disc flex-col gap-1 pl-4">
 					{problems.map(({ message, label, targetId }, index) => {
