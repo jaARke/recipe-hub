@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 import type { Problem } from '@/domain/problem';
+import { approximationWord } from '@/domain/recipe/amount-words';
 import { durationMinutesSchema, type RecipeTimes } from '@/domain/recipe/duration';
 import { normalizeIngredientLine, parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import { withoutListMarkers } from '@/domain/recipe/list-markers';
@@ -147,10 +148,6 @@ const missingStepsProblem: Problem = {
 
 // The second half of a character written as two UTF-16 code units, such as an emoji.
 const lowSurrogate = /[\uDC00-\uDFFF]/;
-
-// A word that opens an approximate yield, as in "About 50" or "approx. 2".
-export const approximationWord =
-	/^(?:about|approximately|approx|around|roughly|nearly|almost|up\s+to)\b\.?\s*/iu;
 
 // Text as the domain stores it in a field of the given kind, or undefined when nothing is left of it.
 function storedText(

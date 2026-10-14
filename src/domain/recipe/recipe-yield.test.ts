@@ -72,7 +72,16 @@ describe('readYieldAmount', () => {
 		expect(readYieldAmount(text)).toStrictEqual(amount);
 	});
 
-	it.each(['4 [?]', '4?', 'a few.', '.'])('reads no amount in %j', (text) => {
+	it.each([
+		['four', { min: 4 }],
+		['Four.', { min: 4 }],
+		['four to six', { min: 4, max: 6 }],
+		['two and a half', { min: 2.5 }],
+	])('reads the amount in words in %j', (text, amount) => {
+		expect(readYieldAmount(text)).toStrictEqual(amount);
+	});
+
+	it.each(['4 [?]', '4?', 'a few.', '.', 'half', 'a'])('reads no amount in %j', (text) => {
 		expect(readYieldAmount(text)).toBeUndefined();
 	});
 });

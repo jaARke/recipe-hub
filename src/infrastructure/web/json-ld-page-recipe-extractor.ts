@@ -16,8 +16,8 @@ import type {
 } from 'schema-dts';
 import type { Extraction, PageRecipeExtractor } from '@/application/ports/recipe-extractors';
 import type { WebPage } from '@/application/ports/web-page-fetcher';
+import { approximationWord } from '@/domain/recipe/amount-words';
 import {
-	approximationWord,
 	type ExtractedIngredientSection,
 	type ExtractedInstructionSection,
 	type ExtractedRecipe,

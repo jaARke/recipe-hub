@@ -1,8 +1,10 @@
 import { parseIngredient, type ParseIngredientOptions } from 'parse-ingredient';
 import type { Amount } from '@/domain/recipe/amount';
+import { approximationWord, readAmountWords, vulgarFractions } from '@/domain/recipe/amount-words';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
 import { readingOptions, readUnit, sizes } from '@/domain/recipe/ingredient-units';
 import { withoutListMarkers } from '@/domain/recipe/list-markers';
+import { transcriptionMarkers } from '@/domain/recipe/transcription-markers';
 import { normalizeText, withoutTrailingPunctuation } from '@/domain/text-normalization';
 
 type ItemParts = Pick<IngredientLine, 'item' | 'preparation'>;
@@ -32,7 +34,7 @@ export const exampleIngredientLine = '3 ribs celery, sliced';
 const lineEndPunctuation = ';,.';
 
 // One quantity as written: a fraction or mixed number, a vulgar fraction, a decimal, or a whole number.
-const quantitySource = String.raw`(?:\d+(?:\s+\d+)?\s*[/⁄]\s*\d+|\d*\s*[¼-¾⅐-⅞]|\d*\.\d+|\d+)`;
+const quantitySource = String.raw`(?:\d+(?:\s+\d+)?\s*[/⁄]\s*\d+|\d*\s*${vulgarFractions}|\d*\.\d+|\d+)`;
 
 // A quantity, or a range of two joined the way the library joins them.
 const amountPattern = new RegExp(
@@ -78,13 +80,17 @@ export function amountOfQuantities(
 		: toAmount(quantity, quantity2);
 }
 
-// The amount and unit that open the line, as the library reads them, or nothing it may misread.
+// The amount and unit that open the line, as the library reads them, or nothing it may misread. An
+// amount in words is read as its numerals: "two eggs" as "2 eggs".
 function readMeasure(line: string): Measure | undefined {
 	if (line.length > maxReadLineLength) {
 		return undefined;
 	}
 
-	const [parsed] = parseIngredient([line], libraryOptions);
+	const words = readAmountWords(line);
+	const reading =
+		words === undefined ? line : `${words.numerals}${line.slice(words.written.length)}`;
+	const [parsed] = parseIngredient([reading], libraryOptions);
 	if (parsed === undefined || parsed.quantity === null) {
 		return undefined;
 	}
@@ -98,12 +104,12 @@ function readMeasure(line: string): Measure | undefined {
 	}
 
 	// The library also reads a quantity from the end of a line ("Juice of 1 lemon"), which is no amount.
-	if (!line.endsWith(description)) {
+	if (!reading.endsWith(description)) {
 		return undefined;
 	}
 
-	const descriptionStart = line.length - description.length;
-	const measureText = line.slice(0, descriptionStart).trimEnd();
+	const descriptionStart = reading.length - description.length;
+	const measureText = reading.slice(0, descriptionStart).trimEnd();
 	if (!measureText.endsWith(unit)) {
 		return undefined;
 	}
@@ -114,12 +120,28 @@ function readMeasure(line: string): Measure | undefined {
 	if (
 		amount === undefined ||
 		!amountPattern.test(amountText) ||
-		continuedNumber.test(line.charAt(amountText.length))
+		continuedNumber.test(reading.charAt(amountText.length)) ||
+		// The words' numerals run on into the line's, as in "a 1/2 cup".
+		(words !== undefined && amountText !== words.numerals)
 	) {
 		return undefined;
 	}
 
 	if (unit === '') {
+		// The marker after a doubtful amount stays with the unit it would hide: "1 1/2 [?] cups flour".
+		const marker = `${transcriptionMarkers.unsure} `;
+		if (description.startsWith(marker)) {
+			const unmarked = readMeasure(`${amountText} ${description.slice(marker.length)}`);
+			if (unmarked?.unit !== undefined) {
+				return { ...unmarked, unit: `${marker}${unmarked.unit}` };
+			}
+		}
+
+		// An article or a fraction in words is an amount only before a unit, so "an onion" has none.
+		if (words?.needsUnit === true) {
+			return undefined;
+		}
+
 		// The library reads no unit that ends the line, so "1/4 tsp" would name "tsp" as the item.
 		if (description !== '' && readUnit(description) !== undefined) {
 			return undefined;
@@ -131,7 +153,7 @@ function readMeasure(line: string): Measure | undefined {
 	const size = unitSize.exec(description)?.[0] ?? '';
 	return {
 		amount,
-		unit: size === '' ? unit : line.slice(unitStart, descriptionStart + size.length),
+		unit: size === '' ? unit : reading.slice(unitStart, descriptionStart + size.length),
 		description: description
 			.slice(size.length)
 			.trimStart()
@@ -226,7 +248,8 @@ export function parseIngredientLine(text: string): IngredientLine {
 		return { text: line, item: line };
 	}
 
-	const measure = readMeasure(line);
+	// An approximate amount reads as its number: "about 2 cups flour" is 2 cups.
+	const measure = readMeasure(line.replace(approximationWord, ''));
 	if (measure !== undefined) {
 		const parts = splitPreparation(measure.description);
 		if (parts.item !== '') {

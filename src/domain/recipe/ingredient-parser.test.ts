@@ -82,6 +82,7 @@ describe('parseIngredientLine', () => {
 		['3 sq. bitter chocolate', { amount: { min: 3 }, unit: 'sq.', item: 'bitter chocolate' }],
 		['1 pk green tomatoes', { amount: { min: 1 }, unit: 'pk', item: 'green tomatoes' }],
 		['2 level tablespoons salt', { amount: { min: 2 }, unit: 'level tablespoons', item: 'salt' }],
+		['1 scant cup flour', { amount: { min: 1 }, unit: 'scant cup', item: 'flour' }],
 		['1 tbs oil', { amount: { min: 1 }, unit: 'tbs', item: 'oil' }],
 		['1 Tbs. oil', { amount: { min: 1 }, unit: 'Tbs.', item: 'oil' }],
 		['2 tbsps butter', { amount: { min: 2 }, unit: 'tbsps', item: 'butter' }],
@@ -233,8 +234,81 @@ describe('parseIngredientLine', () => {
 		expect(parseIngredientLine(text)).toStrictEqual({ text, ...parts });
 	});
 
+	it.each<[string, ParsedParts]>([
+		['two eggs', { amount: { min: 2 }, item: 'eggs' }],
+		['Two cups oatmeal', { amount: { min: 2 }, unit: 'cups', item: 'oatmeal' }],
+		['twelve eggs', { amount: { min: 12 }, item: 'eggs' }],
+		['one and a half cups flour', { amount: { min: 1.5 }, unit: 'cups', item: 'flour' }],
+		['two and one-half cups flour', { amount: { min: 2.5 }, unit: 'cups', item: 'flour' }],
+		['one-half cup sugar', { amount: { min: 0.5 }, unit: 'cup', item: 'sugar' }],
+		['two thirds cup milk', { amount: { min: 2 / 3 }, unit: 'cup', item: 'milk' }],
+		['three-quarters cup butter', { amount: { min: 0.75 }, unit: 'cup', item: 'butter' }],
+		['one-fourth teaspoon salt', { amount: { min: 0.25 }, unit: 'teaspoon', item: 'salt' }],
+		['quarter pound butter', { amount: { min: 0.25 }, unit: 'pound', item: 'butter' }],
+		['half a cup milk', { amount: { min: 0.5 }, unit: 'cup', item: 'milk' }],
+		['half an ounce yeast', { amount: { min: 0.5 }, unit: 'ounce', item: 'yeast' }],
+		['two to three cloves garlic', { amount: { min: 2, max: 3 }, unit: 'cloves', item: 'garlic' }],
+		['three or four apples', { amount: { min: 3, max: 4 }, item: 'apples' }],
+		[
+			'one to one and a half cups stock',
+			{ amount: { min: 1, max: 1.5 }, unit: 'cups', item: 'stock' },
+		],
+		['one half-pint jar cream', { amount: { min: 1 }, item: 'half-pint jar cream' }],
+	])('reads the amount in words in "%s"', (text, parts) => {
+		expect(parseIngredientLine(text)).toStrictEqual({ text, ...parts });
+	});
+
+	it.each<[string, ParsedParts]>([
+		['1 and 1/2 cups flour', { amount: { min: 1.5 }, unit: 'cups', item: 'flour' }],
+		['2 and ½ cups flour', { amount: { min: 2.5 }, unit: 'cups', item: 'flour' }],
+		['1 and a half cups flour', { amount: { min: 1.5 }, unit: 'cups', item: 'flour' }],
+	])('reads the whole number and fraction joined by "and" in "%s"', (text, parts) => {
+		expect(parseIngredientLine(text)).toStrictEqual({ text, ...parts });
+	});
+
+	it.each<[string, ParsedParts]>([
+		['a pinch of salt', { amount: { min: 1 }, unit: 'pinch', item: 'salt' }],
+		['a cup of water', { amount: { min: 1 }, unit: 'cup', item: 'water' }],
+		['an ounce dark chocolate', { amount: { min: 1 }, unit: 'ounce', item: 'dark chocolate' }],
+		['a dozen eggs', { amount: { min: 1 }, unit: 'dozen', item: 'eggs' }],
+		['a half dozen eggs', { amount: { min: 0.5 }, unit: 'dozen', item: 'eggs' }],
+		['a quarter cup oil', { amount: { min: 0.25 }, unit: 'cup', item: 'oil' }],
+		[
+			'a can (14 ounces) tomatoes',
+			{ amount: { min: 1 }, unit: 'can (14 ounces)', item: 'tomatoes' },
+		],
+	])('reads the article before the unit in "%s" as an amount', (text, parts) => {
+		expect(parseIngredientLine(text)).toStrictEqual({ text, ...parts });
+	});
+
+	it.each<[string, ParsedParts]>([
+		['about 2 cups flour', { amount: { min: 2 }, unit: 'cups', item: 'flour' }],
+		['approx. 1 cup sugar', { amount: { min: 1 }, unit: 'cup', item: 'sugar' }],
+		['About ¼ cupful cold water', { amount: { min: 0.25 }, unit: 'cupful', item: 'cold water' }],
+		['about a cup of water', { amount: { min: 1 }, unit: 'cup', item: 'water' }],
+	])('reads the approximate amount in "%s" as its number', (text, parts) => {
+		expect(parseIngredientLine(text)).toStrictEqual({ text, ...parts });
+	});
+
 	it.each([
-		'a pinch of salt',
+		'a few sprigs thyme',
+		'a little olive oil',
+		'a couple of carrots',
+		'an onion',
+		'a large egg',
+		'half an onion',
+		'half-and-half',
+		'Half and half',
+		'two-inch piece ginger',
+		'twelve to fifteen apples',
+		'two or more eggs',
+		'a 1/2 cup sugar',
+		'twenty-four cookies',
+	])('reads no amount in words in "%s" and keeps the line as its item', (text) => {
+		expect(parseIngredientLine(text)).toStrictEqual({ text, item: text });
+	});
+
+	it.each([
 		'Juice of 1 lemon',
 		'2-inch piece ginger',
 		'1 1/2-inch piece ginger',
@@ -284,6 +358,15 @@ describe('parseIngredientLine', () => {
 
 	it.each([
 		['2 eggs [?];', { text: '2 eggs [?]', amount: { min: 2 }, item: 'eggs [?]' }],
+		[
+			'1 1/2 [?] cups flour',
+			{ text: '1 1/2 [?] cups flour', amount: { min: 1.5 }, unit: '[?] cups', item: 'flour' },
+		],
+		['1 1/2 [?] eggs', { text: '1 1/2 [?] eggs', amount: { min: 1.5 }, item: '[?] eggs' }],
+		[
+			'two [?] cups flour',
+			{ text: 'two [?] cups flour', amount: { min: 2 }, unit: '[?] cups', item: 'flour' },
+		],
 		[
 			'• [illegible] cups flour',
 			{ text: '[illegible] cups flour', item: '[illegible] cups flour' },

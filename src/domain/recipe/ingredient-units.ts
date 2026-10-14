@@ -29,7 +29,7 @@ export const sizes: readonly string[] = [
 ];
 
 // Words old cards put before a spoon or cup, read as part of the unit: "2 level tablespoons salt".
-const measureModifiers = ['level', 'heaping', 'heaped', 'rounded'];
+const measureModifiers = ['level', 'heaping', 'heaped', 'rounded', 'scant'];
 
 function withModifiers(id: string, plural: string): string[] {
 	return measureModifiers.flatMap((modifier) => [`${modifier} ${id}`, `${modifier} ${plural}`]);

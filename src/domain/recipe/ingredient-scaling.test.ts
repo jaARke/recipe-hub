@@ -93,10 +93,62 @@ describe('scaleIngredientLine', () => {
 		);
 	});
 
-	it('leaves a line with nothing to scale unchanged and unmarked', () => {
-		const line = parseIngredientLine('Salt to taste');
-		expect(scaleIngredientLine(line, 2)).toStrictEqual({ line });
+	it.each<[string, number, ScaledParts]>([
+		['two eggs', 2, { amount: { min: 4 }, item: 'eggs' }],
+		['one and a half cups flour', 2, { amount: { min: 3 }, unit: 'cups', item: 'flour' }],
+		['one-half cup sugar', 2, { amount: { min: 1 }, unit: 'cup', item: 'sugar' }],
+		['half a cup milk', 2, { amount: { min: 1 }, unit: 'cup', item: 'milk' }],
+		['a dozen eggs', 2, { amount: { min: 2 }, unit: 'dozen', item: 'eggs' }],
+		[
+			'two to three cloves garlic',
+			2,
+			{ amount: { min: 4, max: 6 }, unit: 'cloves', item: 'garlic' },
+		],
+		['three or four apples', 2, { amount: { min: 6, max: 8 }, item: 'apples' }],
+		['a pinch of salt', 2, { amount: { min: 2 }, unit: 'pinches', item: 'salt' }],
+		['1 and 1/2 cups flour', 2, { amount: { min: 3 }, unit: 'cups', item: 'flour' }],
+		['about 2 cups flour', 2, { amount: { min: 4 }, unit: 'cups', item: 'flour' }],
+	])('scales "%s", whose amount is in words or an everyday form, by %s', (text, factor, parts) => {
+		expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+			line: { text, ...parts },
+		});
 	});
+
+	it.each<[string, number, ScaledParts]>([
+		[
+			'2 heaping tablespoons cocoa',
+			2,
+			{ amount: { min: 0.25 }, unit: 'heaping cup', item: 'cocoa' },
+		],
+		[
+			'2 level tablespoons salt',
+			1 / 2,
+			{ amount: { min: 1 }, unit: 'level tablespoon', item: 'salt' },
+		],
+		['1 scant cup flour', 2, { amount: { min: 2 }, unit: 'scant cups', item: 'flour' }],
+	])('keeps the describing word before the unit in "%s" by %s', (text, factor, parts) => {
+		expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+			line: { text, ...parts },
+		});
+	});
+
+	it.each(['Salt to taste', 'half-and-half'])(
+		'leaves "%s", with nothing to scale, unchanged and unmarked',
+		(text) => {
+			const line = parseIngredientLine(text);
+			expect(scaleIngredientLine(line, 2)).toStrictEqual({ line });
+		}
+	);
+
+	it.each(['a few sprigs thyme', 'a little olive oil', 'a couple of carrots', 'an onion'])(
+		'marks "%s", which opens with an amount it cannot read, with the original',
+		(text) => {
+			expect(scaleIngredientLine(parseIngredientLine(text), 2)).toStrictEqual({
+				line: { text, item: text },
+				asWritten: text,
+			});
+		}
+	);
 
 	it('scales what it read in "1 egg plus 1 yolk" and shows the original', () => {
 		expect(scaleIngredientLine(parseIngredientLine('1 egg plus 1 yolk'), 2)).toStrictEqual({
@@ -207,6 +259,16 @@ describe('scaleIngredientLine', () => {
 			{ amount: { min: 2 }, item: 'whole chickens', preparation: 'about 4 pounds' },
 		],
 		['7 eggs plus one egg yolk', 2, { amount: { min: 14 }, item: 'eggs plus one egg yolk' }],
+		[
+			'1 cup plus a quarter cup flour',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'plus a quarter cup flour' },
+		],
+		[
+			'1 cup plus one-half cup flour',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'plus one-half cup flour' },
+		],
 		['Juice of 1 lemon', 2, { item: 'Juice of 1 lemon' }],
 	])('marks "%s", whose unread text holds a number, with the original', (text, factor, parts) => {
 		expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
