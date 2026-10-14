@@ -47,7 +47,7 @@ function RequestAccessForm({ action, nextSteps }: RequestAccessFormProps) {
 	const value = (name: string) => failure?.values?.[name];
 
 	return (
-		<form {...formProps} className="flex flex-col gap-7">
+		<form {...formProps} className="flex flex-col gap-4">
 			<FormErrorAlert message={failure?.message} />
 			<FieldGroup>
 				<TextField

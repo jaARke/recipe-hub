@@ -53,7 +53,7 @@ function ScanImportForm({ action, uploadFolder, uploader = uploadPhoto }: ScanIm
 	});
 
 	return (
-		<form {...formProps} className="flex flex-col gap-7">
+		<form {...formProps} className="flex flex-col gap-4">
 			<FormErrorAlert message={state.status === 'error' ? state.message : undefined} />
 			{submission.pathnames.map((pathname) => (
 				<input key={pathname} type="hidden" name={recipeImportFieldNames.scans} value={pathname} />

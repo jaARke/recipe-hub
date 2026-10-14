@@ -24,7 +24,7 @@ function InviteForm({ issueInvite }: { issueInvite: FormAction<IssuedInvite> }) 
 
 	return (
 		<div>
-			<form {...formProps} className="flex flex-col gap-7">
+			<form {...formProps} className="flex flex-col gap-4">
 				<FormErrorAlert message={failed?.message} />
 				<FieldGroup>
 					<DisplayNameField

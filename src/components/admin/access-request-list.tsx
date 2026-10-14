@@ -88,7 +88,7 @@ function AccessRequestCard({
 				</dl>
 			</CardContent>
 			<CardContent>
-				<form {...formProps} className="flex flex-col gap-7">
+				<form {...formProps} className="flex flex-col gap-4">
 					<input type="hidden" name={adminFieldNames.requestId} value={request.id} />
 					<FormErrorAlert message={failed?.message} />
 					<FieldGroup>

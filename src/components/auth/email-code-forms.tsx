@@ -38,7 +38,7 @@ function RequestCodeForm({
 	const failure = state.status === 'error' ? state : undefined;
 
 	return (
-		<form {...formProps} className="flex flex-col gap-7">
+		<form {...formProps} className="flex flex-col gap-4">
 			<FormErrorAlert message={failure?.message} />
 			<TextField
 				id={id}
@@ -106,7 +106,7 @@ function ConfirmCodeForm({
 	}
 
 	return (
-		<form {...formProps} className="flex flex-col gap-7">
+		<form {...formProps} className="flex flex-col gap-4">
 			<FormErrorAlert message={failure?.message} />
 			<TextField
 				id={id}
