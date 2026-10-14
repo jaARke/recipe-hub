@@ -30,7 +30,7 @@ function RequestAccessForm({ action, nextSteps }: RequestAccessFormProps) {
 
 	if (state.status === 'success') {
 		return (
-			<Alert id={sentNoticeId} role="status" tabIndex={-1}>
+			<Alert id={sentNoticeId} role="status" aria-live="polite" tabIndex={-1}>
 				<CircleCheckIcon aria-hidden="true" />
 				<AlertTitle>Request sent</AlertTitle>
 				<AlertDescription>{nextSteps}</AlertDescription>

@@ -50,7 +50,7 @@ describe('searchRecipes', () => {
 
 		await service.searchRecipes({
 			text: '  chicken -"bay leaf" ',
-			tags: [' weeknight', 'Soup', 'WEEKNIGHT'],
+			tags: [' weeknight', 'So\0up', 'WEEKNIGHT'],
 			source: ' Grandpa Lou ',
 			contributorId: ` ${adaId.toUpperCase()} `,
 			maxTotalMinutes: 60,
@@ -125,7 +125,6 @@ describe('searchRecipes', () => {
 		['a blank tag', { tags: ['Soup', ' '] }],
 		['a blank source', { source: ' ' }],
 		['a NUL character in the text', { text: 'soup\0' }],
-		['a NUL character in a tag', { tags: ['Soup\0'] }],
 		['a contributor id that is not an id', { contributorId: 'ada' }],
 		['a total time that is not a choice', { maxTotalMinutes: 45 }],
 		['an unknown window for the date added', { addedWithin: 'day' }],

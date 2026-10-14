@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { InvalidProfileError } from '@/domain/member/errors';
-import { displayNameSchema, emailAddressSchema, parseDisplayName } from '@/domain/member/member';
+import {
+	displayNameSchema,
+	emailAddressSchema,
+	memberIdSchema,
+	parseDisplayName,
+	removedMemberEmail,
+} from '@/domain/member/member';
 
 describe('displayNameSchema', () => {
 	it('trims the name', () => {
@@ -28,6 +34,20 @@ describe('emailAddressSchema', () => {
 	it('rejects text that is not an address', () => {
 		expect(emailAddressSchema.safeParse('ada at example.com').success).toBe(false);
 		expect(emailAddressSchema.safeParse('').success).toBe(false);
+	});
+});
+
+describe('removedMemberEmail', () => {
+	const id = memberIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e');
+
+	it('names the account on the .invalid domain', () => {
+		expect(removedMemberEmail(id)).toBe(
+			'removed+0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e@recipes.invalid'
+		);
+	});
+
+	it('is an address a member can hold', () => {
+		expect(emailAddressSchema.parse(removedMemberEmail(id))).toBe(removedMemberEmail(id));
 	});
 });
 

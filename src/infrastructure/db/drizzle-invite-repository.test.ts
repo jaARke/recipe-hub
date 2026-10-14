@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { asc, eq, isNotNull } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { NewInvite } from '@/application/ports/invite-repository';
 import {
@@ -269,6 +269,28 @@ describe('revoke', () => {
 		expect(revokedTimes.filter(({ revokedAt }) => revokedAt !== null)).toEqual([
 			{ revokedAt: now },
 		]);
+	});
+});
+
+describe('revokeOpenByEmail', () => {
+	it('revokes the open invites bound to the address at the given time, and no others', async () => {
+		const { open, revoked } = await createInvitesInEveryStatus('grace@example.com');
+		const other = await repository.create(newInvite());
+		await repository.bindEmail(other.id, 'ada@example.com', now);
+		const later = new Date(now.getTime() + 60_000);
+
+		await repository.revokeOpenByEmail('grace@example.com', later);
+
+		const revokedRows = await db
+			.select({ id: invites.id, revokedAt: invites.revokedAt })
+			.from(invites)
+			.where(isNotNull(invites.revokedAt))
+			.orderBy(asc(invites.revokedAt));
+		expect(revokedRows).toEqual([
+			{ id: revoked.id, revokedAt: now },
+			{ id: open.id, revokedAt: later },
+		]);
+		expect(await repository.listOpen(later)).toEqual([{ ...other, email: 'ada@example.com' }]);
 	});
 });
 

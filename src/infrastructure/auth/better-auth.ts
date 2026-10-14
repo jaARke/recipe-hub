@@ -1,6 +1,6 @@
 import 'server-only';
 import { passkey } from '@better-auth/passkey';
-import { betterAuth } from 'better-auth';
+import { betterAuth, type DBAdapter, type Where } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { APIError } from 'better-auth/api';
 import { nextCookies } from 'better-auth/next-js';
@@ -23,49 +23,30 @@ import {
 	users,
 	verifications,
 } from '@/infrastructure/db/schema';
+import { authBasePath, signInCodeRequestPath } from '@/lib/auth-paths';
+import { withoutQueryParameters } from '@/lib/errors';
 import { getLogger } from '@/lib/logger';
 import { siteName } from '@/lib/site';
 
 const secondsPerDay = 24 * 60 * 60;
 
-// Every route Better Auth 1.7.7 mounts here but the session read, sign-out, the email code's send and
-// sign-in, and the passkey routes. disabledPaths matches exact paths, so /callback/:id and
-// /reset-password/:token stay mounted, inert without social providers or password resets.
-const disabledPaths = [
-	'/account-info',
-	'/change-email',
-	'/change-password',
-	'/delete-user',
-	'/delete-user/callback',
-	'/email-otp/change-email',
-	'/email-otp/check-verification-otp',
-	'/email-otp/request-email-change',
-	'/email-otp/request-password-reset',
-	'/email-otp/reset-password',
-	'/email-otp/verify-email',
-	'/error',
-	'/forget-password/email-otp',
-	'/get-access-token',
-	'/link-social',
-	'/list-accounts',
-	'/list-sessions',
-	'/ok',
-	'/refresh-token',
-	'/request-password-reset',
-	'/reset-password',
-	'/revoke-other-sessions',
-	'/revoke-session',
-	'/revoke-sessions',
-	'/send-verification-email',
-	'/sign-in/email',
-	'/sign-in/social',
-	'/sign-up/email',
-	'/unlink-account',
-	'/update-session',
-	'/update-user',
-	'/verify-email',
-	'/verify-password',
-];
+// The routes the sign-in, invite, and account flows call, matched exactly. Any other path, mounted
+// or not, answers 404 before Better Auth runs, so it costs no rate-limit write. A code request is
+// served only at the path BotID checks.
+const enabledPaths: ReadonlySet<string> = new Set([
+	signInCodeRequestPath,
+	...[
+		'/get-session',
+		'/sign-out',
+		'/sign-in/email-otp',
+		'/passkey/generate-register-options',
+		'/passkey/verify-registration',
+		'/passkey/generate-authenticate-options',
+		'/passkey/verify-authentication',
+		'/passkey/list-user-passkeys',
+		'/passkey/delete-passkey',
+	].map((path) => `${authBasePath}${path}`),
+]);
 
 const logger = getLogger('auth');
 
@@ -88,9 +69,12 @@ export type AuthOptions = {
 	runInBackground: (task: Promise<unknown>) => void;
 };
 
-// Better Auth's own warnings and errors, in the app's log format.
+// Better Auth's own warnings and errors, in the app's log format. A message can quote a query error.
 function logBetterAuthMessage(level: string, message: string, ...args: unknown[]): void {
-	const fields = { detail: message, err: args.find((arg) => arg instanceof Error) };
+	const fields = {
+		detail: withoutQueryParameters(message),
+		err: args.find((arg) => arg instanceof Error),
+	};
 	if (level === 'error') {
 		logger.error('Better Auth reported an error', fields);
 	} else {
@@ -98,12 +82,43 @@ function logBetterAuthMessage(level: string, message: string, ...args: unknown[]
 	}
 }
 
+// Serves the enabled paths only. A failure Better Auth throws is logged here, through the logger
+// that cuts query parameters, and answered as better-call answers one.
+function serveEnabledPaths(
+	handler: (request: Request) => Promise<Response>
+): (request: Request) => Promise<Response> {
+	return async (request) => {
+		const { pathname } = new URL(request.url);
+		if (!enabledPaths.has(pathname)) {
+			return new Response(null, { status: 404 });
+		}
+
+		try {
+			return await handler(request);
+		} catch (error) {
+			logger.error('Better Auth request failed', { pathname, err: error });
+			return new Response(null, { status: 500 });
+		}
+	};
+}
+
+// Better Auth refuses an expired session but keeps its row, IP address and user agent included, and
+// clears expired verifications, such as unused passkey challenges, only when it checks a code.
+async function deleteExpiredRows(adapter: DBAdapter): Promise<void> {
+	const expired: Where[] = [{ field: 'expiresAt', operator: 'lt', value: new Date() }];
+	await Promise.all([
+		adapter.deleteMany({ model: 'session', where: expired }),
+		adapter.deleteMany({ model: 'verification', where: expired }),
+	]);
+}
+
 export function createAuth(options: AuthOptions) {
 	const { accounts: accountHooks } = options;
 
-	return betterAuth({
+	const auth = betterAuth({
 		secret: options.secret,
 		baseURL: { allowedHosts: options.allowedHosts },
+		basePath: authBasePath,
 		database: drizzleAdapter(options.db, {
 			provider: 'pg',
 			schema: {
@@ -117,8 +132,10 @@ export function createAuth(options: AuthOptions) {
 			// Consumes each sign-in code and passkey challenge inside a transaction.
 			transaction: true,
 		}),
-		disabledPaths,
 		logger: { level: 'warn', log: logBetterAuthMessage },
+		// Thrown on to serveEnabledPaths, since better-call prints an unexpected error whole, a query
+		// error's parameters included. API errors still answer with their status.
+		onAPIError: { throw: true },
 		advanced: {
 			// Postgres fills ids with uuidv7().
 			database: { generateId: 'uuid' },
@@ -129,6 +146,8 @@ export function createAuth(options: AuthOptions) {
 			additionalFields: {
 				role: { type: [...memberRoleSchema.options], input: false, defaultValue: 'member' },
 				inviteId: { type: 'string', input: false, required: false, unique: true },
+				// Declared so session reads carry it, and the actor provider can refuse a removed member.
+				removedAt: { type: 'date', input: false, required: false },
 			},
 		},
 		session: { expiresIn: sessionLifetimeDays * secondsPerDay, updateAge: secondsPerDay },
@@ -170,6 +189,25 @@ export function createAuth(options: AuthOptions) {
 					},
 				},
 			},
+			session: {
+				create: {
+					// Each sign-in prunes in the background, and a failed prune is logged rather than failing
+					// the sign-in. Only a session made outside a request has no context; no flow makes one.
+					after: async (_session, context) => {
+						if (context === null) {
+							return;
+						}
+
+						await context.context.runInBackgroundOrAwait(
+							deleteExpiredRows(context.context.adapter).catch((error: unknown) => {
+								logger.warn('Expired sessions and verifications could not be deleted', {
+									err: error,
+								});
+							})
+						);
+					},
+				},
+			},
 		},
 		plugins: [
 			emailOTP({
@@ -197,6 +235,10 @@ export function createAuth(options: AuthOptions) {
 			nextCookies(),
 		],
 	});
+
+	// fetch is Better Auth's other name for its handler.
+	const handler = serveEnabledPaths(auth.handler);
+	return { ...auth, handler, fetch: handler };
 }
 
 export type Auth = ReturnType<typeof createAuth>;

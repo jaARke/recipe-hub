@@ -14,8 +14,19 @@ import { Skeleton } from '@/components/ui/skeleton';
 // One column on phones, two from sm, and three from lg, where a wide container's column is 352px.
 const cardPhotoSizes = '(min-width: 1024px) 352px, (min-width: 640px) 50vw, 100vw';
 
+// Level 4 nests a card under the design reference's own headings.
+type CardHeadingTag = 'h2' | 'h4';
+
 // Eager for cards above the fold, whose photo may be the largest paint; the rest load as they scroll in.
-function RecipeCard({ recipe, eager = false }: { recipe: RecipeSummaryDto; eager?: boolean }) {
+function RecipeCard({
+	recipe,
+	headingTag: Heading,
+	eager = false,
+}: {
+	recipe: RecipeSummaryDto;
+	headingTag: CardHeadingTag;
+	eager?: boolean;
+}) {
 	const facts = recipeFacts(recipe);
 	const hasDetails = facts.length > 0 || recipe.tags.length > 0;
 	const titleId = `${recipe.slug}-card-title`;
@@ -33,7 +44,9 @@ function RecipeCard({ recipe, eager = false }: { recipe: RecipeSummaryDto; eager
 			<Card className="h-full pt-0">
 				<RecipeCover image={recipe.coverImage} sizes={cardPhotoSizes} eager={eager} />
 				<CardHeader>
-					<CardTitle id={titleId}>{recipe.title}</CardTitle>
+					<CardTitle>
+						<Heading id={titleId}>{recipe.title}</Heading>
+					</CardTitle>
 					{recipe.source !== undefined && (
 						<CardDescription id={sourceId}>From {recipe.source}</CardDescription>
 					)}

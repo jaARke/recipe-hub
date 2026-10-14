@@ -1,10 +1,14 @@
-import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import type { IncomingHttpHeaders } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ForbiddenError, SignInRequiredError } from '@/application/authorization';
 import { InvalidImageUploadError } from '@/application/recipes/errors';
 import type { ImageUploadGrant } from '@/application/recipes/recipe-dtos';
 import { BlobUploadHandler } from '@/infrastructure/storage/blob-upload-handler';
+import {
+	base64Url,
+	startFakeBlobApi,
+	type FakeBlobApi,
+} from '@/infrastructure/storage/testing/fake-blob-api';
 
 type ReceivedRequest = { path?: string; headers: IncomingHttpHeaders; body: unknown };
 
@@ -14,22 +18,14 @@ const grant: ImageUploadGrant = { contentType: 'image/jpeg', maximumSizeInBytes:
 const yearInSeconds = 365 * 24 * 60 * 60;
 const tenMinutes = 10 * 60 * 1000;
 
-let server: Server;
+let blobApi: FakeBlobApi;
 let received: ReceivedRequest[];
 
-function base64Url(value: object): string {
-	return Buffer.from(JSON.stringify(value)).toString('base64url');
-}
-
-// Blob's API, played by a local server the SDK reaches through its own API URL setting. The
-// delegation token it issues carries back the scope it was asked for, as the real one does.
+// The delegation token Blob's API issues carries back the scope it was asked for, as the real one
+// does.
 beforeEach(async () => {
 	received = [];
-	server = createServer(async (request, response) => {
-		let body = '';
-		for await (const chunk of request) {
-			body += chunk;
-		}
+	blobApi = await startFakeBlobApi((request, body, response) => {
 		const scope = JSON.parse(body);
 		received.push({ path: request.url, headers: request.headers, body: scope });
 		response.writeHead(200, { 'content-type': 'application/json' });
@@ -41,34 +37,30 @@ beforeEach(async () => {
 			})
 		);
 	});
-	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-	const { port } = server.address() as AddressInfo;
-	vi.stubEnv('VERCEL_BLOB_API_URL', `http://127.0.0.1:${port}`);
-	// Unexpired, so the SDK never tries to refresh it.
-	vi.stubEnv(
-		'VERCEL_OIDC_TOKEN',
-		`${base64Url({ alg: 'none' })}.${base64Url({ exp: Date.now() / 1000 + 3600 })}.signature`
-	);
 });
 
 afterEach(async () => {
-	vi.unstubAllEnvs();
-	await new Promise((resolve) => server.close(resolve));
+	vi.restoreAllMocks();
+	await blobApi.close();
 });
 
 function createHandler(authorizeUpload: (pathname: string) => Promise<ImageUploadGrant>) {
 	return new BlobUploadHandler({
 		storeId,
 		webhookPublicKey: 'webhook-public-key',
+		allowedHosts: ['recipes.example.com', 'recipe-hub-git-feature.vercel.app'],
 		authorizeUpload,
 	});
 }
 
-// What the browser's uploadPresigned posts for one file.
-function uploadRequest(body: unknown): Request {
-	return new Request('http://localhost:3000/api/uploads', {
+// What the browser's uploadPresigned posts for one file from one of the site's pages.
+function uploadRequest(
+	body: unknown,
+	from: Record<string, string> = { 'sec-fetch-site': 'same-origin' }
+): Request {
+	return new Request('https://recipes.example.com/api/uploads', {
 		method: 'POST',
-		headers: { 'content-type': 'application/json' },
+		headers: { 'content-type': 'application/json', ...from },
 		body: typeof body === 'string' ? body : JSON.stringify(body),
 	});
 }
@@ -151,6 +143,55 @@ describe('handle', () => {
 		expect(authorizeUpload).not.toHaveBeenCalled();
 		expect(received).toEqual([]);
 	});
+
+	it.each([
+		['the browser calls it the same origin', { 'sec-fetch-site': 'same-origin' }],
+		['its origin is a host of the deployment', { origin: 'https://recipes.example.com' }],
+		[
+			"its origin is another of the deployment's hosts",
+			{ 'sec-fetch-site': 'cross-site', origin: 'https://recipe-hub-git-feature.vercel.app' },
+		],
+	])('accepts a request when %s', async (_case, from) => {
+		const response = await createHandler(async () => grant).handle(
+			uploadRequest(presignedUrlRequest, from)
+		);
+
+		expect(response.status).toBe(200);
+	});
+
+	it.each<[string, Record<string, string>]>([
+		[
+			'another subdomain of the same site',
+			{ 'sec-fetch-site': 'same-site', origin: 'https://blog.example.com' },
+		],
+		['another site', { 'sec-fetch-site': 'cross-site', origin: 'https://attacker.example' }],
+		['an opaque origin', { origin: 'null' }],
+		['an origin on another port', { origin: 'https://recipes.example.com:8443' }],
+		['no origin at all', {}],
+	])(
+		'refuses a request from %s without asking the application, and logs it',
+		async (_case, from) => {
+			const authorizeUpload = vi.fn(async () => grant);
+			const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+			const response = await createHandler(authorizeUpload).handle(
+				uploadRequest(presignedUrlRequest, from)
+			);
+
+			expect(response.status).toBe(403);
+			expect(authorizeUpload).not.toHaveBeenCalled();
+			expect(received).toEqual([]);
+			expect(consoleWarn.mock.calls.map(([line]) => JSON.parse(String(line)))).toEqual([
+				{
+					level: 'warn',
+					logger: 'images',
+					message: 'Image upload refused from another site',
+					fetchSite: from['sec-fetch-site'] ?? null,
+					origin: from.origin ?? null,
+				},
+			]);
+		}
+	);
 
 	it('rethrows an unexpected failure', async () => {
 		const handler = createHandler(async () => {

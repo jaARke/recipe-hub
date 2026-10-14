@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { maxDishPhotos, maxScans } from '@/domain/recipe/recipe-image-limits';
 import { nonEmptyTextSchema } from '@/domain/text';
 
 // Plain segments only: in a URL, `..`, `%2e%2e`, or `\` would climb out of the role's folder.
@@ -33,9 +34,12 @@ export const recipeImageSchema = z
 	});
 export type RecipeImage = z.infer<typeof recipeImageSchema>;
 
-// Array order is display order.
+const maxImagesByRole: Record<RecipeImageRole, number> = { dish: maxDishPhotos, scan: maxScans };
+
+// Array order is display order. A role over its limit has one problem, on its first image past it.
 export const recipeImageListSchema = z.array(recipeImageSchema).superRefine((images, context) => {
 	const seen = new Set<string>();
+	const counts: Record<RecipeImageRole, number> = { dish: 0, scan: 0 };
 	images.forEach((image, index) => {
 		if (seen.has(image.pathname)) {
 			context.addIssue({
@@ -45,6 +49,15 @@ export const recipeImageListSchema = z.array(recipeImageSchema).superRefine((ima
 			});
 		}
 		seen.add(image.pathname);
+
+		counts[image.role] += 1;
+		if (counts[image.role] === maxImagesByRole[image.role] + 1) {
+			context.addIssue({
+				code: 'custom',
+				message: `Use ${maxImagesByRole[image.role]} photos or fewer.`,
+				path: [index],
+			});
+		}
 	});
 });
 

@@ -15,6 +15,8 @@ export const recipeFormFieldNames = {
 export type EditedRecipe = {
 	id: string;
 	version: string;
+	// Its tags that no other recipe uses, which the tags field offers to respell.
+	respellableTags: readonly string[];
 };
 
 // The recipe as the form sends it: text as typed, without blank items or blank optional text. Its

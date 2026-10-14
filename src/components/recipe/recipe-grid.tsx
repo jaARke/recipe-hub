@@ -13,7 +13,7 @@ function RecipeGrid({ children }: { children: React.ReactNode }) {
 
 function RecipeGridSkeleton() {
 	return (
-		<div role="status">
+		<div role="status" aria-live="polite">
 			<span className="sr-only">Loading recipes</span>
 			<RecipeGrid>
 				{Array.from({ length: skeletonCardCount }, (_, index) => (

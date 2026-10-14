@@ -4,17 +4,18 @@ import * as React from 'react';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
 import { useFormAction } from '@/components/forms/use-form-action';
-import { Button } from '@/components/ui/button';
 import {
-	Dialog,
-	DialogClose,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-	DialogTrigger,
-} from '@/components/ui/dialog';
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+	AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from '@/components/ui/toast';
 
@@ -62,32 +63,42 @@ function ConfirmActionDialog({
 		}
 		return next;
 	}, failureMessage);
+	const triggerRef = React.useRef<HTMLButtonElement>(null);
+	// Focus returns to the trigger. When the action removed it with its item, Base UI would fall back
+	// to an element focused earlier, so focus is left for the page to place.
+	const returnFocusToTrigger = () => triggerRef.current?.isConnected === true;
 
 	return (
-		<Dialog>
-			<DialogTrigger
+		<AlertDialog>
+			<AlertDialogTrigger
+				ref={triggerRef}
 				render={<Button variant={variant === 'destructive' ? 'destructive' : 'outline'} />}
 			>
 				{trigger}
-			</DialogTrigger>
-			<DialogContent showCloseButton={false}>
+			</AlertDialogTrigger>
+			<AlertDialogContent finalFocus={returnFocusToTrigger}>
 				<form action={formAction} className="grid gap-6">
 					{children}
-					<DialogHeader>
-						<DialogTitle>{title}</DialogTitle>
-						<DialogDescription>{description}</DialogDescription>
-					</DialogHeader>
+					<AlertDialogHeader>
+						<AlertDialogTitle>{title}</AlertDialogTitle>
+						<AlertDialogDescription>{description}</AlertDialogDescription>
+					</AlertDialogHeader>
 					<FormErrorAlert message={state.status === 'error' ? state.message : undefined} />
-					<DialogFooter>
-						<DialogClose render={<Button variant="outline" />}>{cancelLabel}</DialogClose>
-						<Button type="submit" variant={variant} disabled={pending} focusableWhenDisabled>
+					<AlertDialogFooter>
+						<AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
+						<AlertDialogAction
+							type="submit"
+							variant={variant}
+							disabled={pending}
+							focusableWhenDisabled
+						>
 							{pending && <Spinner data-icon="inline-start" />}
 							{pending ? pendingLabel : confirmLabel}
-						</Button>
-					</DialogFooter>
+						</AlertDialogAction>
+					</AlertDialogFooter>
 				</form>
-			</DialogContent>
-		</Dialog>
+			</AlertDialogContent>
+		</AlertDialog>
 	);
 }
 

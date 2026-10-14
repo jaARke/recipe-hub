@@ -21,4 +21,5 @@ export type AdminActions = {
 	revokeInvite: FormAction;
 	makeAdmin: FormAction;
 	removeAdmin: FormAction;
+	removeMember: FormAction;
 };

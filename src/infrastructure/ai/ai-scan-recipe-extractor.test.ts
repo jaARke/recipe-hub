@@ -14,7 +14,6 @@ type ScanOutput = z.infer<typeof scanOutputSchema>;
 
 const requester: ExtractionRequester = {
 	memberId: memberIdSchema.parse('0199d2e8-4b7a-7c3e-9a1f-6e2d8c4b0a75'),
-	email: 'ada@example.com',
 };
 // The SHA-256 of the member's id, in hex.
 const safetyIdentifier = 'ddc99d0a0120fa986be91caf0cabfbcafbdc9c4000ff1c108176e0e6619a11b6';
@@ -134,7 +133,7 @@ describe('extract', () => {
 		]);
 	});
 
-	it('asks for the output schema with no sampling parameters', async () => {
+	it('asks for the output schema in at most 16,000 tokens, with no sampling parameters', async () => {
 		const model = new MockLanguageModelV4({ doGenerate: answer(cardOutput) });
 
 		await new AiScanRecipeExtractor(model).extract(scans, requester);
@@ -145,21 +144,52 @@ describe('extract', () => {
 			name: 'recipe',
 			schema: { type: 'object', properties: { transcription: { type: 'string' } } },
 		});
+		expect(call?.maxOutputTokens).toBe(16_000);
 		expect(call?.temperature).toBeUndefined();
 		expect(call?.topP).toBeUndefined();
 		expect(call?.topK).toBeUndefined();
 	});
 
-	it("labels the call with the member's email and hashed id, with zero data retention", async () => {
+	it("labels the call with the member's id and its hash, with zero data retention", async () => {
 		const model = new MockLanguageModelV4({ doGenerate: answer(cardOutput) });
 
 		await new AiScanRecipeExtractor(model).extract(scans, requester);
 
 		const [call] = model.doGenerateCalls;
 		expect(call?.providerOptions).toEqual({
-			gateway: { zeroDataRetention: true, user: 'ada@example.com', safetyIdentifier },
+			gateway: {
+				zeroDataRetention: true,
+				user: '0199d2e8-4b7a-7c3e-9a1f-6e2d8c4b0a75',
+				safetyIdentifier,
+			},
 		});
 		expect(call?.providerOptions?.gateway?.safetyIdentifier).toHaveLength(64);
+	});
+
+	it("sends the member's id and its hash in the Gateway's request", async () => {
+		const bodies: unknown[] = [];
+		const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+			bodies.push(JSON.parse(String(init?.body)));
+			return Response.json(
+				{ error: { message: 'Invalid request', type: 'invalid_request_error' } },
+				{ status: 400 }
+			);
+		});
+		const model = createGateway({ apiKey: 'test-key', fetch })('anthropic/claude-haiku-5.5');
+
+		await new AiScanRecipeExtractor(model).extract(scans, requester).catch(() => undefined);
+
+		expect(bodies).toEqual([
+			expect.objectContaining({
+				providerOptions: {
+					gateway: {
+						zeroDataRetention: true,
+						user: '0199d2e8-4b7a-7c3e-9a1f-6e2d8c4b0a75',
+						safetyIdentifier,
+					},
+				},
+			}),
+		]);
 	});
 
 	it('maps the output into an extracted recipe, leaving out what the card does not state', async () => {
@@ -370,5 +400,24 @@ describe('extract failures', () => {
 		expect(timeoutSpy).toHaveBeenCalledWith(90_000);
 		expect(await failure).toBeInstanceOf(ImportFailedError);
 		expect(((await failure) as ImportFailedError).cause).toEqual({ name: 'TimeoutError' });
+	});
+
+	it("stops the call once the caller's signal aborts", async () => {
+		const caller = new AbortController();
+		const model = new MockLanguageModelV4({
+			doGenerate: ({ abortSignal }) =>
+				new Promise((_, reject) => {
+					abortSignal?.addEventListener('abort', () => reject(abortSignal.reason));
+				}),
+		});
+
+		const failure = new AiScanRecipeExtractor(model)
+			.extract(scans, requester, caller.signal)
+			.catch((caught: unknown) => caught);
+		await vi.waitFor(() => expect(model.doGenerateCalls).toHaveLength(1));
+		caller.abort();
+
+		expect(await failure).toBeInstanceOf(ImportFailedError);
+		expect(((await failure) as ImportFailedError).cause).toEqual({ name: 'AbortError' });
 	});
 });

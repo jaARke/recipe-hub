@@ -89,6 +89,12 @@ function SampleAdminDashboard({
 		},
 		makeAdmin: changeRole('admin'),
 		removeAdmin: changeRole('member'),
+		removeMember: async (_state, formData) => {
+			const memberId = formText(formData, adminFieldNames.memberId);
+			await standIn(null);
+			setMembers((current) => current.filter((member) => member.id !== memberId));
+			return { status: 'success' };
+		},
 	};
 
 	return (

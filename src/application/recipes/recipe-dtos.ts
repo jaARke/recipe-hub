@@ -43,6 +43,8 @@ export type EditableRecipeDto = RecipeContent & {
 	slug: string;
 	// Changes with every save, so a form can tell its copy is out of date.
 	updatedAt: Date;
+	// The recipe's tags that no other recipe uses, which the edit can respell.
+	respellableTags: string[];
 };
 
 // What a signed-in member sees beside the public recipe: whether they may edit it, and its scans.
@@ -57,15 +59,37 @@ export type RecipeRef = {
 	slug: string;
 };
 
+// The images an edit or delete let go: those the recipe named before the write and no longer does.
+// Callers hand them to the image sweep, which removes each one nothing else names once the response
+// is sent, so no save waits for the image move lock.
+export type ReleasedImages = {
+	recipeId: RecipeId;
+	images: RecipeImage[];
+};
+
 // The previous slug is set only when the edit moved the slug, so its cache tag is invalidated too.
 export type UpdatedRecipeRef = RecipeRef & {
 	previousSlug?: string;
+	releasedImages: ReleasedImages;
+};
+
+export type DeletedRecipeRef = RecipeRef & {
+	releasedImages: ReleasedImages;
 };
 
 // What the upload adapter allows the one upload a member was authorized for.
 export type ImageUploadGrant = {
 	contentType: string;
 	maximumSizeInBytes: number;
+};
+
+// How many images one sweep restored, deleted for good, and removed, and how many in expiring
+// environments' folders it deleted for good.
+export type ImageSweepCounts = {
+	restoredCount: number;
+	deletedCount: number;
+	removedCount: number;
+	expiredCount: number;
 };
 
 export function toPublicRecipeDto(recipe: Recipe, contributor: Member): PublicRecipeDto {
@@ -89,7 +113,7 @@ export function toPublicRecipeDto(recipe: Recipe, contributor: Member): PublicRe
 	};
 }
 
-export function toEditableRecipeDto(recipe: Recipe): EditableRecipeDto {
+export function toEditableRecipeDto(recipe: Recipe, respellableTags: string[]): EditableRecipeDto {
 	return {
 		id: recipe.id,
 		slug: recipe.slug,
@@ -104,6 +128,7 @@ export function toEditableRecipeDto(recipe: Recipe): EditableRecipeDto {
 		tags: recipe.tags,
 		images: recipe.images,
 		updatedAt: recipe.updatedAt,
+		respellableTags,
 	};
 }
 

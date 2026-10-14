@@ -6,6 +6,7 @@ import {
 	recipeFormSubmission,
 	recipeFormValues,
 	tagLabelsFrom,
+	tagLabelsToAdd,
 	type ProblemTarget,
 	type RecipeFormEdit,
 	type RecipeFormValues,
@@ -76,6 +77,7 @@ describe('recipeFormValues', () => {
 			tags: [],
 			photos: { dish: [], scan: [] },
 			fieldErrors: {},
+			reviewingDraft: false,
 			checkedProblems: new Set(),
 			nextId: 4,
 		});
@@ -364,11 +366,11 @@ describe('editRecipeForm', () => {
 		});
 	});
 
-	it('adds each comma-separated tag and clears the tag field', () => {
+	it('adds each tag not already chosen, once, and clears the tag field', () => {
 		const values = edited(
 			lemonBarsForm(),
-			{ type: 'setText', field: 'tagDraft', text: 'Summer, ,  Make ahead ' },
-			{ type: 'addTags', text: 'Summer, ,  Make ahead ' },
+			{ type: 'setText', field: 'tagDraft', text: 'Summer, Make ahead, dessert, summer' },
+			{ type: 'addTags', labels: ['Summer', 'Make ahead', 'dessert', ' SUMMER '] },
 			{ type: 'removeTag', tagId: 8 }
 		);
 
@@ -656,6 +658,11 @@ describe('checking problems', () => {
 		expect(checkedMessages(draft)).toEqual([]);
 	});
 
+	it('reviews a draft that has problems, and not one without them', () => {
+		expect(draft.reviewingDraft).toBe(true);
+		expect(recipeFormValues(lemonBars, []).reviewingDraft).toBe(false);
+	});
+
 	it('marks problems as checked and unmarks them, which counts them', () => {
 		const checked = edited(
 			draft,
@@ -737,11 +744,37 @@ describe('checking problems', () => {
 		expect(failed.checkedProblems.size).toBe(0);
 		expect(checkedMessages(failed)).toEqual([]);
 	});
+
+	it('ends the review when a save brings its own errors, or none', () => {
+		const { targets } = recipeFormSubmission(draft);
+		const failed = editRecipeForm(draft, {
+			type: 'attachErrors',
+			fieldErrors: { title: 'Enter some text.' },
+			targets,
+		});
+		const refused = editRecipeForm(draft, { type: 'attachErrors', fieldErrors: {}, targets });
+
+		expect(failed.reviewingDraft).toBe(false);
+		expect(recipeFormProblems(failed).map(({ message }) => message)).toEqual(['Enter some text.']);
+		expect(refused.reviewingDraft).toBe(false);
+		expect(recipeFormProblems(refused)).toEqual([]);
+	});
 });
 
 describe('tagLabelsFrom', () => {
 	it('splits on commas and drops blanks', () => {
 		expect(tagLabelsFrom(' Soup,, Weeknight ,')).toEqual(['Soup', 'Weeknight']);
+	});
+});
+
+describe('tagLabelsToAdd', () => {
+	it('leaves out tags already chosen and repeats, by key', () => {
+		const { tags } = lemonBarsForm();
+
+		expect(tagLabelsToAdd(tags, ['BAKING', 'Make ahead', 'make  ahead', 'Soup'])).toEqual([
+			'Make ahead',
+			'Soup',
+		]);
 	});
 });
 
@@ -932,7 +965,7 @@ describe('attaching errors', () => {
 			'yield.amount': "We couldn't read this amount. Use a number, or two numbers for a range.",
 			'yield.unit': 'Enter some text.',
 			'tags.1': 'Enter a tag.',
-			'images.2.pathname': "This photo didn't finish uploading. Remove it and add it again.",
+			'images.2.pathname': "This photo didn't upload. Remove it and add it again.",
 		});
 
 		expect(values.fieldErrors).toEqual({
@@ -942,7 +975,7 @@ describe('attaching errors', () => {
 			tags: 'Enter a tag.',
 		});
 		expect(values.photos.scan[0]?.error).toBe(
-			"This photo didn't finish uploading. Remove it and add it again."
+			"This photo didn't upload. Remove it and add it again."
 		);
 	});
 

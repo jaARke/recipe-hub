@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { permanentRedirect, redirect } from 'next/navigation';
 import { Suspense } from 'react';
+import { getCachedTagLabels } from '@/app/_lib/recipe-cache';
 import { createRecipe } from '@/app/(contribute)/contribute/actions';
 import { SignInRequiredError } from '@/application/authorization';
 import type { ImportReviewDto } from '@/application/ingestion/recipe-import-dtos';
@@ -81,6 +82,7 @@ async function ImportReview({ params }: Pick<PageProps<'/contribute/imports/[id]
 	}
 
 	const { draft } = review;
+	const tagLabels = await getCachedTagLabels();
 	return (
 		<div className="flex flex-col gap-8">
 			{draft.sourceUrl === undefined ? (
@@ -94,6 +96,7 @@ async function ImportReview({ params }: Pick<PageProps<'/contribute/imports/[id]
 				initial={recipeFormValues(draft.content, draft.problems)}
 				action={createRecipe}
 				uploadFolders={getRecipeImageService().uploadFolders()}
+				tagLabels={tagLabels}
 				importId={draft.id}
 				submitLabel="Save recipe"
 			/>

@@ -48,6 +48,16 @@ export class InMemoryInviteRepository implements InviteRepository {
 		return this.replaceOpen(id, now, { revokedAt: now }) !== null;
 	}
 
+	// Stands in for DrizzleInviteRepository's, which a member's removal calls. It does not await, so
+	// the removal stays one uninterrupted step.
+	revokeOpenByEmail(email: string, now: Date): void {
+		for (const { invite } of this.invites.values()) {
+			if (invite.email === email) {
+				this.replaceOpen(invite.id, now, { revokedAt: now });
+			}
+		}
+	}
+
 	// Stands in for Better Auth, which accepts an invite by creating the account that points at it.
 	accept(id: InviteId, memberId: MemberId): void {
 		const stored = this.invites.get(id);

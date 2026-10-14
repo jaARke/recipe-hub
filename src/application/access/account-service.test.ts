@@ -5,14 +5,15 @@ import { InMemoryEmailSender } from '@/application/testing/in-memory-email-sende
 import { InMemoryInviteRepository } from '@/application/testing/in-memory-invite-repository';
 import { InMemoryMemberRepository } from '@/application/testing/in-memory-member-repository';
 import { inviteExpiry, type Invite } from '@/domain/member/invite';
+import { removedMemberEmail } from '@/domain/member/member';
 
 const now = new Date('2026-10-12T15:00:00Z');
 const minute = 60 * 1000;
 const code = '482915';
 
 function createAccounts() {
-	const members = new InMemoryMemberRepository();
 	const invites = new InMemoryInviteRepository();
+	const members = new InMemoryMemberRepository(invites);
 	const emails = new InMemoryEmailSender();
 	const service = new AccountService(members, invites, emails);
 
@@ -96,6 +97,36 @@ describe('sendSignInCode', () => {
 			await expect(service.sendSignInCode(email, code)).resolves.toBeUndefined();
 		}
 		expect(emails.sentMessages).toEqual([]);
+	});
+
+	it("sends nothing for a removed member, at the account's new address or their own", async () => {
+		const { members, emails, service } = createAccounts();
+		const ada = await members.create({
+			email: 'ada@example.com',
+			displayName: 'Ada',
+			role: 'member',
+		});
+		await members.remove(ada.id);
+
+		for (const email of ['ada@example.com', removedMemberEmail(ada.id)]) {
+			await expect(service.sendSignInCode(email, code)).resolves.toBeUndefined();
+		}
+		expect(emails.sentMessages).toEqual([]);
+	});
+
+	it("sends the code to a removed member's own address once a new invite is bound to it", async () => {
+		const { members, emails, service, createInvite } = createAccounts();
+		const ada = await members.create({
+			email: 'ada@example.com',
+			displayName: 'Ada',
+			role: 'member',
+		});
+		await members.remove(ada.id);
+		await createInvite('Ada', 'ada@example.com');
+
+		await service.sendSignInCode('ada@example.com', code);
+
+		expect(emails.sentMessages.map(({ to }) => to)).toEqual(['ada@example.com']);
 	});
 
 	it('logs a failed email without the address or code, and does not throw', async () => {

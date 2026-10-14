@@ -272,7 +272,7 @@ function InviteSignedIn({
 
 function InviteFlowSkeleton() {
 	return (
-		<div role="status" className="flex flex-col gap-6">
+		<div role="status" aria-live="polite" className="flex flex-col gap-6">
 			<span className="sr-only">Loading your invite</span>
 			<div className="flex flex-col gap-3">
 				<Skeleton className="h-8 w-56" />

@@ -53,6 +53,9 @@ function useRecipeImageViewer(): RecipeImageViewerContextValue {
 // Every image whole, one at a time; a trigger's payload is the index the viewer opens at.
 function RecipeImageViewer({ role, images, title, children }: RecipeImageViewerProps) {
 	const context = React.useMemo(() => ({ role, images }), [role, images]);
+	const popupRef = React.useRef<HTMLDivElement>(null);
+	// The carousel button the viewer opens on; with one image there is none, and Close takes focus.
+	const initialFocusRef = React.useRef<HTMLButtonElement>(null);
 
 	return (
 		<RecipeImageViewerContext.Provider value={context}>
@@ -61,7 +64,11 @@ function RecipeImageViewer({ role, images, title, children }: RecipeImageViewerP
 					<>
 						{children}
 						{/* Scrolls on a screen too short for the photo and its caption, such as a phone on its side. */}
-						<DialogContent className="max-h-dvh overflow-y-auto sm:max-w-2xl">
+						<DialogContent
+							ref={popupRef}
+							initialFocus={initialFocusRef}
+							className="max-h-dvh overflow-y-auto sm:max-w-2xl"
+						>
 							{/* Clears the close button in the corner. */}
 							<DialogHeader className="pr-8">
 								<DialogTitle>{title}</DialogTitle>
@@ -70,6 +77,8 @@ function RecipeImageViewer({ role, images, title, children }: RecipeImageViewerP
 								role={role}
 								images={images}
 								startIndex={typeof payload === 'number' ? payload : 0}
+								popupRef={popupRef}
+								initialFocusRef={initialFocusRef}
 							/>
 						</DialogContent>
 					</>
@@ -95,22 +104,31 @@ function RecipeImageViewerTrigger({
 		<DialogTrigger
 			payload={index}
 			aria-label={viewImageLabel(role, index, images.length, images[index]?.alt)}
-			className={cn(
-				// The links' focus treatment, which the base styles give anchors only.
-				'block overflow-hidden transition-shadow hover:shadow-md focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-1',
-				className
-			)}
+			className={cn('block overflow-hidden transition-shadow hover:shadow-md', className)}
 		>
 			{children}
 		</DialogTrigger>
 	);
 }
 
+type InitialFocusProps = {
+	startIndex: number;
+	initialFocusRef: React.RefObject<HTMLButtonElement | null>;
+};
+
+type RecipeImageCarouselProps = RecipeImageViewerContextValue &
+	InitialFocusProps & {
+		// The viewer's popup, which takes the arrow keys the carousel does not.
+		popupRef: React.RefObject<HTMLDivElement | null>;
+	};
+
 function RecipeImageCarousel({
 	role,
 	images,
 	startIndex,
-}: RecipeImageViewerContextValue & { startIndex: number }) {
+	popupRef,
+	initialFocusRef,
+}: RecipeImageCarouselProps) {
 	const labels = imageViewerLabels(role);
 	const [api, setApi] = React.useState<CarouselApi>();
 	const [current, setCurrent] = React.useState(startIndex);
@@ -125,6 +143,32 @@ function RecipeImageCarousel({
 			api.off('select', onSelect);
 		};
 	}, [api]);
+
+	// The carousel takes arrow keys only while it holds focus, so the rest of the viewer, such as Close,
+	// takes them here. The popup stops arrow keys from bubbling past it, and those the carousel handled
+	// arrive default-prevented.
+	React.useEffect(() => {
+		const popup = popupRef.current;
+		if (api === undefined || popup === null) {
+			return;
+		}
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.defaultPrevented) {
+				return;
+			}
+			if (event.key === 'ArrowLeft') {
+				event.preventDefault();
+				api.scrollPrev();
+			} else if (event.key === 'ArrowRight') {
+				event.preventDefault();
+				api.scrollNext();
+			}
+		};
+		popup.addEventListener('keydown', onKeyDown);
+		return () => {
+			popup.removeEventListener('keydown', onKeyDown);
+		};
+	}, [api, popupRef]);
 
 	return (
 		<Carousel
@@ -159,7 +203,13 @@ function RecipeImageCarousel({
 					</CarouselItem>
 				))}
 			</CarouselContent>
-			<RecipeImageCaption role={role} images={images} index={current} />
+			<RecipeImageCaption
+				role={role}
+				images={images}
+				index={current}
+				startIndex={startIndex}
+				initialFocusRef={initialFocusRef}
+			/>
 		</Carousel>
 	);
 }
@@ -169,16 +219,21 @@ function RecipeImageCaption({
 	role,
 	images,
 	index,
-}: RecipeImageViewerContextValue & { index: number }) {
+	startIndex,
+	initialFocusRef,
+}: RecipeImageViewerContextValue & InitialFocusProps & { index: number }) {
 	const alt = images[index]?.alt;
 	if (images.length === 1) {
 		return alt === undefined ? null : <p>{alt}</p>;
 	}
 
 	const labels = imageViewerLabels(role);
+	// The viewer opens on the button that moves on rather than a disabled one: Next, or Previous from
+	// the last image.
+	const opensOnNext = startIndex < images.length - 1;
 	return (
 		<div className="flex items-start justify-between gap-4">
-			<div role="status" className="flex min-w-0 flex-col gap-1">
+			<div role="status" aria-live="polite" className="flex min-w-0 flex-col gap-1">
 				{alt !== undefined && <p>{alt}</p>}
 				<p className="font-mono text-xs tracking-wide text-muted-foreground uppercase">
 					{imagePositionLabel(role, index, images.length)}
@@ -186,8 +241,18 @@ function RecipeImageCaption({
 			</div>
 			<div className="flex shrink-0 gap-2">
 				{/* Below the image rather than beside it, and focusable at either end so focus stays put. */}
-				<CarouselPrevious className="static" aria-label={labels.previous} focusableWhenDisabled />
-				<CarouselNext className="static" aria-label={labels.next} focusableWhenDisabled />
+				<CarouselPrevious
+					ref={opensOnNext ? undefined : initialFocusRef}
+					className="static"
+					aria-label={labels.previous}
+					focusableWhenDisabled
+				/>
+				<CarouselNext
+					ref={opensOnNext ? initialFocusRef : undefined}
+					className="static"
+					aria-label={labels.next}
+					focusableWhenDisabled
+				/>
 			</div>
 		</div>
 	);

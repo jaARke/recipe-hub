@@ -28,6 +28,11 @@ const contributor: NewMember = {
 	displayName: 'Contributor',
 	role: 'member',
 };
+const otherContributor: NewMember = {
+	email: 'other-contributor@example.com',
+	displayName: 'Other contributor',
+	role: 'member',
+};
 const unknownMemberId = memberIdSchema.parse('3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b');
 const backdated = new Date('2026-01-01T00:00:00Z');
 
@@ -47,11 +52,14 @@ function newRecipe(input: RecipeContentInput, overrides: Partial<NewRecipe> = {}
 let db: TestDatabase;
 let repository: DrizzleRecipeRepository;
 let contributorId: MemberId;
+let otherContributorId: MemberId;
 
 beforeEach(async () => {
 	db = await createTestDatabase();
 	repository = new DrizzleRecipeRepository(db);
-	contributorId = (await new DrizzleMemberRepository(db).create(contributor)).id;
+	const members = new DrizzleMemberRepository(db);
+	contributorId = (await members.create(contributor)).id;
+	otherContributorId = (await members.create(otherContributor)).id;
 });
 
 afterEach(async () => {
@@ -88,6 +96,7 @@ describeRecipeRepositoryContract(() => ({
 	repository,
 	imports: new DrizzleRecipeImportRepository(db),
 	contributorId,
+	otherContributorId,
 }));
 
 describe('create', () => {

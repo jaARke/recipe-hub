@@ -1,12 +1,14 @@
 import 'server-only';
 import { waitUntil } from '@vercel/functions';
 import { headers } from 'next/headers';
-import { connection } from 'next/server';
+import { after, connection } from 'next/server';
+import { cache } from 'react';
 import { AccessRequestService } from '@/application/access/access-request-service';
 import { AccountService } from '@/application/access/account-service';
 import { InviteService } from '@/application/access/invite-service';
 import { RecipeImportService } from '@/application/ingestion/recipe-import-service';
 import { MemberService } from '@/application/members/member-service';
+import type { ActorProvider } from '@/application/ports/actor-provider';
 import { ImageFolders } from '@/application/recipes/image-folders';
 import { RecipeImageService } from '@/application/recipes/recipe-image-service';
 import { RecipeService } from '@/application/recipes/recipe-service';
@@ -17,6 +19,7 @@ import { createAuth, type Auth } from '@/infrastructure/auth/better-auth';
 import { BetterAuthActorProvider } from '@/infrastructure/auth/better-auth-actor-provider';
 import { db } from '@/infrastructure/db/client';
 import { DrizzleAccessRequestRepository } from '@/infrastructure/db/drizzle-access-request-repository';
+import { DrizzleImageMoveLock } from '@/infrastructure/db/drizzle-image-move-lock';
 import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
@@ -27,14 +30,25 @@ import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
 import { BlobUploadHandler } from '@/infrastructure/storage/blob-upload-handler';
 import { GuardedWebPageFetcher } from '@/infrastructure/web/guarded-web-page-fetcher';
 import { JsonLdPageRecipeExtractor } from '@/infrastructure/web/json-ld-page-recipe-extractor';
-import { appUrl, env, imageEnvironment, siteUrl } from '@/lib/env';
+import {
+	appUrl,
+	env,
+	expiringImageEnvironmentPrefixes,
+	imageEnvironment,
+	readableImageEnvironments,
+	siteUrl,
+} from '@/lib/env';
 
 const emails = new ResendEmailSender({
 	apiKey: env.RESEND_API_KEY,
 	domain: env.RESEND_EMAIL_DOMAIN,
 });
 
-const imageFolders = new ImageFolders(imageEnvironment);
+const imageFolders = new ImageFolders(
+	imageEnvironment,
+	readableImageEnvironments,
+	expiringImageEnvironmentPrefixes
+);
 
 const images = new BlobImageStore({ storeId: env.BLOB_STORE_ID, folders: imageFolders });
 
@@ -44,7 +58,7 @@ const pageModelId = 'anthropic/claude-sonnet-5.5';
 const scanModelId = 'anthropic/claude-sonnet-5.5';
 
 // The hosts a deployment answers on: the one its links name, and its own Vercel hosts.
-const authHosts = [
+const deploymentHosts = [
 	...new Set(
 		[appUrl.host, env.VERCEL_URL, env.VERCEL_BRANCH_URL].filter((host) => host !== undefined)
 	),
@@ -57,7 +71,7 @@ function getAuth(): Auth {
 	auth ??= createAuth({
 		db,
 		secret: env.BETTER_AUTH_SECRET,
-		allowedHosts: authHosts,
+		allowedHosts: deploymentHosts,
 		productionHost: env.VERCEL_ENV === 'production' ? siteUrl.hostname : undefined,
 		accounts: new AccountService(
 			new DrizzleMemberRepository(db),
@@ -76,7 +90,12 @@ async function requestHeaders(): Promise<Headers> {
 	return headers();
 }
 
-const actors = new BetterAuthActorProvider(getAuth, requestHeaders);
+const sessionActors = new BetterAuthActorProvider(getAuth, requestHeaders);
+
+// Every service resolves the actor, so a page that calls several reads the session once. React's
+// cache keeps the read for the rest of the render's request, and outside a render, as in a Server
+// Action or a Route Handler, each call reads the session again.
+const actors: ActorProvider = { currentActor: cache(() => sessionActors.currentActor()) };
 
 export function getRecipeService(): RecipeService {
 	return new RecipeService(
@@ -94,13 +113,21 @@ export function getRecipeSearchService(): RecipeSearchService {
 }
 
 export function getRecipeImageService(): RecipeImageService {
-	return new RecipeImageService(images, actors, imageFolders);
+	return new RecipeImageService(
+		new DrizzleRecipeRepository(db),
+		new DrizzleRecipeImportRepository(db),
+		images,
+		actors,
+		imageFolders,
+		new DrizzleImageMoveLock(db),
+		after
+	);
 }
 
 export function getRecipeImportService(): RecipeImportService {
 	return new RecipeImportService(
+		new DrizzleRecipeRepository(db),
 		new DrizzleRecipeImportRepository(db),
-		new DrizzleMemberRepository(db),
 		new GuardedWebPageFetcher({ siteUrl }),
 		new JsonLdPageRecipeExtractor(),
 		new AiPageRecipeExtractor(pageModelId),
@@ -133,7 +160,7 @@ export function getInviteService(): InviteService {
 }
 
 export function getMemberService(): MemberService {
-	return new MemberService(new DrizzleMemberRepository(db), actors);
+	return new MemberService(new DrizzleMemberRepository(db), actors, env.ADMIN_EMAIL);
 }
 
 // Better Auth's endpoint, which the Route Handler at /api/auth/[...all] mounts.
@@ -146,6 +173,7 @@ export function handleImageUploadRequest(request: Request): Promise<Response> {
 	const uploads = new BlobUploadHandler({
 		storeId: env.BLOB_STORE_ID,
 		webhookPublicKey: env.BLOB_WEBHOOK_PUBLIC_KEY,
+		allowedHosts: deploymentHosts,
 		authorizeUpload: (pathname) => getRecipeImageService().authorizeUpload(pathname),
 	});
 	return uploads.handle(request);

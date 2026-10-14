@@ -6,6 +6,7 @@ import { ForbiddenError, SignInRequiredError } from '@/application/authorization
 import { InvalidImageUploadError } from '@/application/recipes/errors';
 import type { ImageUploadGrant } from '@/application/recipes/recipe-dtos';
 import { imageCacheMaxAgeSeconds } from '@/lib/image-paths';
+import { getLogger } from '@/lib/logger';
 
 // The browser asks for each photo's URL just before uploading it.
 const uploadUrlLifetimeMs = 10 * 60 * 1000;
@@ -17,13 +18,29 @@ const uploadRequestSchema = z.object({
 	payload: z.object({ pathname: z.string(), multipart: z.literal(false) }),
 });
 
+const logger = getLogger('images');
+
 type BlobUploadHandlerOptions = {
 	storeId: string;
 	// Verifies completion callbacks, which are never requested, but the SDK refuses to run without it.
 	webhookPublicKey: string;
+	// The hosts this deployment answers on, whose pages alone may ask for an upload.
+	allowedHosts: readonly string[];
 	// Throws when the pathname may not be uploaded.
 	authorizeUpload: (pathname: string) => Promise<ImageUploadGrant>;
 };
+
+// Route Handlers get no Server Action origin check, and the site's sibling subdomains count as the
+// same site for its SameSite=Lax session cookie, so a request must come from this deployment's own
+// pages: the browser says so, or names one of its hosts as the origin.
+function isFromOwnPage(request: Request, allowedHosts: readonly string[]): boolean {
+	if (request.headers.get('sec-fetch-site') === 'same-origin') {
+		return true;
+	}
+
+	const origin = request.headers.get('origin');
+	return origin !== null && URL.canParse(origin) && allowedHosts.includes(new URL(origin).host);
+}
 
 async function readJson(request: Request): Promise<unknown> {
 	try {
@@ -52,15 +69,25 @@ function refusalStatus(error: unknown): number | undefined {
 export class BlobUploadHandler {
 	private readonly storeId: string;
 	private readonly webhookPublicKey: string;
+	private readonly allowedHosts: readonly string[];
 	private readonly authorizeUpload: (pathname: string) => Promise<ImageUploadGrant>;
 
 	constructor(options: BlobUploadHandlerOptions) {
 		this.storeId = options.storeId;
 		this.webhookPublicKey = options.webhookPublicKey;
+		this.allowedHosts = options.allowedHosts;
 		this.authorizeUpload = options.authorizeUpload;
 	}
 
 	async handle(request: Request): Promise<Response> {
+		if (!isFromOwnPage(request, this.allowedHosts)) {
+			logger.warn('Image upload refused from another site', {
+				fetchSite: request.headers.get('sec-fetch-site'),
+				origin: request.headers.get('origin'),
+			});
+			return new Response(null, { status: 403 });
+		}
+
 		const body = uploadRequestSchema.safeParse(await readJson(request));
 		if (!body.success) {
 			return new Response(null, { status: 400 });

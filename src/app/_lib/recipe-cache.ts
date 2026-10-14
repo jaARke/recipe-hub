@@ -45,3 +45,11 @@ export async function getCachedRecipePage(
 		sort,
 	});
 }
+
+// Every tag label in use, which the recipe form suggests and filters in the browser.
+export async function getCachedTagLabels(): Promise<string[]> {
+	'use cache';
+	cacheTag(recipeCacheTags.list);
+	cacheLife('days');
+	return getRecipeService().listTagLabels();
+}

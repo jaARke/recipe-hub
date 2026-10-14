@@ -1,6 +1,6 @@
 'use server';
 
-import { refresh, updateTag } from 'next/cache';
+import { updateTag } from 'next/cache';
 import { toFormError } from '@/app/_lib/form-errors';
 import { recipeCacheTags } from '@/app/_lib/recipe-cache';
 import type { MemberRef } from '@/application/members/member-dtos';
@@ -21,6 +21,5 @@ export async function renameMember(_state: FormState, formData: FormData): Promi
 	}
 
 	updateTag(recipeCacheTags.member(member.id));
-	refresh();
 	return { status: 'success' };
 }

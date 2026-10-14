@@ -105,11 +105,17 @@ function AdminDashboard({
 			>
 				<OpenInviteList invites={invites} revokeInvite={actions.revokeInvite} />
 			</AdminSection>
-			<AdminSection id="admin-members" headingTag={section} title="Members">
+			<AdminSection
+				id="admin-members"
+				headingTag={section}
+				title="Members"
+				itemCount={members.length}
+			>
 				<MemberList
 					members={members}
 					makeAdmin={actions.makeAdmin}
 					removeAdmin={actions.removeAdmin}
+					removeMember={actions.removeMember}
 				/>
 			</AdminSection>
 		</div>
@@ -127,7 +133,7 @@ function AdminSectionSkeleton({ children }: { children: React.ReactNode }) {
 
 function AdminDashboardSkeleton() {
 	return (
-		<div role="status">
+		<div role="status" aria-live="polite">
 			<span className="sr-only">Loading requests, invites, and members</span>
 			<div aria-hidden="true" className="flex flex-col gap-12">
 				<AdminSectionSkeleton>

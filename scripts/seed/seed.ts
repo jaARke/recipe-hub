@@ -17,6 +17,7 @@ import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repo
 import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
+import { seedImageEnvironment } from '@/lib/image-paths';
 import { getLogger } from '@/lib/logger';
 
 // A sample's photo is stored here under the file name its pathname ends with.
@@ -24,9 +25,6 @@ const photosFolder = path.join(import.meta.dirname, 'photos');
 
 // Every seed photo is a JPEG, as scripts/seed/photos/SOURCES.md lists.
 const photoContentType = 'image/jpeg';
-
-// Seed photos live at dish/seed/<slug>.jpg, shared by every environment the seed runs in.
-const seedImageEnvironment = 'seed';
 
 // Every sample's contributor. No one signs in as it: its address can never receive a code.
 const sampleContributor: NewMember = {
@@ -81,14 +79,8 @@ async function seed(recipes: RecipeService, images: ImageStore): Promise<void> {
 
 	// The list shows the newest first, so inserting in reverse keeps the samples' order.
 	for (const content of sampleRecipeContents.toReversed()) {
-		const slug = slugify(content.title);
-		if ((await recipes.getRecipe(slug)) !== null) {
-			logger.info('Seed recipe skipped', { slug });
-			recipesSkipped += 1;
-			continue;
-		}
-
-		// Photos go first, so a seeded recipe never points at a missing photo.
+		// Photos go first, so a seeded recipe never points at a missing photo. An existing recipe's
+		// missing photos are uploaded too, as for a seeded database given a new store.
 		for (const { pathname } of content.images) {
 			if (await images.has(pathname)) {
 				continue;
@@ -98,6 +90,13 @@ async function seed(recipes: RecipeService, images: ImageStore): Promise<void> {
 			await images.put(pathname, body, photoContentType);
 			logger.info('Seed photo uploaded', { pathname });
 			photosUploaded += 1;
+		}
+
+		const slug = slugify(content.title);
+		if ((await recipes.getRecipe(slug)) !== null) {
+			logger.info('Seed recipe skipped', { slug });
+			recipesSkipped += 1;
+			continue;
 		}
 
 		await recipes.createRecipe({ content });

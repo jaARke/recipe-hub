@@ -393,7 +393,7 @@ function SectionedListField({
 				<PlusIcon data-icon="inline-start" aria-hidden="true" />
 				Add section<span className="sr-only"> to {legend.toLowerCase()}</span>
 			</Button>
-			<p role="status" className="sr-only">
+			<p role="status" aria-live="polite" className="sr-only">
 				{announcement}
 			</p>
 		</FieldSet>

@@ -25,7 +25,7 @@ const maxTagCount = 20;
 
 const recipeSearchInputSchema = paginationSchema.extend({
 	text: z.string().trim().max(maxTextLength).refine(hasNoNul).optional(),
-	tags: tagListSchema.max(maxTagCount).refine((tags) => tags.every(hasNoNul)),
+	tags: tagListSchema.max(maxTagCount),
 	source: nonEmptyTextSchema.optional(),
 	// Lowercased, as Postgres prints ids, so the chosen id matches the contributor facet's.
 	contributorId: z.string().trim().toLowerCase().pipe(memberIdSchema).optional(),

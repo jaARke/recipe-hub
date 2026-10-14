@@ -58,10 +58,17 @@ export interface RecipeImportRepository {
 	// newest first, at most limit of them.
 	listUnsaved(memberId: MemberId, since: Date, limit: number): Promise<UnsavedImport[]>;
 	// The given image pathnames that a draft awaiting review names: the draft of any member's succeeded
-	// import since the given time that saved no recipe.
-	findImagesInUnsavedImports(pathnames: readonly string[], since: Date): Promise<string[]>;
+	// import since the given time that saved no recipe, ignoring the excluded member's imports.
+	findImagesInUnsavedImports(
+		pathnames: readonly string[],
+		since: Date,
+		excludeMemberId?: MemberId
+	): Promise<string[]>;
 	clearDraft(id: RecipeImportId): Promise<void>;
 	// Clears the draft and source URL of every import started before the given time, and returns how
 	// many imports it cleared.
 	clearDraftsCreatedBefore(cutoff: Date): Promise<number>;
+	// Records every import still running that started before the given time as failed with the given
+	// code, and returns how many it recorded.
+	failRunningCreatedBefore(cutoff: Date, failure: string): Promise<number>;
 }

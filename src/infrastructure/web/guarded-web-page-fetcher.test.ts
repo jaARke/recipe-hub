@@ -320,6 +320,49 @@ describe('fetch time limit', () => {
 	});
 });
 
+describe("fetch stops at the caller's signal", () => {
+	it('while the site has not answered', async () => {
+		const asked = Promise.withResolvers<void>();
+		routes['/slow'] = () => asked.resolve();
+		const caller = new AbortController();
+
+		const result = createFetcher()
+			.fetch(`${publicOrigin}/slow`, caller.signal)
+			.catch((error: unknown) => error);
+		await asked.promise;
+		caller.abort();
+
+		await expect(result).resolves.toEqual(unavailable('unreachable'));
+	});
+
+	it('while the page is still arriving', async () => {
+		routes['/slow'] = (_, response) => {
+			response.writeHead(200, { 'content-type': 'text/html' });
+			response.write('<p>Pancakes');
+		};
+		const answered = Promise.withResolvers<void>();
+		const fetcher = new GuardedWebPageFetcher({
+			siteUrl,
+			fetch: async (input, init) => {
+				const response = await localWeb(input, init);
+				answered.resolve();
+				return response;
+			},
+		});
+		const caller = new AbortController();
+
+		const result = fetcher
+			.fetch(`${publicOrigin}/slow`, caller.signal)
+			.catch((error: unknown) => error);
+		await answered.promise;
+		// Lets guarded-fetch hand the response to the fetcher, which then waits on the body.
+		await new Promise((resolve) => setImmediate(resolve));
+		caller.abort();
+
+		await expect(result).resolves.toEqual(unavailable('unreachable'));
+	});
+});
+
 describe('fetch refuses an address that is not public', () => {
 	it.each([
 		'http://127.0.0.1/',

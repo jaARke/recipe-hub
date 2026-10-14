@@ -12,7 +12,7 @@ import {
 	type RecipeSearchState,
 } from '@/components/search/search-params';
 import { buttonVariants } from '@/components/ui/button';
-import { tagKey } from '@/domain/recipe/tag';
+import { tagKey } from '@/domain/recipe/tag-normalization';
 
 type ActiveFilter = {
 	key: string;

@@ -44,7 +44,7 @@ function AccountDetails({ displayName, email, renameAction }: AccountDetailsProp
 
 function AccountDetailsSkeleton() {
 	return (
-		<div role="status" className="flex flex-col gap-8">
+		<div role="status" aria-live="polite" className="flex flex-col gap-8">
 			<span className="sr-only">Loading your account</span>
 			<div className="flex flex-col gap-4">
 				<Skeleton className="h-8 w-32" />

@@ -72,11 +72,15 @@ export class AccountService {
 		logger.info('Access granted', { memberId, inviteId });
 	}
 
-	// Members sign in with codes; an invitee confirms the address bound to their open invite.
+	// Members sign in with codes; an invitee confirms the address bound to their open invite. A
+	// removed member's account holds an address on the .invalid domain, which gets none, and their own
+	// address is free, so a new invite to it lets them confirm it like any invitee.
 	private async mayReceiveCode(email: string): Promise<boolean> {
-		return (
-			(await this.members.findByEmail(email)) !== null ||
-			(await this.invites.findOpenByEmail(email, new Date())) !== null
-		);
+		const member = await this.members.findByEmail(email);
+		if (member !== null) {
+			return member.removedAt === undefined;
+		}
+
+		return (await this.invites.findOpenByEmail(email, new Date())) !== null;
 	}
 }

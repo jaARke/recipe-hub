@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, desc, eq, gte, isNotNull, lt, notExists, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, isNotNull, lt, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import type {
 	ImportFailure,
@@ -94,7 +94,11 @@ export class DrizzleRecipeImportRepository implements RecipeImportRepository {
 		return rows.map(toUnsavedImport);
 	}
 
-	async findImagesInUnsavedImports(pathnames: readonly string[], since: Date): Promise<string[]> {
+	async findImagesInUnsavedImports(
+		pathnames: readonly string[],
+		since: Date,
+		excludeMemberId?: MemberId
+	): Promise<string[]> {
 		const wanted = new Set(pathnames);
 		if (wanted.size === 0) {
 			return [];
@@ -105,7 +109,11 @@ export class DrizzleRecipeImportRepository implements RecipeImportRepository {
 			.selectDistinct({ pathname: sql<string>`jsonb_array_elements_text(${draftImagePathnames})` })
 			.from(recipeImports)
 			.where(
-				and(this.isUnsaved(since), sql`${draftImagePathnames} ?| ${sql.param([...wanted])}::text[]`)
+				and(
+					this.isUnsaved(since),
+					sql`${draftImagePathnames} ?| ${sql.param([...wanted])}::text[]`,
+					excludeMemberId === undefined ? undefined : ne(recipeImports.memberId, excludeMemberId)
+				)
 			);
 		return rows.map(({ pathname }) => pathname).filter((pathname) => wanted.has(pathname));
 	}
@@ -124,6 +132,15 @@ export class DrizzleRecipeImportRepository implements RecipeImportRepository {
 					or(isNotNull(recipeImports.draft), isNotNull(recipeImports.sourceUrl))
 				)
 			)
+			.returning({ id: recipeImports.id });
+		return rows.length;
+	}
+
+	async failRunningCreatedBefore(cutoff: Date, failure: string): Promise<number> {
+		const rows = await this.db
+			.update(recipeImports)
+			.set({ status: 'failed', failure, updatedAt: sql`now()` })
+			.where(and(eq(recipeImports.status, 'running'), lt(recipeImports.createdAt, cutoff)))
 			.returning({ id: recipeImports.id });
 		return rows.length;
 	}

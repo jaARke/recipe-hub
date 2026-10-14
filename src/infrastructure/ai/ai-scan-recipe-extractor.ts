@@ -23,7 +23,11 @@ export class AiScanRecipeExtractor implements ScanRecipeExtractor {
 		this.model = model;
 	}
 
-	extract(scans: readonly ScanImage[], requester: ExtractionRequester): Promise<Extraction> {
+	extract(
+		scans: readonly ScanImage[],
+		requester: ExtractionRequester,
+		signal?: AbortSignal
+	): Promise<Extraction> {
 		const pages = scans.flatMap((scan, index): (TextPart | FilePart)[] => [
 			{ type: 'text', text: scanPageLabel(index, scans.length) },
 			{
@@ -40,6 +44,7 @@ export class AiScanRecipeExtractor implements ScanRecipeExtractor {
 			schema: scanOutputSchema,
 			content: [...pages, { type: 'text', text: scanTask }],
 			requester,
+			signal,
 		});
 	}
 }

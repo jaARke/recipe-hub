@@ -9,6 +9,7 @@ import type { RecipeContent } from '@/domain/recipe/recipe';
 import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
 import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
 import type { RecipeYield } from '@/domain/recipe/recipe-yield';
+import { tagKey, uniqueTagLabels } from '@/domain/recipe/tag-normalization';
 
 // The recipe form's value and every edit to it. Pure, so the form's behavior is tested without a
 // browser. Sections, items, tags, and photos carry ids that stay with them as they move, and a
@@ -98,6 +99,9 @@ export type RecipeFormValues = {
 	fieldErrors: Partial<Record<RecipeFormErrorField, string>>;
 	// About the recipe as a whole, or a problem that names nothing in the form.
 	formError?: string;
+	// Whether the problems are a loaded draft's, which the member reviews and can mark as checked,
+	// rather than a save's errors. The first save's errors end the review.
+	reviewingDraft: boolean;
 	// The problems the member has marked as checked while reviewing a draft, by where each shows, so
 	// a mark follows its item. A removed item's mark matches nothing again, since ids are never
 	// reused, and new errors clear every mark.
@@ -170,8 +174,8 @@ export type RecipeFormEdit =
 	| { type: 'addSection'; list: RecipeFormListName }
 	| { type: 'removeSection'; list: RecipeFormListName; sectionId: number }
 	| { type: 'setHeading'; list: RecipeFormListName; sectionId: number; heading: string }
-	// Adds each comma-separated tag in the text and clears the tag field.
-	| { type: 'addTags'; text: string }
+	// Adds each tag not already chosen, as tagLabelsToAdd finds them, and clears the tag field.
+	| { type: 'addTags'; labels: readonly string[] }
 	| { type: 'removeTag'; tagId: number }
 	| PhotoEdit
 	| { type: 'attachErrors'; fieldErrors: FieldErrors; targets: ProblemTargets }
@@ -259,6 +263,15 @@ export function tagLabelsFrom(text: string): string[] {
 		.split(',')
 		.map((label) => label.trim())
 		.filter((label) => label !== '');
+}
+
+// The labels that add a tag: each tag once, by key, and none already chosen.
+export function tagLabelsToAdd(
+	tags: readonly RecipeFormTag[],
+	labels: readonly string[]
+): string[] {
+	const chosenKeys = new Set(tags.map((tag) => tagKey(tag.label)));
+	return uniqueTagLabels(labels).filter((label) => !chosenKeys.has(tagKey(label)));
 }
 
 // A photo still being processed or uploaded, which saving must wait for.
@@ -509,12 +522,13 @@ export function recipeFormValues(
 		tags,
 		photos,
 		fieldErrors: {},
+		reviewingDraft: false,
 		checkedProblems: new Set(),
 		nextId,
 	};
 	return problems.length === 0
 		? values
-		: withErrors(values, draftFieldErrors(problems, targets), targets);
+		: { ...withErrors(values, draftFieldErrors(problems, targets), targets), reviewingDraft: true };
 }
 
 // The payload the form sends. Blank items, blank optional text, and sections with neither a heading
@@ -865,7 +879,7 @@ export function editRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): 
 				heading: edit.heading,
 			}));
 		case 'addTags': {
-			const labels = tagLabelsFrom(edit.text);
+			const labels = tagLabelsToAdd(values.tags, edit.labels);
 			return {
 				...values,
 				text: { ...values.text, tagDraft: '' },
@@ -889,7 +903,7 @@ export function editRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): 
 		case 'setPhotoAlt':
 			return editPhotos(values, edit);
 		case 'attachErrors':
-			return withErrors(values, edit.fieldErrors, edit.targets);
+			return { ...withErrors(values, edit.fieldErrors, edit.targets), reviewingDraft: false };
 		case 'setProblemChecked': {
 			const checkedProblems = new Set(values.checkedProblems);
 			if (edit.checked) {

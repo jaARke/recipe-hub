@@ -1,5 +1,6 @@
 import { MockLanguageModelV4 } from 'ai/test';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { ImportFailedError } from '@/application/ingestion/errors';
 import type { ExtractionRequester } from '@/application/ports/recipe-extractors';
 import type { WebPage } from '@/application/ports/web-page-fetcher';
 import { memberIdSchema } from '@/domain/member/member';
@@ -12,7 +13,6 @@ type GenerateResult = Awaited<ReturnType<MockLanguageModelV4['doGenerate']>>;
 
 const requester: ExtractionRequester = {
 	memberId: memberIdSchema.parse('0199d2e8-4b7a-7c3e-9a1f-6e2d8c4b0a75'),
-	email: 'ada@example.com',
 };
 // The SHA-256 of the member's id, in hex.
 const safetyIdentifier = 'ddc99d0a0120fa986be91caf0cabfbcafbdc9c4000ff1c108176e0e6619a11b6';
@@ -73,19 +73,23 @@ describe('extract', () => {
 		expect(call?.temperature).toBeUndefined();
 	});
 
-	it("labels the call with the member's email and hashed id, with zero data retention", async () => {
+	it("labels the call with the member's id and its hash, with zero data retention", async () => {
 		const model = new MockLanguageModelV4({ doGenerate: answer(pageOutput) });
 
 		await new AiPageRecipeExtractor(model).extract(page, requester);
 
 		const [call] = model.doGenerateCalls;
 		expect(call?.providerOptions).toEqual({
-			gateway: { zeroDataRetention: true, user: 'ada@example.com', safetyIdentifier },
+			gateway: {
+				zeroDataRetention: true,
+				user: '0199d2e8-4b7a-7c3e-9a1f-6e2d8c4b0a75',
+				safetyIdentifier,
+			},
 		});
 		expect(call?.providerOptions?.gateway?.safetyIdentifier).toHaveLength(64);
 	});
 
-	it('asks for the page schema, which has no transcription', async () => {
+	it('asks for the page schema, which has no transcription, in at most 16,000 tokens', async () => {
 		const model = new MockLanguageModelV4({ doGenerate: answer(pageOutput) });
 
 		await new AiPageRecipeExtractor(model).extract(page, requester);
@@ -93,6 +97,26 @@ describe('extract', () => {
 		const [call] = model.doGenerateCalls;
 		expect(call?.responseFormat).toMatchObject({ type: 'json', name: 'recipe' });
 		expect(call?.responseFormat).not.toHaveProperty('schema.properties.transcription');
+		expect(call?.maxOutputTokens).toBe(16_000);
+	});
+
+	it("stops the call once the caller's signal aborts", async () => {
+		const caller = new AbortController();
+		const model = new MockLanguageModelV4({
+			doGenerate: ({ abortSignal }) =>
+				new Promise((_, reject) => {
+					abortSignal?.addEventListener('abort', () => reject(abortSignal.reason));
+				}),
+		});
+
+		const failure = new AiPageRecipeExtractor(model)
+			.extract(page, requester, caller.signal)
+			.catch((caught: unknown) => caught);
+		await vi.waitFor(() => expect(model.doGenerateCalls).toHaveLength(1));
+		caller.abort();
+
+		expect(await failure).toBeInstanceOf(ImportFailedError);
+		expect(((await failure) as ImportFailedError).cause).toEqual({ name: 'AbortError' });
 	});
 
 	it('maps the output into an extracted recipe', async () => {

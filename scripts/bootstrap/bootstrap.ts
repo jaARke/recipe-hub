@@ -10,7 +10,7 @@ import { getLogger } from '@/lib/logger';
 
 const logger = getLogger('bootstrap');
 
-// Making the first admin is a system use case that never asks who is calling.
+// Making the owner an admin is a system use case that never asks who is calling.
 class BootstrapActorProvider implements ActorProvider {
 	async currentActor(): Promise<Actor> {
 		return { kind: 'anonymous' };
@@ -24,25 +24,22 @@ const env = z
 	.object({
 		// The bootstrap takes a direct connection, as migrations do, not the pooler.
 		DATABASE_URL_UNPOOLED: z.url(),
-		// The address whose account becomes the first admin; without it the bootstrap does nothing.
-		ADMIN_EMAIL: z.email().optional(),
+		// The owner's address, whose account the bootstrap makes an admin, creating it if needed.
+		ADMIN_EMAIL: z.email(),
 	})
 	.parse(process.env);
 
-if (env.ADMIN_EMAIL === undefined) {
-	logger.info('Admin bootstrap skipped without an admin email');
-} else {
-	const pool = new Pool({ connectionString: pinFullSslVerification(env.DATABASE_URL_UNPOOLED) });
-	try {
-		const members = new MemberService(
-			new DrizzleMemberRepository(drizzle({ client: pool })),
-			new BootstrapActorProvider()
-		);
-		await members.ensureAdmin(env.ADMIN_EMAIL);
-	} catch (err) {
-		logger.error('Admin bootstrap failed', { err });
-		process.exitCode = 1;
-	} finally {
-		await pool.end();
-	}
+const pool = new Pool({ connectionString: pinFullSslVerification(env.DATABASE_URL_UNPOOLED) });
+try {
+	const members = new MemberService(
+		new DrizzleMemberRepository(drizzle({ client: pool })),
+		new BootstrapActorProvider(),
+		env.ADMIN_EMAIL
+	);
+	await members.ensureOwner();
+} catch (err) {
+	logger.error('Owner bootstrap failed', { err });
+	process.exitCode = 1;
+} finally {
+	await pool.end();
 }

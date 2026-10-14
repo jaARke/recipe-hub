@@ -1,5 +1,5 @@
 import { getSessionCookie } from 'better-auth/cookies';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { InviteUnavailableError } from '@/application/access/errors';
 import { InviteService } from '@/application/access/invite-service';
@@ -16,7 +16,7 @@ import {
 import { DrizzleAccessRequestRepository } from '@/infrastructure/db/drizzle-access-request-repository';
 import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
-import { users } from '@/infrastructure/db/schema';
+import { passkeys, rateLimits, sessions, users, verifications } from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 
 const clientIp = '198.51.100.7';
@@ -33,7 +33,6 @@ const enabledPaths = [
 	'/passkey/generate-authenticate-options',
 	'/passkey/verify-authentication',
 	'/passkey/list-user-passkeys',
-	'/passkey/update-passkey',
 	'/passkey/delete-passkey',
 ];
 
@@ -175,6 +174,22 @@ describe('sending a sign-in code', () => {
 		expect(await members.findByEmail('stranger@example.com')).toBeNull();
 	});
 
+	it('answers a removed member as it answers an unknown address, with no email', async () => {
+		const ada = await members.create({
+			email: 'ada@example.com',
+			displayName: 'Ada',
+			role: 'member',
+		});
+		await members.remove(ada.id);
+
+		const forRemoved = await requestCode('ada@example.com');
+		const forStranger = await requestCode('stranger@example.com');
+
+		expect(forRemoved.status).toBe(forStranger.status);
+		expect(await forRemoved.json()).toEqual(await forStranger.json());
+		expect(emails.sentMessages).toEqual([]);
+	});
+
 	it('refuses a fourth request from one client within a minute', async () => {
 		const statuses: number[] = [];
 		for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -265,6 +280,27 @@ describe('accepting an invite', () => {
 		expect(await members.findByEmail('grace@example.com')).toBeNull();
 	});
 
+	it('creates a new account for a removed member invited again, and closes the new invite', async () => {
+		const { service } = await inviteGrace();
+		await signIn('grace@example.com');
+		const removed = await members.findByEmail('grace@example.com');
+		await members.remove(removed!.id);
+		const reissued = await service.issueInvite({ displayName: 'Grace' });
+		const token = new URL(reissued.link).hash.slice(1);
+		await service.bindInviteEmail(token, 'grace@example.com');
+
+		const response = await signIn('grace@example.com');
+		const grace = await members.findByEmail('grace@example.com');
+
+		expect(emails.sentMessages.filter(({ to }) => to === 'grace@example.com')).toHaveLength(2);
+		expect(response.status).toBe(200);
+		expect(grace).toMatchObject({ displayName: 'Grace', role: 'member' });
+		expect(grace?.id).not.toBe(removed?.id);
+		expect(await storedUser('grace@example.com')).toMatchObject({ inviteId: reissued.id });
+		expect(await members.findById(removed!.id)).toMatchObject({ removedAt: expect.any(Date) });
+		expect(await service.getInvitePreview(token)).toBeNull();
+	});
+
 	it('refuses a second account on an accepted invite', async () => {
 		const { service, token } = await inviteGrace();
 		await signIn('grace@example.com');
@@ -323,18 +359,47 @@ describe('passkeys', () => {
 
 		expect(await response.json()).toMatchObject({ rp: { id: 'recipes.example.com' } });
 	});
+
+	it("refuses a sign-in naming a removed member's passkey", async () => {
+		const ada = await members.create({
+			email: 'ada@example.com',
+			displayName: 'Ada',
+			role: 'member',
+		});
+		await db.insert(passkeys).values({
+			publicKey: 'public-key',
+			userId: ada.id,
+			credentialID: 'ada-credential',
+			counter: 0,
+			deviceType: 'multiDevice',
+			backedUp: true,
+		});
+		await members.remove(ada.id);
+		const options = await request('GET', '/passkey/generate-authenticate-options');
+
+		// The plugin finds the credential before it checks the signature, so none is sent.
+		const response = await request(
+			'POST',
+			'/passkey/verify-authentication',
+			{ response: { id: 'ada-credential' } },
+			cookiesFrom(options.headers)
+		);
+
+		expect(response.status).toBe(401);
+		expect(await response.json()).toMatchObject({ code: 'PASSKEY_NOT_FOUND' });
+		expect(await db.$count(sessions)).toBe(0);
+	});
 });
 
 describe('routes', () => {
-	it('answers 404 on every route the flows do not call', async () => {
-		const unused = mountedRoutes().filter(
-			({ path }) => !enabledPaths.includes(path) && !path.includes(':')
-		);
+	it('answers 404 on every route the flows do not call, parameterized ones included', async () => {
+		const unused = mountedRoutes().filter(({ path }) => !enabledPaths.includes(path));
 
 		for (const { path, method } of unused) {
-			expect((await request(method, path)).status, path).toBe(404);
+			const requested = path.replace(/:\w+/g, 'sample');
+			expect((await request(method, requested)).status, path).toBe(404);
 		}
-		expect(unused.length).toBeGreaterThan(0);
+		expect(unused.filter(({ path }) => path.includes(':'))).not.toHaveLength(0);
 	});
 
 	it('serves every route the flows call', async () => {
@@ -346,12 +411,110 @@ describe('routes', () => {
 		}
 	});
 
-	it('mounts no parameterized route but the two disabledPaths cannot name', () => {
-		const parameterized = mountedRoutes().filter(({ path }) => path.includes(':'));
+	it('answers a path it does not serve without a rate-limit row', async () => {
+		const unknown = await request('POST', '/no-such-route');
+		const unused = await request('POST', '/update-user', { name: 'Ada' });
 
-		expect(parameterized.map(({ path }) => path).toSorted()).toEqual([
-			'/callback/:id',
-			'/reset-password/:token',
+		expect([unknown.status, unused.status]).toEqual([404, 404]);
+		expect(await db.$count(rateLimits)).toBe(0);
+		await request('GET', '/get-session');
+		expect(await db.$count(rateLimits)).toBe(1);
+	});
+});
+
+describe('logging', () => {
+	it.each([
+		['a route', 'users', 'ada@example.com'],
+		['the rate limiter', 'rate_limits', clientIp],
+	])(
+		'answers 500 and logs a failed query in %s without its parameters',
+		async (_, table, parameter) => {
+			await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
+			await db.execute(sql`drop table ${sql.identifier(table)} cascade`);
+			const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+			const response = await requestCode('ada@example.com');
+
+			expect(response.status).toBe(500);
+			const logged = consoleError.mock.calls.flat().map(String);
+			expect(logged).toHaveLength(1);
+			expect(JSON.parse(logged[0] ?? '')).toMatchObject({ message: 'Better Auth request failed' });
+			expect(logged[0]).not.toContain(parameter);
+		}
+	);
+
+	it("logs Better Auth's own messages without query parameters", () => {
+		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		auth.options.logger.log(
+			'error',
+			'Failed query: select 1 where email = $1\nparams: ada@example.com'
+		);
+
+		expect(JSON.parse(String(consoleError.mock.calls[0]?.[0]))).toMatchObject({
+			message: 'Better Auth reported an error',
+			detail: 'Failed query: select 1 where email = $1',
+		});
+	});
+});
+
+describe('pruning expired sessions and verifications', () => {
+	const past = new Date('2020-01-01T00:00:00Z');
+	const future = new Date('2100-01-01T00:00:00Z');
+
+	it('deletes every expired session and verification when a member signs in', async () => {
+		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
+		const grace = await members.create({
+			email: 'grace@example.com',
+			displayName: 'Grace',
+			role: 'member',
+		});
+		await db.insert(sessions).values([
+			{ userId: grace.id, token: 'expired-session', expiresAt: past },
+			{ userId: grace.id, token: 'live-session', expiresAt: future },
 		]);
+		await db.insert(verifications).values([
+			{ identifier: 'expired-challenge', value: '{}', expiresAt: past },
+			{ identifier: 'live-challenge', value: '{}', expiresAt: future },
+		]);
+
+		const response = await signIn('ada@example.com');
+		const { token } = (await response.json()) as { token: string };
+		await backgroundWork();
+
+		const remainingSessions = await db.select({ token: sessions.token }).from(sessions);
+		expect(remainingSessions.map((row) => row.token).toSorted()).toEqual(
+			[token, 'live-session'].toSorted()
+		);
+		expect(await db.select({ identifier: verifications.identifier }).from(verifications)).toEqual([
+			{ identifier: 'live-challenge' },
+		]);
+	});
+
+	it('signs the member in and logs a warning when the deletion fails', async () => {
+		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
+		await db.execute(sql`
+			create function refuse_deletion() returns trigger language plpgsql
+			as $$ begin raise exception 'deletion refused'; end $$
+		`);
+		await db.execute(sql`
+			create trigger refuse_session_deletion before delete on sessions
+			for each statement execute function refuse_deletion()
+		`);
+		const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		const response = await signIn('ada@example.com');
+		await backgroundWork();
+
+		expect(response.status).toBe(200);
+		const logged = consoleWarn.mock.calls.map(([line]) => JSON.parse(String(line)));
+		expect(logged).toContainEqual(
+			expect.objectContaining({
+				message: 'Expired sessions and verifications could not be deleted',
+				err: expect.objectContaining({
+					cause: expect.objectContaining({ message: 'deletion refused' }),
+				}),
+			})
+		);
 	});
 });

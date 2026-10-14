@@ -16,6 +16,11 @@ import { toExtractedRecipe, type RecipeOutput } from '@/infrastructure/ai/recipe
 // Bounds a call and its retries. Several pages of handwriting take the longest.
 const extractionTimeoutMs = 90_000;
 
+// Caps what a runaway answer costs. The largest evaluation answer is under 1,000 tokens, and six dense
+// pages with their transcription come to several thousand, so this leaves room for the reasoning some
+// models count toward it. An answer cut off here fails by its finish reason.
+const maxExtractionOutputTokens = 16_000;
+
 // The Gateway's answer once the team's credits or budget run out, which @ai-sdk/gateway raises as a
 // GatewayInternalServerError carrying the status.
 const paymentRequiredStatus = 402;
@@ -39,15 +44,18 @@ type ModelExtractionRequest = {
 	// The source, then the task.
 	content: (TextPart | FilePart)[];
 	requester: ExtractionRequester;
+	// Stops the call and its retries once it aborts, as the timeout does.
+	signal?: AbortSignal;
 };
 
 // Content stays with the Gateway only for the request; this holds the providers it routes to, and
-// any fallback, to zero data retention too. The email labels the call in the Gateway's usage reports.
+// any fallback, to zero data retention too. The member's id labels the call in the Gateway's usage
+// reports, which never see their email.
 function gatewayOptions(requester: ExtractionRequester) {
 	return {
 		gateway: {
 			zeroDataRetention: true,
-			user: requester.email,
+			user: requester.memberId,
 			// Providers get a hash of the id instead, as Vercel advises, to trace misuse to one account.
 			safetyIdentifier: createHash('sha256').update(requester.memberId).digest('hex'),
 		},
@@ -77,7 +85,9 @@ export async function extractWithModel(request: ModelExtractionRequest): Promise
 			messages: [{ role: 'user', content: request.content }],
 			output: Output.object({ name: 'recipe', schema: request.schema }),
 			providerOptions: gatewayOptions(request.requester),
+			maxOutputTokens: maxExtractionOutputTokens,
 			timeout: extractionTimeoutMs,
+			abortSignal: request.signal,
 		});
 	} catch (error) {
 		throw toImportError(error);

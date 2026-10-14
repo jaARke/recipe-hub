@@ -1,6 +1,12 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import {
+	developmentImageEnvironment,
+	imageEnvironmentAccess,
+	previewImageEnvironmentPrefix,
+	productionImageEnvironment,
+} from '@/lib/image-paths';
 
 const envSchema = z
 	.object({
@@ -27,6 +33,8 @@ const envSchema = z
 		BETTER_AUTH_SECRETS: z.never().optional(),
 		// Must stay unset: Better Auth reads it itself and would trust its origins beyond our hosts.
 		BETTER_AUTH_TRUSTED_ORIGINS: z.never().optional(),
+		// The owner's address. Their account is always an admin and is never removed.
+		ADMIN_EMAIL: z.email(),
 		// Resend's key, from the Vercel integration.
 		RESEND_API_KEY: z.string().min(1),
 		// The verified sending domain, from the Vercel integration; mail comes from an address on it.
@@ -70,11 +78,20 @@ function branchFolder(branch: string): string {
 	return readable === '' ? hash : `${readable}-${hash}`;
 }
 
-// Where this deployment's images go under each role's folder. One store serves every environment, so
-// each writes and deletes only in its own: production, a preview's branch, or development.
+// Where this deployment's images go under each role's folder: production, a preview's branch, or
+// development. Production and previews share a store, so each writes and deletes only in its own.
 export const imageEnvironment =
 	env.VERCEL_ENV === 'production'
-		? 'production'
+		? productionImageEnvironment
 		: env.VERCEL_ENV === 'preview'
-			? `preview/${branchFolder(env.VERCEL_GIT_COMMIT_REF!)}`
-			: 'development';
+			? `${previewImageEnvironmentPrefix}${branchFolder(env.VERCEL_GIT_COMMIT_REF!)}`
+			: developmentImageEnvironment;
+
+// What this deployment reaches besides its own images. Next.js run directly is local development.
+const imageAccess = imageEnvironmentAccess[env.VERCEL_ENV ?? 'development'];
+
+// The other environments whose images this deployment serves.
+export const readableImageEnvironments = imageAccess.readableEnvironments;
+
+// The prefixes of the other environments whose old images this deployment deletes.
+export const expiringImageEnvironmentPrefixes = imageAccess.expiringEnvironmentPrefixes;

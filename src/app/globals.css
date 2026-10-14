@@ -136,9 +136,11 @@
 	* {
 		@apply border-border outline-ring;
 	}
-	/* Links share the controls' focus treatment: a full-strength edge inside a half-strength halo. */
-	a:focus-visible {
-		@apply ring-3 ring-ring/50 outline-1;
+	/* Links and bare buttons, such as a photo that opens the viewer, share the controls' focus
+	   treatment: a full-strength edge inside a half-strength halo. Primitives draw their own. The
+	   outline color is restated because preflight's Firefox focus ring rule resets it. */
+	:is(a, button):focus-visible {
+		@apply ring-3 ring-ring/50 outline-1 outline-ring;
 	}
 	/* Focus and anchors scroll clear of the sticky header (h-14 and its border) and the focus ring. */
 	html {

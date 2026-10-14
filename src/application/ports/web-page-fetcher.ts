@@ -8,8 +8,8 @@ export type WebPage = {
 };
 
 export interface WebPageFetcher {
-	// Fetches a public HTML page within the adapter's time and size limits. Throws
-	// ImportPageRefusedError when the site turns the request away, and ImportPageUnavailableError for
-	// anything else that keeps the page from being read.
-	fetch(url: string): Promise<WebPage>;
+	// Fetches a public HTML page within the adapter's time and size limits, and stops once the signal
+	// aborts. Throws ImportPageRefusedError when the site turns the request away, and
+	// ImportPageUnavailableError for anything else that keeps the page from being read.
+	fetch(url: string, signal?: AbortSignal): Promise<WebPage>;
 }

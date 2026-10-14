@@ -89,10 +89,14 @@ export class InMemoryRecipeImportRepository implements RecipeImportRepository {
 			}));
 	}
 
-	async findImagesInUnsavedImports(pathnames: readonly string[], since: Date): Promise<string[]> {
+	async findImagesInUnsavedImports(
+		pathnames: readonly string[],
+		since: Date,
+		excludeMemberId?: MemberId
+	): Promise<string[]> {
 		const named = new Set(
 			[...this.imports.values()]
-				.filter((stored) => this.isUnsaved(stored, since))
+				.filter((stored) => stored.memberId !== excludeMemberId && this.isUnsaved(stored, since))
 				.flatMap((stored) => stored.draft?.content.images?.map(({ pathname }) => pathname) ?? [])
 		);
 		return [...new Set(pathnames)].filter((pathname) => named.has(pathname));
@@ -117,6 +121,17 @@ export class InMemoryRecipeImportRepository implements RecipeImportRepository {
 			}
 		}
 		return cleared;
+	}
+
+	async failRunningCreatedBefore(cutoff: Date, failure: string): Promise<number> {
+		let failed = 0;
+		for (const stored of this.imports.values()) {
+			if (stored.status === 'running' && stored.createdAt < cutoff) {
+				this.imports.set(stored.id, { ...stored, status: 'failed', failure });
+				failed += 1;
+			}
+		}
+		return failed;
 	}
 
 	// Stands in for a test moving created_at back in the database.

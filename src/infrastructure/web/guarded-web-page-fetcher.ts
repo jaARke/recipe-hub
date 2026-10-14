@@ -15,6 +15,7 @@ import {
 	type PageUnavailableReason,
 } from '@/application/ingestion/errors';
 import type { WebPage, WebPageFetcher } from '@/application/ports/web-page-fetcher';
+import { deadlineAfter, settleWithin } from '@/lib/deadline';
 import { siteName } from '@/lib/site';
 
 // For the whole fetch: every redirect and the body.
@@ -156,39 +157,27 @@ function unavailable(error: unknown, blockedBy?: UrlBlockedSubReason): ImportPag
 	});
 }
 
-// The body's next chunk, unless the deadline passes first.
-async function nextChunk(
-	reader: ReadableStreamDefaultReader<Uint8Array>,
-	deadlineAt: number
-): Promise<ReadableStreamReadResult<Uint8Array>> {
-	const remainingMs = deadlineAt - Date.now();
-	if (remainingMs <= 0) {
-		throw new ImportPageUnavailableError('timed-out');
-	}
-	const expired = Promise.withResolvers<never>();
-	const timer = setTimeout(
-		() => expired.reject(new ImportPageUnavailableError('timed-out')),
-		remainingMs
-	);
-	try {
-		return await Promise.race([reader.read(), expired.promise]);
-	} finally {
-		clearTimeout(timer);
-	}
+function timedOut(): ImportPageUnavailableError {
+	return new ImportPageUnavailableError('timed-out');
 }
 
-// The body as bytes, read before the deadline and refused once it passes the size limit, counted as
-// it arrives. guarded-fetch's own reader decodes everything as UTF-8.
-async function bodyBytes(response: Response, deadlineAt: number): Promise<Buffer> {
+// The body as bytes, read before the deadline or the caller's signal stops it, and refused once it
+// passes the size limit, counted as it arrives. guarded-fetch's own reader decodes everything as UTF-8.
+async function bodyBytes(
+	response: Response,
+	deadlineAt: number,
+	signal: AbortSignal | undefined
+): Promise<Buffer> {
 	if (response.body === null) {
 		return Buffer.alloc(0);
 	}
+	const limits = { deadline: deadlineAfter(deadlineAt - Date.now()), cancellation: signal };
 	const reader = response.body.getReader();
 	const chunks: Uint8Array[] = [];
 	let size = 0;
 	try {
 		for (;;) {
-			const { done, value } = await nextChunk(reader, deadlineAt);
+			const { done, value } = await settleWithin(reader.read(), limits, timedOut);
 			if (done) {
 				return Buffer.concat(chunks);
 			}
@@ -236,7 +225,7 @@ export class GuardedWebPageFetcher implements WebPageFetcher {
 		this.fetchImplementation = options.fetch;
 	}
 
-	async fetch(url: string): Promise<WebPage> {
+	async fetch(url: string, signal?: AbortSignal): Promise<WebPage> {
 		const deadlineAt = Date.now() + fetchTimeoutMs;
 		let requested: URL;
 		try {
@@ -245,23 +234,31 @@ export class GuardedWebPageFetcher implements WebPageFetcher {
 			throw new ImportPageUnavailableError('not-public');
 		}
 
-		const { response, address } = await this.followRedirects(webAddress(requested), deadlineAt);
+		const { response, address } = await this.followRedirects(
+			webAddress(requested),
+			deadlineAt,
+			signal
+		);
 		const unreadable = unreadableResponse(response);
 		if (unreadable !== null) {
 			await response.body?.cancel();
 			throw unreadable;
 		}
 
-		const bytes = await bodyBytes(response, deadlineAt);
+		const bytes = await bodyBytes(response, deadlineAt, signal);
 		return { url: address.href, html: pageHtml(bytes, response.headers) };
 	}
 
 	// Each redirect is its own guarded request, so every address passes the same checks, the port's
 	// included, which guarded-fetch's own redirects skip.
-	private async followRedirects(address: URL, deadlineAt: number): Promise<FetchedResponse> {
+	private async followRedirects(
+		address: URL,
+		deadlineAt: number,
+		signal: AbortSignal | undefined
+	): Promise<FetchedResponse> {
 		let current = address;
 		for (let redirects = 0; ; redirects += 1) {
-			const response = await this.request(current, deadlineAt);
+			const response = await this.request(current, deadlineAt, signal);
 			const location = redirectStatuses.has(response.status)
 				? response.headers.get('location')
 				: null;
@@ -277,13 +274,18 @@ export class GuardedWebPageFetcher implements WebPageFetcher {
 		}
 	}
 
-	private async request(address: URL, deadlineAt: number): Promise<Response> {
+	private async request(
+		address: URL,
+		deadlineAt: number,
+		signal: AbortSignal | undefined
+	): Promise<Response> {
 		let blockedBy: UrlBlockedSubReason | undefined;
 		try {
 			return await guardedFetch(address, {
 				headers: this.headers,
 				followRedirects: false,
 				timeoutMs: deadlineAt - Date.now(),
+				signal,
 				fetch: this.fetchImplementation,
 				onUrlBlocked: (event) => {
 					blockedBy = event.subReason;

@@ -10,9 +10,10 @@ import type {
 	UpdatedRecipe,
 } from '@/application/ports/recipe-repository';
 import { RecipeEditConflictError } from '@/application/recipes/errors';
+import type { MemberId } from '@/domain/member/member';
 import type { Recipe, RecipeContent, RecipeId } from '@/domain/recipe/recipe';
 import { slugCandidate } from '@/domain/recipe/slug';
-import { tagKey } from '@/domain/recipe/tag';
+import { tagKey } from '@/domain/recipe/tag-normalization';
 import {
 	recipeColumns,
 	toContentColumns,
@@ -21,6 +22,7 @@ import {
 } from '@/infrastructure/db/recipe-mapper';
 import { recipeOrders } from '@/infrastructure/db/recipe-order';
 import { oldRecipeSlugs, recipes } from '@/infrastructure/db/schema';
+import { recipeTags, tagKeyColumn, tagLabel, tagOrder } from '@/infrastructure/db/tag-labels';
 import { lockForTransaction } from '@/infrastructure/db/transaction-lock';
 
 // Every slug allocation takes this transaction-scoped lock, so a slug checked free stays free until
@@ -231,18 +233,33 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 
 		// The tag key index narrows the recipes, and tagKey stays the one definition of a tag.
 		const rows = await this.db
-			.selectDistinct({ label: sql<string>`unnest(${recipes.tags})` })
+			.select({ label: tagLabel })
 			.from(recipes)
+			.crossJoin(recipeTags)
 			.where(
 				and(
 					arrayOverlaps(recipes.tagKeys, [...wanted]),
 					excludeRecipeId === undefined ? undefined : ne(recipes.id, excludeRecipeId)
 				)
-			);
+			)
+			.groupBy(tagKeyColumn);
 		return rows.map(({ label }) => label).filter((label) => wanted.has(tagKey(label)));
 	}
 
-	async findImagesInUse(pathnames: readonly string[]): Promise<string[]> {
+	async listTagLabels(): Promise<string[]> {
+		const rows = await this.db
+			.select({ label: tagLabel })
+			.from(recipes)
+			.crossJoin(recipeTags)
+			.groupBy(tagKeyColumn)
+			.orderBy(...tagOrder);
+		return rows.map(({ label }) => label);
+	}
+
+	async findImagesInUse(
+		pathnames: readonly string[],
+		excludeContributorId?: MemberId
+	): Promise<string[]> {
 		const wanted = new Set(pathnames);
 		if (wanted.size === 0) {
 			return [];
@@ -252,7 +269,14 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 		const rows = await this.db
 			.selectDistinct({ pathname: sql<string>`jsonb_array_elements_text(${imagePathnames})` })
 			.from(recipes)
-			.where(sql`${imagePathnames} ?| ${sql.param([...wanted])}::text[]`);
+			.where(
+				and(
+					sql`${imagePathnames} ?| ${sql.param([...wanted])}::text[]`,
+					excludeContributorId === undefined
+						? undefined
+						: ne(recipes.contributorId, excludeContributorId)
+				)
+			);
 		return rows.map(({ pathname }) => pathname).filter((pathname) => wanted.has(pathname));
 	}
 }

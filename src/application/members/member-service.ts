@@ -1,6 +1,10 @@
 import 'server-only';
 import { requireAdmin, requireMember } from '@/application/authorization';
-import { LastAdminError, MemberNotFoundError } from '@/application/members/errors';
+import {
+	MemberNotFoundError,
+	OwnerProtectedError,
+	SelfRemovalError,
+} from '@/application/members/errors';
 import {
 	toCurrentMemberDto,
 	toMemberDto,
@@ -14,13 +18,12 @@ import {
 	emailAddressSchema,
 	memberIdSchema,
 	parseDisplayName,
-	type Member,
 	type MemberId,
 } from '@/domain/member/member';
 import { getLogger } from '@/lib/logger';
 
-// The bootstrapped admin's name until they change it.
-const bootstrappedAdminName = 'Admin';
+// The owner's name when the bootstrap creates their account, until they change it.
+const createdOwnerName = 'Admin';
 
 const logger = getLogger('members');
 
@@ -37,10 +40,14 @@ function parseMemberId(id: string): MemberId {
 export class MemberService {
 	private readonly members: MemberRepository;
 	private readonly actors: ActorProvider;
+	private readonly ownerEmail: string;
 
-	constructor(members: MemberRepository, actors: ActorProvider) {
+	// The owner is the account at ownerEmail: it keeps its admin role and is never removed, so the site
+	// always has an admin. Configuring another address moves the protection to that account.
+	constructor(members: MemberRepository, actors: ActorProvider, ownerEmail: string) {
 		this.members = members;
 		this.actors = actors;
+		this.ownerEmail = emailAddressSchema.parse(ownerEmail);
 	}
 
 	// Open to anyone: null for a signed-out visitor.
@@ -59,7 +66,12 @@ export class MemberService {
 		const actor = requireAdmin(await this.actors.currentActor());
 
 		const members = await this.members.list();
-		return members.map((member) => toMemberDto(member, member.id === actor.memberId));
+		return members.map((member) =>
+			toMemberDto(member, {
+				isCurrentMember: member.id === actor.memberId,
+				isOwner: member.email === this.ownerEmail,
+			})
+		);
 	}
 
 	async renameCurrentMember(displayName: string): Promise<MemberRef> {
@@ -87,18 +99,15 @@ export class MemberService {
 		logger.info('Admin role granted', { memberId: actor.memberId, targetMemberId: member.id });
 	}
 
-	// Admins may remove their own role too, while another admin remains.
+	// Admins may remove their own role too; the owner stays an admin.
 	async removeAdmin(memberId: string): Promise<void> {
 		const actor = requireAdmin(await this.actors.currentActor());
 		const id = parseMemberId(memberId);
-
-		// The repository counts the admins under its lock.
-		let member: Member | null;
-		try {
-			member = await this.members.setRole(id, 'member');
-		} catch (error) {
-			throw error instanceof LastAdminError ? this.lastAdminKept(id, actor.memberId) : error;
+		if (await this.isOwner(id)) {
+			throw this.adminRemovalRefused(new OwnerProtectedError(), id, actor.memberId);
 		}
+
+		const member = await this.members.setRole(id, 'member');
 		if (member === null) {
 			throw new MemberNotFoundError();
 		}
@@ -106,33 +115,61 @@ export class MemberService {
 		logger.info('Admin role removed', { memberId: actor.memberId, targetMemberId: member.id });
 	}
 
-	// A system use case for the bootstrap script, with no actor: makes the account at this
-	// configured address an admin, creating it if needed, unless an admin already exists.
-	async ensureAdmin(email: string): Promise<void> {
-		const address = emailAddressSchema.parse(email);
-		if ((await this.members.listAdmins()).length > 0) {
-			return;
+	// Signs the member out everywhere and keeps them from signing in again. Their recipes stay, still
+	// naming them. Admins may remove another admin, never themselves or the owner.
+	async removeMember(memberId: string): Promise<void> {
+		const actor = requireAdmin(await this.actors.currentActor());
+		const id = parseMemberId(memberId);
+		if (id === actor.memberId) {
+			throw this.memberRemovalRefused(new SelfRemovalError(), id, actor.memberId);
+		}
+		if (await this.isOwner(id)) {
+			throw this.memberRemovalRefused(new OwnerProtectedError(), id, actor.memberId);
 		}
 
-		const existing = await this.members.findByEmail(address);
-		const admin =
-			existing === null
-				? await this.members.create({
-						email: address,
-						displayName: bootstrappedAdminName,
-						role: 'admin',
-					})
-				: await this.members.setRole(existing.id, 'admin');
-		if (admin === null) {
+		const member = await this.members.remove(id);
+		if (member === null) {
 			throw new MemberNotFoundError();
 		}
 
-		logger.info('Admin bootstrapped', { memberId: admin.id, created: existing === null });
+		logger.info('Member removed', { memberId: actor.memberId, targetMemberId: member.id });
 	}
 
-	// Logged, since the admin has to make someone else an admin first.
-	private lastAdminKept(targetMemberId: MemberId, memberId: MemberId): LastAdminError {
-		logger.warn('Admin role removal refused', { memberId, targetMemberId });
-		return new LastAdminError();
+	// A system use case for the bootstrap script, with no actor: makes the owner's account an admin,
+	// creating it when no member has the owner's address. Every build runs it.
+	async ensureOwner(): Promise<void> {
+		const { member, outcome } = await this.members.ensureAdmin({
+			email: this.ownerEmail,
+			displayName: createdOwnerName,
+		});
+		if (outcome === 'unchanged') {
+			return;
+		}
+
+		logger.info('Owner bootstrapped', { memberId: member.id, created: outcome === 'created' });
+	}
+
+	private async isOwner(id: MemberId): Promise<boolean> {
+		return (await this.members.findById(id))?.email === this.ownerEmail;
+	}
+
+	// Logged, since the page offers no control that removes the owner's role.
+	private adminRemovalRefused(
+		error: OwnerProtectedError,
+		targetMemberId: MemberId,
+		memberId: MemberId
+	): OwnerProtectedError {
+		logger.warn('Admin role removal refused', { memberId, targetMemberId, failure: error.code });
+		return error;
+	}
+
+	// Logged, since the page offers no control that removes the admin's own account or the owner's.
+	private memberRemovalRefused(
+		error: SelfRemovalError | OwnerProtectedError,
+		targetMemberId: MemberId,
+		memberId: MemberId
+	): SelfRemovalError | OwnerProtectedError {
+		logger.warn('Member removal refused', { memberId, targetMemberId, failure: error.code });
+		return error;
 	}
 }

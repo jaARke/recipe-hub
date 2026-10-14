@@ -1,6 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { toFormError } from '@/app/_lib/form-errors';
-import { RecipeEditConflictError, RecipeNotFoundError } from '@/application/recipes/errors';
+import {
+	ImportFailedError,
+	ImportNoRecipeError,
+	ImportPageRefusedError,
+	ImportPageUnavailableError,
+	ImportPausedError,
+	ImportRateLimitedError,
+	ImportTimedOutError,
+	ImportUnavailableError,
+} from '@/application/ingestion/errors';
+import {
+	MemberNotFoundError,
+	MemberRoleConflictError,
+	OwnerProtectedError,
+	SelfRemovalError,
+} from '@/application/members/errors';
+import {
+	InvalidImageUploadError,
+	RecipeEditConflictError,
+	RecipeNotFoundError,
+} from '@/application/recipes/errors';
 import { InvalidAccessRequestError } from '@/domain/member/errors';
 
 describe('toFormError', () => {
@@ -36,6 +56,64 @@ describe('toFormError', () => {
 				'This recipe changed after you opened it. Copy anything you want to keep, then reload the page and make your changes again.',
 			fieldErrors: {},
 		});
+	});
+
+	it.each([
+		{
+			error: new MemberNotFoundError(),
+			message: 'That account was removed. Reload the page to see the latest.',
+		},
+		{
+			error: new MemberRoleConflictError(),
+			message: "That member's role already changed. Reload the page to see the latest.",
+		},
+		{
+			error: new OwnerProtectedError(),
+			message: "The owner's account always stays an admin and can't be removed.",
+		},
+		{
+			error: new SelfRemovalError(),
+			message: "You can't remove yourself. Ask another admin to remove you.",
+		},
+		{
+			error: new InvalidImageUploadError(),
+			message: "This photo didn't upload. Remove it and add it again.",
+		},
+		{
+			error: new ImportUnavailableError(),
+			message: "This import can't be saved anymore. Import the recipe again.",
+		},
+		{
+			error: new ImportPageRefusedError(403),
+			message: "This website doesn't support importing recipes.",
+		},
+		{
+			error: new ImportPageUnavailableError('timed-out'),
+			message: "We couldn't open that page. Check the link and try again.",
+		},
+		{
+			error: new ImportNoRecipeError(),
+			message: "We couldn't find a recipe to import.",
+		},
+		{
+			error: new ImportRateLimitedError(),
+			message:
+				"You've reached today's limit of 50 imports. Try again tomorrow, or enter the recipe manually.",
+		},
+		{
+			error: new ImportPausedError(),
+			message: 'Imports are paused. You can still enter the recipe manually.',
+		},
+		{
+			error: new ImportFailedError(),
+			message: "The import didn't finish. Try again in a moment.",
+		},
+		{
+			error: new ImportTimedOutError(),
+			message: 'The import took too long. Try again in a moment.',
+		},
+	])('gives $error.code its copy', ({ error, message }) => {
+		expect(toFormError(error)).toEqual({ status: 'error', message, fieldErrors: {} });
 	});
 
 	it('rethrows an unexpected error unchanged', () => {

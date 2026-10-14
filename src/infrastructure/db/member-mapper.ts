@@ -2,6 +2,7 @@ import 'server-only';
 import type { InferModelFromColumns } from 'drizzle-orm';
 import type { NewMember } from '@/application/ports/member-repository';
 import { memberSchema, type Member } from '@/domain/member/member';
+import { withoutNulls } from '@/infrastructure/db/nullable-columns';
 import { users } from '@/infrastructure/db/schema';
 
 // What every member read selects; Better Auth's own columns stay out.
@@ -11,6 +12,7 @@ export const memberColumns = {
 	email: users.email,
 	role: users.role,
 	createdAt: users.createdAt,
+	removedAt: users.removedAt,
 };
 
 type MemberRow = InferModelFromColumns<typeof memberColumns>;
@@ -21,5 +23,5 @@ export function toInsertColumns(member: NewMember): typeof users.$inferInsert {
 
 // Invalid rows throw.
 export function toMember(row: MemberRow): Member {
-	return memberSchema.parse(row);
+	return memberSchema.parse(withoutNulls(row));
 }

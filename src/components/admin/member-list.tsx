@@ -3,19 +3,21 @@
 import * as React from 'react';
 import type { MemberDto } from '@/application/members/member-dtos';
 import { adminFieldNames } from '@/components/admin/admin-forms';
+import { memberRowActions } from '@/components/admin/member-row-actions';
 import { ConfirmActionDialog } from '@/components/forms/confirm-action-dialog';
+import { focusFellToPage } from '@/components/forms/focus-fell-to-page';
 import type { FormAction } from '@/components/forms/form-state';
 import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/lib/dates';
 
-type MemberRowProps = {
+type RoleActionProps = {
 	member: MemberDto;
 	makeAdmin: FormAction;
 	removeAdmin: FormAction;
 };
 
 // Make admin for a member, and Remove admin for an admin, worded for the admin reading the list.
-function RoleAction({ member, makeAdmin, removeAdmin }: MemberRowProps) {
+function RoleAction({ member, makeAdmin, removeAdmin }: RoleActionProps) {
 	const memberIdInput = <input type="hidden" name={adminFieldNames.memberId} value={member.id} />;
 
 	if (member.role === 'member') {
@@ -76,19 +78,49 @@ function RoleAction({ member, makeAdmin, removeAdmin }: MemberRowProps) {
 	);
 }
 
-function MemberRow({ member, makeAdmin, removeAdmin }: MemberRowProps) {
+type RemoveMemberActionProps = {
+	member: MemberDto;
+	removeMember: FormAction;
+};
+
+function RemoveMemberAction({ member, removeMember }: RemoveMemberActionProps) {
+	return (
+		<ConfirmActionDialog
+			variant="destructive"
+			trigger={
+				<>
+					Remove member<span className="sr-only"> {member.displayName}</span>
+				</>
+			}
+			title={`Remove ${member.displayName}?`}
+			description="They're signed out on every device and can't sign in again unless you invite them again, as a new account. Their recipes stay, still credited to them."
+			cancelLabel="Keep member"
+			confirmLabel="Remove member"
+			pendingLabel="Removing member"
+			successMessage={`${member.displayName} is no longer a member`}
+			failureMessage={`We couldn't remove ${member.displayName}. Reload the page and try again.`}
+			action={removeMember}
+		>
+			<input type="hidden" name={adminFieldNames.memberId} value={member.id} />
+		</ConfirmActionDialog>
+	);
+}
+
+type MemberRowProps = RoleActionProps & {
+	removeMember: FormAction;
+};
+
+function MemberRow({ member, makeAdmin, removeAdmin, removeMember }: MemberRowProps) {
 	const nameRef = React.useRef<HTMLParagraphElement>(null);
 	const previousRole = React.useRef(member.role);
+	const actions = memberRowActions(member);
 
 	// A role change swaps the row's action, and focus in the dialog it unmounts drops to the page, so
 	// the member's name takes it, with the new role's badge beside it.
 	React.useEffect(() => {
 		const roleChanged = member.role !== previousRole.current;
 		previousRole.current = member.role;
-		if (
-			roleChanged &&
-			(document.activeElement === null || document.activeElement === document.body)
-		) {
+		if (roleChanged && focusFellToPage()) {
 			nameRef.current?.focus();
 		}
 	}, [member.role]);
@@ -99,6 +131,7 @@ function MemberRow({ member, makeAdmin, removeAdmin }: MemberRowProps) {
 				<p ref={nameRef} tabIndex={-1} className="flex flex-wrap items-center gap-2 font-medium">
 					{member.displayName}
 					{member.role === 'admin' && <Badge variant="secondary">Admin</Badge>}
+					{member.isOwner && <Badge variant="secondary">Owner</Badge>}
 				</p>
 				<div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
 					<p className="wrap-anywhere">{member.email}</p>
@@ -108,13 +141,22 @@ function MemberRow({ member, makeAdmin, removeAdmin }: MemberRowProps) {
 					</p>
 				</div>
 			</div>
-			{/* Keyed by role, so a change mounts the other dialog closed instead of reusing this one. */}
-			<RoleAction
-				key={member.role}
-				member={member}
-				makeAdmin={makeAdmin}
-				removeAdmin={removeAdmin}
-			/>
+			{(actions.changeRole || actions.removeMember) && (
+				<div className="flex flex-col gap-2 sm:flex-row">
+					{/* Keyed by role, so a change mounts the other dialog closed instead of reusing this one. */}
+					{actions.changeRole && (
+						<RoleAction
+							key={member.role}
+							member={member}
+							makeAdmin={makeAdmin}
+							removeAdmin={removeAdmin}
+						/>
+					)}
+					{actions.removeMember && (
+						<RemoveMemberAction member={member} removeMember={removeMember} />
+					)}
+				</div>
+			)}
 		</li>
 	);
 }
@@ -124,9 +166,10 @@ type MemberListProps = {
 	members: MemberDto[];
 	makeAdmin: FormAction;
 	removeAdmin: FormAction;
+	removeMember: FormAction;
 };
 
-function MemberList({ members, makeAdmin, removeAdmin }: MemberListProps) {
+function MemberList({ members, makeAdmin, removeAdmin, removeMember }: MemberListProps) {
 	return (
 		<ul className="divide-y">
 			{members.map((member) => (
@@ -135,6 +178,7 @@ function MemberList({ members, makeAdmin, removeAdmin }: MemberListProps) {
 					member={member}
 					makeAdmin={makeAdmin}
 					removeAdmin={removeAdmin}
+					removeMember={removeMember}
 				/>
 			))}
 		</ul>
