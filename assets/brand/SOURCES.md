@@ -7,7 +7,15 @@ Where each brand file comes from. Derivatives are made once from their source an
 | `assets/brand/mascot-original.png` | The mascot's master, 1254 px RGBA PNG, as drawn | never; the source of every derivative |
 | `assets/brand/mascot.svg` | A trace of the master by VTracer 0.6.12 (127 KB of bloated paths) | never; a vector source for a future simplified glyph |
 | `src/components/brand/mascot-die-cut.png` | The mascot cropped, on a square, with a cream die-cut edge, 512 px RGBA PNG | through `next/image` in the `Mascot` component, which the optimizer resizes to WebP |
-| `src/components/brand/wordmark-outline.ts` | "Barb’s Table" in Shantell Sans, outlined to one SVG path | inline in the `Wordmark` component |
+| `src/components/brand/wordmark-outline.ts` | "Barb’s Table" in Shantell Sans, outlined to one SVG path | inline in the `Wordmark` component and the share cards |
+| `src/app/favicon.ico` | The mascot at 16, 32, and 48 px in one ICO, as provided with the artwork | browser tabs and bookmarks, through Next's `favicon` convention |
+| `src/app/apple-icon.png` | The mascot on a cream square, 180 px opaque PNG | iPhone and iPad home screens, through Next's `apple-icon` convention |
+| `public/icon-192.png`, `public/icon-512.png` | The mascot at 192 and 512 px, RGBA PNG, as provided with the artwork | the web manifest, purpose `any` |
+| `public/icon-maskable-512.png` | The mascot inside the central 80% circle of a cream square, 512 px opaque PNG | the web manifest, purpose `maskable` |
+| `assets/brand/mascot-card.png` | The die-cut at 320 px, RGBA PNG | the share cards, read at module scope |
+| `public/email/lockup.png` | The header's lockup at 2x on a cream badge, 420 × 112 px opaque PNG | email headers, at 210 × 56 px |
+| `assets/fonts/fraunces-soft-semibold.ttf` | Fraunces at the headings' weight, a static Latin subset | the share cards' recipe titles |
+| `assets/fonts/hanken-grotesk-regular.ttf` | Hanken Grotesk Regular, a Latin subset | the share cards' body text |
 
 ## The die-cut mascot
 
@@ -67,3 +75,42 @@ print(json.dumps({'width': x1 - x0, 'height': y1 - y0, 'd': path.getCommands()})
 ```
 
 The output's `width`, `height`, and `d` become `wordmarkOutline` in `wordmark-outline.ts`. The text is `siteName`, so a new name means outlining again.
+
+## The icons
+
+`favicon.ico`, `icon-192.png`, and `icon-512.png` are committed as provided with the artwork, in its `favicons/` set; the ICO holds 32-bit images at 16, 32, and 48 px. The set's 16 and 32 px PNGs are not kept, since the ICO holds both sizes, nor is its `apple-touch-icon.png`, which is transparent where iOS shows black.
+
+The Apple and maskable icons are made from the master with `sharp` 0.35.5:
+
+1. Clear the master's stray pixels and crop to the remaining pixels' bounds, as steps 1 and 2 of the die-cut do, without the square: 1188 × 1047 px.
+2. The Apple icon: resize the crop with the Lanczos3 kernel to fit inside 140 × 140 px (140 × 123), composite it centered on a solid 180 × 180 px `#fdfaf3` (at 20, 28), remove the alpha channel, and write an RGB PNG at compression level 9.
+3. The maskable icon: measure the farthest kept pixel's outer corner from the center of the crop (709.9 px), and resize the crop with Lanczos3 to fit inside a square of 1188 × 200 / 709.9 px, rounded down (334 px, so 334 × 294), which brings that pixel 200 px from the center, inside the 204.8 px radius of the central 80% circle that every mask keeps. Composite it centered on a solid 512 × 512 px `#fdfaf3` (at 89, 109), remove the alpha channel, and write an RGB PNG at compression level 9.
+
+Both are opaque on the light theme's background: iOS fills transparency with black, and a maskable icon fills its whole square.
+
+## The share card's mascot
+
+The die-cut, resized with Lanczos3 to 320 × 320 px, twice the 160 px the site card draws it at (the recipe card draws it at 64 px), and written as an RGBA PNG at compression level 9. The cards draw it on the light theme's background, where its cream edge disappears.
+
+## The email lockup
+
+The header's `Lockup` at 2x, made with `sharp` 0.35.5: the die-cut resized with Lanczos3 to 64 × 64 px, and `wordmarkOutline` 40 px high (291.72 px wide) in `#241c17`, the light theme's foreground, which the header's wordmark takes, 16 px to the die-cut's right. They sit on a solid `#fdfaf3` badge with 24 px of padding, its width rounded up to a whole pixel and the content centered in it: 420 × 112 px, the die-cut at 24, 24 and the outline's top at 36. The outline is rasterized by `sharp` from an SVG the size of the badge, holding the path translated to its place and scaled by 40 / 860. Remove the alpha channel and write an RGB PNG at compression level 9.
+
+An email shows it at 210 × 56 px (its `width` and `height`), with `siteName` as its alt text.
+
+## The share-card fonts
+
+Satori takes only static fonts, so the share cards read two committed Latin subsets rather than the variable fonts `next/font` serves the pages. Both are under the SIL Open Font License 1.1, with their license texts beside them.
+
+- `fraunces-soft-semibold.ttf` is Fraunces as the headings set it, soft at weight 600. The source is Fraunces 1.000 by the Fraunces Project Authors: the variable font `ofl/fraunces/Fraunces[SOFT,WONK,opsz,wght].ttf` in the [google/fonts](https://github.com/google/fonts) repository, last changed there in commit `ac502d8` (the TTF's SHA-256 is `177ff6c0f14e5550a3c624247cd1189611d4eb65d000b14944c63d967958abbb`).
+- `hanken-grotesk-regular.ttf` is Hanken Grotesk 3.014 by the Hanken Grotesk Project Authors: the static `fonts/ttf/HankenGrotesk-Regular.ttf` on the `master` branch of [marcologous/hanken-grotesk](https://github.com/marcologous/hanken-grotesk), last changed there in commit `74c8098` (the TTF's SHA-256 is `0a5c86e907f6d6cba528c3bfb0516b3f46c9524fa22f32f292109f25dc149b32`).
+
+In a throwaway virtualenv with fontTools 4.66.1, Fraunces is instanced first, then both are subset with the same list:
+
+```sh
+fonttools varLib.instancer "Fraunces[SOFT,WONK,opsz,wght].ttf" SOFT=100 wght=600 opsz=72 WONK=0 -o instance.ttf
+pyftsubset instance.ttf --unicodes="$LATIN" --layout-features='kern,liga' --no-hinting --output-file=fraunces-soft-semibold.ttf
+pyftsubset HankenGrotesk-Regular.ttf --unicodes="$LATIN" --layout-features='kern,liga' --no-hinting --output-file=hanken-grotesk-regular.ttf
+```
+
+`LATIN` is `U+0020-007E,U+00A0-00FF,U+0131,U+0152-0153,U+02C6,U+02DA,U+02DC,U+2013-2014,U+2018-201A,U+201C-201E,U+2022,U+2026,U+2039-203A,U+20AC,U+2122,U+215B-215E`: printable ASCII and Latin-1, the typographic quotes and dashes (U+2019 among them, the curly apostrophe the copy uses), and the eighths, which Fraunces lacks. The Hanken Grotesk command reproduces the committed file byte for byte.

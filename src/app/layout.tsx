@@ -1,5 +1,5 @@
 import { cn } from 'cn';
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Fraunces, Hanken_Grotesk, JetBrains_Mono } from 'next/font/google';
 import { Suspense } from 'react';
 import { readHeaderMember } from '@/app/_lib/read-header-member';
@@ -12,6 +12,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { getMemberService } from '@/composition/services';
 import { siteUrl } from '@/lib/env';
 import { siteDescription, siteName } from '@/lib/site';
+import { tokenColors } from '@/lib/token-colors';
 import './globals.css';
 
 const fraunces = Fraunces({
@@ -39,6 +40,15 @@ export const metadata: Metadata = {
 	twitter: { card: 'summary_large_image' },
 	// Kept out of search results until launch; links are still followed so crawlers see each noindex.
 	robots: { index: false, follow: true },
+};
+
+// The browser's toolbar takes the header's color in the system's theme; a theme picked with the
+// toggle does not reach it.
+export const viewport: Viewport = {
+	themeColor: [
+		{ media: '(prefers-color-scheme: light)', color: tokenColors.light.background },
+		{ media: '(prefers-color-scheme: dark)', color: tokenColors.dark.background },
+	],
 };
 
 // Renews a signed-in member's session once the read resolves, behind its own boundary.

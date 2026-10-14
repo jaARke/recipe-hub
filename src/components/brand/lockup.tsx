@@ -3,6 +3,8 @@ import { Mascot } from '@/components/brand/mascot';
 import { Wordmark } from '@/components/brand/wordmark';
 
 // The mascot and the wordmark, linking home. The wordmark names the link; the mascot is decoration.
+// The share cards' lockup (src/app/_lib/open-graph-image.tsx) and public/email/lockup.png keep its
+// proportions.
 function Lockup() {
 	return (
 		<Link href="/" className="flex shrink-0 items-center gap-2 rounded-md">
