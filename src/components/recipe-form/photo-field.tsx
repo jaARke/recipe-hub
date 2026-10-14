@@ -18,6 +18,7 @@ import { normalizePhoto, UnreadablePhotoError } from '@/components/recipe-form/p
 import { newPhotoPathname, type PhotoUploader } from '@/components/recipe-form/photo-upload';
 import {
 	filledText,
+	storedPathname,
 	type PhotoEdit,
 	type PhotoFailure,
 	type ProblemTarget,
@@ -28,7 +29,11 @@ import {
 	RecipeImageViewer,
 	RecipeImageViewerTrigger,
 } from '@/components/recipe/recipe-image-viewer';
-import { RecipePhoto, RecipeScanImage } from '@/components/recipe/recipe-photo';
+import {
+	LocalPhoto,
+	ShownRecipeImage,
+	type ShownImage,
+} from '@/components/recipe/shown-recipe-image';
 import {
 	Attachment,
 	AttachmentActions,
@@ -56,7 +61,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Spinner } from '@/components/ui/spinner';
-import type { RecipeImage, RecipeImageRole } from '@/domain/recipe/recipe-image';
+import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
 
 const failureMessages: Record<PhotoFailure, string> = {
 	unreadable: 'This browser can’t read this photo. Try Safari, or save it as a JPEG first.',
@@ -108,10 +113,22 @@ function carriesFiles(event: React.DragEvent) {
 	return event.dataTransfer.types.includes('Files');
 }
 
-// The chosen file's name, or the photo's place for one the recipe already has. Scans are the pages
-// of the original recipe, so their names never repeat a dish photo's.
-function photoName(photo: RecipeFormPhoto, index: number, role: RecipeImageRole): string {
-	return photo.fileName ?? `${role === 'dish' ? 'Photo' : 'Page'} ${index + 1}`;
+// The chosen file's name, or for a photo the recipe already has, its place among the photos the
+// viewer holds, as its button and the viewer count it. Scans are the pages of the original recipe, so
+// their names never repeat a dish photo's.
+function photoName(
+	photos: readonly RecipeFormPhoto[],
+	index: number,
+	role: RecipeImageRole
+): string {
+	const fileName = photos[index]?.fileName;
+	if (fileName !== undefined) {
+		return fileName;
+	}
+	const place = photos
+		.slice(0, index + 1)
+		.filter((photo) => storedPathname(photo) !== undefined).length;
+	return `${role === 'dish' ? 'Photo' : 'Page'} ${place}`;
 }
 
 function attachmentState(photo: RecipeFormPhoto) {
@@ -143,28 +160,32 @@ function photoStatus(photo: RecipeFormPhoto, isCover: boolean): string | undefin
 	}
 }
 
-// Made here rather than on choosing, so the URL is revoked whenever the thumbnail unmounts or its
-// page is hidden, and made again when it shows.
-function LocalPhotoThumbnail({ file }: { file: File }) {
-	const imageRef = React.useRef<HTMLImageElement>(null);
-
-	React.useEffect(() => {
-		const image = imageRef.current;
-		if (image === null) {
-			return;
+// The photos the viewer shows, in the field's order: each stored one, saved or just uploaded, so the
+// member can see one larger or read the original while checking the form. A photo uploaded but not
+// saved shows from its file. A dish photo shows its description as it will be saved, and a scan saves
+// none.
+function photoViewerImages(
+	photos: readonly RecipeFormPhoto[],
+	role: RecipeImageRole
+): ShownImage[] {
+	return photos.flatMap((photo) => {
+		const pathname = storedPathname(photo);
+		if (pathname === undefined) {
+			return [];
 		}
-		const url = URL.createObjectURL(file);
-		image.src = url;
-		return () => URL.revokeObjectURL(url);
-	}, [file]);
-
-	// next/image needs its source at render time; this one is made and revoked in the effect.
-	// eslint-disable-next-line @next/next/no-img-element
-	return <img ref={imageRef} alt="" />;
+		const { upload, alt } = photo;
+		return [
+			{
+				pathname,
+				alt: role === 'dish' ? filledText(alt) : undefined,
+				file: upload.status === 'uploaded' ? upload.file : undefined,
+			},
+		];
+	});
 }
 
-// The title beside it names the photo, so the thumbnail is decorative; a saved photo's is a button that
-// opens the viewer, which names it.
+// The title beside it names the photo, so the thumbnail is decorative; a stored photo's is a button
+// that opens the viewer, which names it.
 function PhotoThumbnail({
 	photo,
 	role,
@@ -172,7 +193,7 @@ function PhotoThumbnail({
 }: {
 	photo: RecipeFormPhoto;
 	role: RecipeImageRole;
-	viewerImages: readonly RecipeImage[];
+	viewerImages: readonly ShownImage[];
 }) {
 	const { upload } = photo;
 	switch (upload.status) {
@@ -189,40 +210,35 @@ function PhotoThumbnail({
 				</AttachmentMedia>
 			);
 		case 'uploading':
-		case 'uploaded':
 			return (
 				<AttachmentMedia variant="image">
-					<LocalPhotoThumbnail file={upload.file} />
+					<LocalPhoto file={upload.file} alt="" className="size-full" />
 				</AttachmentMedia>
 			);
-		case 'saved':
+		case 'uploaded':
+		case 'saved': {
+			const index = viewerImages.findIndex((image) => image.pathname === upload.pathname);
+			const image = viewerImages[index];
+			if (image === undefined) {
+				return null;
+			}
 			// The button rounds and clips the photo itself, so its focus ring draws outside the thumbnail.
 			return (
 				<AttachmentMedia variant="image" className="overflow-visible">
-					<RecipeImageViewerTrigger
-						index={viewerImages.findIndex((image) => image.pathname === upload.pathname)}
-						className="size-full rounded-lg"
-					>
-						{role === 'dish' ? (
-							<RecipePhoto
-								pathname={upload.pathname}
-								alt=""
-								sizes="40px"
-								loading="lazy"
-								className="size-full"
-							/>
-						) : (
-							<RecipeScanImage
-								pathname={upload.pathname}
-								alt=""
-								loading="lazy"
-								fit="cover"
-								className="size-full"
-							/>
-						)}
+					<RecipeImageViewerTrigger index={index} className="size-full rounded-lg">
+						<ShownRecipeImage
+							role={role}
+							image={image}
+							alt=""
+							sizes="40px"
+							loading="lazy"
+							fit="cover"
+							className="size-full"
+						/>
 					</RecipeImageViewerTrigger>
 				</AttachmentMedia>
 			);
+		}
 	}
 }
 
@@ -251,21 +267,11 @@ function PhotoField({
 	const uploadsRef = React.useRef(new Map<number, AbortController>());
 	const ids = photoFieldIds(idPrefix);
 	const isFull = photos.length >= limit;
+	// Saving makes the first stored dish photo the cover, so a failed or unfinished one ahead of it isn't.
+	const coverIndex =
+		role === 'dish' ? photos.findIndex((photo) => storedPathname(photo) !== undefined) : -1;
 	const limitMessage = `You can add up to ${limit} photos here. Remove one to add another.`;
-	// Saved photos open the viewer, so the member can see one larger or read the original while checking
-	// the form; a new photo shows only its thumbnail. A dish photo shows its description as it will be
-	// saved, and a scan saves none.
-	const viewerImages: RecipeImage[] = photos.flatMap(({ upload, alt }) =>
-		upload.status === 'saved'
-			? [
-					{
-						role,
-						pathname: upload.pathname,
-						alt: role === 'dish' ? filledText(alt) : undefined,
-					},
-				]
-			: []
-	);
+	const viewerImages = photoViewerImages(photos, role);
 
 	React.useEffect(() => {
 		const uploads = uploadsRef.current;
@@ -335,7 +341,7 @@ function PhotoField({
 		const neighbor = photos[index + 1] ?? photos[index - 1];
 		flushSync(() => {
 			dispatch({ type: 'removePhoto', photoId: photo.id });
-			setAnnouncement(`Removed ${photoName(photo, index, role)}.`);
+			setAnnouncement(`Removed ${photoName(photos, index, role)}.`);
 		});
 		document
 			.getElementById(neighbor === undefined ? ids.choose : ids.actions(neighbor.id))
@@ -347,7 +353,7 @@ function PhotoField({
 		flushSync(() => {
 			dispatch({ type: 'makeCoverPhoto', photoId: photo.id });
 			setAnnouncement(
-				`${photoName(photo, index, role)} is now the cover photo, first in the list.`
+				`${photoName(photos, index, role)} is now the cover photo, first in the list.`
 			);
 		});
 		document.getElementById(ids.actions(photo.id))?.scrollIntoView({ block: 'nearest' });
@@ -359,7 +365,7 @@ function PhotoField({
 			dispatch({ type: 'movePhoto', photoId: photo.id, toIndex });
 			setAnnouncement(
 				describePositionMove(
-					itemName(photoName(photo, index, role), 'photo'),
+					itemName(photoName(photos, index, role), 'photo'),
 					index,
 					toIndex,
 					photos.length
@@ -384,13 +390,14 @@ function PhotoField({
 						: () => movePhoto(photo, index, toIndex),
 			}));
 		}
-		const isCover = index === 0;
 		const failed = photo.upload.status === 'failed';
 		return [
 			{
 				label: 'Use as cover photo',
 				icon: StarIcon,
-				onSelect: isCover || failed ? undefined : () => makeCover(photo, index),
+				// Moving the cover, or the first photo, to the front changes nothing.
+				onSelect:
+					index === coverIndex || index === 0 || failed ? undefined : () => makeCover(photo, index),
 			},
 		];
 	}
@@ -431,9 +438,8 @@ function PhotoField({
 	}
 
 	function renderPhoto(photo: RecipeFormPhoto, index: number) {
-		const name = photoName(photo, index, role);
-		const isCover = role === 'dish' && index === 0;
-		const status = photoStatus(photo, isCover);
+		const name = photoName(photos, index, role);
+		const status = photoStatus(photo, index === coverIndex);
 		const failure = photo.upload.status === 'failed' ? photo.upload.failure : undefined;
 		const note = noteFor?.({ kind: 'photo', id: photo.id });
 
@@ -564,4 +570,4 @@ function PhotoField({
 	);
 }
 
-export { PhotoField, photoFieldIds, photoName };
+export { PhotoField, photoFieldIds, photoName, photoViewerImages };

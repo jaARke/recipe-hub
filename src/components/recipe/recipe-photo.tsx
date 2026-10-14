@@ -72,4 +72,4 @@ function RecipeScanImage({
 	);
 }
 
-export { RecipePhoto, RecipeScanImage };
+export { photoFitClasses, RecipePhoto, RecipeScanImage, type RecipePhotoProps };

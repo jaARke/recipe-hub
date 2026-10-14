@@ -90,70 +90,67 @@ const sampleEditedRecipe: EditedRecipe = {
 	respellableTags: ['Slow cooked'],
 };
 
-// An import as a scan's extractor might hand it over: no title, a line it couldn't wholly read, and
-// a step and the whole card to check against the original.
+// The anise cakes card beside it, as the scan extractor might hand it over: the card's ground truth in
+// scripts/evaluate/cases/anise-cakes/expected.json, but with no title, a line it couldn't wholly read,
+// and a step and the whole card to check against the original.
 const sampleDraft: { content: RecipeDraftContent; problems: Problem[] } = {
 	content: {
-		source: 'Great-aunt Edie',
-		yield: { kind: 'makes', amount: { min: 16 }, unit: 'bars' },
-		times: { prepMinutes: 20, cookMinutes: 45 },
+		yield: { kind: 'makes', amount: { min: 50 }, unit: 'one and a half inch cakes' },
 		ingredientSections: [
 			{
-				heading: 'For the crust',
 				lines: [
-					{
-						text: '1 cup all-purpose flour',
-						amount: { min: 1 },
-						unit: 'cup',
-						item: 'all-purpose flour',
-					},
-					{
-						text: '½ cup butter, softened',
-						amount: { min: 0.5 },
-						unit: 'cup',
-						item: 'butter',
-						preparation: 'softened',
-					},
-				],
-			},
-			{
-				heading: 'For the filling',
-				lines: [
-					{ text: '2 eggs', amount: { min: 2 }, item: 'eggs' },
-					{ text: '1 cup sugar', amount: { min: 1 }, unit: 'cup', item: 'sugar' },
-					{ text: '3 tablespoons lemon [illegible]' },
+					{ text: '1 cup sugar' },
+					{ text: '3 eggs' },
+					{ text: '½ tsp. vanilla' },
+					{ text: '1½ to 2 cup flour' },
+					{ text: '1 tsp. any baking powder' },
+					{ text: '1½ tbls crushed anise [illegible]' },
 				],
 			},
 		],
 		instructionSections: [
 			{
 				steps: [
-					{ text: 'Heat the oven to 350°F and press the crust into an 8-inch pan.' },
-					{ text: 'Bake 20 minutes, then pour in the filling and bake until set.' },
+					{ text: 'Sift. 1 cup sugar.' },
+					{ text: 'Beat until light 3 eggs.' },
+					{ text: 'Add sugar gradually. Beat these ingredients until they are creamy.' },
+					{ text: 'Add. ½ tsp. vanilla.' },
+					{ text: 'Sift. before measuring. 1½ to 2 cup flour' },
+					{ text: 'Resift with 1 tsp. any baking powder.' },
+					{ text: 'Add. 1½ tbls crushed anise Seed.' },
+					{
+						text: 'Beat batter well, Drop from teaspoon, well apart on greased tins. Permit batter to dry for 12 hrs.',
+					},
+					{ text: 'Bake cakes in slow moderate oven 350°.' },
 				],
 			},
 		],
-		tags: ['Dessert'],
+		tags: ['Baking'],
 	},
 	problems: [
-		{ path: 'title', message: 'Add a title. The original doesn’t show one.' },
+		{ path: 'title', message: 'Add a title. The card’s heading was hard to read.' },
 		{
-			path: 'ingredientSections.1.lines.2',
+			path: 'ingredientSections.0.lines.5',
 			message: 'Check this line against the original. Part of it was hard to read.',
 		},
 		{
-			path: 'instructionSections.0.steps.1',
-			message: 'Check this step against the original. Part of it was hard to read.',
+			path: 'instructionSections.0.steps.8',
+			message: 'Check this step against the original. The oven’s temperature was hard to read.',
 		},
-		{ path: '', message: 'The card also holds a recipe for lemon curd, which was left out.' },
+		{
+			path: '',
+			message: 'The recipe runs onto a second card. Check that nothing was missed between them.',
+		},
 	],
 };
 
-// The recipe form's starting values, as its pages build them.
+// The recipe form's starting values, as its pages build them. The review adds stand-in pages of the
+// original as the member's uploads, since a draft's own scans need sign-in.
 const recipeFormSamples: readonly {
 	label: string;
 	initial: RecipeFormValues;
 	editing?: EditedRecipe;
+	standInScans?: boolean;
 }[] = [
 	{ label: 'Adding a recipe', initial: recipeFormValues() },
 	{
@@ -164,6 +161,7 @@ const recipeFormSamples: readonly {
 	{
 		label: 'Reviewing an import, with its notes to check',
 		initial: recipeFormValues(sampleDraft.content, sampleDraft.problems),
+		standInScans: true,
 	},
 ];
 
@@ -239,7 +237,7 @@ const subsections = [
 		id: 'recipe-form',
 		title: 'Recipe form',
 		description:
-			'For adding and editing a recipe, and for reviewing an import. An import’s notes sit under what they’re about, and an intro counts them and starts on the first; on the review page it takes focus. Editing a field clears its note, and so does Looks right, which moves on to the next note and says how many are left; an empty title or list must be filled instead. A scan’s [illegible] or [?] left in the text is noted too, and marked in the line’s preview, until it’s edited away. Saving with anything left to check asks first, with Show me and Save anyway; notes survive a failed save, whose errors a summary at the top lists and links to. Ingredients and steps are lists of growing fields in sections, and each item’s menu moves or removes it; each ingredient shows how it will read. Tags show as chips and suggest the labels in use, still taking new ones, and editing can respell a tag no other recipe uses (here, Slow cooked on the pot roast). Chosen photos are resized and upload at once, and pages of the original recipe move up and down. Here uploads are simulated, and saving checks the recipe as the site does but saves nothing.',
+			'For adding and editing a recipe, and for reviewing an import. An import’s notes sit under what they’re about, and an intro counts them and starts on the first; on the review page it takes focus. Editing a field clears its note, and so does Looks right, which moves on to the next note and says how many are left; an empty title or list must be filled instead. A scan’s [illegible] or [?] left in the text is noted too, and marked in the line’s preview, until it’s edited away. Saving with anything left to check asks first, with Show me and Save anyway; notes survive a failed save, whose errors a summary at the top lists and links to. Ingredients and steps are lists of growing fields in sections, and each item’s menu moves or removes it; each ingredient shows how it will read. Tags show as chips and suggest the labels in use, still taking new ones, and editing can respell a tag no other recipe uses (here, Slow cooked on the pot roast). Chosen photos are resized and upload at once, and pages of the original recipe move up and down. From lg, a form with pages of the original holds them beside it, in view as the form scrolls, a page at a time with Zoom and Full size; below lg, View original opens the viewer. Here uploads are simulated, the review is of an anise cakes card from the National Archives, whose two pages show as uploads, and saving checks the recipe as the site does but saves nothing.',
 		Content: RecipeFormSpecimen,
 	},
 	{
@@ -352,10 +350,15 @@ function NoResultsSpecimen() {
 }
 
 function RecipeFormSpecimen() {
-	return recipeFormSamples.map(({ label, initial, editing }) => (
+	return recipeFormSamples.map(({ label, initial, editing, standInScans }) => (
 		<Specimen key={label} label={label} className="px-0 py-10 sm:py-14">
-			<PageContainer width="reading">
-				<SampleRecipeForm initial={initial} tagLabels={sampleTagLabels} editing={editing} />
+			<PageContainer width="readingOrWide">
+				<SampleRecipeForm
+					initial={initial}
+					tagLabels={sampleTagLabels}
+					editing={editing}
+					standInScans={standInScans}
+				/>
 			</PageContainer>
 		</Specimen>
 	));
@@ -366,7 +369,7 @@ function RecipeEntrySpecimen() {
 		<>
 			{entryDraftSamples.map(({ label, imports }) => (
 				<Specimen key={label} label={label} className="px-0 py-10 sm:py-14">
-					<PageContainer width="reading">
+					<PageContainer width="readingOrWide">
 						<RecipeEntryTabs
 							forms={{
 								manual: (

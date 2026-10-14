@@ -1,5 +1,7 @@
 'use client';
 
+import { cn } from 'cn';
+import { ScanTextIcon } from 'lucide-react';
 import * as React from 'react';
 import { flushSync } from 'react-dom';
 import { FieldNote, type FieldNoteContent } from '@/components/forms/field-note';
@@ -15,7 +17,14 @@ import { TextField, textFieldIds } from '@/components/forms/text-field';
 import { TextareaField } from '@/components/forms/textarea-field';
 import { useFocusOnFailure } from '@/components/forms/use-focus-on-failure';
 import { useFormAction } from '@/components/forms/use-form-action';
-import { PhotoField, photoFieldIds, photoName } from '@/components/recipe-form/photo-field';
+import { wideContentProps } from '@/components/layout/page-container';
+import { OriginalRecipePane } from '@/components/recipe-form/original-recipe-pane';
+import {
+	PhotoField,
+	photoFieldIds,
+	photoName,
+	photoViewerImages,
+} from '@/components/recipe-form/photo-field';
 import { uploadPhoto, type PhotoUploader } from '@/components/recipe-form/photo-upload';
 import {
 	recipeFormFieldNames,
@@ -49,6 +58,10 @@ import {
 } from '@/components/recipe-form/sectioned-list-field';
 import { TagsField, tagsFieldIds, tagsFieldLabel } from '@/components/recipe-form/tags-field';
 import { IngredientLineText } from '@/components/recipe/ingredient-line-text';
+import {
+	RecipeImageViewer,
+	RecipeImageViewerButton,
+} from '@/components/recipe/recipe-image-viewer';
 import { HighlightedSegments } from '@/components/search/highlighted-segments';
 import { Button } from '@/components/ui/button';
 import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field';
@@ -303,7 +316,7 @@ function RecipeForm({
 					label:
 						photo === undefined
 							? photoFieldLegends[target.role]
-							: `${photoFieldLegends[target.role]}, ${photoName(photo, target.index, target.role)}`,
+							: `${photoFieldLegends[target.role]}, ${photoName(values.photos[target.role], target.index, target.role)}`,
 					targetId: photoFieldIds(ids.photos(target.role)).photoError(target.id),
 					noteId: photoFieldIds(ids.photos(target.role)).photoNote(target.id),
 				};
@@ -379,8 +392,11 @@ function RecipeForm({
 
 	const [firstCheck] = checks;
 	const formNote = noteFor({ kind: 'form' });
+	// The scans to read beside the form from lg, which widen the page, or in the viewer below lg.
+	const originalImages = photoViewerImages(values.photos.scan, 'scan');
+	const hasOriginal = originalImages.length > 0;
 
-	return (
+	const form = (
 		<form
 			ref={formRef}
 			action={formAction}
@@ -407,6 +423,14 @@ function RecipeForm({
 					/>
 					{formNote !== undefined && <FieldNote id={ids.formNote} {...formNote} />}
 				</div>
+			)}
+			{hasOriginal && (
+				<RecipeImageViewer role="scan" title={photoFieldLegends.scan} images={originalImages}>
+					<RecipeImageViewerButton className="self-start lg:hidden">
+						<ScanTextIcon data-icon="inline-start" aria-hidden="true" />
+						View original
+					</RecipeImageViewerButton>
+				</RecipeImageViewer>
 			)}
 			<p role="status" aria-live="polite" className="sr-only">
 				{reviewAnnouncement}
@@ -608,6 +632,23 @@ function RecipeForm({
 				onSaveAnyway={saveAnyway}
 			/>
 		</form>
+	);
+
+	// The wrapper stays as the original comes and goes, so the form, and the uploads in it, never remount.
+	return (
+		<div
+			{...wideContentProps(hasOriginal)}
+			className={cn(hasOriginal && 'lg:grid lg:grid-cols-2 lg:items-start lg:gap-12')}
+		>
+			{hasOriginal && (
+				<OriginalRecipePane
+					images={originalImages}
+					title={photoFieldLegends.scan}
+					className="max-lg:hidden"
+				/>
+			)}
+			{form}
+		</div>
 	);
 }
 

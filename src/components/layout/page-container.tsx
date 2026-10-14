@@ -2,15 +2,25 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from 'cn';
 import * as React from 'react';
 
+// A comfortable line length for ingredients and steps, which a part of a wider page can keep too.
+const readingWidthClassName = 'max-w-2xl';
+
 const pageContainerVariants = cva('mx-auto w-full px-4 sm:px-6', {
 	variants: {
 		width: {
-			// A comfortable line length for ingredients and steps.
-			reading: 'max-w-2xl',
+			reading: readingWidthClassName,
+			// Reading width, widened from lg while it holds content wideContentProps marks, such as the
+			// recipe form beside the original recipe.
+			readingOrWide: `${readingWidthClassName} lg:has-data-wide-content:max-w-6xl`,
 			wide: 'max-w-6xl',
 		},
 	},
 });
+
+// Marks content that widens the readingOrWide container around it, from lg.
+function wideContentProps(isWide: boolean) {
+	return { 'data-wide-content': isWide ? '' : undefined };
+}
 
 function PageContainer({
 	className,
@@ -20,4 +30,4 @@ function PageContainer({
 	return <div className={cn(pageContainerVariants({ width, className }))} {...props} />;
 }
 
-export { PageContainer };
+export { PageContainer, readingWidthClassName, wideContentProps };

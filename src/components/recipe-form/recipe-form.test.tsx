@@ -3,7 +3,12 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { FormAction } from '@/components/forms/form-state';
 import { RecipeForm } from '@/components/recipe-form/recipe-form';
-import { recipeFormValues } from '@/components/recipe-form/recipe-form-values';
+import {
+	editRecipeForm,
+	recipeFormValues,
+	type RecipeFormEdit,
+	type RecipeFormValues,
+} from '@/components/recipe-form/recipe-form-values';
 import type { Problem } from '@/domain/problem';
 import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
 
@@ -32,9 +37,13 @@ function renderForm(
 	problems: readonly Problem[] = [],
 	action: FormAction = refuse
 ) {
+	renderFormFrom(recipeFormValues(content, problems), action);
+}
+
+function renderFormFrom(initial: RecipeFormValues, action: FormAction = refuse) {
 	render(
 		<RecipeForm
-			initial={recipeFormValues(content, problems)}
+			initial={initial}
 			action={action}
 			uploadFolders={uploadFolders}
 			tagLabels={[]}
@@ -185,5 +194,106 @@ describe('RecipeForm’s review notes', () => {
 		const dialog = await screen.findByRole('alertdialog');
 		expect(within(dialog).getByText('1 thing hasn’t been checked')).toBeDefined();
 		expect(action).not.toHaveBeenCalled();
+	});
+});
+
+describe('RecipeForm’s original recipe', () => {
+	it('shows the stored scans beside the form and in the viewer, numbered as the viewer numbers them', async () => {
+		const user = userEvent.setup();
+		const saved = 'scan/development/front.jpg';
+		const values = recipeFormValues({ ...lemonBars, images: [{ role: 'scan', pathname: saved }] });
+		const uploaded = values.nextId;
+		const failed = uploaded + 1;
+		const uploading = uploaded + 2;
+		const jpeg = (name: string) =>
+			new File([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], name, { type: 'image/jpeg' });
+		// Ahead of the saved scan: an upload done, one that failed, and one still uploading.
+		const edits: RecipeFormEdit[] = [
+			{ type: 'addPhotos', role: 'scan', fileNames: ['back.jpg', 'bad.jpg', 'wip.jpg'] },
+			{
+				type: 'startPhotoUpload',
+				photoId: uploaded,
+				pathname: 'scan/development/back.jpg',
+				file: jpeg('back.jpg'),
+			},
+			{ type: 'finishPhotoUpload', photoId: uploaded },
+			{ type: 'failPhoto', photoId: failed, failure: 'upload' },
+			{
+				type: 'startPhotoUpload',
+				photoId: uploading,
+				pathname: 'scan/development/wip.jpg',
+				file: jpeg('wip.jpg'),
+			},
+			{ type: 'movePhoto', photoId: failed, toIndex: 0 },
+			{ type: 'movePhoto', photoId: uploaded, toIndex: 1 },
+			{ type: 'movePhoto', photoId: uploading, toIndex: 2 },
+		];
+		renderFormFrom(edits.reduce(editRecipeForm, values));
+
+		// The upload shows from its file until it's saved, so it is never downloaded.
+		const pane = screen.getByRole('complementary', { name: 'Original recipe' });
+		expect(within(pane).getByRole('status').textContent).toBe('Page 1 of 2');
+		expect(within(pane).getByRole('img').getAttribute('src')).toMatch(/^blob:/);
+
+		await user.click(within(pane).getByRole('button', { name: 'Next page' }));
+		expect(within(pane).getByRole('status').textContent).toBe('Page 2 of 2');
+		expect(within(pane).getByRole('img').getAttribute('src')).toBe(`/api/images/${saved}`);
+
+		// A row the viewer holds opens it at the place the row names; the others have no place in it.
+		const rows = within(screen.getByRole('list', { name: 'Original recipe' })).getAllByRole(
+			'listitem'
+		);
+		expect(
+			rows.map((row) => ({
+				name: row.querySelector('[data-slot="attachment-title"]')?.textContent,
+				opens: within(row)
+					.queryByRole('button', { name: /^View page/ })
+					?.getAttribute('aria-label'),
+			}))
+		).toEqual([
+			{ name: 'bad.jpg', opens: undefined },
+			{ name: 'back.jpg', opens: 'View page 1 of 2' },
+			{ name: 'wip.jpg', opens: undefined },
+			{ name: 'Page 2', opens: 'View page 2 of 2' },
+		]);
+		expect(screen.getByRole('button', { name: 'View original' })).toBeDefined();
+	});
+});
+
+describe('RecipeForm’s photos', () => {
+	it('calls the first stored photo the cover, as saving makes it, past a failed or unfinished one', () => {
+		const values = recipeFormValues({
+			...lemonBars,
+			images: [{ role: 'dish', pathname: 'dish/development/bars.jpg' }],
+		});
+		const uploading = values.nextId;
+		const failed = uploading + 1;
+		const edits: RecipeFormEdit[] = [
+			{ type: 'addPhotos', role: 'dish', fileNames: ['wip.jpg', 'bad.jpg'] },
+			{
+				type: 'startPhotoUpload',
+				photoId: uploading,
+				pathname: 'dish/development/wip.jpg',
+				file: new File([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], 'wip.jpg', {
+					type: 'image/jpeg',
+				}),
+			},
+			{ type: 'failPhoto', photoId: failed, failure: 'upload' },
+			{ type: 'movePhoto', photoId: uploading, toIndex: 0 },
+			{ type: 'movePhoto', photoId: failed, toIndex: 1 },
+		];
+		renderFormFrom(edits.reduce(editRecipeForm, values));
+
+		const rows = within(screen.getByRole('list', { name: 'Photos' })).getAllByRole('listitem');
+		expect(
+			rows.map((row) => ({
+				name: row.querySelector('[data-slot="attachment-title"]')?.textContent,
+				status: row.querySelector('[data-slot="attachment-description"]')?.textContent,
+			}))
+		).toEqual([
+			{ name: 'wip.jpg', status: 'Uploading' },
+			{ name: 'bad.jpg', status: 'Didn’t upload' },
+			{ name: 'Photo 1', status: 'Cover photo' },
+		]);
 	});
 });

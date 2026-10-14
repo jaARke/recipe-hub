@@ -126,7 +126,7 @@ async function RecipeEditor({ params }: Pick<PageProps<'/recipes/[slug]/edit'>, 
 
 export default function EditRecipePage({ params }: PageProps<'/recipes/[slug]/edit'>) {
 	return (
-		<PageContainer width="reading" className="flex flex-col gap-8 py-12 sm:py-16">
+		<PageContainer width="readingOrWide" className="flex flex-col gap-8 py-12 sm:py-16">
 			<h1 className="font-heading text-4xl font-semibold">Edit recipe</h1>
 			<Suspense fallback={<RecipeFormSkeleton />}>
 				<RecipeEditor params={params} />
