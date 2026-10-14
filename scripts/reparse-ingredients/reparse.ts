@@ -19,9 +19,6 @@ import {
 } from '@/domain/recipe/recipe';
 import { getLogger } from '@/lib/logger';
 
-// Recipes read at a time.
-const pageSize = 50;
-
 // Normalizes a fresh reading as storing it would, so a line stored from the same reading equals it.
 const storedLineSchema = ingredientLineSchemaFor(storedContent);
 
@@ -140,6 +137,17 @@ function logOutcome(recipe: ReparsedRecipe): void {
 	}
 }
 
+// Every recipe's id as one listing finds them, asked for more recipes than exist, so a recipe added or
+// deleted while the run goes on cannot shift another out of the run, as it would between pages.
+async function snapshotIds(recipes: RecipeRepository): Promise<RecipeId[]> {
+	for (let limit = (await recipes.count()) + 1; ; limit *= 2) {
+		const listed = await recipes.list({ limit, offset: 0, sort: 'newest' });
+		if (listed.length < limit) {
+			return listed.map(({ id }) => id);
+		}
+	}
+}
+
 function countOf(result: ReparseResult, kind: ReparseOutcome['kind']): number {
 	return result.recipes.filter((recipe) => recipe.outcome.kind === kind).length;
 }
@@ -152,30 +160,29 @@ export async function reparseIngredients(
 	options: ReparseOptions
 ): Promise<ReparseResult> {
 	const result: ReparseResult = { write: options.write, checked: 0, recipes: [] };
-	// Ordered by creation, which a write leaves alone, so the pages hold still as recipes are written.
-	for (let offset = 0; ; offset += pageSize) {
-		const page = await recipes.list({ limit: pageSize, offset, sort: 'newest' });
-		for (const recipe of page) {
-			result.checked += 1;
-			const { ingredientSections, changes } = reparseSections(recipe);
-			if (changes.length === 0) {
-				continue;
-			}
-
-			const reparsed: ReparsedRecipe = {
-				id: recipe.id,
-				slug: recipe.slug,
-				title: recipe.title,
-				changes,
-				outcome: await checkAndWrite(recipes, recipe, ingredientSections, options),
-			};
-			logOutcome(reparsed);
-			result.recipes.push(reparsed);
+	// Each recipe is read again just before it is checked, so a member's edit since the snapshot is
+	// re-parsed too. One deleted since then needs nothing; one added since was parsed when it was saved.
+	for (const id of await snapshotIds(recipes)) {
+		const recipe = await recipes.findById(id);
+		if (recipe === null) {
+			continue;
 		}
 
-		if (page.length < pageSize) {
-			break;
+		result.checked += 1;
+		const { ingredientSections, changes } = reparseSections(recipe);
+		if (changes.length === 0) {
+			continue;
 		}
+
+		const reparsed: ReparsedRecipe = {
+			id: recipe.id,
+			slug: recipe.slug,
+			title: recipe.title,
+			changes,
+			outcome: await checkAndWrite(recipes, recipe, ingredientSections, options),
+		};
+		logOutcome(reparsed);
+		result.recipes.push(reparsed);
 	}
 
 	logger.info('Ingredient re-parse finished', {

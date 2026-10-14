@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import type { RecipeRepository, UpdatedRecipe } from '@/application/ports/recipe-repository';
+import type {
+	RecipePage,
+	RecipeRepository,
+	UpdatedRecipe,
+} from '@/application/ports/recipe-repository';
 import { RecipeEditConflictError } from '@/application/recipes/errors';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
 import { memberIdSchema, type MemberId } from '@/domain/member/member';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
-import type { Recipe, RecipeContent } from '@/domain/recipe/recipe';
+import type { Recipe, RecipeContent, RecipeId } from '@/domain/recipe/recipe';
 import { slugify } from '@/domain/recipe/slug';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
@@ -69,6 +73,52 @@ class EditedDuringRunRepository extends InMemoryRecipeRepository {
 	async update(): Promise<UpdatedRecipe | null> {
 		throw new RecipeEditConflictError();
 	}
+}
+
+// A member changes the recipes once, just before the run's third read, after the run has read and
+// checked the newest recipe.
+class ChangedDuringRunRepository extends InMemoryRecipeRepository {
+	private readonly change: (recipes: InMemoryRecipeRepository) => Promise<unknown>;
+	private reads = 0;
+
+	constructor(change: (recipes: InMemoryRecipeRepository) => Promise<unknown>) {
+		super();
+		this.change = change;
+	}
+
+	async list(page: RecipePage): Promise<Recipe[]> {
+		await this.beforeRead();
+		return super.list(page);
+	}
+
+	async findById(id: RecipeId): Promise<Recipe | null> {
+		await this.beforeRead();
+		return super.findById(id);
+	}
+
+	private async beforeRead(): Promise<void> {
+		this.reads += 1;
+		if (this.reads === 3) {
+			await this.change(this);
+		}
+	}
+}
+
+// Counts none, as a count taken just before recipes were added would.
+class UndercountingRepository extends InMemoryRecipeRepository {
+	async count(): Promise<number> {
+		return 0;
+	}
+}
+
+// The oldest recipe holds a stale line; the hundred added after it read as stored.
+async function addStaleThenHundred(recipes: RecipeRepository) {
+	const oldest = await addRecipe(recipes, content('Chicken stir-fry', [staleLine]));
+	let newest = oldest;
+	for (let index = 1; index <= 100; index += 1) {
+		newest = await addRecipe(recipes, content(`Soy glaze ${index}`, [unchangedLine]));
+	}
+	return { oldest, newest };
 }
 
 function logLines(spy: MockInstance<(...args: unknown[]) => void>): unknown[] {
@@ -195,17 +245,42 @@ describe('reparseIngredients', () => {
 		expect(result).toEqual({ write: true, checked: 1, recipes: [] });
 	});
 
-	it('reads every page of recipes', async () => {
-		const recipes = new InMemoryRecipeRepository();
-		for (let index = 1; index <= 51; index += 1) {
-			await addRecipe(recipes, content(`Soy glaze ${index}`, [unchangedLine]));
-		}
-		const stale = await addRecipe(recipes, content('Chicken stir-fry', [staleLine]));
+	it('checks every other recipe when one it already read is deleted during the run', async () => {
+		const recipes = new ChangedDuringRunRepository((changed) => changed.delete(newest.id));
+		const { oldest, newest } = await addStaleThenHundred(recipes);
+
+		const result = await reparseIngredients(recipes, { write: true });
+
+		expect(await recipes.findById(newest.id)).toBeNull();
+		expect(result.checked).toBe(101);
+		expect(result.recipes.map(({ id, outcome }) => ({ id, outcome }))).toEqual([
+			{ id: oldest.id, outcome: { kind: 'written' } },
+		]);
+		expect((await recipes.findById(oldest.id))?.ingredientSections).toEqual([
+			{ lines: [reparsedLine] },
+		]);
+	});
+
+	it('checks every recipe once when one is added during the run', async () => {
+		const recipes = new ChangedDuringRunRepository((changed) =>
+			addRecipe(changed, content('Added mid-run', [unchangedLine]))
+		);
+		const { oldest } = await addStaleThenHundred(recipes);
+
+		const result = await reparseIngredients(recipes, { write: true });
+
+		expect(result.checked).toBe(101);
+		expect(result.recipes.map(({ id }) => id)).toEqual([oldest.id]);
+	});
+
+	it('lists every recipe when more exist than were counted', async () => {
+		const recipes = new UndercountingRepository();
+		const { oldest } = await addStaleThenHundred(recipes);
 
 		const result = await reparseIngredients(recipes, { write: false });
 
-		expect(result.checked).toBe(52);
-		expect(result.recipes.map(({ id }) => id)).toEqual([stale.id]);
+		expect(result.checked).toBe(101);
+		expect(result.recipes.map(({ id }) => id)).toEqual([oldest.id]);
 	});
 });
 
