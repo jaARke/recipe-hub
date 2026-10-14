@@ -297,3 +297,157 @@ describe('RecipeForm’s photos', () => {
 		]);
 	});
 });
+
+describe('RecipeForm’s lists', () => {
+	function textbox(name: string): HTMLTextAreaElement {
+		const element = screen.getByRole('textbox', { name });
+		if (!(element instanceof HTMLTextAreaElement)) {
+			throw new Error(`${name} is no textarea.`);
+		}
+		return element;
+	}
+
+	// Each row as its label and its text, in order.
+	function rowTexts(legend: string): string[] {
+		return within(screen.getByRole('list', { name: legend }))
+			.getAllByRole<HTMLTextAreaElement>('textbox')
+			.map((row) => `${row.labels?.[0]?.textContent}: ${row.value}`);
+	}
+
+	function expectAnnounced(text: string) {
+		expect(screen.getByText(text).getAttribute('role')).toBe('status');
+	}
+
+	async function choose(user: ReturnType<typeof userEvent.setup>, row: string, action: string) {
+		await user.click(screen.getByRole('button', { name: `Actions for ${row}` }));
+		await user.click(await screen.findByRole('menuitem', { name: action }));
+	}
+
+	it('adds a line below on Enter and removes an empty one on Backspace, announcing each', async () => {
+		const user = userEvent.setup();
+		renderForm(lemonBars);
+
+		await user.click(textbox('Ingredient 1'));
+		await user.keyboard('{Enter}');
+
+		expect(rowTexts('Ingredients')).toEqual([
+			'Ingredient 1: 1 cup flour',
+			'Ingredient 2: ',
+			'Ingredient 3: 2 eggs',
+		]);
+		expect(document.activeElement).toBe(textbox('Ingredient 2'));
+		expectAnnounced('Added Ingredient 2.');
+
+		await user.keyboard('{Backspace}');
+
+		expect(rowTexts('Ingredients')).toEqual(['Ingredient 1: 1 cup flour', 'Ingredient 2: 2 eggs']);
+		const above = textbox('Ingredient 1');
+		expect(document.activeElement).toBe(above);
+		expect(above.selectionStart).toBe(above.value.length);
+		expectAnnounced('Removed Ingredient 2.');
+
+		// Backspace in a line with text deletes text, as it always does.
+		await user.keyboard('{Backspace}');
+		expect(rowTexts('Ingredients')).toEqual(['Ingredient 1: 1 cup flou', 'Ingredient 2: 2 eggs']);
+	});
+
+	it('splits a pasted list into lines and headings, without bullets, and announces it', async () => {
+		const user = userEvent.setup();
+		renderForm({ ...lemonBars, ingredientSections: undefined });
+
+		await user.click(textbox('Ingredient 1'));
+		await user.paste('• 2 cups flour\n• 1 teaspoon salt\n\nFor the glaze:\n1. 1 cup sugar\n');
+
+		expect(rowTexts('Ingredients')).toEqual([
+			'Ingredient 1: 2 cups flour',
+			'Ingredient 2: 1 teaspoon salt',
+			'Ingredient heading 1: For the glaze',
+			'Ingredient 1, For the glaze: 1 cup sugar',
+		]);
+		expect(document.activeElement).toBe(textbox('Ingredient 1, For the glaze'));
+		expectAnnounced('Pasted 3 ingredients and 1 heading.');
+
+		// A single line pastes as usual, at the caret.
+		await user.paste(', sifted');
+		expect(textbox('Ingredient 1, For the glaze').value).toBe('1 cup sugar, sifted');
+	});
+
+	it('changes a line to a heading over the lines after it', async () => {
+		const user = userEvent.setup();
+		renderForm({
+			...lemonBars,
+			ingredientSections: [
+				{ lines: [{ text: '1 cup flour' }, { text: 'For the glaze' }, { text: '1 cup sugar' }] },
+			],
+		});
+
+		await choose(user, 'Ingredient 2', 'Change to heading');
+
+		expect(rowTexts('Ingredients')).toEqual([
+			'Ingredient 1: 1 cup flour',
+			'Ingredient heading 1: For the glaze',
+			'Ingredient 1, For the glaze: 1 cup sugar',
+		]);
+		expectAnnounced('Changed “For the glaze” to Ingredient heading 1.');
+		// The row keeps its menu, which takes focus back and now offers the way back.
+		const trigger = screen.getByRole('button', { name: 'Actions for Ingredient heading 1' });
+		await waitFor(() => expect(document.activeElement).toBe(trigger));
+		await user.click(trigger);
+		expect(await screen.findByRole('menuitem', { name: 'Change to ingredient' })).toBeDefined();
+	});
+
+	it('keeps a removed heading’s lines, which join the lines above it', async () => {
+		const user = userEvent.setup();
+		renderForm({
+			...lemonBars,
+			ingredientSections: [
+				{ lines: [{ text: '1 cup flour' }] },
+				{ heading: 'For the glaze', lines: [{ text: '1 cup sugar' }] },
+			],
+		});
+
+		await choose(user, 'Ingredient heading 1', 'Remove');
+
+		expect(rowTexts('Ingredients')).toEqual([
+			'Ingredient 1: 1 cup flour',
+			'Ingredient 2: 1 cup sugar',
+		]);
+		expect(document.activeElement).toBe(textbox('Ingredient 1'));
+		expectAnnounced('Removed Ingredient heading 1. The ingredient under it stays.');
+		const sent = document.querySelector<HTMLInputElement>('input[name="recipe"]')?.value ?? '{}';
+		expect(JSON.parse(sent)).toMatchObject({
+			ingredientSections: [{ lines: ['1 cup flour', '1 cup sugar'] }],
+		});
+	});
+
+	it('shows a save’s problem with a heading that has nothing under it at the heading', async () => {
+		const user = userEvent.setup();
+		renderForm(
+			{
+				...lemonBars,
+				ingredientSections: [
+					{ lines: [{ text: '1 cup flour' }] },
+					{ heading: 'For the glaze', lines: [] },
+				],
+			},
+			[],
+			async () => ({
+				status: 'error',
+				fieldErrors: { 'ingredientSections.1.lines': 'Add at least one ingredient.' },
+			})
+		);
+
+		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+
+		const link = await screen.findByRole('link', {
+			name: 'Ingredients, For the glaze: Add at least one ingredient.',
+		});
+		const heading = textbox('Ingredient heading 1');
+		expect(link.getAttribute('href')).toBe(`#${heading.id}`);
+		expect(heading.getAttribute('aria-invalid')).toBe('true');
+		const description = heading.getAttribute('aria-describedby') ?? '';
+		expect(description.split(' ').map((id) => document.getElementById(id)?.textContent)).toContain(
+			'Add at least one ingredient.'
+		);
+	});
+});

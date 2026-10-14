@@ -51,7 +51,7 @@ import {
 	ReviewNotesIntro,
 	UncheckedSaveDialog,
 } from '@/components/recipe-form/review-notes';
-import { itemLabel, sectionName } from '@/components/recipe-form/sectioned-list';
+import { listRowNames, sectionLabel } from '@/components/recipe-form/sectioned-list';
 import {
 	SectionedListField,
 	sectionedListFieldIds,
@@ -285,30 +285,24 @@ function RecipeForm({
 					targetId: sectionedListFieldIds(ids.list(target.list)).error,
 					noteId: sectionedListFieldIds(ids.list(target.list)).note,
 				};
-			case 'heading':
-				return {
-					label: `${listFieldLabels[target.list].legend}, section ${target.sectionIndex + 1} heading`,
-					targetId: sectionedListFieldIds(ids.list(target.list)).heading(target.id),
-					noteId: sectionedListFieldIds(ids.list(target.list)).headingNote(target.id),
-				};
-			case 'section':
-				return {
-					label: `${listFieldLabels[target.list].legend}, ${sectionName(values[target.list].sections, target.sectionIndex)}`,
-					targetId: sectionedListFieldIds(ids.list(target.list)).sectionError(target.id),
-					noteId: sectionedListFieldIds(ids.list(target.list)).sectionNote(target.id),
-				};
-			case 'item': {
-				const { sections, showsHeadings } = values[target.list];
-				return {
-					label: itemLabel(
-						listFieldLabels[target.list].noun,
-						sections,
-						target.place,
-						showsHeadings
-					),
-					targetId: sectionedListFieldIds(ids.list(target.list)).item(target.id),
-					noteId: sectionedListFieldIds(ids.list(target.list)).itemNote(target.id),
-				};
+			case 'row':
+			case 'section': {
+				const { legend, noun } = listFieldLabels[target.list];
+				const listIds = sectionedListFieldIds(ids.list(target.list));
+				const names = listRowNames(values[target.list].rows, noun)[target.index];
+				// A section shows at its heading's row, which its link focuses.
+				return target.kind === 'row'
+					? {
+							label: names?.label,
+							targetId: listIds.row(target.id),
+							noteId: listIds.rowNote(target.id),
+						}
+					: {
+							label:
+								names?.headingName === undefined ? legend : sectionLabel(legend, names.headingName),
+							targetId: listIds.row(target.id),
+							noteId: listIds.sectionNote(target.id),
+						};
 			}
 			case 'photo': {
 				const photo = values.photos[target.role][target.index];
@@ -540,7 +534,7 @@ function RecipeForm({
 						nextId={values.nextId}
 						dispatch={dispatch}
 						{...listFieldLabels.ingredientSections}
-						description="One ingredient per field, as you’d write it. Add a section for a separate part, such as a glaze."
+						description="One ingredient per field, as you’d write it, or paste a whole list. Add a heading for a separate part, such as a glaze."
 						itemPlaceholder="2½ cups all-purpose flour"
 						headingPlaceholder="For the glaze"
 						itemPreview={ingredientPreview}
@@ -553,7 +547,7 @@ function RecipeForm({
 						nextId={values.nextId}
 						dispatch={dispatch}
 						{...listFieldLabels.instructionSections}
-						description="One step per field. Add a section for a separate part, such as a glaze."
+						description="One step per field, or paste them all at once. Add a heading for a separate part, such as a glaze."
 						itemPlaceholder="Heat the oven to 450°F."
 						headingPlaceholder="For the glaze"
 						numbered
