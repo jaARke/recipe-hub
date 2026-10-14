@@ -47,13 +47,13 @@
 	--radius-3xl: calc(var(--radius) * 2.2);
 	--radius-4xl: calc(var(--radius) * 2.6);
 
-	/* Things at rest cast a faint shadow in the theme's shadow color. Menus, toasts, and hovered
-	   cards lift on a hard offset in the edge's ink, like a sticker. */
+	/* Shadows take their color from the theme: faint on light, deep on dark, where a lifted layer
+	   also reads by its lighter surface. */
 	--shadow-*: initial;
 	--shadow-xs: 0 1px 2px 0 var(--shadow-color);
 	--shadow-sm: 0 1px 3px 0 var(--shadow-color), 0 1px 2px -1px var(--shadow-color);
-	--shadow-md: 3px 3px 0 0 var(--edge);
-	--shadow-lg: 5px 5px 0 0 var(--edge);
+	--shadow-md: 0 4px 6px -1px var(--shadow-color), 0 2px 4px -2px var(--shadow-color);
+	--shadow-lg: 0 10px 15px -3px var(--shadow-color), 0 4px 6px -4px var(--shadow-color);
 }
 
 @theme {

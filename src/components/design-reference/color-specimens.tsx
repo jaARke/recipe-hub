@@ -107,7 +107,7 @@ const lineTokens: readonly LineToken[] = [
 	},
 	{
 		token: { utility: 'border-edge', variable: '--edge' },
-		usage: 'Inked edges on cards and outline buttons, and the offset under lifted surfaces.',
+		usage: 'Inked edges on cards and outline buttons.',
 		sampleClassName: 'border border-edge',
 	},
 	{

@@ -7,7 +7,6 @@ import { Specimen, SpecimenLabel } from '@/components/design-reference/reference
 // Where each size appears; the mascot shows at most once in a screen's content.
 const mascotSizeUses: Record<MascotSize, string> = {
 	sm: 'the header lockup',
-	md: 'the sign-in, invite, and request-access headings',
 	lg: 'empty states',
 	xl: 'the not-found page',
 };

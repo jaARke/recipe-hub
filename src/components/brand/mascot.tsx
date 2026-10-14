@@ -4,7 +4,6 @@ import mascotDieCut from '@/components/brand/mascot-die-cut.png';
 // Rendered widths in CSS pixels; the optimizer serves each at 1x and 2x from the 512 px master.
 const mascotSizes = {
 	sm: 32,
-	md: 64,
 	lg: 96,
 	xl: 128,
 } as const;

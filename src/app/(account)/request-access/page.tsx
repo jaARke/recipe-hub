@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { requestAccess } from '@/app/(account)/request-access/actions';
 import { RequestAccessForm } from '@/components/account/request-access-form';
 import { privacyPath } from '@/components/auth/auth-paths';
-import { Mascot } from '@/components/brand/mascot';
 import { PageContainer } from '@/components/layout/page-container';
 import { TextLink } from '@/components/layout/text-link';
 import { settings } from '@/lib/settings';
@@ -15,10 +14,7 @@ export default function RequestAccessPage() {
 	return (
 		<PageContainer width="reading" className="flex flex-col gap-8 py-12 sm:py-16">
 			<div className="flex flex-col gap-3">
-				<div className="flex items-center gap-4">
-					<Mascot size="md" />
-					<h1 className="font-heading text-4xl font-semibold">Request access</h1>
-				</div>
+				<h1 className="font-heading text-4xl font-semibold">Request access</h1>
 				<p className="text-lg text-muted-foreground">
 					Anyone can browse and search recipes. To add your own, ask for an account. An admin reads
 					every request.

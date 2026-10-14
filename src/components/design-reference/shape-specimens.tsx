@@ -40,7 +40,7 @@ function ShapeSpecimens() {
 					</ul>
 				</div>
 			</Specimen>
-			<Specimen label="Shadow: faint at rest; menus, toasts, and hovered cards lift on a hard ink offset">
+			<Specimen label="Shadow: four steps, tinted with the foreground hue">
 				<ul className="grid grid-cols-2 gap-6 lg:grid-cols-4">
 					{shadowSteps.map((step) => (
 						<li key={step} className="flex flex-col gap-3">
