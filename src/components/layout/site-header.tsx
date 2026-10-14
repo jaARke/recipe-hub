@@ -1,18 +1,11 @@
-import { cn } from 'cn';
-import { PlusIcon } from 'lucide-react';
-import Link from 'next/link';
 import { Suspense } from 'react';
 import { Lockup } from '@/components/brand/lockup';
-import { HeaderAccount, HeaderAccountPlaceholder } from '@/components/layout/header-account';
+import { HeaderAccountGroup } from '@/components/layout/header-account';
 import type { HeaderMember } from '@/components/layout/header-member';
 import { MainNav, MainNavLinks } from '@/components/layout/main-nav';
-import { addRecipeNavItem } from '@/components/layout/nav-items';
 import { PageContainer } from '@/components/layout/page-container';
 import { SiteMenu } from '@/components/layout/site-menu';
-import { ThemeToggle } from '@/components/layout/theme-toggle';
-import { HeaderSearch } from '@/components/search/header-search';
-import { HeaderSearchBar } from '@/components/search/header-search-bar';
-import { buttonVariants } from '@/components/ui/button';
+import { HeaderSearchBar, headerSearchFormId } from '@/components/search/header-search-bar';
 
 type SiteHeaderProps = {
 	// The signed-in member, or null. Each part that shows it waits for it behind its own boundary,
@@ -20,39 +13,25 @@ type SiteHeaderProps = {
 	member: Promise<HeaderMember | null>;
 };
 
-// From lg, two clusters: the lockup and the nav, then search, Add recipe, the theme toggle, and the
-// account control. Below lg, the lockup, a search link, and one menu that holds everything else.
+// One row: the lockup, the section links, a search field filling the rest, then the theme menu and
+// the account control. From md to lg the search is an icon; below md the lockup, the search icon,
+// and one menu holding everything else. Below lg an open search takes the whole row.
 function SiteHeader({ member }: SiteHeaderProps) {
 	return (
 		<header className="sticky top-0 z-40 border-b bg-background print:hidden">
-			<PageContainer width="wide" className="flex h-14 items-center gap-4">
+			<PageContainer
+				width="wide"
+				className="flex h-14 items-center gap-2 max-lg:has-data-search-open:*:not-data-search-open:hidden"
+			>
 				<Lockup />
-				<div className="hidden lg:block">
+				<div className="hidden self-stretch md:flex">
 					<Suspense fallback={<MainNavLinks member={member} />}>
 						<MainNav member={member} />
 					</Suspense>
 				</div>
-				<div className="ml-auto flex items-center gap-2">
-					<Suspense fallback={<HeaderSearchBar />}>
-						<HeaderSearch>
-							<HeaderSearchBar />
-						</HeaderSearch>
-					</Suspense>
-					<Link
-						href={addRecipeNavItem.href}
-						className={cn(buttonVariants({ variant: 'outline' }), 'hidden lg:inline-flex')}
-					>
-						<PlusIcon data-icon="inline-start" aria-hidden="true" />
-						{addRecipeNavItem.label}
-					</Link>
-					<div className="hidden lg:block">
-						<ThemeToggle />
-					</div>
-					<SiteMenu member={member} className="lg:hidden" />
-					<Suspense fallback={<HeaderAccountPlaceholder />}>
-						<HeaderAccount member={member} />
-					</Suspense>
-				</div>
+				<HeaderSearchBar formId={headerSearchFormId} />
+				<HeaderAccountGroup member={member} className="hidden md:grid" />
+				<SiteMenu member={member} className="md:hidden" />
 			</PageContainer>
 		</header>
 	);

@@ -26,6 +26,7 @@ import {
 } from '@/components/design-reference/form-specimens';
 import {
 	CarouselSpecimen,
+	CollapsibleSpecimen,
 	DialogSpecimen,
 	DropdownMenuSpecimen,
 	TabsSpecimen,
@@ -53,6 +54,7 @@ const primitives = [
 	{ id: 'checkbox', title: 'Checkbox', Content: CheckboxSpecimen },
 	{ id: 'attachment', title: 'Attachment', Content: AttachmentSpecimen },
 	{ id: 'tabs', title: 'Tabs', Content: TabsSpecimen },
+	{ id: 'collapsible', title: 'Collapsible', Content: CollapsibleSpecimen },
 	{ id: 'carousel', title: 'Carousel', Content: CarouselSpecimen },
 	{ id: 'dialog', title: 'Dialog', Content: DialogSpecimen },
 	{ id: 'alert-dialog', title: 'Alert dialog', Content: AlertDialogSpecimen },

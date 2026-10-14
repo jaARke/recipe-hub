@@ -7,17 +7,18 @@ import { HiddenSearchFields } from '@/components/search/hidden-search-fields';
 import { RecipeSearchActiveFilters } from '@/components/search/recipe-search-active-filters';
 import { RecipeSearchEmptyState } from '@/components/search/recipe-search-empty-state';
 import {
-	RecipeSearchFiltersDisclosure,
+	RecipeSearchFilters,
 	RecipeSearchFiltersSidebar,
 } from '@/components/search/recipe-search-filters';
-import { RecipeSearchForm } from '@/components/search/recipe-search-form';
 import {
 	firstResultCount,
 	RecipeSearchResult,
 	RecipeSearchResultList,
 	RecipeSearchResultSkeleton,
 } from '@/components/search/recipe-search-result';
+import { RecipeSearchToolbar } from '@/components/search/recipe-search-toolbar';
 import {
+	appliedFilterCount,
 	recipeSearchHref,
 	recipeSearchSortsFor,
 	type RecipeSearchState,
@@ -37,6 +38,9 @@ const sortDescriptions: Record<RecipeSearchSort, string> = {
 	newest: 'newest first',
 	title: 'A to Z',
 };
+
+// The header's field on the search page is described by the hint.
+const recipeSearchHintId = 'search-hint';
 
 // Enough rows to fill the first screen while results load.
 const skeletonResultCount = 5;
@@ -62,6 +66,15 @@ function resultsDescription(
 	return `${query}, ${details.join(', ')}`;
 }
 
+// How to write a query, under the search page's heading.
+function RecipeSearchHint() {
+	return (
+		<p id={recipeSearchHintId} className="text-sm text-muted-foreground">
+			Try &quot;brown butter&quot; for an exact phrase, or -nuts to leave nuts out.
+		</p>
+	);
+}
+
 function RecipeSearchCloseMatches({ text }: { text: string }) {
 	return <p className="text-sm">No exact matches for “{text}”. Showing close matches.</p>;
 }
@@ -81,73 +94,77 @@ function RecipeSearch({
 	const resultsHeadingId = 'search-results-heading';
 
 	return (
-		<div className="flex flex-col gap-8">
-			<RecipeSearchForm state={state} />
-			<div className="flex flex-col gap-8 lg:flex-row lg:items-start">
-				<RecipeSearchFiltersDisclosure
-					idPrefix="search-filters-disclosure"
-					state={state}
-					facets={results.facets}
-					headingTag={Section}
-					className="lg:hidden"
-				/>
-				<RecipeSearchFiltersSidebar
-					idPrefix="search-filters-sidebar"
-					state={state}
-					facets={results.facets}
-					headingTag={Section}
-					className="hidden lg:flex lg:w-64 lg:shrink-0"
-				/>
-				<section aria-labelledby={resultsHeadingId} className="flex min-w-0 flex-1 flex-col gap-6">
-					<Section id={resultsHeadingId} tabIndex={-1} className="sr-only">
-						Results
-					</Section>
-					<RecipeSearchActiveFilters state={state} facets={results.facets} />
-					<div className="flex flex-wrap items-center justify-between gap-4">
-						{/* Outside any keyed subtree, so it stays in place and each new count is announced. */}
+		<div className="flex flex-col gap-8 lg:flex-row lg:items-start">
+			<RecipeSearchFiltersSidebar
+				idPrefix="search-filters-sidebar"
+				state={state}
+				facets={results.facets}
+				headingTag={Section}
+				className="hidden lg:flex lg:w-64 lg:shrink-0"
+			/>
+			<section aria-labelledby={resultsHeadingId} className="flex min-w-0 flex-1 flex-col gap-6">
+				<Section id={resultsHeadingId} tabIndex={-1} className="sr-only">
+					Results
+				</Section>
+				<RecipeSearchToolbar
+					appliedFilterCount={appliedFilterCount(state)}
+					resultsHeadingId={resultsHeadingId}
+					count={
+						// Outside any keyed subtree, so it stays in place and each new count is announced.
 						<p role="status" aria-live="polite" className="text-sm text-muted-foreground">
 							{recipeCount(results.total)}
 							<span className="sr-only">{resultsDescription(state, results, pageCount)}</span>
 						</p>
-						{results.total > 0 && (
+					}
+					sort={
+						results.total > 0 ? (
 							<RecipeSortForm
 								id="search-sort"
 								action={recipeSearchPath}
 								sorts={recipeSearchSortsFor(state.text)}
 								value={state.sort}
+								compact
 							>
 								<HiddenSearchFields state={state} editedFields={['sort']} />
 							</RecipeSortForm>
-						)}
-					</div>
-					{results.match === 'close' && state.text !== undefined && (
-						<RecipeSearchCloseMatches text={state.text} />
-					)}
-					{results.results.length > 0 ? (
-						<RecipeSearchResultList>
-							{results.results.map((result, index) => (
-								<li key={result.recipe.id}>
-									<RecipeSearchResult
-										result={result}
-										headingTag={resultHeadingTag}
-										eager={index < firstResultCount}
-									/>
-								</li>
-							))}
-						</RecipeSearchResultList>
-					) : (
-						<RecipeSearchEmptyState state={state} />
-					)}
-					{pageCount > 1 && (
-						<RecipePagination
-							page={state.page}
-							pageCount={pageCount}
-							pageHref={(page) => recipeSearchHref({ ...state, page })}
-							resultsHeadingId={resultsHeadingId}
+						) : undefined
+					}
+					filters={
+						<RecipeSearchFilters
+							idPrefix="search-filters-panel"
+							state={state}
+							facets={results.facets}
 						/>
-					)}
-				</section>
-			</div>
+					}
+				/>
+				<RecipeSearchActiveFilters state={state} facets={results.facets} />
+				{results.match === 'close' && state.text !== undefined && (
+					<RecipeSearchCloseMatches text={state.text} />
+				)}
+				{results.results.length > 0 ? (
+					<RecipeSearchResultList>
+						{results.results.map((result, index) => (
+							<li key={result.recipe.id}>
+								<RecipeSearchResult
+									result={result}
+									headingTag={resultHeadingTag}
+									eager={index < firstResultCount}
+								/>
+							</li>
+						))}
+					</RecipeSearchResultList>
+				) : (
+					<RecipeSearchEmptyState state={state} />
+				)}
+				{pageCount > 1 && (
+					<RecipePagination
+						page={state.page}
+						pageCount={pageCount}
+						pageHref={(page) => recipeSearchHref({ ...state, page })}
+						resultsHeadingId={resultsHeadingId}
+					/>
+				)}
+			</section>
 		</div>
 	);
 }
@@ -156,41 +173,40 @@ function RecipeSearchSkeleton() {
 	return (
 		<div role="status" aria-live="polite">
 			<span className="sr-only">Loading results</span>
-			<div aria-hidden="true" className="flex flex-col gap-8">
-				<div className="flex max-w-2xl flex-col gap-3">
-					<div className="flex gap-2">
-						<Skeleton className="h-9 flex-1" />
-						<Skeleton className="h-9 w-20" />
-					</div>
-					<Skeleton className="h-5 w-3/4" />
+			<div aria-hidden="true" className="flex flex-col gap-8 lg:flex-row lg:items-start">
+				<div className="hidden lg:flex lg:w-64 lg:shrink-0 lg:flex-col lg:gap-6">
+					<Skeleton className="h-7 w-20" />
+					<Skeleton className="h-32 w-full" />
+					<Skeleton className="h-14 w-full" />
+					<Skeleton className="h-14 w-full" />
+					<Skeleton className="h-14 w-full" />
+					<Skeleton className="h-14 w-full" />
 				</div>
-				<div className="flex flex-col gap-8 lg:flex-row lg:items-start">
-					<Skeleton className="h-9 w-24 lg:hidden" />
-					<div className="hidden lg:flex lg:w-64 lg:shrink-0 lg:flex-col lg:gap-6">
-						<Skeleton className="h-7 w-20" />
-						<Skeleton className="h-32 w-full" />
-						<Skeleton className="h-14 w-full" />
-						<Skeleton className="h-14 w-full" />
-						<Skeleton className="h-14 w-full" />
-						<Skeleton className="h-14 w-full" />
-					</div>
-					<div className="flex min-w-0 flex-1 flex-col gap-6">
-						<div className="flex flex-wrap items-center justify-between gap-4">
+				<div className="flex min-w-0 flex-1 flex-col gap-6">
+					<div className="flex flex-wrap items-center justify-between gap-4">
+						<Skeleton className="h-9 w-24 lg:hidden" />
+						<div className="max-lg:order-last max-lg:basis-full">
 							<Skeleton className="h-5 w-24" />
-							<RecipeSortFormSkeleton />
 						</div>
-						<RecipeSearchResultList>
-							{Array.from({ length: skeletonResultCount }, (_, index) => (
-								<li key={index}>
-									<RecipeSearchResultSkeleton />
-								</li>
-							))}
-						</RecipeSearchResultList>
+						<RecipeSortFormSkeleton compact />
 					</div>
+					<RecipeSearchResultList>
+						{Array.from({ length: skeletonResultCount }, (_, index) => (
+							<li key={index}>
+								<RecipeSearchResultSkeleton />
+							</li>
+						))}
+					</RecipeSearchResultList>
 				</div>
 			</div>
 		</div>
 	);
 }
 
-export { RecipeSearch, RecipeSearchCloseMatches, RecipeSearchSkeleton };
+export {
+	RecipeSearch,
+	RecipeSearchCloseMatches,
+	RecipeSearchHint,
+	recipeSearchHintId,
+	RecipeSearchSkeleton,
+};

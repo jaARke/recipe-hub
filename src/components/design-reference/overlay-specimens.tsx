@@ -18,6 +18,7 @@ import {
 	CarouselNext,
 	CarouselPrevious,
 } from '@/components/ui/carousel';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
 	Dialog,
 	DialogContent,
@@ -95,6 +96,30 @@ function TabsSpecimen() {
 				<SampleTabs variant="default" orientation="vertical" />
 			</Specimen>
 		</div>
+	);
+}
+
+function CollapsibleSpecimen() {
+	return (
+		<Specimen label="The trigger in a row with other controls, and the panel beneath the row">
+			<Collapsible className="flex flex-wrap items-center justify-between gap-4">
+				<CollapsibleTrigger render={<Button variant="outline" />}>
+					Notes
+					<ChevronDownIcon
+						data-icon="inline-end"
+						aria-hidden="true"
+						className="transition-transform group-data-panel-open/button:rotate-180"
+					/>
+				</CollapsibleTrigger>
+				<Button variant="ghost">
+					<PrinterIcon data-icon="inline-start" aria-hidden="true" />
+					Print
+				</Button>
+				<CollapsibleContent className="basis-full text-muted-foreground">
+					June cut her biscuits with a juice glass.
+				</CollapsibleContent>
+			</Collapsible>
+		</Specimen>
 	);
 }
 
@@ -287,4 +312,11 @@ function TooltipSpecimen() {
 	);
 }
 
-export { CarouselSpecimen, DialogSpecimen, DropdownMenuSpecimen, TabsSpecimen, TooltipSpecimen };
+export {
+	CarouselSpecimen,
+	CollapsibleSpecimen,
+	DialogSpecimen,
+	DropdownMenuSpecimen,
+	TabsSpecimen,
+	TooltipSpecimen,
+};

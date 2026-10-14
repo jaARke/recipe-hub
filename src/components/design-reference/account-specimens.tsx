@@ -34,7 +34,7 @@ import { sampleContributor } from '@/components/design-reference/sample-recipe-d
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import { FormStatusMessage } from '@/components/forms/form-status-message';
 import { TextField } from '@/components/forms/text-field';
-import { HeaderAccount } from '@/components/layout/header-account';
+import { HeaderAccountGroup } from '@/components/layout/header-account';
 import { PageContainer } from '@/components/layout/page-container';
 import { SiteMenu } from '@/components/layout/site-menu';
 
@@ -75,7 +75,7 @@ const subsections = [
 		id: 'header-account',
 		title: 'Header account controls',
 		description:
-			'From lg, Sign in or the account menu, whose button shows the member’s initial and holds only the account. Below lg, one menu holds the navigation (with Add recipe, and Admin for admins), the account items, and the theme. Sign out in these menus is real: it signs this browser out.',
+			'From md, the theme menu beside Sign in or the account menu, 8 px apart in a box as wide as they are with Sign in, so a member’s spare width falls to the theme menu’s left. The account menu’s button shows the member’s initial, and the menu holds only the account. Below md, one menu holds the sections (Admin last, for admins), the account items, and the theme. Sign out in these menus is real: it signs this browser out.',
 		Content: HeaderAccountSpecimen,
 	},
 	{
@@ -145,17 +145,17 @@ function FormFeedbackSpecimen() {
 function HeaderAccountSpecimen() {
 	return (
 		<div className="grid gap-6 lg:grid-cols-3">
-			<Specimen label="From lg, signed out" figureClassName="max-lg:hidden">
-				<HeaderAccount member={Promise.resolve(null)} />
+			<Specimen label="From md, signed out" figureClassName="max-md:hidden">
+				<HeaderAccountGroup member={Promise.resolve(null)} />
 			</Specimen>
-			<Specimen label="From lg, member" figureClassName="max-lg:hidden">
-				<HeaderAccount member={Promise.resolve(sampleHeaderMember)} />
+			<Specimen label="From md, member" figureClassName="max-md:hidden">
+				<HeaderAccountGroup member={Promise.resolve(sampleHeaderMember)} />
 			</Specimen>
-			<Specimen label="From lg, admin" figureClassName="max-lg:hidden">
-				<HeaderAccount member={Promise.resolve(sampleHeaderAdmin)} />
+			<Specimen label="From md, admin" figureClassName="max-md:hidden">
+				<HeaderAccountGroup member={Promise.resolve(sampleHeaderAdmin)} />
 			</Specimen>
 			<Specimen
-				label="Below lg, the phone menu: signed out, member, admin, and before the session resolves"
+				label="Below md, the phone menu: signed out, member, admin, and before the session resolves"
 				figureClassName="lg:col-span-3"
 			>
 				<div className="flex gap-3">

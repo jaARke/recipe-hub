@@ -4,7 +4,13 @@ import { Suspense } from 'react';
 import { InvalidRecipeSearchError } from '@/application/search/errors';
 import type { RecipeSearchInput, RecipeSearchPage } from '@/application/search/recipe-search-dtos';
 import { PageContainer } from '@/components/layout/page-container';
-import { RecipeSearch, RecipeSearchSkeleton } from '@/components/search/recipe-search';
+import { headerSearchFormId } from '@/components/search/header-search-bar';
+import { HiddenSearchFields } from '@/components/search/hidden-search-fields';
+import {
+	RecipeSearch,
+	RecipeSearchHint,
+	RecipeSearchSkeleton,
+} from '@/components/search/recipe-search';
 import { parseRecipeSearchParams, toRecipeSearchInput } from '@/components/search/search-params';
 import { getRecipeSearchService } from '@/composition/services';
 import { settings } from '@/lib/settings';
@@ -40,13 +46,23 @@ async function SearchResults({ searchParams }: Pick<PageProps<'/search'>, 'searc
 		notFound();
 	}
 
-	return <RecipeSearch state={state} results={results} pageCount={pageCount} headingLevel={2} />;
+	return (
+		<>
+			{/* The header's field holds the query here, and these join its form, so a new query keeps
+			    the filters and the order. */}
+			<HiddenSearchFields state={state} editedFields={['text']} form={headerSearchFormId} />
+			<RecipeSearch state={state} results={results} pageCount={pageCount} headingLevel={2} />
+		</>
+	);
 }
 
 export default function SearchPage({ searchParams }: PageProps<'/search'>) {
 	return (
 		<PageContainer width="wide" className="flex flex-col gap-8 py-12 sm:py-16">
-			<h1 className="font-heading text-4xl font-semibold">Search</h1>
+			<div className="flex flex-col gap-2">
+				<h1 className="font-heading text-4xl font-semibold">Search</h1>
+				<RecipeSearchHint />
+			</div>
 			<Suspense fallback={<RecipeSearchSkeleton />}>
 				<SearchResults searchParams={searchParams} />
 			</Suspense>

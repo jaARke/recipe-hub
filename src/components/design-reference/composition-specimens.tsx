@@ -32,17 +32,14 @@ import { RecipeGrid, RecipeGridSkeleton } from '@/components/recipe/recipe-grid'
 import { RecipeEditLink } from '@/components/recipe/recipe-member-view';
 import { RecipePagination } from '@/components/recipe/recipe-pagination';
 import { RecipesEmptyState } from '@/components/recipe/recipes-empty-state';
-import { HeaderSearchForm, HeaderSearchLink } from '@/components/search/header-search-bar';
+import { HeaderSearchBar } from '@/components/search/header-search-bar';
 import {
 	RecipeSearch,
 	RecipeSearchCloseMatches,
 	RecipeSearchSkeleton,
 } from '@/components/search/recipe-search';
 import { RecipeSearchEmptyState } from '@/components/search/recipe-search-empty-state';
-import {
-	RecipeSearchFiltersDisclosure,
-	RecipeSearchFiltersSidebar,
-} from '@/components/search/recipe-search-filters';
+import { RecipeSearchFiltersSidebar } from '@/components/search/recipe-search-filters';
 import type { RecipeSearchState } from '@/components/search/search-params';
 import type { Problem } from '@/domain/problem';
 import { parseRecipeContent } from '@/domain/recipe/recipe';
@@ -210,14 +207,14 @@ const subsections = [
 		id: 'search-bar',
 		title: 'Search bar',
 		description:
-			'In the header, a field from lg that starts a fresh search, and below lg a link to the search page. The search page leaves both off, since it has its own field.',
+			'The header’s search, at this screen’s width: from lg a field that fills the row, and below lg an icon that turns the header’s row into the field, with Cancel to bring the row back. Away from the search page it starts a fresh search; on the search page the field holds the query, the page’s filters and order join its form, and below lg the header opens with the field.',
 		Content: SearchBarSpecimen,
 	},
 	{
 		id: 'search-results',
 		title: 'Search results',
 		description:
-			'A search for butter among baking recipes added by one member. Filters sit beside the results from lg and fold into a disclosure below it; they apply with their button, while the order applies on selection. Active filters are links that remove themselves, the count is announced as it changes, and matches are marked. Its headings start at h4 here.',
+			'A search for butter among baking recipes added by one member, as it shows under the page’s heading and syntax hint. From lg the filters sit beside the results, over the count and the order. Below lg a toolbar holds Filters, with the applied count, and the order in one row, then the count; Filters opens the filters in the page’s flow beneath the row, and Apply filters closes them and moves focus to the results. Filters apply with their button, while the order applies on selection. Active filters are links that remove themselves, the count is announced as it changes, and matches are marked. Its headings start at h4 here.',
 		Content: SearchResultsSpecimen,
 	},
 	{
@@ -290,14 +287,11 @@ function RecipeDetailSpecimen() {
 
 function SearchBarSpecimen() {
 	return (
-		<div className="grid gap-6 md:grid-cols-2">
-			<Specimen label="From lg" figureClassName="max-lg:hidden">
-				<HeaderSearchForm id="design-header-search" />
-			</Specimen>
-			<Specimen label="Below lg">
-				<HeaderSearchLink />
-			</Specimen>
-		</div>
+		<Specimen>
+			<div className="flex items-center">
+				<HeaderSearchBar formId="design-header-search" />
+			</div>
+		</Specimen>
 	);
 }
 
@@ -313,14 +307,6 @@ function SearchResultsSpecimen() {
 				/>
 			</Specimen>
 			<div className="grid gap-6 md:grid-cols-2">
-				<Specimen label="Below lg: the filters in a disclosure, over every sample recipe">
-					<RecipeSearchFiltersDisclosure
-						idPrefix="design-filters-disclosure"
-						state={sampleCatalogState}
-						facets={sampleCatalogFacets}
-						headingTag="h4"
-					/>
-				</Specimen>
 				<Specimen label="From lg: the filters in a sidebar, over every sample recipe">
 					<RecipeSearchFiltersSidebar
 						idPrefix="design-filters-sidebar"

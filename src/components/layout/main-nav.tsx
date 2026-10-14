@@ -4,19 +4,26 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import * as React from 'react';
 import type { HeaderMember } from '@/components/layout/header-member';
-import { adminNavItem, navItems, type NavItem } from '@/components/layout/nav-items';
+import {
+	adminNavItem,
+	navItemCurrent,
+	navItems,
+	type NavItem,
+} from '@/components/layout/nav-items';
 
 type MainNavProps = {
 	member: Promise<HeaderMember | null>;
 };
 
-// The current page's link is underlined as well as darker, so it is marked by more than color.
+// As tall as the header. The current section's link is darker and stands on a bar over the header's
+// bottom rule, the bar of the line tabs, so it is marked by more than color. Its focus ring is drawn
+// inside, since the link meets the top of the window.
 function MainNavLink({ item, pathname }: { item: NavItem; pathname?: string }) {
 	return (
 		<Link
 			href={item.href}
-			aria-current={pathname === item.href ? 'page' : undefined}
-			className="inline-flex h-9 items-center rounded-md px-2 text-sm font-medium text-muted-foreground decoration-2 underline-offset-6 transition-colors hover:text-foreground aria-[current=page]:text-foreground aria-[current=page]:underline"
+			aria-current={navItemCurrent(item, pathname)}
+			className="relative flex h-full items-center px-3 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:bg-foreground after:opacity-0 after:transition-opacity hover:text-foreground focus-visible:-outline-offset-1 focus-visible:ring-inset aria-[current]:text-foreground aria-[current]:after:opacity-100"
 		>
 			{item.label}
 		</Link>
@@ -25,20 +32,20 @@ function MainNavLink({ item, pathname }: { item: NavItem; pathname?: string }) {
 
 function AdminNavItem({ member, pathname }: MainNavProps & { pathname?: string }) {
 	return React.use(member)?.role === 'admin' ? (
-		<li>
+		<li className="flex">
 			<MainNavLink item={adminNavItem} pathname={pathname} />
 		</li>
 	) : null;
 }
 
-// Without a pathname, as while MainNav waits for one, no link is marked as the current page. Admin
-// streams in with the session, after the links that never wait for it.
+// Without a pathname, as while MainNav waits for one, no link is marked as current. Admin streams in
+// with the session, after the links that never wait for it.
 function MainNavLinks({ member, pathname }: MainNavProps & { pathname?: string }) {
 	return (
-		<nav aria-label="Main">
-			<ul className="flex items-center gap-1">
+		<nav aria-label="Main" className="flex">
+			<ul className="flex gap-1">
 				{navItems.map((item) => (
-					<li key={item.href}>
+					<li key={item.href} className="flex">
 						<MainNavLink item={item} pathname={pathname} />
 					</li>
 				))}
