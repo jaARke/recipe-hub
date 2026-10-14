@@ -10,6 +10,7 @@ import {
 	fieldNoteMessageId,
 	type FieldNoteContent,
 } from '@/components/forms/field-note';
+import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
 import { FieldProblem } from '@/components/forms/problem-summary';
 import { ItemActionsMenu, type ItemAction } from '@/components/recipe-form/item-actions-menu';
 import type {
@@ -105,7 +106,7 @@ function SectionedListField({
 	itemPreview,
 	noteFor,
 }: SectionedListFieldProps) {
-	const [announcement, setAnnouncement] = React.useState('');
+	const [announcement, announce] = useLiveAnnouncement();
 	const { rows } = list;
 	const names = listRowNames(rows, noun);
 	const ids = sectionedListFieldIds(idPrefix);
@@ -114,7 +115,7 @@ function SectionedListField({
 	function commit(edit: RecipeFormEdit, said: string) {
 		flushSync(() => {
 			dispatch(edit);
-			setAnnouncement(said);
+			announce(said);
 		});
 	}
 
@@ -371,9 +372,7 @@ function SectionedListField({
 					</Button>
 				</div>
 			</div>
-			<p role="status" aria-live="polite" className="sr-only">
-				{announcement}
-			</p>
+			<LiveAnnouncer announcement={announcement} />
 		</FieldSet>
 	);
 }

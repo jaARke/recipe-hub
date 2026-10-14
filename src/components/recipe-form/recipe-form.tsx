@@ -8,6 +8,7 @@ import { FieldNote, type FieldNoteContent } from '@/components/forms/field-note'
 import { focusCentered } from '@/components/forms/focus-centered';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
+import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
 import {
 	ProblemSummary,
 	SummarizedProblems,
@@ -241,7 +242,7 @@ function RecipeForm({
 	const checks = recipeFormChecks(values);
 	const checksByKey = new Map(checks.map((check) => [problemKey(check.target), check]));
 	// Announced as "Looks right" clears a note, and never as a draft loads.
-	const [reviewAnnouncement, setReviewAnnouncement] = React.useState('');
+	const [reviewAnnouncement, announceReview] = useLiveAnnouncement();
 	const [warningOpen, setWarningOpen] = React.useState(false);
 	// Set by "Save anyway", so the save it starts skips the warning.
 	const savingAnyway = React.useRef(false);
@@ -334,7 +335,7 @@ function RecipeForm({
 		const next = left[index] ?? left[0];
 		flushSync(() => {
 			dispatch({ type: 'resolveReviewNote', target: check.target });
-			setReviewAnnouncement(checkedAnnouncement(left.length));
+			announceReview(checkedAnnouncement(left.length));
 		});
 		if (next === undefined) {
 			document.getElementById(ids.save)?.focus();
@@ -426,9 +427,7 @@ function RecipeForm({
 					</RecipeImageViewerButton>
 				</RecipeImageViewer>
 			)}
-			<p role="status" aria-live="polite" className="sr-only">
-				{reviewAnnouncement}
-			</p>
+			<LiveAnnouncer announcement={reviewAnnouncement} />
 			<input
 				type="hidden"
 				name={recipeFormFieldNames.recipe}

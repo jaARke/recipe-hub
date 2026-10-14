@@ -10,6 +10,7 @@ import {
 	tagLabelsToAdd,
 	type RecipeFormEdit,
 	type RecipeFormListName,
+	type RecipeFormRowText,
 	type RecipeFormValues,
 } from '@/components/recipe-form/recipe-form-values';
 import { importDraftFromExtractedRecipe } from '@/domain/recipe/extracted-recipe';
@@ -839,6 +840,151 @@ describe('review notes', () => {
 						{ kind: 'item', text: '2 cups flour' },
 						{ kind: 'item', text: '1 teaspoon salt' },
 					],
+				})
+			)
+		).toEqual([]);
+	});
+
+	it('answers notes only where a paste changes text or adds lines', () => {
+		// Ids: the glaze's heading (0) and line (1), then the blank step (2).
+		const values = recipeFormValues(
+			{ ingredientSections: [{ heading: 'For the glaze', lines: [{ text: '1 cup sugar' }] }] },
+			[
+				{ path: 'ingredientSections', message: 'Check the ingredients.' },
+				{ path: 'ingredientSections.0', message: 'A line of the glaze was too faint to read.' },
+				{ path: 'ingredientSections.0.lines.0', message: 'Check this line.' },
+			]
+		);
+		const paste = (text: string, rows: RecipeFormRowText[]): RecipeFormEdit => ({
+			type: 'pasteRows',
+			list: 'ingredientSections',
+			rowId: 1,
+			text,
+			rows,
+		});
+
+		// At the end of the line, with nothing selected: the line is unchanged, but the glaze and the
+		// list gain lines.
+		expect(
+			openNotes(
+				edited(
+					values,
+					paste('1 cup sugar', [
+						{ kind: 'item', text: '2 eggs' },
+						{ kind: 'item', text: '1 cup flour' },
+					])
+				)
+			)
+		).toEqual(['Check this line.']);
+		// Headings alone add no lines.
+		expect(
+			openNotes(
+				edited(
+					values,
+					paste('1 cup sugar', [
+						{ kind: 'heading', text: 'For the crust' },
+						{ kind: 'heading', text: 'For the filling' },
+					])
+				)
+			)
+		).toEqual(openNotes(values));
+		// Lines under a pasted heading join its new section, but still the list.
+		expect(
+			openNotes(
+				edited(
+					values,
+					paste('1 cup sugar', [
+						{ kind: 'heading', text: 'To serve' },
+						{ kind: 'item', text: 'Whipped cream' },
+					])
+				)
+			)
+		).toEqual(['A line of the glaze was too faint to read.', 'Check this line.']);
+		// Replacing part of the line changes it, which answers what typing in it would.
+		expect(
+			openNotes(
+				edited(
+					values,
+					paste('1 cup ', [
+						{ kind: 'heading', text: 'For the crust' },
+						{ kind: 'heading', text: 'For the filling' },
+					])
+				)
+			)
+		).toEqual([]);
+	});
+
+	it('moves a section’s open note to where its lines go when its heading becomes a line', () => {
+		// Ids: the glaze's heading (0) and line (1), then the blank step (2).
+		const values = recipeFormValues(
+			{ ingredientSections: [{ heading: 'Glaze', lines: [{ text: '1 cup sugar' }] }] },
+			[
+				{ path: 'ingredientSections', message: 'Check the ingredients.' },
+				{ path: 'ingredientSections.0', message: 'A line of the glaze was too faint to read.' },
+			]
+		);
+		const toLine: RecipeFormEdit = {
+			type: 'setRowKind',
+			list: 'ingredientSections',
+			rowId: 0,
+			kind: 'item',
+		};
+
+		const changed = edited(values, toLine);
+		expect(recipeFormChecks(changed).map(({ target, note }) => ({ target, note }))).toEqual([
+			{
+				target: { kind: 'list', list: 'ingredientSections' },
+				note: 'Check the ingredients. A line of the glaze was too faint to read.',
+			},
+		]);
+		// Changing it back leaves the note where it went, never hidden and never twice.
+		expect(
+			openNotes(
+				edited(changed, {
+					type: 'setRowKind',
+					list: 'ingredientSections',
+					rowId: 0,
+					kind: 'heading',
+				})
+			)
+		).toEqual(['Check the ingredients. A line of the glaze was too faint to read.']);
+		// A resolved note is left as it is.
+		const checked = edited(
+			values,
+			{ type: 'resolveReviewNote', target: { kind: 'section', id: 0 } },
+			toLine
+		);
+		expect(openNotes(checked)).toEqual(['Check the ingredients.']);
+	});
+
+	it('moves a removed heading’s open section note to the section its lines join', () => {
+		// Ids: the crust's heading (0) and line (1), the glaze's heading (2) and line (3), then the
+		// blank step (4).
+		const values = recipeFormValues(
+			{
+				ingredientSections: [
+					{ heading: 'For the crust', lines: [{ text: '1 cup flour' }] },
+					{ heading: 'For the glaze', lines: [{ text: '1 cup sugar' }] },
+				],
+			},
+			[{ path: 'ingredientSections.1', message: 'A line of the glaze was too faint to read.' }]
+		);
+
+		const removed = edited(values, { type: 'removeRow', list: 'ingredientSections', rowId: 2 });
+		expect(recipeFormChecks(removed).map(({ target, note }) => ({ target, note }))).toEqual([
+			{
+				target: { kind: 'section', list: 'ingredientSections', index: 0, id: 0 },
+				note: 'A line of the glaze was too faint to read.',
+			},
+		]);
+		// The glaze's line, now the crust's, answers it.
+		expect(
+			openNotes(
+				edited(removed, {
+					type: 'setRowText',
+					list: 'ingredientSections',
+					rowId: 3,
+					text: '1 cup powdered sugar',
 				})
 			)
 		).toEqual([]);

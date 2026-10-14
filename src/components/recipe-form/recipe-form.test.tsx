@@ -86,7 +86,7 @@ describe('RecipeForm’s review notes', () => {
 
 		await user.click(lookRight('Ingredient 2'));
 		expect(document.activeElement).toBe(noteWith('Check this step.'));
-		expect(screen.getByText('Checked. 2 left.').getAttribute('role')).toBe('status');
+		expect(screen.getByText('Checked. 2 left.').closest('[role="status"]')).not.toBeNull();
 		expect(screen.queryByText('Check this line.')).toBeNull();
 		expect(screen.getByText('2 things need a second look')).toBeDefined();
 
@@ -315,7 +315,7 @@ describe('RecipeForm’s lists', () => {
 	}
 
 	function expectAnnounced(text: string) {
-		expect(screen.getByText(text).getAttribute('role')).toBe('status');
+		expect(screen.getByText(text).closest('[role="status"]')).not.toBeNull();
 	}
 
 	async function choose(user: ReturnType<typeof userEvent.setup>, row: string, action: string) {
@@ -370,6 +370,23 @@ describe('RecipeForm’s lists', () => {
 		// A single line pastes as usual, at the caret.
 		await user.paste(', sifted');
 		expect(textbox('Ingredient 1, For the glaze').value).toBe('1 cup sugar, sifted');
+	});
+
+	it('announces a message again when it repeats', async () => {
+		const user = userEvent.setup();
+		renderForm({ ...lemonBars, ingredientSections: undefined });
+
+		await user.click(textbox('Ingredient 1'));
+		await user.paste('2 cups flour\n1 teaspoon salt');
+		const first = screen.getByText('Pasted 2 ingredients.');
+		const region = first.closest('[role="status"]');
+		await user.paste('2 eggs\n1 cup milk');
+		const second = screen.getByText('Pasted 2 ingredients.');
+
+		// The region stays, and the message arrives in it as a new node, which screen readers read.
+		expect(second).not.toBe(first);
+		expect(first.isConnected).toBe(false);
+		expect(second.closest('[role="status"]')).toBe(region);
 	});
 
 	it('changes a line to a heading over the lines after it', async () => {

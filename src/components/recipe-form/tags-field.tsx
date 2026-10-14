@@ -8,6 +8,7 @@ import {
 	fieldNoteMessageId,
 	type FieldNoteContent,
 } from '@/components/forms/field-note';
+import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
 import { FieldProblem } from '@/components/forms/problem-summary';
 import {
 	tagLabelsFrom,
@@ -105,7 +106,7 @@ function TagsField({
 }: TagsFieldProps) {
 	const anchor = useComboboxAnchor();
 	const { contains } = useComboboxFilter({ multiple: true });
-	const [announcement, setAnnouncement] = React.useState('');
+	const [announcement, announce] = useLiveAnnouncement();
 	// What the list highlights, so Enter adds the typed text when it highlights nothing.
 	const highlighted = React.useRef<TagOption | undefined>(undefined);
 	const invalid = error !== undefined;
@@ -147,7 +148,7 @@ function TagsField({
 	function addTags(labels: readonly string[]) {
 		const added = tagLabelsToAdd(tags, labels);
 		dispatch({ type: 'addTags', labels });
-		setAnnouncement(added.length > 0 ? `Added ${added.join(', ')}.` : 'Already added.');
+		announce(added.length > 0 ? `Added ${added.join(', ')}.` : 'Already added.');
 	}
 
 	function addTypedTags(text: string) {
@@ -197,7 +198,7 @@ function TagsField({
 						dispatch({ type: 'removeTag', tagId: tag.id });
 					}
 					if (removed.length > 0) {
-						setAnnouncement(`Removed ${removed.map(({ label }) => label).join(', ')}.`);
+						announce(`Removed ${removed.map(({ label }) => label).join(', ')}.`);
 					}
 				}}
 			>
@@ -264,9 +265,7 @@ function TagsField({
 			{invalid && <FieldProblem id={ids.error}>{error}</FieldProblem>}
 			{note !== undefined && <FieldNote id={ids.note} name={tagsFieldLabel} {...note} />}
 			{/* Base UI hides what lies outside an open list from screen readers, except live regions. */}
-			<p role="status" aria-live="polite" className="sr-only">
-				{announcement}
-			</p>
+			<LiveAnnouncer announcement={announcement} />
 		</Field>
 	);
 }

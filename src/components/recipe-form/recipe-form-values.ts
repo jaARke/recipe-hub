@@ -886,43 +886,99 @@ export function editPhotos<Values extends RecipeFormPhotoValues>(
 	}
 }
 
-// The places whose notes typing in a row answers: the row, and for lines, the section and list around
-// them, whose notes are about their lines. A paste brings lines, wherever it lands.
-function typedNoteTargets(
-	values: RecipeFormValues,
-	list: RecipeFormListName,
-	rowId: number,
-	bringsLines: boolean
-): ProblemTarget[] {
-	const { rows } = values[list];
-	const index = rows.findIndex((row) => row.id === rowId);
-	if (index === -1) {
-		return [];
-	}
-	if (rows[index]?.kind === 'heading' && !bringsLines) {
-		return [{ kind: 'row', id: rowId }];
-	}
+// The section the row at this index is in: the heading at or above it, or for the lines before any
+// heading, the list.
+function sectionTargetAt(
+	rows: readonly RecipeFormRow[],
+	index: number,
+	list: RecipeFormListName
+): ProblemTarget {
 	const heading = rows.slice(0, index + 1).findLast((row) => row.kind === 'heading');
-	return [
-		{ kind: 'row', id: rowId },
-		...(heading === undefined ? [] : [{ kind: 'section', id: heading.id } as const]),
-		{ kind: 'list', list },
-	];
+	return heading === undefined ? { kind: 'list', list } : { kind: 'section', id: heading.id };
 }
 
-// The places whose notes an edit answers: the text it changes, and the section and list around a
-// line it changes. Saying a place looks right answers its note.
-function answeredNoteTargets(
+// The places a list's text changes answer: a row whose text changed answers its own note, and a line
+// whose text changed, or one added with text, answers its section's and its list's, whose notes are
+// about their lines.
+function rowChangeTargets(
+	before: readonly RecipeFormRow[],
+	after: readonly RecipeFormRow[],
+	list: RecipeFormListName
+): ProblemTarget[] {
+	const textsBefore = new Map(before.map((row) => [row.id, row.text]));
+	return after.flatMap((row, index): ProblemTarget[] => {
+		const textBefore = textsBefore.get(row.id);
+		const added = textBefore === undefined;
+		if (added ? isBlank(row.text) : textBefore === row.text) {
+			return [];
+		}
+		const own: ProblemTarget[] = added ? [] : [{ kind: 'row', id: row.id }];
+		return row.kind === 'heading'
+			? own
+			: [...own, sectionTargetAt(after, index, list), { kind: 'list', list }];
+	});
+}
+
+// The section a heading's lines join once the heading is gone or is a line itself: the section of
+// its first line still in the list, or else of the row before it.
+function joinedSectionTarget(
+	before: readonly RecipeFormRow[],
+	after: readonly RecipeFormRow[],
+	headingIndex: number,
+	list: RecipeFormListName
+): ProblemTarget {
+	const indexesAfter = new Map(after.map((row, index) => [row.id, index]));
+	const lines = before.slice(headingIndex + 1);
+	const nextHeading = lines.findIndex((row) => row.kind === 'heading');
+	const neighbors = [
+		...(nextHeading === -1 ? lines : lines.slice(0, nextHeading)),
+		...before.slice(0, headingIndex).reverse(),
+	];
+	for (const neighbor of neighbors) {
+		const index = indexesAfter.get(neighbor.id);
+		if (index !== undefined) {
+			return sectionTargetAt(after, index, list);
+		}
+	}
+	return { kind: 'list', list };
+}
+
+// Moves the open note of each section an edit dissolved, by removing its heading or changing it to a
+// line, to the section its lines joined, so a note is never hidden while it is open. An open note
+// already there takes the moved one's message after its own.
+function withDissolvedSectionNotesMoved(
 	values: RecipeFormValues,
-	edit: RecipeFormEdit
-): (ProblemTarget | { kind: 'form' })[] {
+	edited: RecipeFormValues,
+	list: RecipeFormListName
+): RecipeFormValues {
+	const before = values[list].rows;
+	const after = edited[list].rows;
+	const headingsAfter = new Set(after.flatMap((row) => (row.kind === 'heading' ? [row.id] : [])));
+	let reviewNotes: Map<ProblemKey, RecipeFormReviewNote> | undefined;
+	before.forEach((row, index) => {
+		const key = problemKey({ kind: 'section', id: row.id });
+		const note = edited.reviewNotes.get(key);
+		if (row.kind !== 'heading' || headingsAfter.has(row.id) || note?.status !== 'open') {
+			return;
+		}
+		reviewNotes ??= new Map(edited.reviewNotes);
+		const joinedKey = problemKey(joinedSectionTarget(before, after, index, list));
+		const joined = reviewNotes.get(joinedKey);
+		reviewNotes.delete(key);
+		reviewNotes.set(
+			joinedKey,
+			joined?.status === 'open' ? { ...joined, message: `${joined.message} ${note.message}` } : note
+		);
+	});
+	return reviewNotes === undefined ? edited : { ...edited, reviewNotes };
+}
+
+// The places whose notes an edit outside the lists answers: the text it changes. Saying a place
+// looks right answers its note.
+function answeredNoteTargets(edit: RecipeFormEdit): (ProblemTarget | { kind: 'form' })[] {
 	switch (edit.type) {
 		case 'setText':
 			return [{ kind: 'field', field: edit.field === 'tagDraft' ? 'tags' : edit.field }];
-		case 'setRowText':
-			return typedNoteTargets(values, edit.list, edit.rowId, false);
-		case 'pasteRows':
-			return typedNoteTargets(values, edit.list, edit.rowId, true);
 		case 'addTags':
 		case 'removeTag':
 			return [{ kind: 'field', field: 'tags' }];
@@ -957,7 +1013,16 @@ function withNotesResolved(
 }
 
 export function editRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): RecipeFormValues {
-	return withNotesResolved(editedRecipeForm(values, edit), answeredNoteTargets(values, edit));
+	const edited = editedRecipeForm(values, edit);
+	if (!('list' in edit)) {
+		return withNotesResolved(edited, answeredNoteTargets(edit));
+	}
+	// An edit to a list answers what its text changes answer, and keeps the notes it would hide.
+	const { list } = edit;
+	return withNotesResolved(
+		withDissolvedSectionNotesMoved(values, edited, list),
+		rowChangeTargets(values[list].rows, edited[list].rows, list)
+	);
 }
 
 function editedRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): RecipeFormValues {

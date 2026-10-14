@@ -12,6 +12,7 @@ import * as React from 'react';
 import { flushSync } from 'react-dom';
 import { describedBy } from '@/components/forms/described-by';
 import { FieldNote, type FieldNoteContent } from '@/components/forms/field-note';
+import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
 import { FieldProblem } from '@/components/forms/problem-summary';
 import { ItemActionsMenu, type ItemAction } from '@/components/recipe-form/item-actions-menu';
 import { normalizePhoto, UnreadablePhotoError } from '@/components/recipe-form/photo-processing';
@@ -262,7 +263,7 @@ function PhotoField({
 	// Children fire their own enter and leave events; the depth tells a real leave from a move onto a child.
 	const dragDepth = React.useRef(0);
 	const [isDragging, setIsDragging] = React.useState(false);
-	const [announcement, setAnnouncement] = React.useState('');
+	const [announcement, announce] = useLiveAnnouncement();
 	// One for each photo still processing or uploading, so removing it or leaving the page stops it.
 	const uploadsRef = React.useRef(new Map<number, AbortController>());
 	const ids = photoFieldIds(idPrefix);
@@ -304,7 +305,7 @@ function PhotoField({
 				return;
 			}
 			dispatch({ type: 'finishPhotoUpload', photoId });
-			setAnnouncement(`Uploaded ${file.name}.`);
+			announce(`Uploaded ${file.name}.`);
 		} catch (error) {
 			// A cancelled upload can fail with any error, so the signal is what tells.
 			if (controller.signal.aborted) {
@@ -312,7 +313,7 @@ function PhotoField({
 			}
 			const failure = error instanceof UnreadablePhotoError ? 'unreadable' : 'upload';
 			dispatch({ type: 'failPhoto', photoId, failure });
-			setAnnouncement(`${file.name}: ${failureMessages[failure]}`);
+			announce(`${file.name}: ${failureMessages[failure]}`);
 		} finally {
 			uploads.delete(photoId);
 		}
@@ -333,7 +334,7 @@ function PhotoField({
 			added.length > 0 && `Added ${countPhotos(added.length)}.`,
 			leftOut > 0 && `${countPhotos(leftOut)} didn’t fit. ${limitMessage}`,
 		];
-		setAnnouncement(sentences.filter((sentence) => typeof sentence === 'string').join(' '));
+		announce(sentences.filter((sentence) => typeof sentence === 'string').join(' '));
 	}
 
 	function removePhoto(photo: RecipeFormPhoto, index: number) {
@@ -341,7 +342,7 @@ function PhotoField({
 		const neighbor = photos[index + 1] ?? photos[index - 1];
 		flushSync(() => {
 			dispatch({ type: 'removePhoto', photoId: photo.id });
-			setAnnouncement(`Removed ${photoName(photos, index, role)}.`);
+			announce(`Removed ${photoName(photos, index, role)}.`);
 		});
 		document
 			.getElementById(neighbor === undefined ? ids.choose : ids.actions(neighbor.id))
@@ -352,9 +353,7 @@ function PhotoField({
 	function makeCover(photo: RecipeFormPhoto, index: number) {
 		flushSync(() => {
 			dispatch({ type: 'makeCoverPhoto', photoId: photo.id });
-			setAnnouncement(
-				`${photoName(photos, index, role)} is now the cover photo, first in the list.`
-			);
+			announce(`${photoName(photos, index, role)} is now the cover photo, first in the list.`);
 		});
 		document.getElementById(ids.actions(photo.id))?.scrollIntoView({ block: 'nearest' });
 	}
@@ -363,7 +362,7 @@ function PhotoField({
 	function movePhoto(photo: RecipeFormPhoto, index: number, toIndex: number) {
 		flushSync(() => {
 			dispatch({ type: 'movePhoto', photoId: photo.id, toIndex });
-			setAnnouncement(
+			announce(
 				describePositionMove(
 					itemName(photoName(photos, index, role), 'photo'),
 					index,
@@ -563,9 +562,7 @@ function PhotoField({
 					</ul>
 				</RecipeImageViewer>
 			)}
-			<p role="status" aria-live="polite" className="sr-only">
-				{announcement}
-			</p>
+			<LiveAnnouncer announcement={announcement} />
 		</FieldSet>
 	);
 }
