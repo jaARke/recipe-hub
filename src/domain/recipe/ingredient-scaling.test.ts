@@ -86,6 +86,8 @@ describe('scaleIngredientLine', () => {
 		['2.5 g yeast', 1, '2.5'],
 		['1½ kg potatoes', 1, '1.5'],
 		['166.67 g sugar', 1, '166.67'],
+		['1.5 [?] kg flour', 1, '1.5'],
+		['0.25 [?] kg sugar', 2, '0.5'],
 	])('writes the amount in "%s" by %s as %s', (text, factor, expected) => {
 		const { line } = scaleIngredientLine(parseIngredientLine(text), factor);
 		expect(line.amount === undefined ? undefined : formatAmount(line.amount, line.unit)).toBe(
@@ -127,6 +129,16 @@ describe('scaleIngredientLine', () => {
 		],
 		['1 scant cup flour', 2, { amount: { min: 2 }, unit: 'scant cups', item: 'flour' }],
 	])('keeps the describing word before the unit in "%s" by %s', (text, factor, parts) => {
+		expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+			line: { text, ...parts },
+		});
+	});
+
+	it.each<[string, number, ScaledParts]>([
+		['1/3 [?] cup flour', 2, { amount: { min: 2 / 3 }, unit: '[?] cup', item: 'flour' }],
+		['1 [?] cup (240 ml) milk', 2, { amount: { min: 2 }, unit: '[?] cups (480 ml)', item: 'milk' }],
+		['3 [?] tsp vanilla', 3, { amount: { min: 3 }, unit: '[?] tablespoons', item: 'vanilla' }],
+	])('keeps the transcription marker before the unit in "%s" by %s', (text, factor, parts) => {
 		expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
 			line: { text, ...parts },
 		});

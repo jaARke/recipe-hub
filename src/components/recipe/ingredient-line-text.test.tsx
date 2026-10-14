@@ -35,6 +35,16 @@ describe('IngredientLineText', () => {
 		expect(container.textContent).toBe('2 cups of water');
 	});
 
+	it.each([
+		['1/3 [?] cup flour', 2, '⅔ [?] cup flour'],
+		['1 [?] cup (240 ml) milk', 2, '2 [?] cups (480 ml) milk'],
+		['3 [?] tsp vanilla', 3, '3 [?] tablespoons vanilla'],
+	])('shows "%s" by %s as "%s", with the marker before the unit', (text, factor, shown) => {
+		const { line } = scaleIngredientLine(parseIngredientLine(text), factor);
+		const { container } = render(<IngredientLineText line={line} />);
+		expect(container.textContent).toBe(shown);
+	});
+
 	it('renders the unit as it renders the words after the amount, so a marker in it shows', () => {
 		const { container } = render(
 			<IngredientLineText

@@ -2,9 +2,8 @@ import { parseIngredient, type ParseIngredientOptions } from 'parse-ingredient';
 import type { Amount } from '@/domain/recipe/amount';
 import { approximationWord, readAmountWords, vulgarFractions } from '@/domain/recipe/amount-words';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
-import { readingOptions, readUnit, sizes } from '@/domain/recipe/ingredient-units';
+import { readingOptions, readUnit, sizes, splitUnitMarker } from '@/domain/recipe/ingredient-units';
 import { withoutListMarkers } from '@/domain/recipe/list-markers';
-import { transcriptionMarkers } from '@/domain/recipe/transcription-markers';
 import { normalizeText, withoutTrailingPunctuation } from '@/domain/text-normalization';
 
 type ItemParts = Pick<IngredientLine, 'item' | 'preparation'>;
@@ -135,9 +134,9 @@ function readMeasure(line: string): Measure | undefined {
 
 	if (unit === '') {
 		// The marker after a doubtful amount stays with the unit it would hide: "1 1/2 [?] cups flour".
-		const marker = `${transcriptionMarkers.unsure} `;
-		if (description.startsWith(marker)) {
-			const unmarked = readMeasure(`${amountText} ${description.slice(marker.length)}`);
+		const { marker, unit: afterMarker } = splitUnitMarker(description);
+		if (marker !== '') {
+			const unmarked = readMeasure(`${amountText} ${afterMarker}`);
 			if (unmarked?.unit !== undefined) {
 				return { ...unmarked, unit: `${marker}${unmarked.unit}` };
 			}

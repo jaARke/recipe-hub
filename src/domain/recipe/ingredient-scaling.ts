@@ -21,6 +21,7 @@ import {
 	isMetricUnit,
 	readingOptions,
 	readUnit,
+	splitUnitMarker,
 	unitDefinitions,
 	type MetricUnit,
 } from '@/domain/recipe/ingredient-units';
@@ -46,8 +47,10 @@ type Reading = Measure & {
 	error: number;
 };
 
-// A unit as stored, with any note in parentheses after it: "can (14 ounces)".
+// A unit as stored, with any marker before it and any note in parentheses after it:
+// "[?] can (14 ounces)".
 type WrittenUnit = {
+	marker: string;
 	name: string;
 	gap: string;
 	note?: string;
@@ -397,11 +400,12 @@ const measureTypes: ReadonlySet<UnitType> = new Set(['volume', 'mass']);
 
 const unitWithNote = /^(.*?)(\s*)(\([^()]*\))$/u;
 
-function splitUnit(unit: string): WrittenUnit {
+function splitUnit(written: string): WrittenUnit {
+	const { marker, unit } = splitUnitMarker(written);
 	const [, name, gap, note] = unitWithNote.exec(unit) ?? [];
 	return name === undefined || gap === undefined || note === undefined
-		? { name: unit, gap: '' }
-		: { name, gap, note };
+		? { marker, name: unit, gap: '' }
+		: { marker, name, gap, note };
 }
 
 // The item in the number the scaled amount takes, when the scale crosses 1: "1 onion" doubles to
@@ -477,7 +481,7 @@ export function scaleIngredientLine(line: IngredientLine, factor: number): Scale
 
 	let scaledUnit: string | undefined;
 	if (written !== undefined) {
-		const name = unitText(written.name, unit, measure);
+		const name = `${written.marker}${unitText(written.name, unit, measure)}`;
 		if (written.note === undefined) {
 			scaledUnit = name;
 		} else if (isMeasure) {

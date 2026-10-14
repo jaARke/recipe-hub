@@ -401,7 +401,7 @@ describe('parseIngredientLine', () => {
 		});
 	});
 
-	it.each(['1/4 tsp', '2 cups', '1 fl oz', '3 tbsp.'])(
+	it.each(['1/4 tsp', '2 cups', '1 fl oz', '3 tbsp.', '1/4 [?] tsp'])(
 		'keeps "%s", a unit with no item, as written',
 		(text) => {
 			expect(parseIngredientLine(text)).toStrictEqual({ text, item: text });

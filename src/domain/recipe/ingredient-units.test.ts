@@ -28,11 +28,14 @@ describe('readUnit', () => {
 		['loaves', 'loaf'],
 		['can (14 ounces)', 'can'],
 		['oz (340 g)', 'ounce'],
+		['[?] cups', 'cup'],
+		['[?] tsp', 'teaspoon'],
+		['[?] kg', 'kilogram'],
 	])('reads "%s" as the unit %s', (unit, id) => {
 		expect(readUnit(unit)).toBe(id);
 	});
 
-	it.each(['eggs', 'large', 'small', ''])('reads no unit in "%s"', (unit) => {
+	it.each(['eggs', 'large', 'small', '', '[?] eggs'])('reads no unit in "%s"', (unit) => {
 		expect(readUnit(unit)).toBeUndefined();
 	});
 });
