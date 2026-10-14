@@ -7,6 +7,7 @@ import type {
 	RecipePage,
 	RecipeRepository,
 	RecipeUpdate,
+	StoredRecipe,
 	UpdatedRecipe,
 } from '@/application/ports/recipe-repository';
 import { RecipeEditConflictError } from '@/application/recipes/errors';
@@ -19,6 +20,7 @@ import {
 	toContentColumns,
 	toInsertColumns,
 	toRecipe,
+	toStoredRecipe,
 } from '@/infrastructure/db/recipe-mapper';
 import { recipeOrders } from '@/infrastructure/db/recipe-order';
 import { oldRecipeSlugs, recipes } from '@/infrastructure/db/schema';
@@ -142,6 +144,11 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 	async findById(id: RecipeId): Promise<Recipe | null> {
 		const [row] = await this.db.select(recipeColumns).from(recipes).where(eq(recipes.id, id));
 		return row === undefined ? null : toRecipe(row);
+	}
+
+	async findStoredById(id: RecipeId): Promise<StoredRecipe | null> {
+		const [row] = await this.db.select(recipeColumns).from(recipes).where(eq(recipes.id, id));
+		return row === undefined ? null : toStoredRecipe(row);
 	}
 
 	async findBySlug(slug: string): Promise<Recipe | null> {

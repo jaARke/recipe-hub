@@ -568,7 +568,7 @@ describe('passkeys', () => {
 	});
 
 	it.each([
-		['an empty name', '   ', 'Enter some text.'],
+		['an empty name', '   ', 'Enter a name for the passkey.'],
 		['a name over 60 characters', 'a'.repeat(61), 'Use 60 characters or fewer.'],
 	])('refuses %s, saying why', async (_, name, message) => {
 		const { passkeyId, sessionCookie } = await adaWithPasskey('Passkey');

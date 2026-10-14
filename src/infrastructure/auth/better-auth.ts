@@ -9,9 +9,9 @@ import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import type { SignUpGrant } from '@/application/access/access-dtos';
 import { inviteIdSchema, type InviteId } from '@/domain/member/invite';
 import {
-	displayNameSchema,
 	memberIdSchema,
 	memberRoleSchema,
+	passkeyNameSchema,
 	type MemberId,
 } from '@/domain/member/member';
 import {
@@ -191,7 +191,7 @@ export function createAuth(options: AuthOptions) {
 					return;
 				}
 
-				const name = displayNameSchema.safeParse(context.body?.name);
+				const name = passkeyNameSchema.safeParse(context.body?.name);
 				if (!name.success) {
 					throw new APIError('BAD_REQUEST', {
 						code: 'VALIDATION_ERROR',

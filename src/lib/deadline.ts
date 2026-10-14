@@ -6,7 +6,8 @@ export type WaitLimits = {
 
 // A signal that aborts once the time has passed, with the reason AbortSignal.timeout gives. Node runs
 // AbortSignal.timeout on internal timers that fake timers cannot reach, so this one runs on setTimeout,
-// unref'd as Node's is, so a deadline never keeps a process alive.
+// unref'd as Node's is, so a deadline never keeps a process alive. A browser's timer is a number with
+// nothing to unref.
 export function deadlineAfter(milliseconds: number): AbortSignal {
 	const reason = () => new DOMException('The operation timed out.', 'TimeoutError');
 	// No time left means the deadline has passed already, rather than at the timer's next turn.
@@ -15,7 +16,10 @@ export function deadlineAfter(milliseconds: number): AbortSignal {
 	}
 
 	const controller = new AbortController();
-	setTimeout(() => controller.abort(reason()), milliseconds).unref();
+	const timer = setTimeout(() => controller.abort(reason()), milliseconds);
+	if (typeof timer === 'object') {
+		timer.unref();
+	}
 	return controller.signal;
 }
 

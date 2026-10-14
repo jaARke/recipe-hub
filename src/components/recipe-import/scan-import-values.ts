@@ -6,6 +6,7 @@ import {
 	type RecipeFormPhotoValues,
 } from '@/components/recipe-form/recipe-form-values';
 import { recipeImportFieldNames } from '@/components/recipe-import/recipe-import-forms';
+import { noScansMessage } from '@/domain/recipe/recipe-import';
 
 // The photo import's value and every edit to it. Its pages are held as the recipe form's photo
 // field holds them, so the import uses that field. Pure, so the form's behavior is tested without a
@@ -43,6 +44,25 @@ export function scanImportSubmission(values: ScanImportValues): ScanImportSubmis
 		pathnames.push(pathname);
 	}
 	return { pathnames, targets };
+}
+
+// What the browser knows an import would be refused for, as a problem with the pages together: no
+// stored page to read. A photo whose upload failed is one to add again, not no photo.
+export function scanImportProblems(values: ScanImportValues): FieldErrors {
+	const photos = values.photos.scan;
+	if (photos.some((photo) => storedPathname(photo) !== undefined)) {
+		return {};
+	}
+	const failed = photos.filter((photo) => photo.upload.status === 'failed').length;
+	if (failed === 0) {
+		return { [recipeImportFieldNames.scans]: noScansMessage };
+	}
+	return {
+		[recipeImportFieldNames.scans]:
+			failed === 1
+				? 'The photo didn’t upload. Remove it and add it again.'
+				: 'The photos didn’t upload. Remove them and add them again.',
+	};
 }
 
 // The photo for the longest part of the path that names a page, so a problem with any part of a

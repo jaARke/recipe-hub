@@ -29,6 +29,14 @@ export type UpdatedRecipe = {
 	previousSlug: string;
 };
 
+// A recipe as read, and its content as saved. Reading tidies text, so the two differ where the recipe
+// was saved before a tidying rule it now meets.
+export type StoredRecipe = {
+	recipe: Recipe;
+	// Shaped as the recipe's content, since the recipe was read from it.
+	storedContent: RecipeContent;
+};
+
 // Newest first, or A to Z by title with accents and case ignored.
 export const recipeSorts = ['newest', 'title'] as const;
 export type RecipeSort = (typeof recipeSorts)[number];
@@ -43,6 +51,8 @@ export type RecipePage = {
 // it was renamed from, so shared links keep finding it.
 export interface RecipeRepository {
 	findById(id: RecipeId): Promise<Recipe | null>;
+	// The recipe and its content as saved, in one read, for a run that saves what reading now tidies.
+	findStoredById(id: RecipeId): Promise<StoredRecipe | null>;
 	// Also finds a recipe by an old slug; the recipe returned carries its current slug.
 	findBySlug(slug: string): Promise<Recipe | null>;
 	list(page: RecipePage): Promise<Recipe[]>;

@@ -2,7 +2,7 @@ import type { IConfiguration } from 'dependency-cruiser';
 
 const TESTS = '\\.test\\.tsx?$';
 const TEST_SUPPORT = `${TESTS}|(^|/)testing/`;
-const PURE_LIB = '^src/lib/(?!env\\.ts$|logger\\.ts$)';
+const PURE_LIB = '^src/lib/(?!env\\.ts$|logger\\.ts$|browser-storage\\.ts$)';
 const LIB_WITHOUT_ENV = '^src/lib/(?!env\\.ts$)';
 const NODE_MODULES = '(^|/)node_modules/';
 

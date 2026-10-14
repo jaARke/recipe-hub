@@ -13,7 +13,7 @@ import { inputProblems, standIn } from '@/components/design-reference/stand-in-a
 import { formText, optionalFormText } from '@/components/forms/form-data';
 import type { FormAction, FormState } from '@/components/forms/form-state';
 import { parseAccessRequestFields } from '@/domain/member/access-request';
-import { displayNameSchema, parseDisplayName } from '@/domain/member/member';
+import { parseDisplayName, passkeyNameSchema } from '@/domain/member/member';
 import { settings } from '@/lib/settings';
 
 // Checks the request as the service does and sends any valid one.
@@ -60,7 +60,7 @@ function SamplePasskeyList({
 
 	const renamePasskey: FormAction = async (_state, formData) => {
 		const id = formText(formData, passkeyFieldNames.id);
-		const name = displayNameSchema.safeParse(formText(formData, passkeyFieldNames.name));
+		const name = passkeyNameSchema.safeParse(formText(formData, passkeyFieldNames.name));
 		if (!name.success) {
 			return standIn<FormState>({
 				status: 'error',

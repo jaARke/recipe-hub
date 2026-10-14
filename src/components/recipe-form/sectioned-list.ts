@@ -1,4 +1,5 @@
 import type { RecipeFormRowText } from '@/components/recipe-form/recipe-form-values';
+import { withoutListMarkers } from '@/domain/recipe/list-markers';
 
 // Labels, pasted lists, and announcements for the form's lists of ingredients and steps, each one
 // flat list of rows: lines, and headings over the lines after them. Photo fields announce their
@@ -18,11 +19,6 @@ export type ListRowNames = {
 
 // Longer text is cut, so an announcement stays short.
 const maxItemNameLength = 40;
-
-// Bullets, checkboxes, and step numbers that start a copied line, such as "• ", "▢ ", "2. ", or
-// "Step 3:", which a pasted list leaves out. An amount such as "1.5 cups" is no step number.
-const listMarkers =
-	/^(?:[•·◦‣▪▫■□▢☐●○\u2013\u2014]\s*|[-*+](?:\s+|$)|\d+[.)](?:\s+|$)|step\s+\d+\b[\s.:)\u2013\u2014-]*)+/iu;
 
 function capitalized(text: string): string {
 	return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
@@ -190,7 +186,7 @@ export function describePaste(rows: readonly RecipeFormRowText[], noun: string):
 // and a heading for each line ending in a colon, as in "For the glaze:".
 export function rowsFromPastedText(text: string): RecipeFormRowText[] {
 	return text.split(/\r\n|\r|\n/u).flatMap((line): RecipeFormRowText[] => {
-		const words = line.trim().replace(listMarkers, '').trim();
+		const words = withoutListMarkers(line).trim();
 		if (!words.endsWith(':')) {
 			return words === '' ? [] : [{ kind: 'item', text: words }];
 		}

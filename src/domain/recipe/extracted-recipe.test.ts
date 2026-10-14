@@ -142,7 +142,7 @@ describe('importDraftFromExtractedRecipe', () => {
 			const draft = draftWith({
 				title: '  Crème brûlée\u0000 ',
 				description: ' \u0002 \t\n',
-				notes: 'Stir.\r\n\tThen rest.',
+				notes: 'Stir.  \r\n\tThen rest.',
 				source: '\u007FTante Hélène ',
 				ingredientSections: [{ heading: '  For the glaze\u0001', lines: ['1 cup sugar'] }],
 				instructionSections: [{ heading: ' \u0003 ', steps: ['Whisk.'] }],
@@ -150,7 +150,7 @@ describe('importDraftFromExtractedRecipe', () => {
 
 			expect(draft.content).toMatchObject({
 				title: 'Crème brûlée',
-				notes: 'Stir.\r\n\tThen rest.',
+				notes: 'Stir.\nThen rest.',
 				source: 'Tante Hélène',
 				ingredientSections: [{ heading: 'For the glaze' }],
 			});
@@ -160,6 +160,20 @@ describe('importDraftFromExtractedRecipe', () => {
 
 		it('flags a title that is blank once normalized', () => {
 			expect(draftWith({ title: '\u0000 \u0007' }).problems).toEqual([missingProblems.title]);
+		});
+
+		it('drops the separators that end the title and the headings', () => {
+			const draft = draftWith({
+				title: 'Toast;',
+				ingredientSections: [{ heading: 'For the toast:', lines: ['1 slice bread'] }],
+				instructionSections: [{ heading: 'To serve ,', steps: ['Toast the bread.'] }],
+			});
+
+			expect(draft.content).toMatchObject({
+				title: 'Toast',
+				ingredientSections: [{ heading: 'For the toast' }],
+				instructionSections: [{ heading: 'To serve' }],
+			});
 		});
 	});
 
@@ -177,6 +191,39 @@ describe('importDraftFromExtractedRecipe', () => {
 
 			expect(draft.content.ingredientSections).toEqual([
 				{ lines: [{ text: '2 cups flour', amount: { min: 2 }, unit: 'cups', item: 'flour' }] },
+			]);
+		});
+
+		it('stores each line without its list marker or closing punctuation', () => {
+			const draft = draftWith({
+				ingredientSections: [
+					{ lines: ['2 cups flour;', '• 2 eggs', '1. 1/4 tsp.', 'Salt to taste;'] },
+				],
+			});
+
+			expect(draft.content.ingredientSections).toEqual([
+				{
+					lines: [
+						{ text: '2 cups flour', amount: { min: 2 }, unit: 'cups', item: 'flour' },
+						{ text: '2 eggs', amount: { min: 2 }, item: 'eggs' },
+						{ text: '1/4 tsp.', item: '1/4 tsp.' },
+						{ text: 'Salt to taste', item: 'Salt', preparation: 'to taste' },
+					],
+				},
+			]);
+		});
+
+		it('drops a line of only a list marker or punctuation, keeping notes on the lines after it', () => {
+			const draft = draftWith({
+				ingredientSections: [{ lines: ['•', '2 eggs', ';', '1 cup milk'] }],
+				reviewNotes: [{ field: 'ingredient', section: 0, line: 3, note: 'Check the milk.' }],
+			});
+
+			expect(draft.content.ingredientSections).toEqual([
+				{ lines: [parseIngredientLine('2 eggs'), parseIngredientLine('1 cup milk')] },
+			]);
+			expect(draft.problems).toEqual([
+				{ path: 'ingredientSections.0.lines.1', message: 'Check the milk.' },
 			]);
 		});
 
@@ -323,6 +370,16 @@ describe('importDraftFromExtractedRecipe', () => {
 	});
 
 	describe('steps', () => {
+		it('drops the number or bullet a step starts with, and a step of nothing else', () => {
+			const draft = draftWith({
+				instructionSections: [{ steps: ['1. Heat the oven.', 'Step 2', '• Bake.'] }],
+			});
+
+			expect(draft.content.instructionSections).toEqual([
+				{ steps: [{ text: 'Heat the oven.' }, { text: 'Bake.' }] },
+			]);
+		});
+
 		it('wraps each step and drops blank steps and sections left empty', () => {
 			const draft = draftWith({
 				instructionSections: [
@@ -359,6 +416,16 @@ describe('importDraftFromExtractedRecipe', () => {
 				'a count whose unit is blank',
 				{ kind: 'makes', amount: '1', unit: '\u0000' },
 				{ kind: 'makes', amount: { min: 1 } },
+			],
+			[
+				'an amount ending a sentence',
+				{ kind: 'servings', amount: '4.' },
+				{ kind: 'servings', amount: { min: 4 } },
+			],
+			[
+				'a unit ending a sentence',
+				{ kind: 'makes', amount: '12', unit: 'cookies.' },
+				{ kind: 'makes', amount: { min: 12 }, unit: 'cookies' },
 			],
 		])('reads %s like the form reads its yield field', (_label, extracted, expected) => {
 			const draft = draftWith({ yield: extracted });
@@ -398,6 +465,12 @@ describe('importDraftFromExtractedRecipe', () => {
 				{ kind: 'servings', amount: 'up to 8' },
 				{ kind: 'servings', amount: { min: 8 } },
 				'“up to 8”',
+			],
+			[
+				'an amount ending a sentence',
+				{ kind: 'servings', amount: 'About 4.' },
+				{ kind: 'servings', amount: { min: 4 } },
+				'“About 4.”',
 			],
 		])(
 			'keeps the number of an approximate amount and quotes the original: %s',

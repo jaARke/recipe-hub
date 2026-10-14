@@ -1,12 +1,12 @@
 'use client';
 
 import { KeyRoundIcon } from 'lucide-react';
-import * as React from 'react';
 import { passkeyFieldNames } from '@/components/account/account-forms';
 import { ConfirmActionDialog } from '@/components/forms/confirm-action-dialog';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
 import { TextField } from '@/components/forms/text-field';
+import { useActionDialog } from '@/components/forms/use-action-dialog';
 import { useFormAction } from '@/components/forms/use-form-action';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,6 +22,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from '@/components/ui/toast';
+import { passkeyBlankMessages } from '@/domain/member/member';
 import { formatDate } from '@/lib/dates';
 
 // What the account page shows of a passkey: the server keeps only its public key.
@@ -45,52 +46,63 @@ type RenamePasskeyDialogProps = {
 	action: FormAction;
 };
 
-// Closes once the name is saved, and focus returns to the passkey's Rename button; a toast says so,
-// as a removal's does, since the dialog that held the form is gone.
-function RenamePasskeyDialog({ passkeyId, name, label, action }: RenamePasskeyDialogProps) {
-	const [open, setOpen] = React.useState(false);
-	const [state, formAction, pending] = useFormAction(async (previous, formData) => {
-		const next = await action(previous, formData);
-		if (next.status === 'success') {
-			toast.add({ type: 'success', title: 'Passkey renamed' });
-			setOpen(false);
-		}
-		return next;
-	}, 'We couldn’t rename that passkey. Check your connection and try again.');
+type RenamePasskeyFormProps = Omit<RenamePasskeyDialogProps, 'label'>;
+
+// Rendered inside the popup, so closing the dialog clears a refusal.
+function RenamePasskeyForm({ passkeyId, name, action }: RenamePasskeyFormProps) {
+	const [state, formProps, pending] = useFormAction(
+		action,
+		'We couldn’t rename that passkey. Check your connection and try again.',
+		{ blankMessages: passkeyBlankMessages }
+	);
 	const failure = state.status === 'error' ? state : undefined;
 
 	return (
-		<Dialog open={open} onOpenChange={setOpen}>
+		<form {...formProps} className="grid gap-6">
+			<input type="hidden" name={passkeyFieldNames.id} value={passkeyId} />
+			<DialogHeader>
+				<DialogTitle>Rename passkey</DialogTitle>
+				<DialogDescription>
+					A name helps you tell your passkeys apart. Only you see it.
+				</DialogDescription>
+			</DialogHeader>
+			<FormErrorAlert message={failure?.message} />
+			<TextField
+				id={`passkey-name-${passkeyId}`}
+				name={passkeyFieldNames.name}
+				label="Name"
+				required
+				autoComplete="off"
+				error={failure?.fieldErrors[passkeyFieldNames.name]}
+				defaultValue={failure?.values?.[passkeyFieldNames.name] ?? name}
+			/>
+			<DialogFooter>
+				<DialogClose render={<Button variant="outline" />} disabled={pending}>
+					Cancel
+				</DialogClose>
+				<Button type="submit" disabled={pending} focusableWhenDisabled>
+					{pending && <Spinner data-icon="inline-start" />}
+					{pending ? 'Saving name' : 'Save name'}
+				</Button>
+			</DialogFooter>
+		</form>
+	);
+}
+
+// Closes once the name is saved, and focus returns to the passkey's Rename button; a toast says so,
+// as a removal's does, since the dialog that held the form is gone.
+function RenamePasskeyDialog({ passkeyId, name, label, action }: RenamePasskeyDialogProps) {
+	const [dialogProps, rename] = useActionDialog(action, () =>
+		toast.add({ type: 'success', title: 'Passkey renamed' })
+	);
+
+	return (
+		<Dialog {...dialogProps}>
 			<DialogTrigger render={<Button variant="outline" />}>
 				Rename<span className="sr-only">{label}</span>
 			</DialogTrigger>
 			<DialogContent>
-				<form action={formAction} noValidate className="grid gap-6">
-					<input type="hidden" name={passkeyFieldNames.id} value={passkeyId} />
-					<DialogHeader>
-						<DialogTitle>Rename passkey</DialogTitle>
-						<DialogDescription>
-							A name helps you tell your passkeys apart. Only you see it.
-						</DialogDescription>
-					</DialogHeader>
-					<FormErrorAlert message={failure?.message} />
-					<TextField
-						id={`passkey-name-${passkeyId}`}
-						name={passkeyFieldNames.name}
-						label="Name"
-						required
-						autoComplete="off"
-						error={failure?.fieldErrors[passkeyFieldNames.name]}
-						defaultValue={failure?.values?.[passkeyFieldNames.name] ?? name}
-					/>
-					<DialogFooter>
-						<DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
-						<Button type="submit" disabled={pending} focusableWhenDisabled>
-							{pending && <Spinner data-icon="inline-start" />}
-							{pending ? 'Saving name' : 'Save name'}
-						</Button>
-					</DialogFooter>
-				</form>
+				<RenamePasskeyForm passkeyId={passkeyId} name={name} action={rename} />
 			</DialogContent>
 		</Dialog>
 	);

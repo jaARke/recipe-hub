@@ -4,7 +4,7 @@ import type { Problem } from '@/domain/problem';
 import type { Amount } from '@/domain/recipe/amount';
 import { formatAmount } from '@/domain/recipe/amount-format';
 import { parseAmountText } from '@/domain/recipe/ingredient-parser';
-import type { RecipeContent } from '@/domain/recipe/recipe';
+import { missingContentMessages, type RecipeContent } from '@/domain/recipe/recipe';
 import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
 import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
 import type { RecipeYield } from '@/domain/recipe/recipe-yield';
@@ -53,12 +53,13 @@ export type RecipeFormTag = {
 
 export type PhotoFailure = 'unreadable' | 'upload';
 
-// From choosing a photo to storing it. A photo the recipe already has is saved.
+// From choosing a photo to storing it. A photo the recipe already has is saved. An uploaded photo
+// shows from its file while the page holds it, and from storage once unsaved changes come back.
 export type PhotoUpload =
 	| { status: 'saved'; pathname: string }
 	| { status: 'processing' }
 	| { status: 'uploading'; pathname: string; file: File; fraction: number }
-	| { status: 'uploaded'; pathname: string; file: File }
+	| { status: 'uploaded'; pathname: string; file?: File }
 	| { status: 'failed'; failure: PhotoFailure };
 
 export type RecipeFormPhoto = {
@@ -210,7 +211,13 @@ export type RecipeFormEdit =
 	| PhotoEdit
 	| { type: 'attachErrors'; fieldErrors: FieldErrors; targets: ProblemTargets }
 	// The member says the place looks right as it is, which resolves its note.
-	| { type: 'resolveReviewNote'; target: ProblemTarget | { kind: 'form' } };
+	| { type: 'resolveReviewNote'; target: ProblemTarget | { kind: 'form' } }
+	// The whole form, as unsaved changes come back or are discarded. Ids go on from the higher next id,
+	// so none the form has given out is given again.
+	| { type: 'replaceForm'; values: RecipeFormValues }
+	// A restored upload the image route says is gone, which then shows as one that didn't upload. Only
+	// an uploaded photo changes, so nothing does once the member removed or discarded it.
+	| { type: 'failMissingUpload'; photoId: number };
 
 // Each list's items, under the name the recipe content gives them.
 const itemKeys = {
@@ -220,18 +227,18 @@ const itemKeys = {
 
 const photoRoles = ['dish', 'scan'] as const satisfies readonly RecipeImageRole[];
 
-// Text fields in the order the form shows them, around the lists and the tags.
-const fieldsBeforeLists = [
-	'title',
+// Text fields and the tags in the order the form shows them, around the lists.
+const fieldsBeforeLists = ['title', 'source'] as const satisfies readonly RecipeFormErrorField[];
+const fieldsAfterLists = [
+	'notes',
 	'description',
-	'source',
 	'prepMinutes',
 	'cookMinutes',
 	'totalMinutes',
 	'yieldAmount',
 	'yieldUnit',
+	'tags',
 ] as const satisfies readonly RecipeFormErrorField[];
-const fieldsAfterLists = ['notes', 'tags'] as const satisfies readonly RecipeFormErrorField[];
 
 // Problems whose paths never change, whatever the form holds.
 const fixedTargets: ProblemTargets = new Map<string, ProblemTarget>([
@@ -633,14 +640,17 @@ export function recipeFormSubmission(values: RecipeFormValues): RecipeFormSubmis
 	return { payload, targets };
 }
 
+// What a recipe needs filled in, by the path a save's problem with it takes.
+type RequiredContent = keyof typeof missingContentMessages;
+
 // A place the form shows, with what it holds there.
 type RecipeFormPlace = {
 	target: RecipeFormLocation;
 	error?: string;
 	// The texts the member edits there, which can hold transcription markers.
 	texts?: readonly string[];
-	// The recipe needs this filled in, and it is empty.
-	emptyRequired?: boolean;
+	// Set where the recipe needs this filled in and it is empty.
+	emptyRequired?: RequiredContent;
 };
 
 function hasItemText(list: RecipeFormList): boolean {
@@ -668,7 +678,7 @@ function fieldPlaces(
 				target: { kind: 'field', field },
 				error: values.fieldErrors[field],
 				texts: fieldTexts(values, field),
-				emptyRequired: field === 'title' && isBlank(values.text.title),
+				emptyRequired: field === 'title' && isBlank(values.text.title) ? field : undefined,
 			},
 		];
 	});
@@ -679,7 +689,11 @@ function fieldPlaces(
 function listPlaces(values: RecipeFormValues, list: RecipeFormListName): RecipeFormPlace[] {
 	const { error, rows } = values[list];
 	const places: RecipeFormPlace[] = [
-		{ target: { kind: 'list', list }, error, emptyRequired: !hasItemText(values[list]) },
+		{
+			target: { kind: 'list', list },
+			error,
+			emptyRequired: hasItemText(values[list]) ? undefined : list,
+		},
 	];
 	rows.forEach((row, index) => {
 		places.push({
@@ -725,11 +739,23 @@ export function recipeFormProblems(values: RecipeFormValues): RecipeFormProblem[
 	);
 }
 
+// What the browser knows a save would be refused for: each place the recipe needs filled in that is
+// empty, with the message the server gives, keyed by the path of the problem.
+export function recipeFormRequiredErrors(values: RecipeFormValues): FieldErrors {
+	const fieldErrors: FieldErrors = {};
+	for (const { emptyRequired } of recipeFormPlaces(values)) {
+		if (emptyRequired !== undefined) {
+			fieldErrors[emptyRequired] = missingContentMessages[emptyRequired];
+		}
+	}
+	return fieldErrors;
+}
+
 // Everything left to check against the original, in the order the form shows it: the open review
 // notes, and the text that still holds a transcription marker.
 export function recipeFormChecks(values: RecipeFormValues): RecipeFormCheck[] {
 	return recipeFormPlaces(values).flatMap(
-		({ target, texts = [], emptyRequired = false }): RecipeFormCheck[] => {
+		({ target, texts = [], emptyRequired }): RecipeFormCheck[] => {
 			const note = values.reviewNotes.get(problemKey(target));
 			const openNote = note?.status === 'open' ? note.message : undefined;
 			// A line apart, so no marker spans two texts.
@@ -742,7 +768,8 @@ export function recipeFormChecks(values: RecipeFormValues): RecipeFormCheck[] {
 					target,
 					note: openNote,
 					markers,
-					confirmable: openNote !== undefined && markers.length === 0 && !emptyRequired,
+					confirmable:
+						openNote !== undefined && markers.length === 0 && emptyRequired === undefined,
 				},
 			];
 		}
@@ -1086,5 +1113,11 @@ function editedRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): Recip
 			return withErrors(values, edit.fieldErrors, edit.targets);
 		case 'resolveReviewNote':
 			return values;
+		case 'replaceForm':
+			return { ...edit.values, nextId: Math.max(edit.values.nextId, values.nextId) };
+		case 'failMissingUpload':
+			return updateUpload(values, edit.photoId, (upload) =>
+				upload.status === 'uploaded' ? { status: 'failed', failure: 'upload' } : undefined
+			);
 	}
 }

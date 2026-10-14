@@ -244,7 +244,6 @@ describe('importFromUrl', () => {
 		'javascript:alert(1)',
 		'https://localhost/lemonade',
 		'https://recipes.example.com/lemon\0ade',
-		'',
 	])('refuses %j with a problem on the address, before fetching it', async (address) => {
 		const { pages, serviceFor } = createImports();
 
@@ -253,6 +252,18 @@ describe('importFromUrl', () => {
 		expect(error).toBeInstanceOf(InvalidImportError);
 		expect((error as InvalidImportError).problems).toEqual([
 			{ path: 'url', message: invalidUrlMessage },
+		]);
+		expect(pages.fetchedUrls).toEqual([]);
+	});
+
+	it.each(['', '  '])('refuses a blank address %j, saying what to enter', async (address) => {
+		const { pages, serviceFor } = createImports();
+
+		const error = await failureOf(serviceFor(memberActor()).importFromUrl(address));
+
+		expect(error).toBeInstanceOf(InvalidImportError);
+		expect((error as InvalidImportError).problems).toEqual([
+			{ path: 'url', message: 'Enter a link to the recipe.' },
 		]);
 		expect(pages.fetchedUrls).toEqual([]);
 	});

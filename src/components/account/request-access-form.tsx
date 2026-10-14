@@ -6,6 +6,7 @@ import {
 	accessRequestFieldNames,
 	requestAccessFailureMessage,
 } from '@/components/account/account-forms';
+import { FormActions } from '@/components/forms/form-actions';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
 import { TextField } from '@/components/forms/text-field';
@@ -15,6 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { FieldGroup } from '@/components/ui/field';
 import { Spinner } from '@/components/ui/spinner';
+import { accessRequestBlankMessages } from '@/domain/member/access-request';
 
 const sentNoticeId = 'request-access-sent';
 
@@ -25,7 +27,9 @@ type RequestAccessFormProps = {
 };
 
 function RequestAccessForm({ action, nextSteps }: RequestAccessFormProps) {
-	const [state, formAction, pending] = useFormAction(action, requestAccessFailureMessage);
+	const [state, formProps, pending] = useFormAction(action, requestAccessFailureMessage, {
+		blankMessages: accessRequestBlankMessages,
+	});
 	useFocusOnChange(state.status === 'success' ? 'sent' : 'form', sentNoticeId);
 
 	if (state.status === 'success') {
@@ -43,7 +47,7 @@ function RequestAccessForm({ action, nextSteps }: RequestAccessFormProps) {
 	const value = (name: string) => failure?.values?.[name];
 
 	return (
-		<form action={formAction} noValidate className="flex flex-col gap-8">
+		<form {...formProps} className="flex flex-col gap-4">
 			<FormErrorAlert message={failure?.message} />
 			<FieldGroup>
 				<TextField
@@ -76,12 +80,12 @@ function RequestAccessForm({ action, nextSteps }: RequestAccessFormProps) {
 					defaultValue={value(accessRequestFieldNames.email)}
 				/>
 			</FieldGroup>
-			<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+			<FormActions>
 				<Button type="submit" disabled={pending} focusableWhenDisabled>
 					{pending && <Spinner data-icon="inline-start" />}
 					{pending ? 'Sending request' : 'Send request'}
 				</Button>
-			</div>
+			</FormActions>
 		</form>
 	);
 }

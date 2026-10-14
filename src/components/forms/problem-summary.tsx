@@ -40,14 +40,14 @@ function FieldProblem(props: React.ComponentProps<typeof FieldError>) {
 }
 
 // A save's problems in one list, each linking to where it shows, so a long form can be fixed from
-// the top.
+// the top. It takes focus after a failed save, ahead of the fields it lists (useFormAction).
 function ProblemSummary({ problems }: { problems: readonly SummarizedProblem[] }) {
 	if (problems.length === 0) {
 		return null;
 	}
 
 	return (
-		<Alert variant="destructive">
+		<Alert variant="destructive" tabIndex={-1}>
 			<TriangleAlertIcon aria-hidden="true" />
 			<AlertTitle>Fix {countThings(problems.length)} to save</AlertTitle>
 			<AlertDescription>

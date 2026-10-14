@@ -94,6 +94,12 @@ export default function PrivacyPage() {
 					<li>
 						Your choice of light or dark theme is saved in your browser and never sent to the site.
 					</li>
+					<li>
+						Changes you haven’t saved to a recipe you’re adding, editing, or reviewing are kept in
+						your browser, so they come back if the page reloads. They’re cleared when you save the
+						recipe, discard them, or sign out, and until then anyone using this browser can see
+						them.
+					</li>
 				</ul>
 			</PageSection>
 			<PageSection id="privacy-services" title="Services the site uses">

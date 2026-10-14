@@ -26,6 +26,20 @@ describe('PasskeyList', () => {
 		expect(add).toHaveBeenCalledWith({ type: 'success', title: 'Passkey renamed' });
 	});
 
+	it('asks for a name at once when the new one is blank, and never sends it', async () => {
+		const rename = vi.fn(succeed);
+		const user = userEvent.setup();
+		render(<PasskeyList passkeys={passkeys} renamePasskey={rename} removePasskey={succeed} />);
+
+		await user.click(screen.getByRole('button', { name: 'Rename Work laptop' }));
+		await user.clear(await screen.findByLabelText('Name'));
+		await user.click(screen.getByRole('button', { name: 'Save name' }));
+
+		expect(screen.getByText('Enter a name for the passkey.')).toBeDefined();
+		expect(document.activeElement).toBe(screen.getByLabelText('Name'));
+		expect(rename).not.toHaveBeenCalled();
+	});
+
 	it('keeps the dialog open, with no toast, when the rename is refused', async () => {
 		const add = vi.spyOn(toast, 'add');
 		const refuse: FormAction = async () => ({
@@ -42,5 +56,53 @@ describe('PasskeyList', () => {
 		expect(await screen.findByText('Use 60 characters or fewer.')).toBeDefined();
 		expect(screen.getByRole('dialog')).toBeDefined();
 		expect(add).not.toHaveBeenCalled();
+	});
+
+	it('opens the rename dialog again without the refusal it closed on', async () => {
+		const refuse: FormAction = async () => ({
+			status: 'error',
+			message: 'Use 60 characters or fewer.',
+			fieldErrors: {},
+		});
+		const user = userEvent.setup();
+		render(<PasskeyList passkeys={passkeys} renamePasskey={refuse} removePasskey={succeed} />);
+
+		await user.click(screen.getByRole('button', { name: 'Rename Work laptop' }));
+		await user.click(await screen.findByRole('button', { name: 'Save name' }));
+		expect(await screen.findByText('Use 60 characters or fewer.')).toBeDefined();
+		await user.click(screen.getByRole('button', { name: 'Cancel' }));
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		await user.click(screen.getByRole('button', { name: 'Rename Work laptop' }));
+
+		expect(await screen.findByRole('dialog')).toBeDefined();
+		expect(screen.queryByText('Use 60 characters or fewer.')).toBeNull();
+	});
+
+	it('keeps the rename dialog open while the name saves, so it cannot be sent twice', async () => {
+		const rename = vi.fn<FormAction>(() => new Promise(() => {}));
+		const user = userEvent.setup();
+		render(<PasskeyList passkeys={passkeys} renamePasskey={rename} removePasskey={succeed} />);
+
+		const trigger = screen.getByRole('button', { name: 'Rename Work laptop' });
+		await user.click(trigger);
+		await user.click(await screen.findByRole('button', { name: 'Save name' }));
+		await user.keyboard('{Escape}');
+		await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+		expect(trigger.getAttribute('aria-expanded')).toBe('true');
+		await user.click(screen.getByRole('button', { name: /Saving name$/ }));
+		expect(rename).toHaveBeenCalledOnce();
+	});
+
+	it('closes the removal dialog once the passkey is removed', async () => {
+		const add = vi.spyOn(toast, 'add');
+		const user = userEvent.setup();
+		render(<PasskeyList passkeys={passkeys} renamePasskey={succeed} removePasskey={succeed} />);
+
+		await user.click(screen.getByRole('button', { name: 'Remove Work laptop' }));
+		await user.click(await screen.findByRole('button', { name: 'Remove passkey' }));
+
+		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+		expect(add).toHaveBeenCalledWith({ type: 'success', title: 'Passkey removed' });
 	});
 });

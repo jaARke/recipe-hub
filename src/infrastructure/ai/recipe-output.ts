@@ -1,13 +1,17 @@
 import 'server-only';
 import { z } from 'zod';
 import { reviewNoteFields, type ExtractedRecipe } from '@/domain/recipe/extracted-recipe';
+import { exampleIngredientLine } from '@/domain/recipe/ingredient-parser';
 import { transcriptionMarkers } from '@/domain/recipe/transcription-markers';
 
 // What the model returns, kept apart from the domain's draft so every provider's structured output
 // accepts it: every key is required with null for absent (OpenAI's strict mode), no oneOf (Gemini),
 // no length or number bounds, and 13 nullable fields where Anthropic allows 16 union-typed ones.
 const recipeFields = {
-	title: z.string().nullable().describe('The title as written.'),
+	title: z
+		.string()
+		.nullable()
+		.describe('The title in sentence case, where names keep their capitals.'),
 	description: z
 		.string()
 		.nullable()
@@ -15,7 +19,7 @@ const recipeFields = {
 	notes: z
 		.string()
 		.nullable()
-		.describe("The cook's notes, tips, or story about the recipe, as written."),
+		.describe("The cook's notes, tips, or story about the recipe, in the source's words."),
 	source: z
 		.string()
 		.nullable()
@@ -23,7 +27,7 @@ const recipeFields = {
 	yield: z
 		.object({
 			kind: z.enum(['servings', 'makes']),
-			amount: z.string().describe('The amount as written, such as "4 to 6" or "2 1/2".'),
+			amount: z.string().describe('The amount in numerals, such as "4 to 6" or "2 1/2".'),
 			unit: z
 				.string()
 				.nullable()
@@ -35,14 +39,24 @@ const recipeFields = {
 	totalMinutes: z.number().nullable().describe('The stated total time in whole minutes.'),
 	ingredientSections: z.array(
 		z.object({
-			heading: z.string().nullable().describe('The section heading as written.'),
-			lines: z.array(z.string()).describe('One ingredient per entry, exactly as written.'),
+			heading: z
+				.string()
+				.nullable()
+				.describe('The section heading in sentence case, such as "For the glaze".'),
+			lines: z
+				.array(z.string())
+				.describe(
+					`One ingredient per entry in the shape "${exampleIngredientLine}" shows, with only the words the source gives it.`
+				),
 		})
 	),
 	instructionSections: z.array(
 		z.object({
-			heading: z.string().nullable().describe('The section heading as written.'),
-			steps: z.array(z.string()).describe('The steps in order, each as written.'),
+			heading: z
+				.string()
+				.nullable()
+				.describe('The section heading in sentence case, such as "For the glaze".'),
+			steps: z.array(z.string()).describe('The steps in order, each written as sentences.'),
 		})
 	),
 	reviewNotes: z

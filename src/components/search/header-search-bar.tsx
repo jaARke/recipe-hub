@@ -1,60 +1,22 @@
-import { cn } from 'cn';
-import { SearchIcon } from 'lucide-react';
-import Form from 'next/form';
-import Link from 'next/link';
-import { recipeSearchPath } from '@/components/recipe/recipe-paths';
+import { Suspense } from 'react';
+import { HeaderSearch, HeaderSearchForm } from '@/components/search/header-search';
 import { recipeSearchParamNames } from '@/components/search/search-params';
-import { buttonVariants } from '@/components/ui/button';
-import { Field, FieldLabel } from '@/components/ui/field';
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 
-// Narrow headers have no room for a field, so they get a link to the search page.
-function HeaderSearchLink({ className }: { className?: string }) {
+// The site header's search form, which the search page's hidden fields join from outside it.
+const headerSearchFormId = 'header-search';
+
+// The search page's hint, which describes the header's field from outside it.
+const recipeSearchHintId = 'search-hint';
+
+// Until the URL is read, the empty field holds its place.
+function HeaderSearchBar({ formId }: { formId: string }) {
+	const props = { formId, queryName: recipeSearchParamNames.text, hintId: recipeSearchHintId };
+
 	return (
-		<Link
-			href={recipeSearchPath}
-			aria-label="Search recipes"
-			className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), className)}
-		>
-			<SearchIcon aria-hidden="true" />
-		</Link>
+		<Suspense fallback={<HeaderSearchForm {...props} query="" searchPage={false} />}>
+			<HeaderSearch {...props} />
+		</Suspense>
 	);
 }
 
-// Starts a fresh search: only the query, with no filters or order.
-function HeaderSearchForm({ id, className }: { id: string; className?: string }) {
-	return (
-		<search className={className}>
-			<Form action={recipeSearchPath}>
-				<Field className="w-72 xl:w-96">
-					<FieldLabel htmlFor={id} className="sr-only">
-						Search recipes
-					</FieldLabel>
-					<InputGroup>
-						<InputGroupInput
-							id={id}
-							type="search"
-							name={recipeSearchParamNames.text}
-							enterKeyHint="search"
-							placeholder="Search recipes"
-						/>
-						<InputGroupAddon>
-							<SearchIcon aria-hidden="true" />
-						</InputGroupAddon>
-					</InputGroup>
-				</Field>
-			</Form>
-		</search>
-	);
-}
-
-function HeaderSearchBar() {
-	return (
-		<>
-			<HeaderSearchLink className="lg:hidden" />
-			<HeaderSearchForm id="header-search-query" className="hidden lg:block" />
-		</>
-	);
-}
-
-export { HeaderSearchBar, HeaderSearchForm, HeaderSearchLink };
+export { HeaderSearchBar, headerSearchFormId, recipeSearchHintId };

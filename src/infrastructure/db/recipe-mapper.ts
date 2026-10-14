@@ -1,6 +1,6 @@
 import 'server-only';
 import type { InferModelFromColumns } from 'drizzle-orm';
-import type { NewRecipe } from '@/application/ports/recipe-repository';
+import type { NewRecipe, StoredRecipe } from '@/application/ports/recipe-repository';
 import { recipeSchema, type Recipe, type RecipeContent } from '@/domain/recipe/recipe';
 import { recipes } from '@/infrastructure/db/schema';
 
@@ -51,4 +51,12 @@ export function toRecipe(row: RecipeRow): Recipe {
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
 	});
+}
+
+// The content as saved beside the recipe read from it, which validated it: reading changes no shape,
+// only text, so the saved content has the content's shape.
+export function toStoredRecipe(row: RecipeRow): StoredRecipe {
+	const recipe = toRecipe(row);
+	const document = row.content as Omit<RecipeContent, 'tags'>;
+	return { recipe, storedContent: { ...document, tags: row.tags } };
 }

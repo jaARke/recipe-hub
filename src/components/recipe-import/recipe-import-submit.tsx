@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { FormActions } from '@/components/forms/form-actions';
 import { FormStatusMessage } from '@/components/forms/form-status-message';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -59,12 +60,19 @@ function RecipeImportSubmit({
 
 	return (
 		<div className="flex flex-col gap-3">
-			<div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
-				{waitNote !== undefined && (
-					<p id={waitNoteId} className="text-sm text-muted-foreground">
-						{waitNote}
-					</p>
-				)}
+			<FormActions
+				status={
+					<>
+						{waitNote !== undefined && (
+							<p id={waitNoteId} className="text-sm text-muted-foreground">
+								{waitNote}
+							</p>
+						)}
+						<FormStatusMessage kind="progress" message={pending ? stage : undefined} />
+						{pending && <ElapsedSeconds />}
+					</>
+				}
+			>
 				<Button
 					type="submit"
 					disabled={pending || waitNote !== undefined}
@@ -74,12 +82,8 @@ function RecipeImportSubmit({
 					{pending && <Spinner data-icon="inline-start" />}
 					{pending ? pendingLabel : label}
 				</Button>
-			</div>
+			</FormActions>
 			{pending && <Progress value={null} aria-label={stage} />}
-			<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 sm:justify-end">
-				<FormStatusMessage kind="progress" message={pending ? stage : undefined} />
-				{pending && <ElapsedSeconds />}
-			</div>
 		</div>
 	);
 }

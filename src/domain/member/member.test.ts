@@ -9,18 +9,21 @@ import {
 } from '@/domain/member/member';
 
 describe('displayNameSchema', () => {
+	const displayName = displayNameSchema('a name');
+
 	it('trims the name', () => {
-		expect(displayNameSchema.parse('  Ada Lovelace ')).toBe('Ada Lovelace');
+		expect(displayName.parse('  Ada Lovelace ')).toBe('Ada Lovelace');
 	});
 
 	it('accepts 1 to 60 characters', () => {
-		expect(displayNameSchema.safeParse('A').success).toBe(true);
-		expect(displayNameSchema.safeParse('a'.repeat(60)).success).toBe(true);
-		expect(displayNameSchema.safeParse('a'.repeat(61)).success).toBe(false);
+		expect(displayName.safeParse('A').success).toBe(true);
+		expect(displayName.safeParse('a'.repeat(60)).success).toBe(true);
+		expect(displayName.safeParse('a'.repeat(61)).success).toBe(false);
 	});
 
-	it('rejects a blank name', () => {
-		expect(displayNameSchema.safeParse(' \t ').success).toBe(false);
+	it('rejects a blank name, saying what to enter', () => {
+		const result = displayName.safeParse(' \t ');
+		expect(result.error?.issues.map((issue) => issue.message)).toEqual(['Enter a name.']);
 	});
 });
 
@@ -58,6 +61,11 @@ describe('parseDisplayName', () => {
 
 	it('reports a problem under the form field', () => {
 		expect(() => parseDisplayName(' ')).toThrow(InvalidProfileError);
+		expect(() => parseDisplayName(' ')).toThrow(
+			expect.objectContaining({
+				problems: [{ path: 'displayName', message: 'Enter your display name.' }],
+			})
+		);
 		expect(() => parseDisplayName('a'.repeat(61))).toThrow(
 			expect.objectContaining({
 				code: 'member.invalid-profile',

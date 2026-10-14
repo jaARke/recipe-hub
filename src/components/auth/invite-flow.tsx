@@ -27,6 +27,7 @@ import { SignOutButton } from '@/components/auth/sign-out-button';
 import { formText } from '@/components/forms/form-data';
 import type { FormAction, FormState } from '@/components/forms/form-state';
 import { useFocusOnChange } from '@/components/forms/use-focus-on-change';
+import { useTransientState } from '@/components/forms/use-transient-state';
 
 const fieldIds = {
 	email: 'invite-email',
@@ -42,7 +43,7 @@ type InviteFlowStep =
 	| { kind: 'email' }
 	| { kind: 'code'; email: string }
 	| { kind: 'complete-failed' }
-	| { kind: 'passkey'; failed: boolean }
+	| { kind: 'passkey' }
 	| { kind: 'done'; outcome: InviteOutcome };
 
 type InviteFlowProps = {
@@ -75,6 +76,12 @@ function takeInviteToken(): string | null {
 	return token === '' ? null : token;
 }
 
+// This page with the token back in its fragment, so loading it again shows the invite.
+function invitePageHref(token: string | null | undefined): string {
+	const page = `${window.location.pathname}${window.location.search}`;
+	return token === null || token === undefined ? page : `${page}#${token}`;
+}
+
 // Accepting an invite: confirm an email address with a code, which creates the account and signs
 // the invitee in, then offer a passkey. An address that already has an account signs in to it.
 function InviteFlow({
@@ -93,6 +100,8 @@ function InviteFlow({
 	);
 	const [lastEmail, setLastEmail] = React.useState<string>();
 	const [creatingPasskey, startCreatingPasskey] = React.useTransition();
+	// Set when creating a passkey failed; the step stays, so the invitee can try again or skip it.
+	const [passkeyFailed, setPasskeyFailed] = useTransientState<boolean>();
 	useFocusOnChange(step.kind, focusTargetId(step.kind));
 
 	async function previewStep(): Promise<InviteFlowStep> {
@@ -148,7 +157,7 @@ function InviteFlow({
 				return { kind: 'complete-failed' };
 			}
 			return completed.account === 'created'
-				? { kind: 'passkey', failed: false }
+				? { kind: 'passkey' }
 				: { kind: 'done', outcome: 'existing' };
 		} catch {
 			return { kind: 'complete-failed' };
@@ -176,11 +185,11 @@ function InviteFlow({
 	function createPasskey() {
 		startCreatingPasskey(async () => {
 			const { error } = await settleAuthCall(authClient.passkey.addPasskey());
-			setStep(
-				error === null
-					? { kind: 'done', outcome: 'created-with-passkey' }
-					: { kind: 'passkey', failed: true }
-			);
+			if (error === null) {
+				setStep({ kind: 'done', outcome: 'created-with-passkey' });
+			} else {
+				setPasskeyFailed(true);
+			}
 		});
 	}
 
@@ -196,7 +205,7 @@ function InviteFlow({
 				<InviteSignedIn
 					displayName={step.displayName}
 					headingLevel={headingLevel}
-					signOutButton={<SignOutButton onSignedOut={loadPreview} />}
+					signOutButton={<SignOutButton destination={() => invitePageHref(token.current)} />}
 				/>
 			);
 		case 'welcome':
@@ -238,7 +247,7 @@ function InviteFlow({
 		case 'passkey':
 			return (
 				<InvitePasskeyOffer
-					failed={step.failed}
+					failed={passkeyFailed ?? false}
 					pending={creatingPasskey}
 					headingLevel={headingLevel}
 					onCreate={createPasskey}

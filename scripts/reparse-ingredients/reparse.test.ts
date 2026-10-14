@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import type {
 	RecipePage,
 	RecipeRepository,
+	StoredRecipe,
 	UpdatedRecipe,
 } from '@/application/ports/recipe-repository';
 import { RecipeEditConflictError } from '@/application/recipes/errors';
@@ -43,6 +44,14 @@ const unchangedLine: IngredientLine = {
 
 // One character past the source limit, which a recipe stored before the limit was lowered can hold.
 const overlongSource = 'x'.repeat(301);
+
+// As a recipe saved before text was tidied holds it: a doubled space and a no-break space.
+const untidiedSource = 'Grandma\u00a0Rose  Lee';
+const tidiedSource = 'Grandma Rose Lee';
+
+// As saved before lines were tidied, and as the parser reads it now.
+const bulletedLine: IngredientLine = { text: '• 2 eggs;', item: '• 2 eggs;' };
+const unbulletedLine: IngredientLine = { text: '2 eggs', amount: { min: 2 }, item: 'eggs' };
 
 function content(title: string, lines: IngredientLine[]): RecipeContent {
 	return {
@@ -91,9 +100,9 @@ class ChangedDuringRunRepository extends InMemoryRecipeRepository {
 		return super.list(page);
 	}
 
-	async findById(id: RecipeId): Promise<Recipe | null> {
+	async findStoredById(id: RecipeId): Promise<StoredRecipe | null> {
 		await this.beforeRead();
-		return super.findById(id);
+		return super.findStoredById(id);
 	}
 
 	private async beforeRead(): Promise<void> {
@@ -153,7 +162,14 @@ describe('reparseIngredients', () => {
 					id: stale.id,
 					slug: 'chicken-stir-fry',
 					title: 'Chicken stir-fry',
-					changes: [{ section: 0, line: 0, before: staleLine, after: reparsedLine }],
+					changes: [
+						{
+							kind: 'line',
+							path: 'ingredientSections.0.lines.0',
+							before: staleLine,
+							after: reparsedLine,
+						},
+					],
 					outcome: { kind: 'pending' },
 				},
 			],
@@ -183,9 +199,9 @@ describe('reparseIngredients', () => {
 		expect(logLines(consoleInfo)).toContainEqual({
 			level: 'info',
 			logger: 'reparse-ingredients',
-			message: 'Recipe ingredients re-parsed',
+			message: 'Recipe re-parsed',
 			recipeId: stale.id,
-			linesChanged: 1,
+			fieldsChanged: 1,
 		});
 	});
 
@@ -215,7 +231,7 @@ describe('reparseIngredients', () => {
 			{
 				level: 'warn',
 				logger: 'reparse-ingredients',
-				message: 'Recipe ingredient re-parse skipped',
+				message: 'Recipe re-parse skipped',
 				recipeId: invalid.id,
 				code: 'recipe.invalid',
 				problems: [sourceProblem],
@@ -233,6 +249,92 @@ describe('reparseIngredients', () => {
 			{ kind: 'skipped', code: 'recipe.edit-conflict' },
 		]);
 		expect(await recipes.findById(stale.id)).toEqual(stale);
+	});
+
+	it('lists and writes a recipe whose only change is its source’s spacing', async () => {
+		const recipes = new InMemoryRecipeRepository();
+		const untidied = await addRecipe(recipes, {
+			...content('Soy glaze', [unchangedLine]),
+			source: untidiedSource,
+		});
+
+		const result = await reparseIngredients(recipes, { write: true });
+
+		expect(result.recipes).toEqual([
+			{
+				id: untidied.id,
+				slug: 'soy-glaze',
+				title: 'Soy glaze',
+				changes: [{ kind: 'text', path: 'source', before: untidiedSource, after: tidiedSource }],
+				outcome: { kind: 'written' },
+			},
+		]);
+		expect((await recipes.findById(untidied.id))?.source).toBe(tidiedSource);
+	});
+
+	it('lists each tidied field and line in the order the recipe holds them', async () => {
+		const recipes = new InMemoryRecipeRepository();
+		await addRecipe(recipes, {
+			...content('Egg toast:', [unchangedLine, bulletedLine]),
+			ingredientSections: [{ heading: 'For the toast ;', lines: [unchangedLine, bulletedLine] }],
+			instructionSections: [{ steps: [{ text: 'Toast  the bread.\r\nTop with eggs.' }] }],
+		});
+
+		const result = await reparseIngredients(recipes, { write: false });
+
+		expect(result.recipes[0]?.changes).toEqual([
+			{ kind: 'text', path: 'title', before: 'Egg toast:', after: 'Egg toast' },
+			{
+				kind: 'text',
+				path: 'ingredientSections.0.heading',
+				before: 'For the toast ;',
+				after: 'For the toast',
+			},
+			{
+				kind: 'line',
+				path: 'ingredientSections.0.lines.1',
+				before: bulletedLine,
+				after: unbulletedLine,
+			},
+			{
+				kind: 'text',
+				path: 'instructionSections.0.steps.0.text',
+				before: 'Toast  the bread.\r\nTop with eggs.',
+				after: 'Toast the bread.\nTop with eggs.',
+			},
+		]);
+	});
+
+	it('skips and reports a recipe holding a line that tidies to nothing, and carries on', async () => {
+		const recipes = new InMemoryRecipeRepository();
+		const bulletOnly = await addRecipe(
+			recipes,
+			content('Bullet only', [unchangedLine, { text: '•', item: '•' }])
+		);
+		const stale = await addRecipe(recipes, content('Chicken stir-fry', [staleLine]));
+
+		const result = await reparseIngredients(recipes, { write: true });
+
+		expect(result.recipes.map(({ id, changes, outcome }) => ({ id, changes, outcome }))).toEqual([
+			{
+				id: stale.id,
+				changes: [expect.objectContaining({ kind: 'line' })],
+				outcome: { kind: 'written' },
+			},
+			{
+				id: bulletOnly.id,
+				changes: [],
+				outcome: {
+					kind: 'skipped',
+					code: 'recipe.invalid',
+					problems: [
+						{ path: 'ingredientSections.0.lines.1.text', message: 'Enter some text.' },
+						{ path: 'ingredientSections.0.lines.1.item', message: 'Enter some text.' },
+					],
+				},
+			},
+		]);
+		expect(await recipes.findById(bulletOnly.id)).toEqual(bulletOnly);
 	});
 
 	it('finds nothing to change on a second run', async () => {
@@ -310,6 +412,34 @@ describe('reparseIngredients over the database', () => {
 		]);
 		expect(second).toEqual({ write: true, checked: 1, recipes: [] });
 	});
+
+	it('compares a source saved untidied as saved, though reading tidies it', async () => {
+		const db = await createTestDatabase();
+		const contributor = await new DrizzleMemberRepository(db).create({
+			email: 'contributor@example.com',
+			displayName: 'Contributor',
+			role: 'member',
+		});
+		const recipes = new DrizzleRecipeRepository(db);
+		const untidied = await addRecipe(
+			recipes,
+			{ ...content('Soy glaze', [unchangedLine]), source: untidiedSource },
+			contributor.id
+		);
+
+		const first = await reparseIngredients(recipes, { write: true });
+		const second = await reparseIngredients(recipes, { write: true });
+
+		expect(untidied.source).toBe(tidiedSource);
+		expect(first.recipes.map(({ changes, outcome }) => ({ changes, outcome }))).toEqual([
+			{
+				changes: [{ kind: 'text', path: 'source', before: untidiedSource, after: tidiedSource }],
+				outcome: { kind: 'written' },
+			},
+		]);
+		expect((await recipes.findStoredById(untidied.id))?.storedContent.source).toBe(tidiedSource);
+		expect(second).toEqual({ write: true, checked: 1, recipes: [] });
+	});
 });
 
 describe('reparseReport', () => {
@@ -326,23 +456,44 @@ describe('reparseReport', () => {
 
 		expect(report).toBe(
 			[
-				'Checked 3 recipes; 2 recipes with lines the parser now reads differently.',
+				'Checked 3 recipes; 2 recipes that tidying or the parser now changes.',
 				[
 					'chicken-stir-fry (Chicken stir-fry): written',
-					'  Section 1, line 1: "12 oz boneless, skinless chicken breast, cut into thin strips"',
+					'  ingredientSections.0.lines.0: "12 oz boneless, skinless chicken breast, cut into thin strips"',
 					'  - amount 12, unit "oz", item "boneless", preparation "skinless chicken breast, cut into thin strips"',
 					'  + amount 12, unit "oz", item "boneless, skinless chicken breast", preparation "cut into thin strips"',
 				].join('\n'),
 				[
 					'old-chicken-stir-fry (Old chicken stir-fry): skipped, recipe.invalid: source: Use 300 characters or fewer.',
-					'  Section 1, line 2: "12 oz boneless, skinless chicken breast, cut into thin strips"',
+					'  ingredientSections.0.lines.1: "12 oz boneless, skinless chicken breast, cut into thin strips"',
 					'  - amount 12, unit "oz", item "boneless", preparation "skinless chicken breast, cut into thin strips"',
 					'  + amount 12, unit "oz", item "boneless, skinless chicken breast", preparation "cut into thin strips"',
 				].join('\n'),
 				'Wrote 1 recipe and skipped 1.',
-				'Search reads the new lines already, but cached recipe pages show the old ones until this environment is redeployed: redeploy it now.',
-				'A skipped recipe keeps its old reading until it is fixed and saved in the recipe form, which reads its lines again; one edited or deleted during the run is read again by the next run.',
+				'Search reads the new text already, but cached recipe pages show the old until this environment is redeployed: redeploy it now.',
+				'A skipped recipe keeps its old text and readings until it is fixed and saved in the recipe form, which tidies it and reads its lines again; one edited or deleted during the run is read again by the next run.',
 			].join('\n\n')
+		);
+	});
+
+	it('shows a tidied text before and after, with spaces that look alike told apart', async () => {
+		const recipes = new InMemoryRecipeRepository();
+		await addRecipe(recipes, {
+			...content('Egg toast', [bulletedLine]),
+			source: untidiedSource,
+		});
+
+		const report = reparseReport(await reparseIngredients(recipes, { write: false }));
+
+		expect(report.split('\n\n')[1]).toBe(
+			[
+				'egg-toast (Egg toast): to write',
+				'  source: "Grandma\\u00a0Rose  Lee"',
+				'  + "Grandma Rose Lee"',
+				'  ingredientSections.0.lines.0: "• 2 eggs;"',
+				'  - item "• 2 eggs;"',
+				'  + text "2 eggs", amount 2, item "eggs"',
+			].join('\n')
 		);
 	});
 
@@ -364,7 +515,7 @@ describe('reparseReport', () => {
 		const report = reparseReport(await reparseIngredients(recipes, { write: true }));
 
 		expect(report).toBe(
-			'Checked 1 recipe; 0 recipes with lines the parser now reads differently.\n\nNothing to change.'
+			'Checked 1 recipe; 0 recipes that tidying or the parser now changes.\n\nNothing to change.'
 		);
 	});
 });

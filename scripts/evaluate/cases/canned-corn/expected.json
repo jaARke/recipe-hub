@@ -1,5 +1,5 @@
 {
-	"title": "Canned Corn",
+	"title": "Canned corn",
 	"times": {},
 	"ingredientSections": [
 		{
@@ -8,7 +8,7 @@
 	],
 	"instructionSections": [
 		{
-			"steps": ["Boil 20 min. Seal"]
+			"steps": ["Boil 20 min. Seal."]
 		}
 	],
 	"reviewNotes": []

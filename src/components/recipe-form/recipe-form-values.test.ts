@@ -4,6 +4,7 @@ import {
 	hasPhotosInProgress,
 	recipeFormChecks,
 	recipeFormProblems,
+	recipeFormRequiredErrors,
 	recipeFormSubmission,
 	recipeFormValues,
 	tagLabelsFrom,
@@ -656,6 +657,62 @@ describe('editRecipeForm', () => {
 			added.photos.dish
 		);
 	});
+
+	it('fails an uploaded photo whose upload is found gone, and changes nothing for any other', () => {
+		const values = edited(
+			lemonBarsForm(),
+			{ type: 'addPhotos', role: 'dish', fileNames: ['IMG_0001.jpg', 'IMG_0002.jpg'] },
+			{
+				type: 'startPhotoUpload',
+				photoId: 12,
+				pathname: 'dish/development/a.jpg',
+				file: photoFile,
+			},
+			{ type: 'finishPhotoUpload', photoId: 12 },
+			{ type: 'startPhotoUpload', photoId: 13, pathname: 'dish/development/b.jpg', file: photoFile }
+		);
+
+		expect(
+			edited(values, { type: 'failMissingUpload', photoId: 12 }).photos.dish.map(
+				(photo) => photo.upload
+			)
+		).toEqual([
+			{ status: 'saved', pathname: 'dish/production/bars.jpg' },
+			{ status: 'saved', pathname: 'dish/production/slice.jpg' },
+			{ status: 'failed', failure: 'upload' },
+			{
+				status: 'uploading',
+				pathname: 'dish/development/b.jpg',
+				file: photoFile,
+				fraction: 0,
+			},
+		]);
+		// A saved photo, and one still uploading.
+		expect(
+			edited(
+				values,
+				{ type: 'failMissingUpload', photoId: 10 },
+				{ type: 'failMissingUpload', photoId: 13 }
+			)
+		).toEqual(values);
+		const removed = edited(values, { type: 'removePhoto', photoId: 12 });
+		expect(edited(removed, { type: 'failMissingUpload', photoId: 12 })).toEqual(removed);
+	});
+
+	it('replaces the whole form, going on from the higher next id so no id is given twice', () => {
+		const loaded = recipeFormValues();
+		const added = edited(
+			loaded,
+			{ type: 'setText', field: 'title', text: 'Lemon bars' },
+			{ type: 'addRow', list: 'ingredientSections', kind: 'item' },
+			{ type: 'addTags', labels: ['Dessert'] }
+		);
+
+		const replaced = edited(added, { type: 'replaceForm', values: loaded });
+
+		expect(replaced).toEqual({ ...loaded, nextId: 4 });
+		expect(edited(replaced, { type: 'replaceForm', values: lemonBarsForm() }).nextId).toBe(12);
+	});
 });
 
 describe('recipeFormProblems', () => {
@@ -687,6 +744,8 @@ describe('recipeFormProblems', () => {
 				ingredientSections: 'Check the ingredients.',
 				notes: 'Check the notes.',
 				'yield.amount': 'Check the yield.',
+				description: 'Check the description.',
+				source: 'Check the source.',
 				title: 'Add a title.',
 				'': 'Part of the card was hard to read.',
 			},
@@ -696,7 +755,7 @@ describe('recipeFormProblems', () => {
 		expect(recipeFormProblems(failed)).toEqual([
 			{ message: 'Part of the card was hard to read.', target: { kind: 'form' } },
 			{ message: 'Add a title.', target: { kind: 'field', field: 'title' } },
-			{ message: 'Check the yield.', target: { kind: 'field', field: 'yieldAmount' } },
+			{ message: 'Check the source.', target: { kind: 'field', field: 'source' } },
 			{ message: 'Check the ingredients.', target: { kind: 'list', list: 'ingredientSections' } },
 			{
 				message: 'Check the heading.',
@@ -715,6 +774,8 @@ describe('recipeFormProblems', () => {
 				target: { kind: 'row', list: 'instructionSections', index: 1, id: 5 },
 			},
 			{ message: 'Check the notes.', target: { kind: 'field', field: 'notes' } },
+			{ message: 'Check the description.', target: { kind: 'field', field: 'description' } },
+			{ message: 'Check the yield.', target: { kind: 'field', field: 'yieldAmount' } },
 			{ message: 'Check the tags.', target: { kind: 'field', field: 'tags' } },
 			{
 				message: 'Check this page.',
@@ -726,6 +787,33 @@ describe('recipeFormProblems', () => {
 
 	it('lists nothing for a form without problems', () => {
 		expect(recipeFormProblems(lemonBarsForm())).toEqual([]);
+	});
+});
+
+describe('recipeFormRequiredErrors', () => {
+	it('names each empty place the recipe needs, keyed as a save’s problems are', () => {
+		const values = edited(recipeFormValues({ title: '  ' }), {
+			type: 'setRowKind',
+			list: 'ingredientSections',
+			rowId: 0,
+			kind: 'heading',
+		});
+		const withHeading = edited(values, {
+			type: 'setRowText',
+			list: 'ingredientSections',
+			rowId: 0,
+			text: 'For the glaze',
+		});
+
+		expect(recipeFormRequiredErrors(withHeading)).toEqual({
+			title: 'Enter a title.',
+			ingredientSections: 'Add at least one ingredient.',
+			instructionSections: 'Add at least one step.',
+		});
+	});
+
+	it('finds nothing in a recipe with a title, an ingredient, and a step', () => {
+		expect(recipeFormRequiredErrors(lemonBarsForm())).toEqual({});
 	});
 });
 

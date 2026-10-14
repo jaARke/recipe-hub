@@ -1,8 +1,13 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { redirect } from 'next/navigation';
+import * as React from 'react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FormAction } from '@/components/forms/form-state';
+import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import { RecipeForm } from '@/components/recipe-form/recipe-form';
+import type { AutosavedRecipeForm } from '@/components/recipe-form/recipe-form-autosave';
+import type { EditedRecipe } from '@/components/recipe-form/recipe-form-fields';
 import {
 	editRecipeForm,
 	recipeFormValues,
@@ -101,6 +106,33 @@ describe('RecipeForm’s review notes', () => {
 		expect(screen.queryByText(/need a second look/)).toBeNull();
 	});
 
+	it('moves Next to the open note after where focus last was in the form, wrapping past the last', async () => {
+		const user = userEvent.setup();
+		renderForm(lemonBars, threeNotes);
+		const next = screen.getByRole('button', { name: 'Next' });
+		const count = () => document.getElementById(next.getAttribute('aria-describedby') ?? '');
+		expect(count()?.textContent).toBe('3 to check');
+
+		await user.click(next);
+		expect(document.activeElement).toBe(noteWith('Check the title.'));
+		await user.click(next);
+		expect(document.activeElement).toBe(noteWith('Check this line.'));
+		await user.click(next);
+		expect(document.activeElement).toBe(noteWith('Check this step.'));
+		await user.click(next);
+		expect(document.activeElement).toBe(noteWith('Check the title.'));
+
+		await user.click(screen.getByRole('textbox', { name: 'Ingredient 1' }));
+		await user.click(next);
+		expect(document.activeElement).toBe(noteWith('Check this line.'));
+
+		await user.click(lookRight('Ingredient 2'));
+		expect(document.activeElement).toBe(noteWith('Check this step.'));
+		expect(count()?.textContent).toBe('2 to check');
+		await user.click(next);
+		expect(document.activeElement).toBe(noteWith('Check the title.'));
+	});
+
 	it('starts checking at the first note', async () => {
 		const user = userEvent.setup();
 		renderForm(lemonBars, threeNotes);
@@ -164,6 +196,47 @@ describe('RecipeForm’s review notes', () => {
 		).toEqual([screen.getByRole('textbox', { name: 'Ingredient 1' }).id]);
 	});
 
+	it('shows what the save needs before asking about notes, and clears it as it asks once it can save', async () => {
+		const action = vi.fn(refuse);
+		const user = userEvent.setup();
+		renderForm({ ...lemonBars, title: undefined }, threeNotes.slice(1), action);
+		const title = screen.getByRole('textbox', { name: 'Title' });
+
+		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+
+		const summary = screen.getByText('Fix 1 thing to save').closest('[role="alert"]');
+		expect(document.activeElement).toBe(summary);
+		expect(screen.getByRole('link', { name: 'Title: Enter a title.' })).toBeDefined();
+		expect(title.getAttribute('aria-invalid')).toBe('true');
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(action).not.toHaveBeenCalled();
+
+		await user.type(title, 'Lemon bars');
+		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+
+		const dialog = await screen.findByRole('alertdialog');
+		expect(within(dialog).getByText('2 things haven’t been checked')).toBeDefined();
+		expect(screen.queryByText('Fix 1 thing to save')).toBeNull();
+		expect(screen.queryByText('Enter a title.')).toBeNull();
+		expect(title.getAttribute('aria-invalid')).toBeNull();
+		expect(action).not.toHaveBeenCalled();
+	});
+
+	it('asks for the ingredients and steps a recipe needs before any request', async () => {
+		const action = vi.fn(refuse);
+		const user = userEvent.setup();
+		renderForm({ title: 'Lemon bars' }, [], action);
+
+		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+
+		expect(screen.getByText('Fix 2 things to save')).toBeDefined();
+		expect(
+			screen.getByRole('link', { name: 'Ingredients: Add at least one ingredient.' })
+		).toBeDefined();
+		expect(screen.getByRole('link', { name: 'Steps: Add at least one step.' })).toBeDefined();
+		expect(action).not.toHaveBeenCalled();
+	});
+
 	it('saves without asking once nothing is left to check', async () => {
 		const action = vi.fn(refuse);
 		const user = userEvent.setup();
@@ -194,6 +267,16 @@ describe('RecipeForm’s review notes', () => {
 		const dialog = await screen.findByRole('alertdialog');
 		expect(within(dialog).getByText('1 thing hasn’t been checked')).toBeDefined();
 		expect(action).not.toHaveBeenCalled();
+	});
+});
+
+describe('RecipeForm’s times', () => {
+	it('names each time with its unit, as its problems name it', () => {
+		renderForm(lemonBars);
+
+		for (const time of ['Prep', 'Cook', 'Total']) {
+			expect(screen.getByRole('textbox', { name: `${time}, in minutes` })).toBeDefined();
+		}
 	});
 });
 
@@ -322,6 +405,19 @@ describe('RecipeForm’s lists', () => {
 		await user.click(screen.getByRole('button', { name: `Actions for ${row}` }));
 		await user.click(await screen.findByRole('menuitem', { name: action }));
 	}
+
+	it('shows how a line without an amount reads once tidied, and nothing when it reads as typed', () => {
+		renderForm({
+			...lemonBars,
+			ingredientSections: [{ lines: [{ text: 'Salt to taste;' }, { text: 'Pepper to taste' }] }],
+		});
+
+		const previews = Array.from(
+			screen.getByRole('list', { name: 'Ingredients' }).querySelectorAll('[id$="-preview"]'),
+			(preview) => preview.textContent
+		);
+		expect(previews).toEqual(['Shows as Salt to taste']);
+	});
 
 	it('adds a line below on Enter and removes an empty one on Backspace, announcing each', async () => {
 		const user = userEvent.setup();
@@ -468,3 +564,349 @@ describe('RecipeForm’s lists', () => {
 		);
 	});
 });
+
+describe('RecipeForm’s autosave', () => {
+	const newRecipeKey = 'member:recipe-form:new';
+	const recipeId = '0b6f3c7e-3c1a-4d8e-9a57-2f1d6b8e4c10';
+	const importId = '6d2b9f4a-8e1c-4b7d-a3f5-1c9e7d2b6a84';
+
+	type AutosavedFormProps = {
+		initial?: RecipeFormValues;
+		action?: FormAction;
+		editing?: EditedRecipe;
+		importId?: string;
+	};
+
+	function AutosavedForm({
+		initial = recipeFormValues(),
+		action = refuse,
+		editing,
+		importId: reviewed,
+	}: AutosavedFormProps) {
+		return (
+			<RecipeForm
+				initial={initial}
+				action={action}
+				uploadFolders={uploadFolders}
+				tagLabels={[]}
+				uploader={vi.fn()}
+				editing={editing}
+				importId={reviewed}
+				autosave
+				submitLabel="Save recipe"
+			/>
+		);
+	}
+
+	function stored(key: string): AutosavedRecipeForm | undefined {
+		const entry = localStorage.getItem(key);
+		return entry === null ? undefined : (JSON.parse(entry) as AutosavedRecipeForm);
+	}
+
+	function title(): HTMLInputElement {
+		return screen.getByRole<HTMLInputElement>('textbox', { name: 'Title' });
+	}
+
+	const blankText = {
+		title: '',
+		description: '',
+		source: '',
+		notes: '',
+		prepMinutes: '',
+		cookMinutes: '',
+		totalMinutes: '',
+		yieldAmount: '',
+		yieldUnit: '',
+		tagDraft: '',
+	};
+
+	// A new recipe that can save, as a reload left it: a title, a line, a step, and two uploads, the
+	// second of which the sweep has since removed.
+	const storedNewRecipe: AutosavedRecipeForm = {
+		text: { ...blankText, title: 'Lemon bars' },
+		yieldKind: 'servings',
+		ingredientSections: { rows: [{ kind: 'item', id: 0, text: '1 cup flour' }] },
+		instructionSections: { rows: [{ kind: 'item', id: 1, text: 'Bake.' }] },
+		tags: [],
+		photos: {
+			dish: [
+				{ id: 2, fileName: 'kept.jpg', alt: 'Bars', pathname: 'dish/development/kept.jpg' },
+				{ id: 3, fileName: 'swept.jpg', alt: '', pathname: 'dish/development/swept.jpg' },
+			],
+			scan: [],
+		},
+		reviewNotes: [],
+		nextId: 4,
+	};
+
+	// Answers the image route's lookups: the swept upload is gone, and every other photo is stored.
+	function answerLookups() {
+		const fetch = vi.fn(
+			async (url: string) => new Response(null, { status: url.includes('swept') ? 404 : 200 })
+		);
+		vi.stubGlobal('fetch', fetch);
+		return fetch;
+	}
+
+	// Each photo's name and the status under it.
+	function photoStatuses() {
+		return within(screen.getByRole('list', { name: 'Photos' }))
+			.getAllByRole('listitem')
+			.map((row) => ({
+				name: row.querySelector('[data-slot="attachment-title"]')?.textContent,
+				status: row.querySelector('[data-slot="attachment-description"]')?.textContent,
+			}));
+	}
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
+		localStorage.clear();
+	});
+
+	it('offers a half-filled new recipe back as the form loads again, and Discard clears it', async () => {
+		const user = userEvent.setup();
+		const first = render(<AutosavedForm />);
+		await user.type(title(), 'Lemon bars');
+		await user.type(screen.getByRole('textbox', { name: 'Ingredient 1' }), '1 cup flour');
+		expect(stored(newRecipeKey)?.text.title).toBe('Lemon bars');
+		first.unmount();
+
+		render(<AutosavedForm />);
+
+		expect(await screen.findByText('Restored your unsaved changes')).toBeDefined();
+		expect(
+			screen.getByText('Restored your unsaved changes.').closest('[role="status"]')
+		).not.toBeNull();
+		expect(title().value).toBe('Lemon bars');
+		expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Ingredient 1' }).value).toBe(
+			'1 cup flour'
+		);
+
+		await user.click(screen.getByRole('button', { name: 'Discard unsaved changes' }));
+
+		expect(title().value).toBe('');
+		expect(screen.queryByText('Restored your unsaved changes')).toBeNull();
+		expect(screen.getByText('Discarded your unsaved changes.')).toBeDefined();
+		expect(document.activeElement).toBe(title());
+		expect(localStorage.getItem(newRecipeKey)).toBeNull();
+	});
+
+	it('keeps nothing for a form as it loaded, and nothing once it is back to that', async () => {
+		const user = userEvent.setup();
+		render(<AutosavedForm />);
+		expect(localStorage.getItem(newRecipeKey)).toBeNull();
+
+		await user.type(title(), 'L');
+		expect(stored(newRecipeKey)?.text.title).toBe('L');
+		await user.clear(title());
+		expect(localStorage.getItem(newRecipeKey)).toBeNull();
+
+		// A line added and removed again leaves only a higher next id.
+		await user.type(screen.getByRole('textbox', { name: 'Ingredient 1' }), '{Enter}');
+		expect(screen.getByRole('textbox', { name: 'Ingredient 2' })).toBeDefined();
+		await user.keyboard('{Backspace}');
+		expect(screen.queryByRole('textbox', { name: 'Ingredient 2' })).toBeNull();
+		expect(localStorage.getItem(newRecipeKey)).toBeNull();
+	});
+
+	it('keeps the changes when a save is refused, or never reaches the site', async () => {
+		const action = vi.fn(refuse);
+		const user = userEvent.setup();
+		localStorage.setItem(newRecipeKey, JSON.stringify(storedNewRecipe));
+		answerLookups();
+		render(<AutosavedForm action={action} />);
+		await screen.findByText('Restored your unsaved changes');
+
+		// The button reads "Saving recipe" until the last save settles.
+		await user.click(await screen.findByRole('button', { name: 'Save recipe' }));
+		expect(await screen.findByText('Fix 1 thing to save')).toBeDefined();
+		expect(stored(newRecipeKey)?.text.title).toBe('Lemon bars');
+
+		action.mockImplementation(async () => {
+			throw new TypeError('Failed to fetch');
+		});
+		await user.click(await screen.findByRole('button', { name: 'Save recipe' }));
+		expect(
+			await screen.findByText('We couldn’t save the recipe. Check your connection and try again.')
+		).toBeDefined();
+		expect(action).toHaveBeenCalledTimes(2);
+		expect(stored(newRecipeKey)?.text.title).toBe('Lemon bars');
+	});
+
+	it('clears the changes before a save leads to the saved recipe', async () => {
+		// React reports the error the page's boundary catches.
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		const user = userEvent.setup();
+		localStorage.setItem(newRecipeKey, JSON.stringify(storedNewRecipe));
+		answerLookups();
+		render(
+			<LeavingPage>
+				<AutosavedForm action={async () => redirect('/recipes/lemon-bars')} />
+			</LeavingPage>
+		);
+		await screen.findByText('Restored your unsaved changes');
+
+		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+
+		expect(await screen.findByText('Left for the recipe')).toBeDefined();
+		expect(localStorage.getItem(newRecipeKey)).toBeNull();
+	});
+
+	it('shows a restored upload the sweep removed as one that didn’t upload, and saves the rest', async () => {
+		const action = vi.fn(refuse);
+		const user = userEvent.setup();
+		localStorage.setItem(newRecipeKey, JSON.stringify(storedNewRecipe));
+		const fetch = answerLookups();
+		render(<AutosavedForm action={action} />);
+		await screen.findByText('Restored your unsaved changes');
+
+		expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+			'/api/images/dish/development/kept.jpg',
+			'/api/images/dish/development/swept.jpg',
+		]);
+		await waitFor(() =>
+			expect(photoStatuses()).toEqual([
+				{ name: 'kept.jpg', status: 'Cover photo' },
+				{ name: 'swept.jpg', status: 'Didn’t upload' },
+			])
+		);
+		const rows = within(screen.getByRole('list', { name: 'Photos' })).getAllByRole('listitem');
+		expect(
+			within(rows[1] as HTMLElement).getByText(
+				'This photo didn’t upload. Remove it and add it again.'
+			)
+		).toBeDefined();
+
+		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+
+		await waitFor(() => expect(action).toHaveBeenCalledOnce());
+		const sent = action.mock.calls[0]?.[1].get('recipe');
+		expect(JSON.parse(typeof sent === 'string' ? sent : '{}').images).toEqual([
+			{ role: 'dish', pathname: 'dish/development/kept.jpg', alt: 'Bars' },
+		]);
+	});
+
+	it('keeps what is typed while a restored upload is looked up, and then shows the upload gone', async () => {
+		const user = userEvent.setup();
+		localStorage.setItem(newRecipeKey, JSON.stringify(storedNewRecipe));
+		// The swept upload's lookup answers only when the test says.
+		const sweptLookup = Promise.withResolvers<Response>();
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string) =>
+				url.includes('swept') ? sweptLookup.promise : new Response(null, { status: 200 })
+			)
+		);
+		render(<AutosavedForm />);
+
+		await user.clear(title());
+		await user.type(title(), 'Lemon squares');
+		sweptLookup.resolve(new Response(null, { status: 404 }));
+
+		await waitFor(() =>
+			expect(photoStatuses()).toEqual([
+				{ name: 'kept.jpg', status: 'Cover photo' },
+				{ name: 'swept.jpg', status: 'Didn’t upload' },
+			])
+		);
+		expect(title().value).toBe('Lemon squares');
+		expect(stored(newRecipeKey)?.text.title).toBe('Lemon squares');
+		expect(stored(newRecipeKey)?.photos.dish.map(({ pathname }) => pathname)).toEqual([
+			'dish/development/kept.jpg',
+			undefined,
+		]);
+	});
+
+	it('brings an edit back only to the version of the recipe it was made on', async () => {
+		const user = userEvent.setup();
+		const editing = (version: string) => ({ id: recipeId, version, respellableTags: [] });
+		const first = render(
+			<AutosavedForm
+				initial={recipeFormValues(lemonBars)}
+				editing={editing('2026-10-14T12:00:00.000Z')}
+			/>
+		);
+		await user.type(title(), ' squares');
+		expect(stored(`member:recipe-form:recipe:${recipeId}`)?.version).toBe(
+			'2026-10-14T12:00:00.000Z'
+		);
+		first.unmount();
+
+		render(
+			<AutosavedForm
+				initial={recipeFormValues(lemonBars)}
+				editing={editing('2026-10-15T09:30:00.000Z')}
+			/>
+		);
+
+		expect(title().value).toBe('Lemon bars');
+		expect(screen.queryByText('Restored your unsaved changes')).toBeNull();
+		expect(localStorage.getItem(`member:recipe-form:recipe:${recipeId}`)).toBeNull();
+	});
+
+	it('brings an import’s review back with its notes as they were', async () => {
+		const user = userEvent.setup();
+		const initial = recipeFormValues(lemonBars, threeNotes);
+		const first = render(<AutosavedForm initial={initial} importId={importId} />);
+		await user.click(lookRight('Ingredient 2'));
+		expect(stored(`member:recipe-form:import:${importId}`)).toBeDefined();
+		first.unmount();
+
+		render(<AutosavedForm initial={initial} importId={importId} />);
+
+		expect(await screen.findByText('Restored your unsaved changes')).toBeDefined();
+		expect(screen.getByText('2 things need a second look')).toBeDefined();
+		expect(screen.queryByText('Check this line.')).toBeNull();
+		expect(screen.getByText('Check this step.')).toBeDefined();
+	});
+
+	it('keeps the notice while its page is hidden and shown again, and never brings back what it discarded', async () => {
+		const user = userEvent.setup();
+		localStorage.setItem(newRecipeKey, JSON.stringify(storedNewRecipe));
+		answerLookups();
+		const page = renderKeptPage(<AutosavedForm />);
+		await screen.findByText('Restored your unsaved changes');
+
+		await page.hide();
+		await page.show();
+		expect(screen.getByText('Restored your unsaved changes')).toBeDefined();
+
+		await user.click(screen.getByRole('button', { name: 'Discard unsaved changes' }));
+		await user.type(title(), 'Lemon tart');
+		await page.hide();
+		await page.show();
+
+		expect(screen.queryByText('Restored your unsaved changes')).toBeNull();
+		expect(title().value).toBe('Lemon tart');
+		expect(stored(newRecipeKey)?.text.title).toBe('Lemon tart');
+	});
+
+	it('works as without it where the browser blocks storage', async () => {
+		const action = vi.fn(refuse);
+		const user = userEvent.setup();
+		vi.spyOn(globalThis, 'localStorage', 'get').mockImplementation(() => {
+			throw new DOMException('The operation is insecure.', 'SecurityError');
+		});
+		render(<AutosavedForm initial={recipeFormValues(lemonBars)} action={action} />);
+
+		await user.type(title(), ' squares');
+		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+
+		await waitFor(() => expect(action).toHaveBeenCalledOnce());
+		expect(screen.queryByText('Restored your unsaved changes')).toBeNull();
+	});
+});
+
+// Stands in for Next's boundary, which catches the redirect a save ends with.
+class LeavingPage extends React.Component<{ children: React.ReactNode }, { left: boolean }> {
+	state = { left: false };
+
+	static getDerivedStateFromError() {
+		return { left: true };
+	}
+
+	render() {
+		return this.state.left ? <p>Left for the recipe</p> : this.props.children;
+	}
+}

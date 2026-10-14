@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { formatAmount } from '@/domain/recipe/amount-format';
+import { approximationWord } from '@/domain/recipe/amount-words';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
-import { preparationSeparator } from '@/domain/recipe/ingredient-parser';
+import { preparationSeparator, wordsAfterUnit } from '@/domain/recipe/ingredient-parser';
 
 type IngredientLineTextProps = {
 	line: IngredientLine;
@@ -22,12 +23,16 @@ function IngredientLineText({ line, renderText = asWritten }: IngredientLineText
 	}
 
 	const amount = formatAmount(line.amount, line.unit);
+	// A word such as "About" that the amount was read past, so the line keeps its own wording.
+	const approximation = approximationWord.exec(line.text)?.[0];
 	return (
 		<>
+			{approximation}
 			<span className="font-semibold">
-				{line.unit === undefined ? amount : `${amount} ${line.unit}`}
+				{amount}
+				{line.unit !== undefined && <> {renderText(line.unit)}</>}
 			</span>{' '}
-			{renderText(line.item)}
+			{renderText(`${wordsAfterUnit(line)}${line.item}`)}
 			{line.preparation !== undefined &&
 				renderText(`${preparationSeparator(line)}${line.preparation}`)}
 		</>

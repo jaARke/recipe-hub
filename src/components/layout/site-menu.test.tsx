@@ -1,14 +1,20 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HeaderMember } from '@/components/layout/header-member';
 import { SiteMenu } from '@/components/layout/site-menu';
 
-// The menu reads the pathname to mark the current page, and sign-out uses the router.
+const location = vi.hoisted(() => ({ pathname: '/' }));
+
+// The menu reads the pathname to mark the current section, and sign-out uses the router.
 vi.mock('next/navigation', () => ({
-	usePathname: () => '/',
+	usePathname: () => location.pathname,
 	useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
+
+beforeEach(() => {
+	location.pathname = '/';
+});
 
 const member: HeaderMember = { displayName: 'Sam', role: 'member' };
 const admin: HeaderMember = { displayName: 'Avery', role: 'admin' };
@@ -81,6 +87,21 @@ describe('SiteMenu', () => {
 		).toBe('page');
 		expect(
 			within(menu).getByRole('menuitem', { name: 'Add recipe' }).getAttribute('aria-current')
+		).toBeNull();
+	});
+
+	it('marks the section of a page below it', async () => {
+		location.pathname = '/contribute/imports/0199c7a4';
+		const menu = await openMenu(Promise.resolve(admin));
+
+		expect(
+			within(menu).getByRole('menuitem', { name: 'Add recipe' }).getAttribute('aria-current')
+		).toBe('true');
+		expect(
+			within(menu).getByRole('menuitem', { name: 'Browse' }).getAttribute('aria-current')
+		).toBeNull();
+		expect(
+			(await within(menu).findByRole('menuitem', { name: 'Admin' })).getAttribute('aria-current')
 		).toBeNull();
 	});
 });

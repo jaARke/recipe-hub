@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import { boundedTextSchema, nonEmptyTextSchema } from '@/domain/text';
+import { boundedTextSchema, plainTextSchema } from '@/domain/text';
 
 // How a recipe schema treats the recipe limits in the settings. Content being written must meet them,
 // while stored content is read whatever they are now, so a lowered limit applies at the next edit and
@@ -17,6 +17,6 @@ export const writtenContent: ContentLimits = {
 };
 
 export const storedContent: ContentLimits = {
-	text: (_max, text = nonEmptyTextSchema) => text,
+	text: (_max, text = plainTextSchema) => text,
 	exceeds: () => false,
 };

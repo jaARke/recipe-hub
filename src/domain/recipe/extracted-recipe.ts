@@ -1,11 +1,19 @@
+import type { z } from 'zod';
 import type { Problem } from '@/domain/problem';
+import { approximationWord } from '@/domain/recipe/amount-words';
 import { durationMinutesSchema, type RecipeTimes } from '@/domain/recipe/duration';
-import { parseAmountText, parseIngredientLine } from '@/domain/recipe/ingredient-parser';
+import { normalizeIngredientLine, parseIngredientLine } from '@/domain/recipe/ingredient-parser';
+import { withoutListMarkers } from '@/domain/recipe/list-markers';
+import { titleTextSchema } from '@/domain/recipe/recipe';
 import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import type { ImportDraft } from '@/domain/recipe/recipe-import';
-import type { RecipeYield } from '@/domain/recipe/recipe-yield';
-import { nonEmptyTextSchema } from '@/domain/text';
+import {
+	readYieldAmount,
+	yieldUnitTextSchema,
+	type RecipeYield,
+} from '@/domain/recipe/recipe-yield';
+import { plainTextSchema, sectionHeadingTextSchema } from '@/domain/text';
 import { settings } from '@/lib/settings';
 
 // A recipe as an extractor read it, before validation: text as written, ingredient lines unparsed.
@@ -141,25 +149,29 @@ const missingStepsProblem: Problem = {
 // The second half of a character written as two UTF-16 code units, such as an emoji.
 const lowSurrogate = /[\uDC00-\uDFFF]/;
 
-// A word that opens an approximate yield, as in "About 50" or "approx. 2".
-export const approximationWord =
-	/^(?:about|approximately|approx|around|roughly|nearly|almost|up\s+to)\b\.?\s*/iu;
-
-// Text as the domain stores it, or undefined when nothing is left of it.
-function storedText(text: string | undefined): string | undefined {
+// Text as the domain stores it in a field of the given kind, or undefined when nothing is left of it.
+function storedText(
+	text: string | undefined,
+	schema: z.ZodString = plainTextSchema
+): string | undefined {
 	if (text === undefined) {
 		return undefined;
 	}
-	const result = nonEmptyTextSchema.safeParse(text);
+	const result = schema.safeParse(text);
 	return result.success ? result.data : undefined;
 }
 
-function keptList(name: DraftListName, extracted: readonly ListSection[]): KeptList {
+// Each item is tidied as the list stores it first, so one that is only a bullet or a number drops.
+function keptList(
+	name: DraftListName,
+	extracted: readonly ListSection[],
+	tidy: (item: string) => string
+): KeptList {
 	const sections: ListSection[] = [];
 	const places = extracted.map((section): SectionPlace | undefined => {
 		const texts: string[] = [];
 		const itemIndexes = section.texts.map((item) => {
-			const text = storedText(item);
+			const text = storedText(tidy(item));
 			if (text === undefined) {
 				return undefined;
 			}
@@ -169,7 +181,7 @@ function keptList(name: DraftListName, extracted: readonly ListSection[]): KeptL
 		if (texts.length === 0) {
 			return undefined;
 		}
-		sections.push({ heading: storedText(section.heading), texts });
+		sections.push({ heading: storedText(section.heading, sectionHeadingTextSchema), texts });
 		return { index: sections.length - 1, itemIndexes };
 	});
 	return { name, sections, places };
@@ -235,9 +247,10 @@ function draftText(
 	text: string | undefined,
 	max: number,
 	path: string,
-	problems: Problem[]
+	problems: Problem[],
+	schema?: z.ZodString
 ): string | undefined {
-	const stored = storedText(text);
+	const stored = storedText(text, schema);
 	return stored === undefined ? undefined : fittedText(stored, max, path, problems);
 }
 
@@ -251,10 +264,11 @@ function draftYield(
 	if (extracted === undefined || amountText === undefined) {
 		return undefined;
 	}
-	const writtenUnit = extracted.kind === 'makes' ? storedText(extracted.unit) : undefined;
+	const writtenUnit =
+		extracted.kind === 'makes' ? storedText(extracted.unit, yieldUnitTextSchema) : undefined;
 	const original = writtenUnit === undefined ? amountText : `${amountText} ${writtenUnit}`;
-	const exactAmount = parseAmountText(amountText);
-	const amount = exactAmount ?? parseAmountText(amountText.replace(approximationWord, ''));
+	const exactAmount = readYieldAmount(amountText);
+	const amount = exactAmount ?? readYieldAmount(amountText.replace(approximationWord, ''));
 	if (amount === undefined) {
 		problems.push({
 			path: 'yield.amount',
@@ -324,14 +338,22 @@ export function importDraftFromExtractedRecipe(
 	const lossProblems: Problem[] = [];
 	const ingredientList = keptList(
 		'ingredientSections',
-		recipe.ingredientSections.map(({ heading, lines }) => ({ heading, texts: lines }))
+		recipe.ingredientSections.map(({ heading, lines }) => ({ heading, texts: lines })),
+		normalizeIngredientLine
 	);
 	const instructionList = keptList(
 		'instructionSections',
-		recipe.instructionSections.map(({ heading, steps }) => ({ heading, texts: steps }))
+		recipe.instructionSections.map(({ heading, steps }) => ({ heading, texts: steps })),
+		withoutListMarkers
 	);
 	const content: RecipeDraftContent = {
-		title: draftText(recipe.title, settings.recipeLimits.maxTitleLength, 'title', lossProblems),
+		title: draftText(
+			recipe.title,
+			settings.recipeLimits.maxTitleLength,
+			'title',
+			lossProblems,
+			titleTextSchema
+		),
 		description: draftText(
 			recipe.description,
 			settings.recipeLimits.maxDescriptionLength,

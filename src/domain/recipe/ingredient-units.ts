@@ -12,6 +12,7 @@ import {
 	type UnitOfMeasure,
 	type UnitOfMeasureDefinitions,
 } from 'parse-ingredient';
+import { transcriptionMarkers } from '@/domain/recipe/transcription-markers';
 
 // Sizes describe the item rather than measure it: "1 large egg".
 export const sizes: readonly string[] = [
@@ -29,7 +30,7 @@ export const sizes: readonly string[] = [
 ];
 
 // Words old cards put before a spoon or cup, read as part of the unit: "2 level tablespoons salt".
-const measureModifiers = ['level', 'heaping', 'heaped', 'rounded'];
+const measureModifiers = ['level', 'heaping', 'heaped', 'rounded', 'scant'];
 
 function withModifiers(id: string, plural: string): string[] {
 	return measureModifiers.flatMap((modifier) => [`${modifier} ${id}`, `${modifier} ${plural}`]);
@@ -151,12 +152,26 @@ export const readingOptions = {
 	round: false,
 } as const satisfies ExtractMeasurementsOptions;
 
+// The marker the parser keeps at the front of a unit after an amount it is unsure of, so the recipe
+// page still shows it: "1 1/2 [?] cups flour" reads in "[?] cups".
+const unitMarker = `${transcriptionMarkers.unsure} `;
+
 // Gives the library a word to read the unit before, since it reads no unit that ends a line.
 const placeholderItem = 'x';
 
-// The id of a unit as written, such as "tablespoon" for "Tbsp" or "can" for "can (14 ounces)", read
-// as the parser reads a line.
+// A unit as written, or text that opens with one, apart from the marker at its front if it has one.
+export function splitUnitMarker(unit: string): { marker: string; unit: string } {
+	return unit.startsWith(unitMarker)
+		? { marker: unitMarker, unit: unit.slice(unitMarker.length) }
+		: { marker: '', unit };
+}
+
+// The id of a unit as written, such as "tablespoon" for "Tbsp", "can" for "can (14 ounces)", or
+// "cup" for "[?] cups", read as the parser reads a line.
 export function readUnit(unit: string): string | undefined {
-	const [parsed] = parseIngredient([`1 ${unit} ${placeholderItem}`], readingOptions);
+	const [parsed] = parseIngredient(
+		[`1 ${splitUnitMarker(unit).unit} ${placeholderItem}`],
+		readingOptions
+	);
 	return parsed?.unitOfMeasureID ?? undefined;
 }

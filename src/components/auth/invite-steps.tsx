@@ -5,6 +5,7 @@ import Link from 'next/link';
 import * as React from 'react';
 import type { InvitePreviewDto } from '@/application/access/access-dtos';
 import { accountPath, requestAccessPath } from '@/components/auth/auth-paths';
+import { FormActions } from '@/components/forms/form-actions';
 import { recipeListPath } from '@/components/recipe/recipe-paths';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -56,10 +57,6 @@ function InviteStep({ children }: { children: React.ReactNode }) {
 	return <div className="flex flex-col gap-6">{children}</div>;
 }
 
-function InviteActions({ children }: { children: React.ReactNode }) {
-	return <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">{children}</div>;
-}
-
 function InviteWelcome({
 	preview,
 	headingLevel,
@@ -84,11 +81,11 @@ function InviteWelcome({
 					<time dateTime={preview.expiresAt.toISOString()}>{formatDate(preview.expiresAt)}</time>.
 				</p>
 			</div>
-			<InviteActions>
+			<FormActions>
 				<Button type="button" onClick={onContinue}>
 					Get started
 				</Button>
-			</InviteActions>
+			</FormActions>
 		</InviteStep>
 	);
 }
@@ -165,10 +162,7 @@ function InvitePasskeyOffer({
 					</AlertDescription>
 				</Alert>
 			)}
-			<InviteActions>
-				<Button type="button" variant="outline" onClick={onSkip}>
-					Not now
-				</Button>
+			<FormActions>
 				<Button type="button" disabled={pending} focusableWhenDisabled onClick={onCreate}>
 					{pending ? (
 						<Spinner data-icon="inline-start" />
@@ -177,7 +171,10 @@ function InvitePasskeyOffer({
 					)}
 					{pending ? 'Creating passkey' : 'Create a passkey'}
 				</Button>
-			</InviteActions>
+				<Button type="button" variant="outline" onClick={onSkip}>
+					Not now
+				</Button>
+			</FormActions>
 		</InviteStep>
 	);
 }
@@ -195,14 +192,14 @@ function InviteDone({
 				<InviteStepHeading headingLevel={headingLevel}>You’re all set</InviteStepHeading>
 				<p>{inviteDoneMessages[outcome]}</p>
 			</div>
-			<InviteActions>
-				<Link href={accountPath} className={buttonVariants({ variant: 'outline' })}>
-					Go to your account
-				</Link>
+			<FormActions>
 				<Link href={recipeListPath} className={buttonVariants()}>
 					Browse recipes
 				</Link>
-			</InviteActions>
+				<Link href={accountPath} className={buttonVariants({ variant: 'outline' })}>
+					Go to your account
+				</Link>
+			</FormActions>
 		</InviteStep>
 	);
 }
@@ -217,11 +214,11 @@ function InviteUnavailable({ headingLevel }: { headingLevel: InviteHeadingLevel 
 					who invited you for a new one, or request access.
 				</p>
 			</div>
-			<InviteActions>
+			<FormActions>
 				<Link href={requestAccessPath} className={buttonVariants({ variant: 'outline' })}>
 					Request access
 				</Link>
-			</InviteActions>
+			</FormActions>
 		</InviteStep>
 	);
 }
@@ -241,11 +238,11 @@ function InviteLoadFailed({
 				</InviteStepHeading>
 				<p>Check your connection and try again.</p>
 			</div>
-			<InviteActions>
+			<FormActions>
 				<Button type="button" onClick={onRetry}>
 					Try again
 				</Button>
-			</InviteActions>
+			</FormActions>
 		</InviteStep>
 	);
 }
@@ -266,11 +263,11 @@ function InviteCompleteFailed({
 				</InviteStepHeading>
 				<p>You’re signed in. Check your connection and try again.</p>
 			</div>
-			<InviteActions>
+			<FormActions>
 				<Button type="button" onClick={onRetry}>
 					Try again
 				</Button>
-			</InviteActions>
+			</FormActions>
 		</InviteStep>
 	);
 }
@@ -294,7 +291,7 @@ function InviteSignedIn({
 					use it.
 				</p>
 			</div>
-			<InviteActions>{signOutButton}</InviteActions>
+			<FormActions>{signOutButton}</FormActions>
 		</InviteStep>
 	);
 }
@@ -308,7 +305,7 @@ function InviteFlowSkeleton() {
 				<Skeleton className="h-5 w-full" />
 				<Skeleton className="h-5 w-48" />
 			</div>
-			<Skeleton className="h-9 w-28 self-end" />
+			<Skeleton className="h-9 w-28" />
 		</div>
 	);
 }

@@ -8,6 +8,7 @@ import { ComboboxSpecimen } from '@/components/design-reference/combobox-specime
 import {
 	AlertSpecimen,
 	AttachmentSpecimen,
+	AvatarSpecimen,
 	CardSpecimen,
 	EmptySpecimen,
 	ProgressSpecimen,
@@ -26,6 +27,7 @@ import {
 } from '@/components/design-reference/form-specimens';
 import {
 	CarouselSpecimen,
+	CollapsibleSpecimen,
 	DialogSpecimen,
 	DropdownMenuSpecimen,
 	TabsSpecimen,
@@ -41,6 +43,7 @@ import { ToastSpecimen } from '@/components/design-reference/toast-specimen';
 const primitives = [
 	{ id: 'button', title: 'Button', Content: ButtonSpecimen },
 	{ id: 'badge', title: 'Badge', Content: BadgeSpecimen },
+	{ id: 'avatar', title: 'Avatar', Content: AvatarSpecimen },
 	{ id: 'pagination', title: 'Pagination', Content: PaginationSpecimen },
 	{ id: 'card', title: 'Card', Content: CardSpecimen },
 	{ id: 'input', title: 'Input', Content: InputSpecimen },
@@ -53,6 +56,7 @@ const primitives = [
 	{ id: 'checkbox', title: 'Checkbox', Content: CheckboxSpecimen },
 	{ id: 'attachment', title: 'Attachment', Content: AttachmentSpecimen },
 	{ id: 'tabs', title: 'Tabs', Content: TabsSpecimen },
+	{ id: 'collapsible', title: 'Collapsible', Content: CollapsibleSpecimen },
 	{ id: 'carousel', title: 'Carousel', Content: CarouselSpecimen },
 	{ id: 'dialog', title: 'Dialog', Content: DialogSpecimen },
 	{ id: 'alert-dialog', title: 'Alert dialog', Content: AlertDialogSpecimen },

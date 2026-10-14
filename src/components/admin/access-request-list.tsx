@@ -1,15 +1,16 @@
 'use client';
 
 import { InboxIcon } from 'lucide-react';
-import * as React from 'react';
 import type { AccessRequestDto } from '@/application/access/access-dtos';
 import { adminFieldNames, type IssuedInvite } from '@/components/admin/admin-forms';
 import { DisplayNameField } from '@/components/admin/display-name-field';
 import { IssuedInviteNotice } from '@/components/admin/issued-invite-notice';
 import { ConfirmActionDialog } from '@/components/forms/confirm-action-dialog';
+import { FormActions } from '@/components/forms/form-actions';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
 import { useFormAction } from '@/components/forms/use-form-action';
+import { useTransientState } from '@/components/forms/use-transient-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -22,6 +23,7 @@ import {
 } from '@/components/ui/empty';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Spinner } from '@/components/ui/spinner';
+import { inviteBlankMessages } from '@/domain/member/invite';
 import { formatDate } from '@/lib/dates';
 
 // Level 5 nests a request under the design reference's own headings.
@@ -43,13 +45,17 @@ function AccessRequestCard({
 	onIssued,
 }: AccessRequestCardProps) {
 	const idPrefix = `request-${request.id}`;
-	const [state, formAction, pending] = useFormAction<IssuedInvite>(async (previous, formData) => {
-		const next = await issueInvite(previous, formData);
-		if (next.status === 'success') {
-			onIssued(next);
-		}
-		return next;
-	}, 'We couldn’t approve the request. Reload the page and try again.');
+	const [state, formProps, pending] = useFormAction<IssuedInvite>(
+		async (previous, formData) => {
+			const next = await issueInvite(previous, formData);
+			if (next.status === 'success') {
+				onIssued(next);
+			}
+			return next;
+		},
+		'We couldn’t approve the request. Reload the page and try again.',
+		{ blankMessages: inviteBlankMessages }
+	);
 	const failed = state.status === 'error' ? state : undefined;
 	// React resets the form after every submit, returning the checkbox's hidden input to the state it
 	// mounted with. Remounting it with the submitted choice keeps what it shows and sends in step.
@@ -82,8 +88,9 @@ function AccessRequestCard({
 				</dl>
 			</CardContent>
 			<CardContent>
-				<form action={formAction} noValidate className="flex flex-col gap-6">
+				<form {...formProps} className="flex flex-col gap-4">
 					<input type="hidden" name={adminFieldNames.requestId} value={request.id} />
+					<FormErrorAlert message={failed?.message} />
 					<FieldGroup>
 						<DisplayNameField
 							id={`${idPrefix}-name`}
@@ -105,8 +112,12 @@ function AccessRequestCard({
 							</Field>
 						)}
 					</FieldGroup>
-					<FormErrorAlert message={failed?.message} />
-					<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+					<FormActions>
+						<Button type="submit" disabled={pending} focusableWhenDisabled>
+							{pending && <Spinner data-icon="inline-start" />}
+							{pending ? 'Approving' : 'Approve'}
+							{whichRequest}
+						</Button>
 						<ConfirmActionDialog
 							variant="destructive"
 							trigger={<>Decline{whichRequest}</>}
@@ -121,12 +132,7 @@ function AccessRequestCard({
 						>
 							<input type="hidden" name={adminFieldNames.requestId} value={request.id} />
 						</ConfirmActionDialog>
-						<Button type="submit" disabled={pending} focusableWhenDisabled>
-							{pending && <Spinner data-icon="inline-start" />}
-							{pending ? 'Approving' : 'Approve'}
-							{whichRequest}
-						</Button>
-					</div>
+					</FormActions>
 				</form>
 			</CardContent>
 		</Card>
@@ -164,12 +170,12 @@ function AccessRequestList({
 	issueInvite,
 	declineRequest,
 }: AccessRequestListProps) {
-	const [issued, setIssued] = React.useState<IssuedInvite | null>(null);
+	const [issued, setIssued] = useTransientState<IssuedInvite>();
 
 	return (
 		<div>
 			<div role="status" aria-live="polite">
-				{issued !== null && <IssuedInviteNotice invite={issued} className="mb-6" />}
+				{issued !== undefined && <IssuedInviteNotice invite={issued} className="mb-6" />}
 			</div>
 			{requests.length === 0 ? (
 				<AccessRequestsEmptyState />

@@ -6,6 +6,9 @@ export const recipeSearchPath = '/search';
 
 export const contributePath = '/contribute';
 
+// Each recipe's page sits below it.
+export const recipePagesPath = '/recipes';
+
 // The list's URL parameters, which search shares.
 export const recipeListParamNames = {
 	page: 'page',
@@ -13,7 +16,7 @@ export const recipeListParamNames = {
 } as const;
 
 export function recipePath(slug: string): string {
-	return `/recipes/${slug}`;
+	return `${recipePagesPath}/${slug}`;
 }
 
 export function recipeEditPath(slug: string): string {

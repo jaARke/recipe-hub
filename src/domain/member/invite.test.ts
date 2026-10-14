@@ -66,6 +66,14 @@ describe('parseInviteFields', () => {
 		expect(parseInviteFields({ displayName: 'Ada' })).toEqual({ displayName: 'Ada' });
 	});
 
+	it('says what to enter when the name is blank', () => {
+		expect(() => parseInviteFields({ displayName: ' ' })).toThrow(
+			expect.objectContaining({
+				problems: [{ path: 'displayName', message: 'Enter their name.' }],
+			})
+		);
+	});
+
 	it('reports every problem with its field path', () => {
 		expect(() => parseInviteFields({ displayName: 'a'.repeat(61), sendTo: 'ada' })).toThrow(
 			expect.objectContaining({
@@ -82,6 +90,15 @@ describe('parseInviteFields', () => {
 describe('parseInviteEmail', () => {
 	it('normalizes the address', () => {
 		expect(parseInviteEmail(' Ada@Example.com ')).toBe('ada@example.com');
+	});
+
+	it('says what to enter when the address is blank', () => {
+		expect(() => parseInviteEmail('  ')).toThrow(
+			expect.objectContaining({
+				code: 'access.invalid-email',
+				problems: [{ path: 'email', message: 'Enter your email address.' }],
+			})
+		);
 	});
 
 	it('reports a problem under the form field', () => {

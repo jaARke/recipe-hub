@@ -15,10 +15,12 @@ import {
 } from '@/components/auth/auth-errors';
 import { accountPath, signInHref } from '@/components/auth/auth-paths';
 import { signalUnknownPasskey } from '@/components/auth/signal-unknown-passkey';
+import { FormActions } from '@/components/forms/form-actions';
 import { formText } from '@/components/forms/form-data';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
 import { FormStatusMessage } from '@/components/forms/form-status-message';
+import { useTransientState } from '@/components/forms/use-transient-state';
 import { PageSection } from '@/components/layout/page-section';
 import { TextLink } from '@/components/layout/text-link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -51,7 +53,7 @@ function StaleSessionAlert() {
 // through the auth endpoint.
 function PasskeyManager() {
 	const { data: passkeys, error: listError, isPending, refetch } = authClient.useListPasskeys();
-	const [outcome, setOutcome] = React.useState<PasskeyOutcome>();
+	const [outcome, setOutcome] = useTransientState<PasskeyOutcome>();
 	const [adding, startAdding] = React.useTransition();
 
 	// Started straight from the click, since Safari only opens the passkey dialog for a user gesture.
@@ -105,11 +107,13 @@ function PasskeyManager() {
 		list = <PasskeyListSkeleton />;
 	} else if (listError !== null) {
 		list = (
-			<div className="flex flex-col items-start gap-3">
+			<div className="flex flex-col gap-3">
 				<FormErrorAlert message="We couldn’t load your passkeys. Check your connection and try again." />
-				<Button type="button" variant="outline" onClick={() => refetch()}>
-					Try again
-				</Button>
+				<FormActions>
+					<Button type="button" variant="outline" onClick={() => refetch()}>
+						Try again
+					</Button>
+				</FormActions>
 			</div>
 		);
 	} else {
@@ -133,9 +137,18 @@ function PasskeyManager() {
 			{list}
 			{outcome?.kind === 'stale-session' && <StaleSessionAlert />}
 			<FormErrorAlert message={outcome?.kind === 'failed' ? outcome.message : undefined} />
-			{/* The confirmation sits beside the button that added the passkey, as "Saved." does beside a
-			    form's button. */}
-			<div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
+			<FormActions
+				status={
+					<FormStatusMessage
+						kind="confirmation"
+						message={
+							outcome?.kind === 'added'
+								? 'Passkey added. Next time, you can sign in with it.'
+								: undefined
+						}
+					/>
+				}
+			>
 				<Button
 					type="button"
 					variant="outline"
@@ -150,15 +163,7 @@ function PasskeyManager() {
 					)}
 					{adding ? 'Adding passkey' : 'Add a passkey'}
 				</Button>
-				<FormStatusMessage
-					kind="confirmation"
-					message={
-						outcome?.kind === 'added'
-							? 'Passkey added. Next time, you can sign in with it.'
-							: undefined
-					}
-				/>
-			</div>
+			</FormActions>
 		</PageSection>
 	);
 }

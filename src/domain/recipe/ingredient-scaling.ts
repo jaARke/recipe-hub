@@ -14,12 +14,14 @@ import {
 import pluralize from 'pluralize';
 import type { Amount } from '@/domain/recipe/amount';
 import { formatAmount } from '@/domain/recipe/amount-format';
+import { amountArticles, numberWords } from '@/domain/recipe/amount-words';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
 import { amountOfQuantities } from '@/domain/recipe/ingredient-parser';
 import {
 	isMetricUnit,
 	readingOptions,
 	readUnit,
+	splitUnitMarker,
 	unitDefinitions,
 	type MetricUnit,
 } from '@/domain/recipe/ingredient-units';
@@ -27,7 +29,8 @@ import {
 export type ScaledIngredientLine = {
 	// The line at the scale, in the shape the recipe page renders; its text stays the original.
 	line: IngredientLine;
-	// The original, shown beneath the line when text the scale could not read still holds a number.
+	// The original, shown beneath the line when text the scale could not read still holds a number, or
+	// opens with an article it could not read as one: "a few sprigs thyme".
 	asWritten?: string;
 };
 
@@ -44,8 +47,10 @@ type Reading = Measure & {
 	error: number;
 };
 
-// A unit as stored, with any note in parentheses after it: "can (14 ounces)".
+// A unit as stored, with any marker before it and any note in parentheses after it:
+// "[?] can (14 ounces)".
 type WrittenUnit = {
+	marker: string;
 	name: string;
 	gap: string;
 	note?: string;
@@ -256,19 +261,25 @@ function unitNamed(unit: string, amount: Amount): string {
 	return isPlural(amount) ? (unitDefinitions[unit]?.plural ?? unit) : unit;
 }
 
-// A unit written out in full takes the number its amount takes, keeping its capital; an
-// abbreviation stays as written.
-function unitInNumber(written: string, unit: string, amount: Amount): string {
+// Where the unit's name, singular or plural, starts at the end of the unit as written: after the
+// describing word in "heaping tablespoons". An abbreviation holds none.
+function unitNameStart(written: string, unit: string): number | undefined {
 	const lower = written.toLowerCase();
 	const name = [unit, unitDefinitions[unit]?.plural].find(
 		(candidate) =>
 			candidate !== undefined && (lower === candidate || lower.endsWith(` ${candidate}`))
 	);
-	if (name === undefined) {
+	return name === undefined ? undefined : written.length - name.length;
+}
+
+// A unit written out in full takes the number its amount takes, keeping its capital; an
+// abbreviation stays as written.
+function unitInNumber(written: string, unit: string, amount: Amount): string {
+	const start = unitNameStart(written, unit);
+	if (start === undefined) {
 		return written;
 	}
 
-	const start = written.length - name.length;
 	const replacement = unitNamed(unit, amount);
 	const initial =
 		written.charAt(start) === written.charAt(start).toLowerCase()
@@ -277,15 +288,19 @@ function unitInNumber(written: string, unit: string, amount: Amount): string {
 	return `${written.slice(0, start)}${initial}${replacement.slice(1)}`;
 }
 
-// The unit a measure is written in: as before when it stayed, spelled out when it changed.
+// The unit a measure is written in: as before when it stayed, spelled out when it changed, after any
+// describing word it had: "2 heaping tablespoons" doubles to "¼ heaping cup".
 function unitText(written: string, unit: string | undefined, measure: Measure): string {
 	if (measure.unit === undefined || unit === undefined) {
 		return written;
 	}
 
-	return measure.unit === unit
-		? unitInNumber(written, unit, measure.amount)
-		: unitNamed(measure.unit, measure.amount);
+	if (measure.unit === unit) {
+		return unitInNumber(written, unit, measure.amount);
+	}
+
+	const describing = written.slice(0, unitNameStart(written, unit) ?? 0);
+	return `${describing}${unitNamed(measure.unit, measure.amount)}`;
 }
 
 // The quantity's text, without its unit or a hyphen joining them: "1-1/2" in "1-1/2-ounce".
@@ -349,9 +364,17 @@ function openingMeasurement(item: string, afterMeasure: boolean): OpeningMeasure
 	return { ...first, prefix, rest: rest.slice(first.measurement.endIndex) };
 }
 
-// Number words a line may spell out, as in "7 eggs plus one egg yolk".
-const numberWord =
-	/(?<![\p{L}-])(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|half|dozen)(?![\p{L}-])/iu;
+const numberWordSource = `(?:${[...numberWords, 'dozen'].join('|')})`;
+
+// Number words a line may spell out, as in "7 eggs plus one egg yolk", alone or joined by hyphens, as
+// in "one-half". "half-and-half" holds none.
+const numberWord = new RegExp(
+	String.raw`(?<![\p{L}-])${numberWordSource}(?:-${numberWordSource})*(?![\p{L}-])`,
+	'iu'
+);
+
+// A line that opens with "a" or "an" gives an amount, read or not: "a few sprigs thyme".
+const leadingArticle = new RegExp(String.raw`^(?:${amountArticles.join('|')})\s`, 'iu');
 
 // Whether text the scale left as written still holds a number other than a length: the "2" in
 // "cut into 2-inch pieces" stays true at any scale.
@@ -377,11 +400,12 @@ const measureTypes: ReadonlySet<UnitType> = new Set(['volume', 'mass']);
 
 const unitWithNote = /^(.*?)(\s*)(\([^()]*\))$/u;
 
-function splitUnit(unit: string): WrittenUnit {
+function splitUnit(written: string): WrittenUnit {
+	const { marker, unit } = splitUnitMarker(written);
 	const [, name, gap, note] = unitWithNote.exec(unit) ?? [];
 	return name === undefined || gap === undefined || note === undefined
-		? { name: unit, gap: '' }
-		: { name, gap, note };
+		? { marker, name: unit, gap: '' }
+		: { marker, name, gap, note };
 }
 
 // The item in the number the scaled amount takes, when the scale crosses 1: "1 onion" doubles to
@@ -413,7 +437,9 @@ export function scaleIngredientLine(line: IngredientLine, factor: number): Scale
 	}
 
 	if (line.amount === undefined) {
-		return holdsNumber(line.text) ? { line, asWritten: line.text } : { line };
+		return holdsNumber(line.text) || leadingArticle.test(line.text)
+			? { line, asWritten: line.text }
+			: { line };
 	}
 
 	const written = line.unit === undefined ? undefined : splitUnit(line.unit);
@@ -455,7 +481,7 @@ export function scaleIngredientLine(line: IngredientLine, factor: number): Scale
 
 	let scaledUnit: string | undefined;
 	if (written !== undefined) {
-		const name = unitText(written.name, unit, measure);
+		const name = `${written.marker}${unitText(written.name, unit, measure)}`;
 		if (written.note === undefined) {
 			scaledUnit = name;
 		} else if (isMeasure) {

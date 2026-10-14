@@ -15,10 +15,12 @@ import { authFieldNames } from '@/components/auth/auth-forms';
 import { ConfirmCodeForm, RequestCodeForm } from '@/components/auth/email-code-forms';
 import { requestSignInCode, signInWithCode } from '@/components/auth/email-codes';
 import { signalUnknownPasskey } from '@/components/auth/signal-unknown-passkey';
+import { FormActions } from '@/components/forms/form-actions';
 import { formText } from '@/components/forms/form-data';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
 import { useFocusOnChange } from '@/components/forms/use-focus-on-change';
+import { useTransientState } from '@/components/forms/use-transient-state';
 import { Button } from '@/components/ui/button';
 import { FieldSeparator } from '@/components/ui/field';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -82,10 +84,13 @@ function SignInPasskeyOption({ noteId, error, pending, onSignIn }: SignInPasskey
 	return (
 		<div className="flex flex-col gap-4">
 			<FormErrorAlert message={error} />
-			<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-				<p id={noteId} className="text-sm text-muted-foreground">
-					Use your face, fingerprint, or screen lock.
-				</p>
+			<FormActions
+				status={
+					<p id={noteId} className="text-sm text-muted-foreground">
+						Use your face, fingerprint, or screen lock.
+					</p>
+				}
+			>
 				<Button
 					type="button"
 					variant="outline"
@@ -101,7 +106,7 @@ function SignInPasskeyOption({ noteId, error, pending, onSignIn }: SignInPasskey
 					)}
 					{pending ? 'Signing in' : 'Sign in with a passkey'}
 				</Button>
-			</div>
+			</FormActions>
 		</div>
 	);
 }
@@ -112,7 +117,7 @@ function SignInForm({ next, codeLifetimeMinutes }: SignInFormProps) {
 	// Null while asking for the address; then the address the code went to.
 	const [email, setEmail] = React.useState<string | null>(null);
 	const [lastEmail, setLastEmail] = React.useState<string>();
-	const [passkeyError, setPasskeyError] = React.useState<string>();
+	const [passkeyError, setPasskeyError] = useTransientState<string>();
 	const [passkeyPending, startPasskey] = React.useTransition();
 	useFocusOnChange(
 		email === null ? 'email' : 'code',
@@ -218,9 +223,9 @@ function SignInFormSkeleton() {
 				<Skeleton className="h-5 w-12" />
 				<Skeleton className="h-9 w-full" />
 			</div>
-			<Skeleton className="h-9 w-36 self-end" />
+			<Skeleton className="h-9 w-36" />
 			<Skeleton className="h-5 w-full" />
-			<Skeleton className="h-9 w-48 self-end" />
+			<Skeleton className="h-9 w-48" />
 		</div>
 	);
 }

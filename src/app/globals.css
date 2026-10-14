@@ -143,9 +143,10 @@
 	:is(a, button):focus-visible {
 		@apply ring-3 ring-ring/50 outline-1 outline-ring;
 	}
-	/* Focus and anchors scroll clear of the sticky header (h-14 and its border) and the focus ring. */
+	/* Focus and anchors scroll clear of the sticky header (h-14 and its border) and the focus ring,
+	   and of a form's sticky action bar while one shows (its height with a wait note on a phone). */
 	html {
-		@apply scroll-pt-16 font-sans;
+		@apply scroll-pt-16 font-sans has-data-action-bar:scroll-pb-24;
 	}
 	body {
 		@apply bg-background text-foreground;

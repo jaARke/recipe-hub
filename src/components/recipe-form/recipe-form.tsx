@@ -1,13 +1,15 @@
 'use client';
 
 import { cn } from 'cn';
-import { ScanTextIcon } from 'lucide-react';
+import { HistoryIcon, ScanTextIcon } from 'lucide-react';
+import { unstable_rethrow } from 'next/navigation';
 import * as React from 'react';
 import { flushSync } from 'react-dom';
 import { FieldNote, type FieldNoteContent } from '@/components/forms/field-note';
 import { focusCentered } from '@/components/forms/focus-centered';
+import { FormActions } from '@/components/forms/form-actions';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
-import type { FormAction } from '@/components/forms/form-state';
+import type { FormAction, FormState } from '@/components/forms/form-state';
 import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
 import {
 	ProblemSummary,
@@ -16,10 +18,14 @@ import {
 } from '@/components/forms/problem-summary';
 import { TextField, textFieldIds } from '@/components/forms/text-field';
 import { TextareaField } from '@/components/forms/textarea-field';
-import { useFocusOnFailure } from '@/components/forms/use-focus-on-failure';
 import { useFormAction } from '@/components/forms/use-form-action';
+import { useHydrated } from '@/components/forms/use-hydrated';
 import { wideContentProps } from '@/components/layout/page-container';
-import { OriginalRecipePane } from '@/components/recipe-form/original-recipe-pane';
+import { FieldRow, RowTextField } from '@/components/recipe-form/field-row';
+import {
+	OriginalRecipePane,
+	OriginalRecipePaneSkeleton,
+} from '@/components/recipe-form/original-recipe-pane';
 import {
 	PhotoField,
 	photoFieldIds,
@@ -27,6 +33,7 @@ import {
 	photoViewerImages,
 } from '@/components/recipe-form/photo-field';
 import { uploadPhoto, type PhotoUploader } from '@/components/recipe-form/photo-upload';
+import { recipeFormSubject } from '@/components/recipe-form/recipe-form-autosave';
 import {
 	recipeFormFieldNames,
 	type EditedRecipe,
@@ -37,6 +44,7 @@ import {
 	problemKey,
 	recipeFormChecks,
 	recipeFormProblems,
+	recipeFormRequiredErrors,
 	recipeFormSubmission,
 	type ProblemTarget,
 	type RecipeFormCheck,
@@ -50,6 +58,7 @@ import {
 import {
 	checkedAnnouncement,
 	ReviewNotesIntro,
+	ReviewNotesNext,
 	UncheckedSaveDialog,
 } from '@/components/recipe-form/review-notes';
 import { listRowNames, sectionLabel } from '@/components/recipe-form/sectioned-list';
@@ -58,12 +67,14 @@ import {
 	sectionedListFieldIds,
 } from '@/components/recipe-form/sectioned-list-field';
 import { TagsField, tagsFieldIds, tagsFieldLabel } from '@/components/recipe-form/tags-field';
+import { useRecipeFormAutosave } from '@/components/recipe-form/use-recipe-form-autosave';
 import { IngredientLineText } from '@/components/recipe/ingredient-line-text';
 import {
 	RecipeImageViewer,
 	RecipeImageViewerButton,
 } from '@/components/recipe/recipe-image-viewer';
 import { HighlightedSegments } from '@/components/search/highlighted-segments';
+import { Alert, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field';
 import {
@@ -86,6 +97,8 @@ import { settings } from '@/lib/settings';
 
 const failureMessage = 'We couldn’t save the recipe. Check your connection and try again.';
 
+const restoredMessage = 'Restored your unsaved changes';
+
 const yieldKindItems = [
 	{ value: 'servings', label: 'Serves' },
 	{ value: 'makes', label: 'Makes' },
@@ -94,15 +107,26 @@ const yieldKindItems = [
 // The fields whose text the form holds as typed, each with its own problems.
 type TextFieldName = Exclude<RecipeFormErrorField, 'tags'>;
 
-// What each field is called on screen, which the problem summary repeats. The yield's amount is
-// named for its kind.
+type TimeFieldName = Extract<TextFieldName, `${string}Minutes`>;
+
+// The times as they show, over inputs that end in "min". Their full names, which assistive technology
+// hears, add minutesLabel.
+const timeFieldLabels = {
+	prepMinutes: 'Prep',
+	cookMinutes: 'Cook',
+	totalMinutes: 'Total',
+} as const satisfies Record<TimeFieldName, string>;
+const minutesLabel = ', in minutes';
+
+// What each field is called, which the problem summary repeats. The yield's amount is named for its
+// kind.
 const textFieldLabels = {
 	title: 'Title',
 	description: 'Description',
 	source: 'Source',
-	prepMinutes: 'Prep, in minutes',
-	cookMinutes: 'Cook, in minutes',
-	totalMinutes: 'Total, in minutes',
+	prepMinutes: `${timeFieldLabels.prepMinutes}${minutesLabel}`,
+	cookMinutes: `${timeFieldLabels.cookMinutes}${minutesLabel}`,
+	totalMinutes: `${timeFieldLabels.totalMinutes}${minutesLabel}`,
 	yieldUnit: 'Unit',
 	notes: 'Notes',
 } as const satisfies Record<Exclude<TextFieldName, 'yieldAmount'>, string>;
@@ -137,21 +161,10 @@ type RecipeFormProps = {
 	// The import whose draft the form reviews, which the saved recipe takes its provenance from. The
 	// review's intro takes focus as the page loads.
 	importId?: string;
+	// Keeps unsaved changes in this browser and brings them back as the form loads again.
+	autosave?: boolean;
 	submitLabel: string;
 };
-
-function subscribeToNothing() {
-	return () => {};
-}
-
-// False in the server's render and while hydrating, then true.
-function useHydrated(): boolean {
-	return React.useSyncExternalStore(
-		subscribeToNothing,
-		() => true,
-		() => false
-	);
-}
 
 // Text with each transcription marker in it marked, so the member finds it.
 function markedText(text: string): React.ReactNode {
@@ -169,7 +182,11 @@ function markedText(text: string): React.ReactNode {
 // transcription marker.
 function ingredientPreview(text: string): React.ReactNode {
 	const line = parseIngredientLine(text);
-	if (line.amount === undefined && transcriptionMarkersIn(text).length === 0) {
+	if (
+		line.amount === undefined &&
+		line.text === text.trim() &&
+		transcriptionMarkersIn(text).length === 0
+	) {
 		return undefined;
 	}
 	return (
@@ -198,22 +215,31 @@ function RecipeForm({
 	uploader = uploadPhoto,
 	editing,
 	importId,
+	autosave = false,
 	submitLabel,
 }: RecipeFormProps) {
 	const baseId = React.useId();
-	const formRef = React.useRef<HTMLFormElement>(null);
 	const [values, dispatch] = React.useReducer(editRecipeForm, initial);
 	const hydrated = useHydrated();
+	// Announced as "Looks right" clears a note and as unsaved changes come back or go, and never as a
+	// draft loads.
+	const [announcement, announce] = useLiveAnnouncement();
+	const autosaved = useRecipeFormAutosave({
+		subject: autosave ? recipeFormSubject({ editing, importId }) : undefined,
+		initial,
+		values,
+		dispatch,
+		onRestore: () => announce(`${restoredMessage}.`),
+	});
 	const submission = recipeFormSubmission(values);
 	const isEditing = editing !== undefined;
 	const photosInProgress = hasPhotosInProgress(values);
 	const ids = {
-		formError: `${baseId}-form-error`,
-		problemSummary: `${baseId}-problem-summary`,
 		reviewIntro: `${baseId}-review-intro`,
 		formNote: `${baseId}-form-note`,
 		save: `${baseId}-save`,
 		saveNote: `${baseId}-save-note`,
+		checksLeft: `${baseId}-checks-left`,
 		yieldKind: `${baseId}-yieldKind`,
 		field: (field: TextFieldName) => `${baseId}-${field}`,
 		list: (list: RecipeFormListName) => `${baseId}-${list}`,
@@ -222,18 +248,34 @@ function RecipeForm({
 	};
 
 	// A save's problems name places in what it sent, so they land through that submission's targets.
+	// A save that succeeds leads to the recipe through Next's redirect, the one error unstable_rethrow
+	// passes on here. The form remounts as the page goes, so its unsaved changes are cleared first.
 	const saveRecipe: FormAction = async (previous, formData) => {
 		const { targets } = submission;
-		const result = await action(previous, formData);
+		let result: FormState;
+		try {
+			result = await action(previous, formData);
+		} catch (error) {
+			try {
+				unstable_rethrow(error);
+			} catch {
+				autosaved.clear();
+			}
+			throw error;
+		}
 		if (result.status === 'error') {
 			dispatch({ type: 'attachErrors', fieldErrors: result.fieldErrors, targets });
 		}
 		return result;
 	};
-	const [state, formAction, pending] = useFormAction(saveRecipe, failureMessage);
-	// About the whole form, such as an edit conflict; the summary lists a save's problems.
-	const formMessage = state.status === 'error' ? state.message : undefined;
-	useFocusOnFailure(state, formRef, formMessage === undefined ? ids.problemSummary : ids.formError);
+	// What the browser knows a save would be refused for shows as a save's errors do, so the warning
+	// about what is left to check comes only once the save can succeed.
+	const [state, formProps, pending] = useFormAction(saveRecipe, failureMessage, {
+		check: () => recipeFormRequiredErrors(values),
+		showProblems: (fieldErrors) =>
+			dispatch({ type: 'attachErrors', fieldErrors, targets: submission.targets }),
+		onSubmit: warnBeforeSaving,
+	});
 
 	// The summary lists a save's errors, each linking to where it shows, and takes focus.
 	const problems = recipeFormProblems(values).map(summarizedProblem);
@@ -241,11 +283,12 @@ function RecipeForm({
 	// looks right; saving with any left asks first.
 	const checks = recipeFormChecks(values);
 	const checksByKey = new Map(checks.map((check) => [problemKey(check.target), check]));
-	// Announced as "Looks right" clears a note, and never as a draft loads.
-	const [reviewAnnouncement, announceReview] = useLiveAnnouncement();
 	const [warningOpen, setWarningOpen] = React.useState(false);
 	// Set by "Save anyway", so the save it starts skips the warning.
 	const savingAnyway = React.useRef(false);
+	const actionBar = React.useRef<HTMLDivElement>(null);
+	// The last place focused in the form outside the action bar, which Next goes on from.
+	const lastFocused = React.useRef<Element>(null);
 
 	// Reviewing an import starts on its intro, once, not again when a hidden page shows.
 	const focusedReview = React.useRef(false);
@@ -328,19 +371,49 @@ function RecipeForm({
 		focusCentered(locationParts(check.target).noteId);
 	}
 
-	// Clears the note, then moves on to the next thing to check, or to Save once nothing is left.
-	function confirmCheck(check: RecipeFormCheck) {
-		const index = checks.indexOf(check);
-		const left = checks.filter((other) => other !== check);
+	// Moves focus to the note at this place in what is left to check, to the first once past the last,
+	// or to Save once nothing is left.
+	function focusCheckAt(left: readonly RecipeFormCheck[], index: number) {
 		const next = left[index] ?? left[0];
-		flushSync(() => {
-			dispatch({ type: 'resolveReviewNote', target: check.target });
-			announceReview(checkedAnnouncement(left.length));
-		});
 		if (next === undefined) {
 			document.getElementById(ids.save)?.focus();
 		} else {
 			focusCheck(next);
+		}
+	}
+
+	// Clears the note, then moves on to the next thing to check.
+	function confirmCheck(check: RecipeFormCheck) {
+		const index = checks.indexOf(check);
+		const left = checks.filter((other) => other !== check);
+		flushSync(() => {
+			dispatch({ type: 'resolveReviewNote', target: check.target });
+			announce(checkedAnnouncement(left.length));
+		});
+		focusCheckAt(left, index);
+	}
+
+	// Moves on to the first note after the last place focused, as "Looks right" does from its note.
+	function goToNextCheck() {
+		const from = lastFocused.current;
+		const index =
+			from === null || !from.isConnected
+				? 0
+				: checks.findIndex((check) => {
+						const note = document.getElementById(locationParts(check.target).noteId);
+						return (
+							note !== null &&
+							(from.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+						);
+					});
+		focusCheckAt(checks, index === -1 ? checks.length : index);
+	}
+
+	function rememberFocus(event: React.FocusEvent<HTMLFormElement>) {
+		const { target } = event;
+		// Focus bubbles in from the warning's portal too, which is no place in the form.
+		if (event.currentTarget.contains(target) && !actionBar.current?.contains(target)) {
+			lastFocused.current = target;
 		}
 	}
 
@@ -367,8 +440,14 @@ function RecipeForm({
 		};
 	}
 
+	// A text field in a row, under the label the row shows, with the description below the row.
+	function rowFieldProps(field: TextFieldName, label: string, description?: string) {
+		const { value, onChange, ...shown } = textFieldProps(field);
+		return { field: { ...shown, label, description }, value, onChange };
+	}
+
 	// Saving with anything left to check asks first, unless the member chose to save anyway.
-	function warnBeforeSaving(event: React.FormEvent<HTMLFormElement>) {
+	function warnBeforeSaving(event: React.SubmitEvent<HTMLFormElement>) {
 		if (savingAnyway.current) {
 			savingAnyway.current = false;
 			return;
@@ -382,7 +461,14 @@ function RecipeForm({
 	// Submits through the Save button, as a click on it does.
 	function saveAnyway() {
 		savingAnyway.current = true;
-		formRef.current?.requestSubmit(document.getElementById(ids.save));
+		formProps.ref.current?.requestSubmit(document.getElementById(ids.save));
+	}
+
+	// The notice goes with its button, so focus moves to the form's first field.
+	function discardChanges() {
+		autosaved.discard();
+		announce('Discarded your unsaved changes.');
+		document.getElementById(ids.field('title'))?.focus();
 	}
 
 	const [firstCheck] = checks;
@@ -390,25 +476,35 @@ function RecipeForm({
 	// The scans to read beside the form from lg, which widen the page, or in the viewer below lg.
 	const originalImages = photoViewerImages(values.photos.scan, 'scan');
 	const hasOriginal = originalImages.length > 0;
+	const times = [
+		rowFieldProps('prepMinutes', timeFieldLabels.prepMinutes),
+		rowFieldProps('cookMinutes', timeFieldLabels.cookMinutes),
+		rowFieldProps(
+			'totalMinutes',
+			timeFieldLabels.totalMinutes,
+			'Fill in Total only if it’s longer than prep and cook together, such as time to chill.'
+		),
+	];
+	const yieldAmount = rowFieldProps(
+		'yieldAmount',
+		fieldLabel('yieldAmount'),
+		`${fieldLabel('yieldAmount')} can be a number or a range, such as 4 or 4 to 6.`
+	);
+	const yieldUnit =
+		values.yieldKind === 'makes'
+			? rowFieldProps(
+					'yieldUnit',
+					textFieldLabels.yieldUnit,
+					`${textFieldLabels.yieldUnit} is what it makes, such as biscuits or loaves.`
+				)
+			: undefined;
 
 	const form = (
-		<form
-			ref={formRef}
-			action={formAction}
-			onSubmit={warnBeforeSaving}
-			noValidate
-			className="flex flex-col gap-8"
-		>
-			{formMessage !== undefined && (
-				<div id={ids.formError} tabIndex={-1}>
-					<FormErrorAlert message={formMessage} />
-				</div>
-			)}
-			{problems.length > 0 && (
-				<div id={ids.problemSummary} tabIndex={-1}>
-					<ProblemSummary problems={problems} />
-				</div>
-			)}
+		<form {...formProps} onFocus={rememberFocus} className="flex flex-col gap-4">
+			{autosaved.restored && <RestoredChangesNotice onDiscard={discardChanges} />}
+			{/* About the whole form, such as an edit conflict; the summary lists a save's problems. */}
+			<FormErrorAlert message={state.status === 'error' ? state.message : undefined} />
+			<ProblemSummary problems={problems} />
 			{firstCheck !== undefined && (
 				<div className="flex flex-col gap-3">
 					<ReviewNotesIntro
@@ -427,7 +523,7 @@ function RecipeForm({
 					</RecipeImageViewerButton>
 				</RecipeImageViewer>
 			)}
-			<LiveAnnouncer announcement={reviewAnnouncement} />
+			<LiveAnnouncer announcement={announcement} />
 			<input
 				type="hidden"
 				name={recipeFormFieldNames.recipe}
@@ -455,77 +551,12 @@ function RecipeForm({
 								: undefined
 						}
 					/>
-					<TextareaField
-						{...textFieldProps('description')}
-						label={textFieldLabels.description}
-						description="Shown in search results and when the recipe is shared."
-					/>
 					<TextField
 						{...textFieldProps('source')}
 						label={textFieldLabels.source}
 						autoComplete="off"
 						description="Who or where the recipe comes from, such as a relative or a cookbook."
 					/>
-					<FieldSet>
-						<FieldLegend>Times and yield</FieldLegend>
-						<div className="grid gap-4 sm:grid-cols-3">
-							<TextField
-								{...textFieldProps('prepMinutes')}
-								label={textFieldLabels.prepMinutes}
-								inputMode="numeric"
-							/>
-							<TextField
-								{...textFieldProps('cookMinutes')}
-								label={textFieldLabels.cookMinutes}
-								inputMode="numeric"
-							/>
-							<TextField
-								{...textFieldProps('totalMinutes')}
-								label={textFieldLabels.totalMinutes}
-								inputMode="numeric"
-								description="Only if it’s longer than prep and cook together, such as time to chill."
-							/>
-						</div>
-						<div className="grid gap-4 sm:grid-cols-3">
-							<Field>
-								<FieldLabel htmlFor={ids.yieldKind}>Yield</FieldLabel>
-								<Select
-									items={yieldKindItems}
-									value={values.yieldKind}
-									onValueChange={(kind) => {
-										if (kind !== null) {
-											dispatch({ type: 'setYieldKind', kind });
-										}
-									}}
-								>
-									<SelectTrigger id={ids.yieldKind} className="w-full">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{yieldKindItems.map((item) => (
-											<SelectItem key={item.value} value={item.value}>
-												{item.label}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-							</Field>
-							<TextField
-								{...textFieldProps('yieldAmount')}
-								label={fieldLabel('yieldAmount')}
-								autoComplete="off"
-								description="A number or a range, such as 4 or 4 to 6."
-							/>
-							{values.yieldKind === 'makes' && (
-								<TextField
-									{...textFieldProps('yieldUnit')}
-									label={textFieldLabels.yieldUnit}
-									autoComplete="off"
-									description="Such as biscuits or loaves."
-								/>
-							)}
-						</div>
-					</FieldSet>
 					<SectionedListField
 						idPrefix={ids.list('ingredientSections')}
 						name="ingredientSections"
@@ -557,6 +588,56 @@ function RecipeForm({
 						label={textFieldLabels.notes}
 						description="The story behind the recipe, or tips for making it."
 					/>
+					<TextareaField
+						{...textFieldProps('description')}
+						label={textFieldLabels.description}
+						description="Shown in search results and when the recipe is shared."
+					/>
+					<FieldSet>
+						<FieldLegend>Times and yield</FieldLegend>
+						<FieldRow fields={times.map(({ field }) => field)}>
+							{times.map((time) => (
+								<RowTextField
+									key={time.field.id}
+									{...time}
+									hiddenLabel={minutesLabel}
+									unit="min"
+									inputMode="numeric"
+								/>
+							))}
+						</FieldRow>
+						<FieldRow
+							fields={
+								yieldUnit === undefined ? [yieldAmount.field] : [yieldAmount.field, yieldUnit.field]
+							}
+						>
+							<Field>
+								<FieldLabel htmlFor={ids.yieldKind}>Yield</FieldLabel>
+								<Select
+									items={yieldKindItems}
+									value={values.yieldKind}
+									onValueChange={(kind) => {
+										if (kind !== null) {
+											dispatch({ type: 'setYieldKind', kind });
+										}
+									}}
+								>
+									<SelectTrigger id={ids.yieldKind} className="w-full">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										{yieldKindItems.map((item) => (
+											<SelectItem key={item.value} value={item.value}>
+												{item.label}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</Field>
+							<RowTextField {...yieldAmount} autoComplete="off" />
+							{yieldUnit !== undefined && <RowTextField {...yieldUnit} autoComplete="off" />}
+						</FieldRow>
+					</FieldSet>
 					<TagsField
 						idPrefix={ids.tags}
 						tags={values.tags}
@@ -595,23 +676,40 @@ function RecipeForm({
 					/>
 				</FieldGroup>
 			</SummarizedProblems>
-			<div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
-				{photosInProgress && (
-					<p id={ids.saveNote} className="text-sm text-muted-foreground">
-						Wait for the photos to finish uploading.
-					</p>
+			{/* Held at the screen's bottom while the form runs past it, so Save, and Next while anything is
+			left to check, stay at hand; the page's bottom scroll padding keeps focus clear of it. Next
+			wraps below Save where one row can't hold both. */}
+			<div
+				ref={actionBar}
+				data-action-bar=""
+				className="sticky bottom-0 z-30 flex flex-wrap items-center gap-3 border-t bg-background py-3"
+			>
+				<div className="flex-1">
+					<FormActions
+						status={
+							photosInProgress && (
+								<p id={ids.saveNote} className="text-sm text-muted-foreground">
+									Wait for the photos to finish uploading.
+								</p>
+							)
+						}
+					>
+						<Button
+							id={ids.save}
+							type="submit"
+							// Natively disabled until hydrated, since a click before then would still submit.
+							disabled={!hydrated || photosInProgress || pending}
+							focusableWhenDisabled={hydrated}
+							aria-describedby={photosInProgress ? ids.saveNote : undefined}
+						>
+							{pending && <Spinner data-icon="inline-start" />}
+							{pending ? 'Saving recipe' : submitLabel}
+						</Button>
+					</FormActions>
+				</div>
+				{firstCheck !== undefined && (
+					<ReviewNotesNext id={ids.checksLeft} count={checks.length} onNext={goToNextCheck} />
 				)}
-				<Button
-					id={ids.save}
-					type="submit"
-					// Natively disabled until hydrated, since a click before then would still submit.
-					disabled={!hydrated || photosInProgress || pending}
-					focusableWhenDisabled={hydrated}
-					aria-describedby={photosInProgress ? ids.saveNote : undefined}
-				>
-					{pending && <Spinner data-icon="inline-start" />}
-					{pending ? 'Saving recipe' : submitLabel}
-				</Button>
 			</div>
 			<UncheckedSaveDialog
 				open={warningOpen}
@@ -627,44 +725,91 @@ function RecipeForm({
 		</form>
 	);
 
-	// The wrapper stays as the original comes and goes, so the form, and the uploads in it, never remount.
+	return (
+		<BesideOriginal
+			original={
+				hasOriginal && (
+					<OriginalRecipePane
+						images={originalImages}
+						title={photoFieldLegends.scan}
+						className="max-lg:hidden"
+					/>
+				)
+			}
+		>
+			{form}
+		</BesideOriginal>
+	);
+}
+
+// Heads the form while it holds unsaved changes kept in this browser from an earlier visit, and
+// discards them. Restoring them is announced, so nothing reads this out as it appears.
+function RestoredChangesNotice({ onDiscard }: { onDiscard: () => void }) {
+	return (
+		<Alert role={undefined} aria-live={undefined}>
+			<HistoryIcon aria-hidden="true" />
+			<AlertTitle>{restoredMessage}</AlertTitle>
+			<Button
+				type="button"
+				variant="outline"
+				size="sm"
+				className="col-start-2 mt-2 justify-self-start"
+				aria-label="Discard unsaved changes"
+				onClick={onDiscard}
+			>
+				Discard
+			</Button>
+		</Alert>
+	);
+}
+
+// The form, with the original recipe beside it from lg when there is one, which widens the page. The
+// wrapper stays as the original comes and goes, so the form, and the uploads in it, never remount.
+function BesideOriginal({
+	original,
+	children,
+}: {
+	original: React.ReactElement | false;
+	children: React.ReactNode;
+}) {
+	const hasOriginal = original !== false;
 	return (
 		<div
 			{...wideContentProps(hasOriginal)}
 			className={cn(hasOriginal && 'lg:grid lg:grid-cols-2 lg:items-start lg:gap-12')}
 		>
-			{hasOriginal && (
-				<OriginalRecipePane
-					images={originalImages}
-					title={photoFieldLegends.scan}
-					className="max-lg:hidden"
-				/>
-			)}
-			{form}
+			{original}
+			{children}
 		</div>
 	);
 }
 
-// Mirrors the top of the recipe form: its title, description, and source fields.
-function RecipeFormSkeleton() {
+// Mirrors the top of the recipe form: its title and source, then the start of the ingredients. Where
+// the form most often has the original beside it, as when reviewing an import, its place shows too.
+function RecipeFormSkeleton({ besideOriginal = false }: { besideOriginal?: boolean }) {
 	return (
-		<div role="status" aria-live="polite" className="flex flex-col gap-7">
-			<span className="sr-only">Loading the recipe form</span>
-			<div className="flex flex-col gap-3">
-				<Skeleton className="h-5 w-12" />
-				<Skeleton className="h-9 w-full" />
+		<BesideOriginal
+			original={besideOriginal && <OriginalRecipePaneSkeleton className="max-lg:hidden" />}
+		>
+			<div role="status" aria-live="polite" className="flex flex-col gap-7">
+				<span className="sr-only">Loading the recipe form</span>
+				<div className="flex flex-col gap-3">
+					<Skeleton className="h-5 w-12" />
+					<Skeleton className="h-9 w-full" />
+				</div>
+				<div className="flex flex-col gap-3">
+					<Skeleton className="h-5 w-16" />
+					<Skeleton className="h-9 w-full" />
+					<Skeleton className="h-5 w-full" />
+				</div>
+				<div className="flex flex-col gap-3">
+					<Skeleton className="h-5 w-24" />
+					<Skeleton className="h-10 w-full" />
+					<Skeleton className="h-9 w-full" />
+					<Skeleton className="h-9 w-full" />
+				</div>
 			</div>
-			<div className="flex flex-col gap-3">
-				<Skeleton className="h-5 w-24" />
-				<Skeleton className="h-16 w-full" />
-				<Skeleton className="h-5 w-3/4" />
-			</div>
-			<div className="flex flex-col gap-3">
-				<Skeleton className="h-5 w-16" />
-				<Skeleton className="h-9 w-full" />
-				<Skeleton className="h-5 w-full" />
-			</div>
-		</div>
+		</BesideOriginal>
 	);
 }
 

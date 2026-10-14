@@ -1,14 +1,17 @@
 'use client';
 
 import * as React from 'react';
-import { authFieldNames } from '@/components/auth/auth-forms';
+import { authFieldNames, codeBlankMessages } from '@/components/auth/auth-forms';
+import { FormActions } from '@/components/forms/form-actions';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction, FormState } from '@/components/forms/form-state';
 import { FormStatusMessage } from '@/components/forms/form-status-message';
 import { TextField } from '@/components/forms/text-field';
 import { useFormAction } from '@/components/forms/use-form-action';
+import { useTransientState } from '@/components/forms/use-transient-state';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+import { emailBlankMessages } from '@/domain/member/member';
 
 type RequestCodeFormProps = {
 	id: string;
@@ -27,14 +30,15 @@ function RequestCodeForm({
 	defaultEmail,
 	action,
 }: RequestCodeFormProps) {
-	const [state, formAction, pending] = useFormAction(
+	const [state, formProps, pending] = useFormAction(
 		action,
-		'We couldn’t send a code. Check your connection and try again.'
+		'We couldn’t send a code. Check your connection and try again.',
+		{ blankMessages: emailBlankMessages }
 	);
 	const failure = state.status === 'error' ? state : undefined;
 
 	return (
-		<form action={formAction} noValidate className="flex flex-col gap-6">
+		<form {...formProps} className="flex flex-col gap-4">
 			<FormErrorAlert message={failure?.message} />
 			<TextField
 				id={id}
@@ -47,12 +51,12 @@ function RequestCodeForm({
 				error={failure?.fieldErrors[authFieldNames.email]}
 				defaultValue={failure?.values?.[authFieldNames.email] ?? defaultEmail}
 			/>
-			<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+			<FormActions>
 				<Button type="submit" disabled={pending} focusableWhenDisabled>
 					{pending && <Spinner data-icon="inline-start" />}
 					{pending ? 'Sending code' : 'Email me a code'}
 				</Button>
-			</div>
+			</FormActions>
 		</form>
 	);
 }
@@ -78,11 +82,12 @@ function ConfirmCodeForm({
 	sendNewCode,
 	onChangeEmail,
 }: ConfirmCodeFormProps) {
-	const [state, formAction, pending] = useFormAction(
+	const [state, formProps, pending] = useFormAction(
 		action,
-		'We couldn’t check the code. Check your connection and try again.'
+		'We couldn’t check the code. Check your connection and try again.',
+		{ blankMessages: codeBlankMessages }
 	);
-	const [resendState, setResendState] = React.useState<FormState>({ status: 'idle' });
+	const [resendState, setResendState] = useTransientState<FormState>();
 	const [resending, startResend] = React.useTransition();
 	const failure = state.status === 'error' ? state : undefined;
 
@@ -101,7 +106,7 @@ function ConfirmCodeForm({
 	}
 
 	return (
-		<form action={formAction} noValidate className="flex flex-col gap-6">
+		<form {...formProps} className="flex flex-col gap-4">
 			<FormErrorAlert message={failure?.message} />
 			<TextField
 				id={id}
@@ -114,9 +119,23 @@ function ConfirmCodeForm({
 				error={failure?.fieldErrors[authFieldNames.code]}
 				defaultValue={failure?.values?.[authFieldNames.code]}
 			/>
-			<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-				<Button type="button" variant="ghost" onClick={onChangeEmail}>
-					Use a different email
+			{/* The resend's alert: above the field, it would take the focus a failed code gives the field. */}
+			<FormErrorAlert message={resendState?.status === 'error' ? resendState.message : undefined} />
+			<FormActions
+				status={
+					<FormStatusMessage
+						kind="confirmation"
+						message={
+							resendState?.status === 'success'
+								? 'We sent a new code. Use the newest one, since earlier codes no longer work.'
+								: undefined
+						}
+					/>
+				}
+			>
+				<Button type="submit" disabled={pending} focusableWhenDisabled>
+					{pending && <Spinner data-icon="inline-start" />}
+					{pending ? pendingLabel : submitLabel}
 				</Button>
 				<Button
 					type="button"
@@ -128,20 +147,10 @@ function ConfirmCodeForm({
 					{resending && <Spinner data-icon="inline-start" />}
 					{resending ? 'Sending code' : 'Send a new code'}
 				</Button>
-				<Button type="submit" disabled={pending} focusableWhenDisabled>
-					{pending && <Spinner data-icon="inline-start" />}
-					{pending ? pendingLabel : submitLabel}
+				<Button type="button" variant="ghost" onClick={onChangeEmail}>
+					Use a different email
 				</Button>
-			</div>
-			<FormErrorAlert message={resendState.status === 'error' ? resendState.message : undefined} />
-			<FormStatusMessage
-				kind="confirmation"
-				message={
-					resendState.status === 'success'
-						? 'We sent a new code. Use the newest one, since earlier codes no longer work.'
-						: undefined
-				}
-			/>
+			</FormActions>
 		</form>
 	);
 }

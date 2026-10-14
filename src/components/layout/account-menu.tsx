@@ -1,10 +1,12 @@
 'use client';
 
+import { ChevronDownIcon } from 'lucide-react';
 import Link from 'next/link';
 import { accountPath, requestAccessPath, signInPath } from '@/components/auth/auth-paths';
 import { useSignOut } from '@/components/auth/use-sign-out';
 import type { HeaderMember } from '@/components/layout/header-member';
 import { recipeListPath } from '@/components/recipe/recipe-paths';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
 	DropdownMenu,
@@ -69,14 +71,18 @@ function AccountMenu({ member }: { member: HeaderMember }) {
 		<DropdownMenu>
 			<DropdownMenuTrigger
 				render={
+					// Tighter than a text button's padding, so it fits the width "Sign in" holds.
 					<Button
-						variant="secondary"
-						size="icon"
+						variant="ghost"
 						aria-label={`Account menu for ${member.displayName}`}
+						className="gap-1 px-1 has-data-[icon=inline-end]:pr-1"
 					/>
 				}
 			>
-				{memberInitial(member.displayName)}
+				<Avatar>
+					<AvatarFallback>{memberInitial(member.displayName)}</AvatarFallback>
+				</Avatar>
+				<ChevronDownIcon data-icon="inline-end" aria-hidden="true" />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="min-w-48">
 				<AccountMenuItems member={member} />

@@ -15,13 +15,11 @@ import {
 import { recipeSearchPath } from '@/components/recipe/recipe-paths';
 import { HiddenSearchFields } from '@/components/search/hidden-search-fields';
 import {
-	appliedFilterCount,
 	recipeSearchHref,
 	recipeSearchParamNames,
 	type RecipeSearchField,
 	type RecipeSearchState,
 } from '@/components/search/search-params';
-import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -296,7 +294,7 @@ function RecipeSearchFilters({
 	);
 }
 
-type RecipeSearchFiltersPanelProps = {
+type RecipeSearchFiltersSidebarProps = {
 	idPrefix: string;
 	state: RecipeSearchState;
 	facets: RecipeSearchFacets;
@@ -310,7 +308,7 @@ function RecipeSearchFiltersSidebar({
 	facets,
 	headingTag: Heading,
 	className,
-}: RecipeSearchFiltersPanelProps) {
+}: RecipeSearchFiltersSidebarProps) {
 	return (
 		<section
 			aria-labelledby={`${idPrefix}-heading`}
@@ -324,49 +322,10 @@ function RecipeSearchFiltersSidebar({
 	);
 }
 
-// Narrow screens fold the filters into a disclosure above the results.
-function RecipeSearchFiltersDisclosure({
-	idPrefix,
-	state,
-	facets,
-	headingTag: Heading,
-	className,
-}: RecipeSearchFiltersPanelProps) {
-	const appliedCount = appliedFilterCount(state);
-
-	return (
-		<section aria-labelledby={`${idPrefix}-heading`} className={className}>
-			<Heading id={`${idPrefix}-heading`} className="sr-only">
-				Filters
-			</Heading>
-			<details className="group/filters">
-				<summary className={buttonVariants({ variant: 'outline' })}>
-					Filters
-					{appliedCount > 0 && (
-						<Badge variant="secondary">
-							{appliedCount}
-							<span className="sr-only"> applied</span>
-						</Badge>
-					)}
-					<ChevronDownIcon
-						data-icon="inline-end"
-						aria-hidden="true"
-						className="transition-transform group-open/filters:rotate-180"
-					/>
-				</summary>
-				<div className="pt-6">
-					<RecipeSearchFilters idPrefix={idPrefix} state={state} facets={facets} />
-				</div>
-			</details>
-		</section>
-	);
-}
-
 export {
 	addedWithinLabels,
 	chosenContributor,
 	RecipeSearchFilters,
-	RecipeSearchFiltersDisclosure,
 	RecipeSearchFiltersSidebar,
 	totalTimeLabels,
 };

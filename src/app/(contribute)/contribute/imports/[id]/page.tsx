@@ -98,18 +98,19 @@ async function ImportReview({ params }: Pick<PageProps<'/contribute/imports/[id]
 				uploadFolders={getRecipeImageService().uploadFolders()}
 				tagLabels={tagLabels}
 				importId={draft.id}
+				autosave
 				submitLabel="Save recipe"
 			/>
 		</div>
 	);
 }
 
-// Mirrors the line naming where the draft came from, over the recipe form.
+// Mirrors the line naming where the draft came from, over the recipe form beside the original.
 function ImportReviewSkeleton() {
 	return (
 		<div className="flex flex-col gap-8">
 			<Skeleton className="h-5 w-48" />
-			<RecipeFormSkeleton />
+			<RecipeFormSkeleton besideOriginal />
 		</div>
 	);
 }

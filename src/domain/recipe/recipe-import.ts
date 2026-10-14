@@ -4,7 +4,7 @@ import { problemSchema } from '@/domain/problem';
 import type { Provenance } from '@/domain/recipe/provenance';
 import { recipeDraftContentSchema, type RecipeDraft } from '@/domain/recipe/recipe-draft';
 import { slugSchema } from '@/domain/recipe/slug';
-import { nonEmptyTextSchema } from '@/domain/text';
+import { blankTextMessage, plainTextSchema } from '@/domain/text';
 import { daysInMilliseconds } from '@/lib/dates';
 import { settings } from '@/lib/settings';
 
@@ -15,6 +15,11 @@ export const recipeImportModes = ['url', 'photo'] as const;
 export type RecipeImportMode = (typeof recipeImportModes)[number];
 
 export const recipeImportStatuses = ['running', 'succeeded', 'failed'] as const;
+
+// What an import given nothing to read is told: a blank link, keyed by the field, or no photos. The
+// browser checks for each before sending and says the same.
+export const urlImportBlankMessages = { url: blankTextMessage('a link to the recipe') };
+export const noScansMessage = 'Add at least one photo.';
 
 // What an import produced for review. The problems include the model's notes on what to check.
 export const importDraftSchema = z.object({
@@ -33,7 +38,7 @@ export const recipeImportSchema = z.object({
 	// The address a URL import read the page from.
 	sourceUrl: z.httpUrl().optional(),
 	// The model that answered, when one read the recipe.
-	aiModel: nonEmptyTextSchema.optional(),
+	aiModel: plainTextSchema.optional(),
 	// What the model calls cost in US dollars, as the gateway reported it.
 	costUsd: z.number().nonnegative().optional(),
 	// The code of the error that ended a failed import.

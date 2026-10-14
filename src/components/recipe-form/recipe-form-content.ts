@@ -2,12 +2,13 @@ import { z } from 'zod';
 import type { RecipeFormPayload } from '@/components/recipe-form/recipe-form-fields';
 import type { Problem } from '@/domain/problem';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
-import { parseAmountText, parseIngredientLine } from '@/domain/recipe/ingredient-parser';
+import { parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import { parseRecipeContent, type RecipeContentInput } from '@/domain/recipe/recipe';
 import { recipeImageRoleSchema } from '@/domain/recipe/recipe-image';
+import { readYieldAmount } from '@/domain/recipe/recipe-yield';
 
-// Maps what the recipe form sends to the recipe service's input. It defines Zod schemas, so only
-// Server Actions import it, never the form.
+// Maps what the recipe form sends to the recipe service's input, for the Server Actions that
+// receive it.
 
 const payloadSchema = z.object({
 	title: z.string(),
@@ -125,7 +126,7 @@ export function recipeContentFromForm(json: string): RecipeContentInput {
 	if (recipeYield === undefined || optionalText(recipeYield.amount) === undefined) {
 		return content;
 	}
-	const amount = parseAmountText(recipeYield.amount);
+	const amount = readYieldAmount(recipeYield.amount);
 	if (amount === undefined) {
 		throw new InvalidRecipeError([unreadableYieldProblem, ...contentProblems(content)]);
 	}

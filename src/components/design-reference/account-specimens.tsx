@@ -31,12 +31,15 @@ import {
 import { SampleAdminDashboard } from '@/components/design-reference/sample-admin-dashboard';
 import { SampleInviteSteps, SampleSignIn } from '@/components/design-reference/sample-auth-flows';
 import { sampleContributor } from '@/components/design-reference/sample-recipe-dtos';
+import { FormActions } from '@/components/forms/form-actions';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import { FormStatusMessage } from '@/components/forms/form-status-message';
 import { TextField } from '@/components/forms/text-field';
-import { HeaderAccount } from '@/components/layout/header-account';
+import { HeaderAccountGroup } from '@/components/layout/header-account';
 import { PageContainer } from '@/components/layout/page-container';
 import { SiteMenu } from '@/components/layout/site-menu';
+import { Button } from '@/components/ui/button';
+import { accessRequestBlankMessages } from '@/domain/member/access-request';
 
 // The notice an admin sees once after issuing an invite, in each delivery state.
 const issuedInviteStates: readonly { label: string; invite: IssuedInvite }[] = [
@@ -68,14 +71,14 @@ const subsections = [
 		id: 'form-feedback',
 		title: 'Form fields and feedback',
 		description:
-			'What every account and admin form is built from: a labeled field tied to its description and error, an alert for a problem with the whole form, and a status line for a confirmation.',
+			'What every account and admin form is built from: a labeled field tied to its description and error, an alert for a problem with the whole form, a status line for a confirmation, and the row for a page’s actions: at the fields’ left edge, the primary button first and the status to the right, stacking below sm.',
 		Content: FormFeedbackSpecimen,
 	},
 	{
 		id: 'header-account',
 		title: 'Header account controls',
 		description:
-			'From lg, Sign in or the account menu, whose button shows the member’s initial and holds only the account. Below lg, one menu holds the navigation (with Add recipe, and Admin for admins), the account items, and the theme. Sign out in these menus is real: it signs this browser out.',
+			'From md, the theme menu beside Sign in or the account menu, 8 px apart in a box as wide as they are with Sign in, so a member’s spare width falls to the theme menu’s left. The account menu’s button shows the member’s initial, and the menu holds only the account. Below md, one menu holds the sections (Admin last, for admins), the account items, and the theme. Sign out in these menus is real: it signs this browser out.',
 		Content: HeaderAccountSpecimen,
 	},
 	{
@@ -127,7 +130,12 @@ function FormFeedbackSpecimen() {
 				/>
 			</Specimen>
 			<Specimen label="TextField with an error">
-				<TextField id="design-text-field-invalid" label="Name" required error="Enter some text." />
+				<TextField
+					id="design-text-field-invalid"
+					label="Name"
+					required
+					error={accessRequestBlankMessages.name}
+				/>
 			</Specimen>
 			<Specimen label="FormErrorAlert: a problem with the whole form">
 				<FormErrorAlert message="That request was already handled. Reload the page to see the latest." />
@@ -138,6 +146,11 @@ function FormFeedbackSpecimen() {
 			<Specimen label="FormStatusMessage: progress, with no check">
 				<FormStatusMessage kind="progress" message="Reading the page…" />
 			</Specimen>
+			<Specimen label="FormActions: a page’s buttons, with the status to their right">
+				<FormActions status={<FormStatusMessage kind="confirmation" message="Saved." />}>
+					<Button type="button">Save name</Button>
+				</FormActions>
+			</Specimen>
 		</div>
 	);
 }
@@ -145,17 +158,17 @@ function FormFeedbackSpecimen() {
 function HeaderAccountSpecimen() {
 	return (
 		<div className="grid gap-6 lg:grid-cols-3">
-			<Specimen label="From lg, signed out" figureClassName="max-lg:hidden">
-				<HeaderAccount member={Promise.resolve(null)} />
+			<Specimen label="From md, signed out" figureClassName="max-md:hidden">
+				<HeaderAccountGroup member={Promise.resolve(null)} />
 			</Specimen>
-			<Specimen label="From lg, member" figureClassName="max-lg:hidden">
-				<HeaderAccount member={Promise.resolve(sampleHeaderMember)} />
+			<Specimen label="From md, member" figureClassName="max-md:hidden">
+				<HeaderAccountGroup member={Promise.resolve(sampleHeaderMember)} />
 			</Specimen>
-			<Specimen label="From lg, admin" figureClassName="max-lg:hidden">
-				<HeaderAccount member={Promise.resolve(sampleHeaderAdmin)} />
+			<Specimen label="From md, admin" figureClassName="max-md:hidden">
+				<HeaderAccountGroup member={Promise.resolve(sampleHeaderAdmin)} />
 			</Specimen>
 			<Specimen
-				label="Below lg, the phone menu: signed out, member, admin, and before the session resolves"
+				label="Below md, the phone menu: signed out, member, admin, and before the session resolves"
 				figureClassName="lg:col-span-3"
 			>
 				<div className="flex gap-3">

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { writtenContent } from '@/domain/recipe/content-limits';
 import {
 	formatYield,
+	readYieldAmount,
 	recipeYieldSchemaFor,
 	scaleYield,
 	type RecipeYield,
@@ -43,5 +44,44 @@ describe('scaleYield', () => {
 describe('recipeYieldSchema', () => {
 	it('rejects an unknown kind', () => {
 		expect(recipeYieldSchema.safeParse({ kind: 'feeds', amount: { min: 4 } }).success).toBe(false);
+	});
+
+	it.each([
+		['cookies.', 'cookies'],
+		['dozen cookies ;', 'dozen cookies'],
+		['2 in cookies:', '2 in cookies'],
+		['doz.', 'doz.'],
+		['loaves [?].', 'loaves [?]'],
+	])('stores what a recipe makes, %j, without the punctuation that ends it', (unit, stored) => {
+		expect(recipeYieldSchema.parse({ kind: 'makes', amount: { min: 12 }, unit })).toEqual({
+			kind: 'makes',
+			amount: { min: 12 },
+			unit: stored,
+		});
+	});
+});
+
+describe('readYieldAmount', () => {
+	it.each([
+		['4', { min: 4 }],
+		['4.', { min: 4 }],
+		[' 4 to 6; ', { min: 4, max: 6 }],
+		['1½,', { min: 1.5 }],
+		['12:', { min: 12 }],
+	])('reads %j without the punctuation that ends it', (text, amount) => {
+		expect(readYieldAmount(text)).toStrictEqual(amount);
+	});
+
+	it.each([
+		['four', { min: 4 }],
+		['Four.', { min: 4 }],
+		['four to six', { min: 4, max: 6 }],
+		['two and a half', { min: 2.5 }],
+	])('reads the amount in words in %j', (text, amount) => {
+		expect(readYieldAmount(text)).toStrictEqual(amount);
+	});
+
+	it.each(['4 [?]', '4?', 'a few.', '.', 'half', 'a'])('reads no amount in %j', (text) => {
+		expect(readYieldAmount(text)).toBeUndefined();
 	});
 });

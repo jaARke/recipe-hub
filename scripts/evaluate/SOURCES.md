@@ -39,7 +39,7 @@ Each scan was re-encoded the way the recipe form encodes a member's scan (see Re
 
 Ground truth follows these rules:
 
-- Text is verbatim as written, with spelling, capitals, and abbreviations kept ("teas", "tbls", "c."). Ditto marks are expanded to the words above them, as written ("1 level tablespoons nutmeg").
+- Text keeps the words, spelling, capitals, and abbreviations as written ("teas", "tbls", "c."), tidied only as the import prompt asks: titles in sentence case, where names keep their capitals ("Pedernales River chili"), amounts in numerals ("2 cups oatmeal" for "Two cups oatmeal"), and steps as sentences ("Cook until done and seal while hot."). Ditto marks are expanded to the words above them, as written ("1 level tablespoons nutmeg").
 - Letterheads, archive stamps, postmarks, captions, closings ("With Best Wishes,"), page-turn marks ("over"), and field labels ("Tip:", "Recipe Source:", "note") are left out. A signature or "favorite recipe of" line is the source.
 - Two-column ingredient lists are read down the left column, then the right. When an item holds more than one recipe, only the most prominent is kept.
 - Handwritten and printed fractions are vulgar fractions ("1½"), as in the sample recipes; ASCII fractions stay only where the source is ASCII text. Em dashes in printed text are written as hyphens.
@@ -53,7 +53,7 @@ Where volunteer transcriptions exist (NARA catalog contributions), they were the
 | Case | Transcription | Departures and judgment calls |
 | --- | --- | --- |
 | canned-corn | None | "Water enough", the last line, is an ingredient. |
-| tomato-mince-meat | None | "15 or 20 min" (the 5's top stroke is detached, so it could be read as 13). The opening sentences name the tomatoes and apples inside the method, so they stay whole as steps and the ingredient list takes "1 pk green tomatoes" and "1 pk apples". Dittos repeat "level tablespoons" and "cups" as written, plurals included. The back's note is the notes, its yield sentence the yield, and "grind everything" the last step. |
+| tomato-mince-meat | None | "15 or 20 min" (the 5's top stroke is detached, so it could be read as 13). The opening sentences name the tomatoes and apples inside the method, so they stay whole as steps and the ingredient list takes "1 pk green tomatoes" and "1 pk apples". Dittos repeat "level tablespoons" and "cups" as written, plurals included. The back's note is the notes, its yield sentence the yield, and "Grind everything." the last step. |
 | oatmeal-drop-cookies | None | Source from the title. The opening sentence only lists ingredients, so the step starts at "Mix all together dry". |
 | frosted-cream-cake | None | The card has no method, so there are no steps. The unfinished "butter -" is "butter". |
 | columbia-drop-cakes | VolunteerA2LYoung, both pages | Kept "Beat in one at a time; 2 eggs" as written (the transcription has "Beat in 2 eggs, 1 at a time"), "soft." and "teas." with their periods, and "oven" (transcribed "over"); dropped "(sic)". The yield "Makes 30 - 2 in cookies" is 30 of "2 in cookies". |
