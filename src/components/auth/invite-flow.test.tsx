@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CompletedInviteDto } from '@/application/access/access-dtos';
 import { signInWithCode } from '@/components/auth/email-codes';
 import { InviteFlow } from '@/components/auth/invite-flow';
@@ -40,10 +40,16 @@ type BindEmail = (token: string, email: string) => Promise<FormState<{ email: st
 
 const bindAnyEmail: BindEmail = async (_token, email) => ({ status: 'success', email });
 
-function inviteFlow(complete: Complete, signedInAs: string | null, bindEmail = bindAnyEmail) {
+function inviteFlow(
+	complete: Complete,
+	signedInAs: string | null,
+	bindEmail = bindAnyEmail,
+	joined: CompletedInviteDto['account'] | null = null
+) {
 	return (
 		<InviteFlow
 			signedInAs={signedInAs}
+			joined={joined}
 			codeLifetimeMinutes={10}
 			headingLevel={2}
 			getPreview={async () => ({ displayName: 'Ada', expiresAt: new Date('2026-10-20') })}
@@ -53,8 +59,13 @@ function inviteFlow(complete: Complete, signedInAs: string | null, bindEmail = b
 	);
 }
 
-function renderFlow(complete: Complete, signedInAs: string | null = null, bindEmail?: BindEmail) {
-	render(inviteFlow(complete, signedInAs, bindEmail));
+function renderFlow(
+	complete: Complete,
+	signedInAs: string | null = null,
+	bindEmail?: BindEmail,
+	joined: CompletedInviteDto['account'] | null = null
+) {
+	render(inviteFlow(complete, signedInAs, bindEmail, joined));
 }
 
 // From the welcome step through a code that signs the invitee in.
@@ -68,6 +79,11 @@ async function signInWithInvite() {
 	return user;
 }
 
+// Stands in for the browser's page loads, which happy-dom would attempt.
+function stubPageLoads() {
+	return vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+}
+
 async function expectStepHeading(name: string) {
 	const heading = await screen.findByRole('heading', { name });
 	await waitFor(() => expect(document.activeElement).toBe(heading));
@@ -76,6 +92,10 @@ async function expectStepHeading(name: string) {
 beforeEach(() => {
 	vi.mocked(signInWithCode).mockClear();
 	window.history.replaceState(null, '', `/invite#${token}`);
+});
+
+afterEach(() => {
+	vi.restoreAllMocks();
 });
 
 describe('InviteFlow', () => {
@@ -92,6 +112,7 @@ describe('InviteFlow', () => {
 	])(
 		'offers to finish again without the spent code when completing fails $how',
 		async ({ failure }) => {
+			const assign = stubPageLoads();
 			const complete = vi
 				.fn<Complete>()
 				.mockImplementationOnce(failure)
@@ -100,9 +121,10 @@ describe('InviteFlow', () => {
 
 			const user = await signInWithInvite();
 			await expectStepHeading('We couldn’t finish accepting your invite');
+			expect(assign).not.toHaveBeenCalled();
 			await user.click(screen.getByRole('button', { name: 'Try again' }));
 
-			await expectStepHeading('Create a passkey');
+			await waitFor(() => expect(assign).toHaveBeenCalledWith('/invite?account=created'));
 			expect(complete).toHaveBeenCalledTimes(2);
 			expect(complete).toHaveBeenLastCalledWith(token);
 			expect(signInWithCode).toHaveBeenCalledOnce();
@@ -122,13 +144,41 @@ describe('InviteFlow', () => {
 		expect(bindEmail).not.toHaveBeenCalled();
 	});
 
-	it('drops a failed passkey’s message once its page has been left, keeping the step', async () => {
-		const page = renderKeptPage(
-			inviteFlow(async () => ({ status: 'success', account: 'created' }), null)
+	it.each(['created', 'existing'] as const)(
+		'loads the page again once the code signs the invitee in, saying the account was %s',
+		async (account) => {
+			const assign = stubPageLoads();
+			renderFlow(async () => ({ status: 'success', account }));
+
+			await signInWithInvite();
+
+			await waitFor(() => expect(assign).toHaveBeenCalledWith(`/invite?account=${account}`));
+		}
+	);
+
+	it('offers a passkey on the page loaded again for a new account', async () => {
+		renderFlow(
+			async () => ({ status: 'success', account: 'created' }),
+			'Ada',
+			undefined,
+			'created'
 		);
 
-		const user = await signInWithInvite();
-		await expectStepHeading('Create a passkey');
+		await screen.findByRole('heading', { name: 'Create a passkey' });
+	});
+
+	it('drops a failed passkey’s message once its page has been left, keeping the step', async () => {
+		const page = renderKeptPage(
+			inviteFlow(
+				async () => ({ status: 'success', account: 'created' }),
+				'Ada',
+				undefined,
+				'created'
+			)
+		);
+
+		await screen.findByRole('heading', { name: 'Create a passkey' });
+		const user = userEvent.setup();
 		await user.click(screen.getByRole('button', { name: 'Create a passkey' }));
 		expect(await screen.findByText('No passkey was created')).toBeDefined();
 		await page.hide();
@@ -138,12 +188,15 @@ describe('InviteFlow', () => {
 		expect(screen.getByRole('heading', { name: 'Create a passkey' })).toBeDefined();
 	});
 
-	it('tells an invitee who already had an account so', async () => {
-		renderFlow(async () => ({ status: 'success', account: 'existing' }));
+	it('tells an invitee who already had an account so, on the page loaded again', async () => {
+		renderFlow(
+			async () => ({ status: 'success', account: 'existing' }),
+			'Ada',
+			undefined,
+			'existing'
+		);
 
-		await signInWithInvite();
-
-		await expectStepHeading('You’re all set');
+		await screen.findByRole('heading', { name: 'You’re all set' });
 		expect(screen.getByText('You already have an account, and you’re signed in.')).toBeDefined();
 	});
 

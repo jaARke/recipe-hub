@@ -3,6 +3,7 @@
 import { useTransition } from 'react';
 import { authClient } from '@/components/auth/auth-client';
 import { settleAuthCall } from '@/components/auth/auth-errors';
+import { loadPage } from '@/components/auth/load-page';
 import { toast } from '@/components/ui/toast';
 import { removeMemberBrowserStorage } from '@/lib/browser-storage';
 
@@ -10,29 +11,6 @@ type SignOutOptions = {
 	// The page to load once signed out.
 	destination: string;
 };
-
-// The browser takes an address that differs from the page's own only in its fragment as a scroll
-// within the page, not a page to load.
-function scrollsWithinPage(destination: string): boolean {
-	const target = new URL(destination, window.location.href);
-	if (target.hash === '') {
-		return false;
-	}
-	const page = new URL(window.location.href);
-	target.hash = '';
-	page.hash = '';
-	return target.href === page.href;
-}
-
-// Loads the page afresh even when only its fragment changes.
-function loadPage(destination: string) {
-	if (scrollsWithinPage(destination)) {
-		window.history.replaceState(null, '', destination);
-		window.location.reload();
-	} else {
-		window.location.assign(destination);
-	}
-}
 
 // Ends this device's session, removes what this browser kept for the member, then loads the
 // destination as a new page, so neither pages Next kept from the session, which can hold the
