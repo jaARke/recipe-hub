@@ -22,8 +22,11 @@ import type {
 	RecipeFormPhoto,
 } from '@/components/recipe-form/recipe-form-values';
 import { describePositionMove, itemName } from '@/components/recipe-form/sectioned-list';
-import { recipeImageSrc } from '@/components/recipe/recipe-paths';
-import { RecipePhoto } from '@/components/recipe/recipe-photo';
+import {
+	RecipeImageViewer,
+	RecipeImageViewerTrigger,
+} from '@/components/recipe/recipe-image-viewer';
+import { RecipePhoto, RecipeScanImage } from '@/components/recipe/recipe-photo';
 import {
 	Attachment,
 	AttachmentActions,
@@ -51,7 +54,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Spinner } from '@/components/ui/spinner';
-import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
+import type { RecipeImage, RecipeImageRole } from '@/domain/recipe/recipe-image';
 
 const failureMessages: Record<PhotoFailure, string> = {
 	unreadable: 'This browser can’t read this photo. Try Safari, or save it as a JPEG first.',
@@ -156,8 +159,17 @@ function LocalPhotoThumbnail({ file }: { file: File }) {
 	return <img ref={imageRef} alt="" />;
 }
 
-// The title beside it names the photo, so the thumbnail is decorative.
-function PhotoThumbnail({ photo, role }: { photo: RecipeFormPhoto; role: RecipeImageRole }) {
+// The title beside it names the photo, so the thumbnail is decorative; a saved photo's is a button that
+// opens the viewer, which names it.
+function PhotoThumbnail({
+	photo,
+	role,
+	viewerImages,
+}: {
+	photo: RecipeFormPhoto;
+	role: RecipeImageRole;
+	viewerImages: readonly RecipeImage[];
+}) {
 	const { upload } = photo;
 	switch (upload.status) {
 		case 'processing':
@@ -180,21 +192,31 @@ function PhotoThumbnail({ photo, role }: { photo: RecipeFormPhoto; role: RecipeI
 				</AttachmentMedia>
 			);
 		case 'saved':
+			// The button rounds and clips the photo itself, so its focus ring draws outside the thumbnail.
 			return (
-				<AttachmentMedia variant="image">
-					{role === 'dish' ? (
-						<RecipePhoto
-							pathname={upload.pathname}
-							alt=""
-							sizes="40px"
-							loading="lazy"
-							className="size-full"
-						/>
-					) : (
-						// Scans are for members only, so they never pass through the image optimizer.
-						// eslint-disable-next-line @next/next/no-img-element
-						<img src={recipeImageSrc(upload.pathname)} alt="" loading="lazy" />
-					)}
+				<AttachmentMedia variant="image" className="overflow-visible">
+					<RecipeImageViewerTrigger
+						index={viewerImages.findIndex((image) => image.pathname === upload.pathname)}
+						className="size-full rounded-lg"
+					>
+						{role === 'dish' ? (
+							<RecipePhoto
+								pathname={upload.pathname}
+								alt=""
+								sizes="40px"
+								loading="lazy"
+								className="size-full"
+							/>
+						) : (
+							<RecipeScanImage
+								pathname={upload.pathname}
+								alt=""
+								loading="lazy"
+								fit="cover"
+								className="size-full"
+							/>
+						)}
+					</RecipeImageViewerTrigger>
 				</AttachmentMedia>
 			);
 	}
@@ -226,6 +248,20 @@ function PhotoField({
 	const ids = photoFieldIds(idPrefix);
 	const isFull = photos.length >= limit;
 	const limitMessage = `You can add up to ${limit} photos here. Remove one to add another.`;
+	// Saved photos open the viewer, so the member can see one larger or read the original while checking
+	// the form; a new photo shows only its thumbnail. A dish photo shows its description as it will be
+	// saved, and a scan saves none.
+	const viewerImages: RecipeImage[] = photos.flatMap(({ upload, alt }) =>
+		upload.status === 'saved'
+			? [
+					{
+						role,
+						pathname: upload.pathname,
+						alt: role === 'dish' ? alt.trim() || undefined : undefined,
+					},
+				]
+			: []
+	);
 
 	React.useEffect(() => {
 		const uploads = uploadsRef.current;
@@ -399,7 +435,7 @@ function PhotoField({
 		return (
 			<li key={photo.id} className="flex flex-col gap-3">
 				<Attachment state={attachmentState(photo)} className="w-full">
-					<PhotoThumbnail photo={photo} role={role} />
+					<PhotoThumbnail photo={photo} role={role} viewerImages={viewerImages} />
 					<AttachmentContent>
 						<AttachmentTitle>{name}</AttachmentTitle>
 						{status !== undefined && <AttachmentDescription>{status}</AttachmentDescription>}
@@ -513,9 +549,11 @@ function PhotoField({
 				/>
 			</Empty>
 			{photos.length > 0 && (
-				<ul aria-label={legend} className="flex flex-col gap-4">
-					{photos.map((photo, index) => renderPhoto(photo, index))}
-				</ul>
+				<RecipeImageViewer role={role} title={legend} images={viewerImages}>
+					<ul aria-label={legend} className="flex flex-col gap-4">
+						{photos.map((photo, index) => renderPhoto(photo, index))}
+					</ul>
+				</RecipeImageViewer>
 			)}
 			<p role="status" aria-live="polite" className="sr-only">
 				{announcement}

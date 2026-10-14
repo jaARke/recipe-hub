@@ -19,7 +19,10 @@ type RecipePhotoProps = Pick<ImageProps, 'preload' | 'loading'> & {
 	className: string;
 };
 
-type RecipeScanImageProps = Pick<RecipePhotoProps, 'pathname' | 'alt' | 'loading' | 'className'>;
+type RecipeScanImageProps = Pick<
+	RecipePhotoProps,
+	'pathname' | 'alt' | 'loading' | 'fit' | 'className'
+>;
 
 // Each box is a span, so a photo can sit inside a button.
 function RecipePhoto({
@@ -46,8 +49,15 @@ function RecipePhoto({
 	);
 }
 
-// A scan, shown whole. The image optimizer would cache a members-only scan publicly, so it gets the original.
-function RecipeScanImage({ pathname, alt, loading, className }: RecipeScanImageProps) {
+// A scan, shown whole unless a thumbnail crops it. The image optimizer would cache a members-only scan
+// publicly, so it gets the original.
+function RecipeScanImage({
+	pathname,
+	alt,
+	loading,
+	fit = 'contain',
+	className,
+}: RecipeScanImageProps) {
 	return (
 		<span className={cn('block overflow-hidden bg-muted', className)}>
 			{/* eslint-disable-next-line @next/next/no-img-element */}
@@ -56,7 +66,7 @@ function RecipeScanImage({ pathname, alt, loading, className }: RecipeScanImageP
 				alt={alt}
 				loading={loading}
 				decoding="async"
-				className="size-full object-contain"
+				className={cn('size-full', photoFitClasses[fit])}
 			/>
 		</span>
 	);

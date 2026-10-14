@@ -40,6 +40,13 @@ type RecipeImageViewerProps = RecipeImageViewerContextValue & {
 // The dialog is at most 42rem wide with 1.5rem of padding on each side.
 const viewerPhotoSizes = '(min-width: 704px) 624px, calc(100vw - 80px)';
 
+// Each role's slide shape, narrowed on a short screen so the slide is at most the screen's height less
+// 12rem: the dialog's margin and padding, its title, and a one-line caption beside Previous and Next.
+const viewerSlideClasses = {
+	dish: 'aspect-4/3 max-w-[calc((100dvh-12rem)*4/3)]',
+	scan: 'aspect-3/4 max-w-[calc((100dvh-12rem)*3/4)]',
+} as const satisfies Record<RecipeImageRole, string>;
+
 const RecipeImageViewerContext = React.createContext<RecipeImageViewerContextValue | null>(null);
 
 function useRecipeImageViewer(): RecipeImageViewerContextValue {
@@ -63,11 +70,12 @@ function RecipeImageViewer({ role, images, title, children }: RecipeImageViewerP
 				{({ payload }) => (
 					<>
 						{children}
-						{/* Scrolls on a screen too short for the photo and its caption, such as a phone on its side. */}
+						{/* At most the screen's height less a margin, like its width; the slide shrinks to fit, so
+						only a caption longer than a line makes it scroll. */}
 						<DialogContent
 							ref={popupRef}
 							initialFocus={initialFocusRef}
-							className="max-h-dvh overflow-y-auto sm:max-w-2xl"
+							className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
 						>
 							{/* Clears the close button in the corner. */}
 							<DialogHeader className="pr-8">
@@ -191,13 +199,13 @@ function RecipeImageCarousel({
 								alt={image.alt ?? ''}
 								sizes={viewerPhotoSizes}
 								fit="contain"
-								className="aspect-4/3 rounded-md"
+								className={cn('mx-auto rounded-md', viewerSlideClasses.dish)}
 							/>
 						) : (
 							<RecipeScanImage
 								pathname={image.pathname}
 								alt={image.alt ?? ''}
-								className="aspect-4/3 rounded-md"
+								className={cn('mx-auto rounded-md', viewerSlideClasses.scan)}
 							/>
 						)}
 					</CarouselItem>
@@ -240,16 +248,17 @@ function RecipeImageCaption({
 				</p>
 			</div>
 			<div className="flex shrink-0 gap-2">
-				{/* Below the image rather than beside it, and focusable at either end so focus stays put. */}
+				{/* Below the image rather than beside it, 44 px for a finger, and focusable at either end so
+				focus stays put. */}
 				<CarouselPrevious
 					ref={opensOnNext ? undefined : initialFocusRef}
-					className="static"
+					className="static pointer-coarse:size-11"
 					aria-label={labels.previous}
 					focusableWhenDisabled
 				/>
 				<CarouselNext
 					ref={opensOnNext ? initialFocusRef : undefined}
-					className="static"
+					className="static pointer-coarse:size-11"
 					aria-label={labels.next}
 					focusableWhenDisabled
 				/>
