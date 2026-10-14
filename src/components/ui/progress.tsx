@@ -37,6 +37,7 @@ function ProgressIndicator({ className, ...props }: ProgressPrimitive.Indicator.
 		<ProgressPrimitive.Indicator
 			data-slot="progress-indicator"
 			className={cn(
+				// With no value, as for an import, the bar fills its track and pulses instead of vanishing.
 				'h-full bg-primary transition-all data-indeterminate:w-full data-indeterminate:animate-pulse',
 				className
 			)}

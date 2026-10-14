@@ -4,8 +4,10 @@ import {
 	codeSignInError,
 	isPasskeyCancellation,
 	isStaleSessionError,
+	isUnknownPasskeyError,
 	passkeyRegistrationErrorMessage,
 	passkeyRemovalErrorMessage,
+	passkeyRenameError,
 	passkeySignInErrorMessage,
 	settleAuthCall,
 } from '@/components/auth/auth-errors';
@@ -93,6 +95,14 @@ describe('isPasskeyCancellation', () => {
 	});
 });
 
+describe('isUnknownPasskeyError', () => {
+	it('recognizes only a passkey the site does not know', () => {
+		expect(isUnknownPasskeyError({ code: 'PASSKEY_NOT_FOUND', status: 401 })).toBe(true);
+		expect(isUnknownPasskeyError({ code: 'AUTHENTICATION_FAILED', status: 401 })).toBe(false);
+		expect(isUnknownPasskeyError({ status: 0 })).toBe(false);
+	});
+});
+
 describe('passkeySignInErrorMessage', () => {
 	it('offers the email code after a cancelled dialog', () => {
 		expect(passkeySignInErrorMessage({ code: 'AUTH_CANCELLED', status: 400 })).toBe(
@@ -145,5 +155,30 @@ describe('passkeyRemovalErrorMessage', () => {
 		[{ status: 500 }, "We couldn't remove that passkey. Try again."],
 	])('maps %j', (error, message) => {
 		expect(passkeyRemovalErrorMessage(error)).toBe(message);
+	});
+});
+
+describe('passkeyRenameError', () => {
+	it("puts the server's reason for refusing the name on the name field", () => {
+		expect(
+			passkeyRenameError({
+				code: 'VALIDATION_ERROR',
+				message: 'Use 60 characters or fewer.',
+				status: 400,
+			})
+		).toEqual({ status: 'error', fieldErrors: { name: 'Use 60 characters or fewer.' } });
+	});
+
+	it.each([
+		[
+			{ code: 'PASSKEY_NOT_FOUND', status: 404 },
+			'That passkey was removed. Reload the page to see your passkeys.',
+		],
+		[rateLimited, 'Too many tries in a short time. Wait a minute, then try again.'],
+		[{ status: 401 }, 'Your session has ended. Sign in again to rename a passkey.'],
+		[{ code: 'VALIDATION_ERROR', status: 400 }, "We couldn't rename that passkey. Try again."],
+		[{ status: 500 }, "We couldn't rename that passkey. Try again."],
+	])('maps %j to a message about the form', (error, message) => {
+		expect(passkeyRenameError(error)).toEqual({ status: 'error', message, fieldErrors: {} });
 	});
 });

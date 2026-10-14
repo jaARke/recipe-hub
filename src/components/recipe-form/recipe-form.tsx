@@ -51,10 +51,9 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
-import { maxIngredientLineLength } from '@/domain/recipe/ingredient-limits';
 import { parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
-import { maxDishPhotos, maxScans } from '@/domain/recipe/recipe-image-limits';
+import { settings } from '@/lib/settings';
 
 const failureMessage = "We couldn't save the recipe. Check your connection and try again.";
 
@@ -422,7 +421,6 @@ function RecipeForm({
 						description="One ingredient per field, as you'd write it. Add a section for a separate part, such as a glaze."
 						itemPlaceholder="2½ cups all-purpose flour"
 						headingPlaceholder="For the glaze"
-						maxItemLength={maxIngredientLineLength}
 						itemPreview={ingredientPreview}
 						problemCheck={problemCheck}
 					/>
@@ -459,7 +457,7 @@ function RecipeForm({
 						role="dish"
 						legend={photoFieldLegends.dish}
 						description="Photos of the finished dish, which anyone can see. The first is the cover. Describe each one for people who can't see it."
-						limit={maxDishPhotos}
+						limit={settings.photos.maxDishPhotosPerRecipe}
 						photos={values.photos.dish}
 						nextId={values.nextId}
 						dispatch={dispatch}
@@ -472,7 +470,7 @@ function RecipeForm({
 						role="scan"
 						legend={photoFieldLegends.scan}
 						description="Photos of the recipe as it was written, such as a recipe card. Only members can see them."
-						limit={maxScans}
+						limit={settings.photos.maxScansPerRecipe}
 						photos={values.photos.scan}
 						nextId={values.nextId}
 						dispatch={dispatch}

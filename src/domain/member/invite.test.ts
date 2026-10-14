@@ -8,6 +8,7 @@ import {
 	type Invite,
 } from '@/domain/member/invite';
 import { memberIdSchema } from '@/domain/member/member';
+import { settings } from '@/lib/settings';
 
 const now = new Date('2026-10-12T15:00:00Z');
 
@@ -48,8 +49,11 @@ describe('inviteStatus', () => {
 });
 
 describe('inviteExpiry', () => {
-	it('is seven days after creation', () => {
-		expect(inviteExpiry(now)).toEqual(new Date('2026-10-19T15:00:00Z'));
+	it("is an invite's lifetime after creation", () => {
+		const day = 24 * 60 * 60 * 1000;
+		expect(inviteExpiry(now)).toEqual(
+			new Date(now.getTime() + settings.accounts.inviteLifetimeDays * day)
+		);
 	});
 });
 

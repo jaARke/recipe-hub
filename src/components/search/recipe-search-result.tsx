@@ -58,7 +58,7 @@ function RecipeSearchResult({
 			<div className="flex min-w-0 flex-1 flex-col gap-1">
 				<Heading
 					id={titleId}
-					className="line-clamp-2 font-heading text-lg font-medium underline-offset-4 group-hover:underline"
+					className="line-clamp-2 font-heading text-lg font-semibold underline-offset-4 group-hover:underline"
 				>
 					<HighlightedSegments text={result.title} />
 				</Heading>

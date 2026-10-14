@@ -12,3 +12,17 @@ export const nonEmptyTextSchema = z
 	.overwrite(normalizeText)
 	.trim()
 	.min(1, 'Enter some text.');
+
+// What every limit says when it is passed, such as "Use 12 photos or fewer."
+export function limitMessage(max: number, units: string): string {
+	return `Use ${max} ${units} or fewer.`;
+}
+
+// Text of at most max characters, measured once trimmed. Text other than plain text, such as a tag,
+// passes its own schema.
+export function boundedTextSchema(
+	max: number,
+	text: z.ZodString = nonEmptyTextSchema
+): z.ZodString {
+	return text.max(max, limitMessage(max, 'characters'));
+}

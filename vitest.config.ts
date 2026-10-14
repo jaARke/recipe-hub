@@ -6,4 +6,19 @@ export default defineConfig({
 		alias: { 'server-only': 'next/dist/compiled/server-only/empty.js' },
 		tsconfigPaths: true,
 	},
+	test: {
+		// Component render tests are .test.tsx and run in a DOM; every other test runs in Node.
+		projects: [
+			{ extends: true, test: { name: 'node', include: ['**/*.test.ts'], environment: 'node' } },
+			{
+				extends: true,
+				test: {
+					name: 'dom',
+					include: ['**/*.test.tsx'],
+					environment: 'happy-dom',
+					setupFiles: ['./vitest.dom-setup.ts'],
+				},
+			},
+		],
+	},
 });

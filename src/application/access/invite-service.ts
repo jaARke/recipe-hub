@@ -2,6 +2,7 @@ import 'server-only';
 import {
 	toInviteDto,
 	toInvitePreviewDto,
+	type CompletedInviteDto,
 	type InviteDelivery,
 	type InviteDto,
 	type InvitePreviewDto,
@@ -17,7 +18,7 @@ import {
 	hashInviteToken,
 	isInviteToken,
 } from '@/application/access/invite-token';
-import { requireAdmin } from '@/application/authorization';
+import { requireAdmin, requireMember } from '@/application/authorization';
 import { MemberNotFoundError } from '@/application/members/errors';
 import type { AccessRequestRepository } from '@/application/ports/access-request-repository';
 import type { ActorProvider } from '@/application/ports/actor-provider';
@@ -177,6 +178,36 @@ export class InviteService {
 		return address;
 	}
 
+	// Asked once the invitee signs in with a code, which proves the address is theirs, so only then is
+	// an existing account disclosed. The member has an account now either way, so an invite their
+	// sign-up didn't use is revoked.
+	async completeInvite(token: string): Promise<CompletedInviteDto> {
+		const actor = requireMember(await this.actors.currentActor());
+		const invite = await this.findInvite(token);
+		if (invite === null) {
+			throw new InviteUnavailableError();
+		}
+		if (invite.acceptedBy === actor.memberId) {
+			return { account: 'created' };
+		}
+
+		const member = await this.members.findById(actor.memberId);
+		if (member === null) {
+			throw new MemberNotFoundError();
+		}
+		// Several open invites can be bound to one address, and sign-up uses the newest. An account
+		// made after this invite was issued came from one of them, so it is new to this invitee too.
+		const account = member.createdAt > invite.createdAt ? 'created' : 'existing';
+		if (await this.invites.revoke(invite.id, new Date())) {
+			logger.info('Invite revoked at sign-in', {
+				inviteId: invite.id,
+				memberId: actor.memberId,
+				account,
+			});
+		}
+		return { account };
+	}
+
 	private async findPendingRequest(id: string): Promise<AccessRequestId> {
 		const parsed = accessRequestIdSchema.safeParse(id);
 		const request = parsed.success ? await this.requests.findById(parsed.data) : null;
@@ -215,11 +246,16 @@ export class InviteService {
 	}
 
 	private async findOpenInvite(token: string, now: Date): Promise<Invite | null> {
+		const invite = await this.findInvite(token);
+		return invite !== null && inviteStatus(invite, now) === 'open' ? invite : null;
+	}
+
+	// Whatever its status.
+	private async findInvite(token: string): Promise<Invite | null> {
 		if (!isInviteToken(token)) {
 			return null;
 		}
 
-		const invite = await this.invites.findByTokenHash(await hashInviteToken(token));
-		return invite !== null && inviteStatus(invite, now) === 'open' ? invite : null;
+		return this.invites.findByTokenHash(await hashInviteToken(token));
 	}
 }

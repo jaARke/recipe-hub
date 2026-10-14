@@ -1,20 +1,23 @@
 import { z } from 'zod';
 import { problemSchema } from '@/domain/problem';
-import { ingredientLineSchema, ingredientSectionSchema } from '@/domain/recipe/ingredient';
-import { instructionSectionSchema, instructionStepSchema } from '@/domain/recipe/instruction';
+import { storedContent } from '@/domain/recipe/content-limits';
+import { ingredientLineSchemaFor, ingredientSectionSchemaFor } from '@/domain/recipe/ingredient';
+import { instructionSectionSchemaFor, instructionStepSchemaFor } from '@/domain/recipe/instruction';
 import { provenanceSchema } from '@/domain/recipe/provenance';
-import { recipeContentSchema } from '@/domain/recipe/recipe';
+import { storedRecipeContentSchema } from '@/domain/recipe/recipe';
 
-const draftIngredientSectionSchema = ingredientSectionSchema.extend({
-	lines: z.array(ingredientLineSchema.partial({ item: true })),
+const draftIngredientSectionSchema = ingredientSectionSchemaFor(storedContent).extend({
+	lines: z.array(ingredientLineSchemaFor(storedContent).partial({ item: true })),
 });
 
-const draftInstructionSectionSchema = instructionSectionSchema.extend({
-	steps: z.array(instructionStepSchema),
+const draftInstructionSectionSchema = instructionSectionSchemaFor(storedContent).extend({
+	steps: z.array(instructionStepSchemaFor(storedContent)),
 });
 
-// Content as an entry mode produced it: anything may be missing, but what is present is valid.
-export const recipeDraftContentSchema = recipeContentSchema.partial().extend({
+// Content as an entry mode produced it: anything may be missing, but what is present is valid. A
+// draft is read whatever the limits are now: an import fits each text to its limit, and saving checks
+// them all.
+export const recipeDraftContentSchema = storedRecipeContentSchema.partial().extend({
 	ingredientSections: z.array(draftIngredientSectionSchema).optional(),
 	instructionSections: z.array(draftInstructionSectionSchema).optional(),
 });

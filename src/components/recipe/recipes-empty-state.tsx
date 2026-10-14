@@ -1,4 +1,4 @@
-import { CookingPotIcon } from 'lucide-react';
+import { Mascot } from '@/components/brand/mascot';
 import {
 	Empty,
 	EmptyDescription,
@@ -11,8 +11,8 @@ function RecipesEmptyState() {
 	return (
 		<Empty className="border">
 			<EmptyHeader>
-				<EmptyMedia variant="icon">
-					<CookingPotIcon aria-hidden="true" />
+				<EmptyMedia>
+					<Mascot size="lg" />
 				</EmptyMedia>
 				<EmptyTitle>No recipes yet</EmptyTitle>
 				<EmptyDescription>Recipes will show up here once they are added.</EmptyDescription>

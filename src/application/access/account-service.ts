@@ -8,12 +8,9 @@ import {
 import type { InviteRepository } from '@/application/ports/invite-repository';
 import type { MemberRepository } from '@/application/ports/member-repository';
 import type { InviteId } from '@/domain/member/invite';
-import {
-	emailAddressSchema,
-	signInCodeLifetimeMinutes,
-	type MemberId,
-} from '@/domain/member/member';
+import { emailAddressSchema, type MemberId } from '@/domain/member/member';
 import { getLogger } from '@/lib/logger';
+import { settings } from '@/lib/settings';
 import { siteName } from '@/lib/site';
 
 const logger = getLogger('access');
@@ -24,7 +21,7 @@ function signInCodeEmail(to: string, code: string): EmailMessage {
 		subject: 'Your sign-in code',
 		text: [
 			`Your ${siteName} sign-in code is:\n\n${code}`,
-			`It expires in ${signInCodeLifetimeMinutes} minutes. If you didn't ask for a code, you can ignore this email.`,
+			`It expires in ${settings.accounts.signInCodeLifetimeMinutes} minutes. If you didn't ask for a code, you can ignore this email.`,
 		].join('\n\n'),
 	};
 }

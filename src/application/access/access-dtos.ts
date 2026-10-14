@@ -40,6 +40,11 @@ export type InvitePreviewDto = {
 	expiresAt: Date;
 };
 
+// What the invitee learns once signed in: the invite created their account, or they already had one.
+export type CompletedInviteDto = {
+	account: 'created' | 'existing';
+};
+
 // For the auth adapter: what the account it is about to create receives from the invite.
 export type SignUpGrant = {
 	inviteId: InviteId;

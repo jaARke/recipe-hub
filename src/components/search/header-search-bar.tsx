@@ -8,7 +8,7 @@ import { buttonVariants } from '@/components/ui/button';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 
-// Phones have no room for a field, so they get a link to the search page.
+// Narrow headers have no room for a field, so they get a link to the search page.
 function HeaderSearchLink({ className }: { className?: string }) {
 	return (
 		<Link
@@ -26,7 +26,7 @@ function HeaderSearchForm({ id, className }: { id: string; className?: string })
 	return (
 		<search className={className}>
 			<Form action={recipeSearchPath}>
-				<Field className="w-56 lg:w-72">
+				<Field className="w-72 xl:w-96">
 					<FieldLabel htmlFor={id} className="sr-only">
 						Search recipes
 					</FieldLabel>
@@ -51,8 +51,8 @@ function HeaderSearchForm({ id, className }: { id: string; className?: string })
 function HeaderSearchBar() {
 	return (
 		<>
-			<HeaderSearchLink className="sm:hidden" />
-			<HeaderSearchForm id="header-search-query" className="hidden sm:block" />
+			<HeaderSearchLink className="lg:hidden" />
+			<HeaderSearchForm id="header-search-query" className="hidden lg:block" />
 		</>
 	);
 }

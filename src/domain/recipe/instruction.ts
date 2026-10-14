@@ -1,14 +1,19 @@
 import { z } from 'zod';
-import { nonEmptyTextSchema } from '@/domain/text';
+import type { ContentLimits } from '@/domain/recipe/content-limits';
+import { settings } from '@/lib/settings';
 
 // An object rather than a string, so a step can gain fields without reshaping stored recipes.
-export const instructionStepSchema = z.object({
-	text: nonEmptyTextSchema,
-});
-export type InstructionStep = z.infer<typeof instructionStepSchema>;
+export function instructionStepSchemaFor(limits: ContentLimits) {
+	return z.object({
+		text: limits.text(settings.recipeLimits.maxStepLength),
+	});
+}
+export type InstructionStep = z.infer<ReturnType<typeof instructionStepSchemaFor>>;
 
-export const instructionSectionSchema = z.object({
-	heading: nonEmptyTextSchema.optional(),
-	steps: z.array(instructionStepSchema).min(1, 'Add at least one step.'),
-});
-export type InstructionSection = z.infer<typeof instructionSectionSchema>;
+export function instructionSectionSchemaFor(limits: ContentLimits) {
+	return z.object({
+		heading: limits.text(settings.recipeLimits.maxSectionHeadingLength).optional(),
+		steps: z.array(instructionStepSchemaFor(limits)).min(1, 'Add at least one step.'),
+	});
+}
+export type InstructionSection = z.infer<ReturnType<typeof instructionSectionSchemaFor>>;

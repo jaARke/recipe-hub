@@ -1,12 +1,12 @@
 import { cacheLife } from 'next/cache';
 import {
-	openGraphColors,
 	openGraphFontFamilies,
 	openGraphImageContentType,
 	openGraphImageSize,
 	renderOpenGraphImage,
 } from '@/app/_lib/open-graph-image';
 import { siteDescription, siteName } from '@/lib/site';
+import { tokenColors } from '@/lib/token-colors';
 
 export const alt = `${siteName}. ${siteDescription}`;
 export const size = openGraphImageSize;
@@ -19,11 +19,11 @@ function SiteCard() {
 				display: 'flex',
 				width: '100%',
 				height: '100%',
-				backgroundColor: openGraphColors.background,
-				color: openGraphColors.foreground,
+				backgroundColor: tokenColors.light.background,
+				color: tokenColors.light.foreground,
 			}}
 		>
-			<div style={{ width: 24, height: '100%', backgroundColor: openGraphColors.primary }} />
+			<div style={{ width: 24, height: '100%', backgroundColor: tokenColors.light.primary }} />
 			<div
 				style={{
 					display: 'flex',
@@ -40,7 +40,7 @@ function SiteCard() {
 						fontSize: 128,
 						lineHeight: 1,
 						letterSpacing: '-0.02em',
-						color: openGraphColors.primary,
+						color: tokenColors.light.primary,
 					}}
 				>
 					{siteName}
@@ -51,7 +51,7 @@ function SiteCard() {
 						fontFamily: openGraphFontFamilies.body,
 						fontSize: 44,
 						lineHeight: 1.3,
-						color: openGraphColors.mutedForeground,
+						color: tokenColors.light.mutedForeground,
 					}}
 				>
 					{siteDescription}

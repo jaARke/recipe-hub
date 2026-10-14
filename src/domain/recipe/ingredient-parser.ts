@@ -1,7 +1,6 @@
 import { parseIngredient, type ParseIngredientOptions } from 'parse-ingredient';
 import type { Amount } from '@/domain/recipe/amount';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
-import { maxIngredientLineLength } from '@/domain/recipe/ingredient-limits';
 
 type ItemParts = Pick<IngredientLine, 'item' | 'preparation'>;
 
@@ -22,6 +21,10 @@ const libraryOptions: ParseIngredientOptions = {
 	// Exact values, so a third is not stored as 0.333.
 	round: false,
 };
+
+// The longest line the parser reads, since the library's quantity scan slows sharply on long text,
+// which no ingredient needs. A longer line keeps its text as its item.
+export const maxReadLineLength = 500;
 
 // One quantity as written: a fraction or mixed number, a vulgar fraction, a decimal, or a whole number.
 const quantitySource = String.raw`(?:\d+(?:\s+\d+)?\s*[/⁄]\s*\d+|\d*\s*[¼-¾⅐-⅞]|\d*\.\d+|\d+)`;
@@ -59,8 +62,7 @@ function toAmount(min: number, max: number | null): Amount | undefined {
 
 // The amount and unit that open the line, as the library reads them, or nothing it may misread.
 function readMeasure(line: string): Measure | undefined {
-	// The library's quantity scan slows sharply on long text, which no amount needs.
-	if (line.length > maxIngredientLineLength) {
+	if (line.length > maxReadLineLength) {
 		return undefined;
 	}
 
@@ -142,8 +144,7 @@ function splitPreparation(description: string): ItemParts {
 // The line's structure, read only where it is unambiguous; anything else keeps the text as its item.
 export function parseIngredientLine(text: string): IngredientLine {
 	const line = text.trim();
-	// Too long to be one ingredient, so the line is left unread and the schema refuses it.
-	if (line.length > maxIngredientLineLength) {
+	if (line.length > maxReadLineLength) {
 		return { text: line, item: line };
 	}
 

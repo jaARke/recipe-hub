@@ -10,6 +10,12 @@ export const profileFieldNames = {
 	displayName: 'displayName',
 } as const;
 
+// Named for the auth endpoint's inputs.
+export const passkeyFieldNames = {
+	id: 'id',
+	name: 'name',
+} as const;
+
 // Shown when a request can't be sent, whether a rate limit or a lost connection stopped it or
 // BotID refused it, so a refused bot learns nothing.
 export const requestAccessFailureMessage =

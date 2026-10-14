@@ -59,24 +59,26 @@ function OpenInviteList({
 							</p>
 						</div>
 					</div>
-					<ConfirmActionDialog
-						variant="destructive"
-						trigger={
-							<>
-								Revoke<span className="sr-only"> the invite for {invite.displayName}</span>
-							</>
-						}
-						title={`Revoke the invite for ${invite.displayName}?`}
-						description="The invite link stops working right away."
-						cancelLabel="Keep invite"
-						confirmLabel="Revoke invite"
-						pendingLabel="Revoking"
-						successMessage="Invite revoked"
-						failureMessage="We couldn't revoke the invite. Reload the page and try again."
-						action={revokeInvite}
-					>
-						<input type="hidden" name={adminFieldNames.inviteId} value={invite.id} />
-					</ConfirmActionDialog>
+					<div className="flex flex-wrap gap-2 sm:shrink-0">
+						<ConfirmActionDialog
+							variant="destructive"
+							trigger={
+								<>
+									Revoke<span className="sr-only"> the invite for {invite.displayName}</span>
+								</>
+							}
+							title={`Revoke the invite for ${invite.displayName}?`}
+							description="The invite link stops working right away."
+							cancelLabel="Keep invite"
+							confirmLabel="Revoke invite"
+							pendingLabel="Revoking"
+							successMessage="Invite revoked"
+							failureMessage="We couldn't revoke the invite. Reload the page and try again."
+							action={revokeInvite}
+						>
+							<input type="hidden" name={adminFieldNames.inviteId} value={invite.id} />
+						</ConfirmActionDialog>
+					</div>
 				</li>
 			))}
 		</ul>

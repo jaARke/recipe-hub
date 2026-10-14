@@ -17,7 +17,7 @@ import {
 	type RouteSearchParams,
 } from '@/components/recipe/recipe-list-params';
 import { recipeListParamNames, recipeSearchPath } from '@/components/recipe/recipe-paths';
-import { tagListSchema } from '@/domain/recipe/tag';
+import { storedTagListSchema } from '@/domain/recipe/tag';
 import { normalizeTagLabel } from '@/domain/recipe/tag-normalization';
 
 // The search page's URL parameters, by the state they hold.
@@ -83,7 +83,7 @@ function parseIdParam(value: string | string[] | undefined): string | undefined 
 // Blank tags are dropped and repeats keep their first spelling, as recipes store them.
 function parseTagParams(value: string | string[] | undefined): string[] {
 	const labels = value === undefined ? [] : [value].flat();
-	return tagListSchema.parse(labels.filter((label) => normalizeTagLabel(label) !== ''));
+	return storedTagListSchema.parse(labels.filter((label) => normalizeTagLabel(label) !== ''));
 }
 
 export function parseRecipeSearchParams(params: RouteSearchParams): RecipeSearchState | null {

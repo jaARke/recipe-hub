@@ -1,11 +1,13 @@
+import { passkeyFieldNames } from '@/components/account/account-forms';
 import type { authClient } from '@/components/auth/auth-client';
 import { authFieldNames } from '@/components/auth/auth-forms';
 import type { FormError } from '@/components/forms/form-state';
 
-// The failure the auth client returns: Better Auth's code when it names one, and the HTTP status,
-// which is 429 when a rate limit refuses the request.
+// The failure the auth client returns: Better Auth's code and message when it names them, and the
+// HTTP status, which is 429 when a rate limit refuses the request.
 export type AuthClientError = {
 	code?: string;
+	message?: string;
 	status: number;
 };
 
@@ -21,6 +23,7 @@ function hasCode(error: AuthClientError, code: AuthErrorCode): boolean {
 	return error.code === code;
 }
 
+// True while no rate limit in better-auth.ts refuses for longer than a minute.
 const tooManyTriesMessage = 'Too many tries in a short time. Wait a minute, then try again.';
 
 // Reported when the passkey dialog is closed or times out (the browser doesn't say which), or when a
@@ -95,6 +98,11 @@ export function isPasskeyCancellation(error: AuthClientError): boolean {
 	return error.code !== undefined && passkeyCancellationCodes.has(error.code);
 }
 
+// The site doesn't know the passkey, as when it was removed on the account page.
+export function isUnknownPasskeyError(error: AuthClientError): boolean {
+	return hasCode(error, 'PASSKEY_NOT_FOUND');
+}
+
 export function passkeySignInErrorMessage(error: AuthClientError): string {
 	if (isPasskeyCancellation(error)) {
 		return 'No passkey was used. Try again, or sign in with an email code.';
@@ -140,4 +148,21 @@ export function passkeyRemovalErrorMessage(error: AuthClientError): string {
 		return 'Your session has ended. Sign in again to remove a passkey.';
 	}
 	return "We couldn't remove that passkey. Try again.";
+}
+
+// The server checks a new name as it checks a display name, and its message says what to fix.
+export function passkeyRenameError(error: AuthClientError): FormError {
+	if (hasCode(error, 'VALIDATION_ERROR') && error.message !== undefined) {
+		return fieldError(passkeyFieldNames.name, error.message);
+	}
+	if (hasCode(error, 'PASSKEY_NOT_FOUND')) {
+		return formError('That passkey was removed. Reload the page to see your passkeys.');
+	}
+	if (error.status === 429) {
+		return formError(tooManyTriesMessage);
+	}
+	if (error.status === 401) {
+		return formError('Your session has ended. Sign in again to rename a passkey.');
+	}
+	return formError("We couldn't rename that passkey. Try again.");
 }

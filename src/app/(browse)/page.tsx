@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
-import { getCachedRecipePage, recipesPerPage } from '@/app/_lib/recipe-cache';
+import { getCachedRecipePage } from '@/app/_lib/recipe-cache';
 import { recipeSorts } from '@/application/ports/recipe-repository';
 import { PageContainer } from '@/components/layout/page-container';
 import { RecipeCard } from '@/components/recipe/recipe-card';
@@ -12,6 +12,7 @@ import { RecipePagination } from '@/components/recipe/recipe-pagination';
 import { recipeListPath } from '@/components/recipe/recipe-paths';
 import { RecipeSortForm, RecipeSortFormSkeleton } from '@/components/recipe/recipe-sort-form';
 import { RecipesEmptyState } from '@/components/recipe/recipes-empty-state';
+import { settings } from '@/lib/settings';
 
 // The page's heading, which takes focus when the pagination changes the page.
 const recipesHeadingId = 'recipes-heading';
@@ -30,7 +31,7 @@ async function RecipeList({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>
 
 	// The first page carries the total, so a page past the end never reaches the database.
 	const firstPage = await getCachedRecipePage(1, state.sort);
-	const pageCount = Math.max(1, Math.ceil(firstPage.total / recipesPerPage));
+	const pageCount = Math.max(1, Math.ceil(firstPage.total / settings.display.recipesPerPage));
 	if (state.page > pageCount) {
 		notFound();
 	}

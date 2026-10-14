@@ -12,9 +12,10 @@ import {
 import type { AccessRequestDto, InviteDto } from '@/application/access/access-dtos';
 import { ForbiddenError, SignInRequiredError } from '@/application/authorization';
 import type { MemberDto } from '@/application/members/member-dtos';
-import { AdminDashboard, AdminDashboardSkeleton } from '@/components/admin/admin-dashboard';
+import { AdminDashboardSkeleton } from '@/components/admin/admin-dashboard';
 import type { AdminActions } from '@/components/admin/admin-forms';
 import { AdminOnlyEmptyState } from '@/components/admin/admin-only-empty-state';
+import { AdminPageDashboard } from '@/components/admin/admin-page-dashboard';
 import { adminPath, signInHref } from '@/components/auth/auth-paths';
 import { PageContainer } from '@/components/layout/page-container';
 import {
@@ -63,19 +64,21 @@ async function loadAdminData(): Promise<AdminData | null> {
 	}
 }
 
+// The dashboard reads its tab from the URL inside this boundary, at request time, so the server
+// renders the open tab's panel first.
 async function AdminContent() {
 	const data = await loadAdminData();
 	if (data === null) {
 		return <AdminOnlyEmptyState />;
 	}
 
-	return <AdminDashboard {...data} actions={adminActions} headingLevel={2} />;
+	return <AdminPageDashboard {...data} actions={adminActions} headingLevel={2} />;
 }
 
 export default function AdminPage() {
 	return (
 		<PageContainer width="reading" className="flex flex-col gap-8 py-12 sm:py-16">
-			<h1 className="font-heading text-4xl font-medium">Admin</h1>
+			<h1 className="font-heading text-4xl font-semibold">Admin</h1>
 			<Suspense fallback={<AdminDashboardSkeleton />}>
 				<AdminContent />
 			</Suspense>

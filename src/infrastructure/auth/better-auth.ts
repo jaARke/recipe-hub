@@ -1,18 +1,17 @@
 import 'server-only';
-import { passkey } from '@better-auth/passkey';
+import { getAuthenticatorName, passkey } from '@better-auth/passkey';
 import { betterAuth, type DBAdapter, type Where } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { APIError } from 'better-auth/api';
+import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { nextCookies } from 'better-auth/next-js';
-import { emailOTP } from 'better-auth/plugins';
+import { captcha, emailOTP, type VercelBotIdOptions } from 'better-auth/plugins';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import type { SignUpGrant } from '@/application/access/access-dtos';
 import { inviteIdSchema, type InviteId } from '@/domain/member/invite';
 import {
+	displayNameSchema,
 	memberIdSchema,
 	memberRoleSchema,
-	sessionLifetimeDays,
-	signInCodeLifetimeMinutes,
 	type MemberId,
 } from '@/domain/member/member';
 import {
@@ -26,9 +25,15 @@ import {
 import { authBasePath, signInCodeRequestPath } from '@/lib/auth-paths';
 import { withoutQueryParameters } from '@/lib/errors';
 import { getLogger } from '@/lib/logger';
+import { settings } from '@/lib/settings';
 import { siteName } from '@/lib/site';
 
 const secondsPerDay = 24 * 60 * 60;
+
+// Better Auth's plugins and rules name routes without the base path.
+const signInCodeRequestRoute = signInCodeRequestPath.slice(authBasePath.length);
+const passkeyRegistrationRoute = '/passkey/verify-registration';
+const passkeyRenameRoute = '/passkey/update-passkey';
 
 // The routes the sign-in, invite, and account flows call, matched exactly. Any other path, mounted
 // or not, answers 404 before Better Auth runs, so it costs no rate-limit write. A code request is
@@ -40,11 +45,12 @@ const enabledPaths: ReadonlySet<string> = new Set([
 		'/sign-out',
 		'/sign-in/email-otp',
 		'/passkey/generate-register-options',
-		'/passkey/verify-registration',
+		passkeyRegistrationRoute,
 		'/passkey/generate-authenticate-options',
 		'/passkey/verify-authentication',
 		'/passkey/list-user-passkeys',
 		'/passkey/delete-passkey',
+		passkeyRenameRoute,
 	].map((path) => `${authBasePath}${path}`),
 ]);
 
@@ -67,13 +73,19 @@ export type AuthOptions = {
 	accounts: AuthAccountHooks;
 	// Keeps work Better Auth starts after responding, such as sending a code, alive until it ends.
 	runInBackground: (task: Promise<unknown>) => void;
+	// BotID's verdict on the current request, which judges each sign-in code request.
+	checkBotId: VercelBotIdOptions['checkBotId'];
 };
 
 // Better Auth's own warnings and errors, in the app's log format. A message can quote a query error.
+// An error comes as an argument or, from the captcha plugin, as a field of one.
 function logBetterAuthMessage(level: string, message: string, ...args: unknown[]): void {
+	const values = args.flatMap((arg) =>
+		arg !== null && typeof arg === 'object' && !(arg instanceof Error) ? Object.values(arg) : [arg]
+	);
 	const fields = {
 		detail: withoutQueryParameters(message),
-		err: args.find((arg) => arg instanceof Error),
+		err: values.find((value) => value instanceof Error),
 	};
 	if (level === 'error') {
 		logger.error('Better Auth reported an error', fields);
@@ -150,15 +162,44 @@ export function createAuth(options: AuthOptions) {
 				removedAt: { type: 'date', input: false, required: false },
 			},
 		},
-		session: { expiresIn: sessionLifetimeDays * secondsPerDay, updateAge: secondsPerDay },
+		session: {
+			expiresIn: settings.accounts.sessionLifetimeDays * secondsPerDay,
+			updateAge: secondsPerDay,
+		},
 		// On everywhere, not only when NODE_ENV is production, so every environment runs the same limits.
+		// The forms' "Wait a minute" (auth-errors.ts) holds while no window here is longer than 60
+		// seconds.
 		rateLimit: {
 			enabled: true,
 			storage: 'database',
 			customRules: {
+				// Each code request can spend an email, and each code sign-in is a guess.
+				[signInCodeRequestRoute]: { window: 60, max: 3 },
+				'/sign-in/email-otp': { window: 60, max: 3 },
 				// Each ceremony stores a challenge, and the plugin sets no limit of its own.
 				'/passkey/*': { window: 60, max: 10 },
 			},
+		},
+		hooks: {
+			// A passkey's name is checked, and stored, as a display name is: always on a rename, and on a
+			// registration that names one. A registration without one takes its authenticator's.
+			before: createAuthMiddleware(async (context) => {
+				const named =
+					context.path === passkeyRenameRoute ||
+					(context.path === passkeyRegistrationRoute && context.body?.name !== undefined);
+				if (!named) {
+					return;
+				}
+
+				const name = displayNameSchema.safeParse(context.body?.name);
+				if (!name.success) {
+					throw new APIError('BAD_REQUEST', {
+						code: 'VALIDATION_ERROR',
+						message: name.error.issues[0]?.message,
+					});
+				}
+				return { context: { body: { ...context.body, name: name.data } } };
+			}),
 		},
 		databaseHooks: {
 			user: {
@@ -215,7 +256,7 @@ export function createAuth(options: AuthOptions) {
 				// refuses every address without an open invite.
 				disableSignUp: false,
 				otpLength: 6,
-				expiresIn: signInCodeLifetimeMinutes * 60,
+				expiresIn: settings.accounts.signInCodeLifetimeMinutes * 60,
 				allowedAttempts: 3,
 				storeOTP: 'encrypted',
 				// Runs in the background, so the response never reveals whether an email went out.
@@ -230,6 +271,26 @@ export function createAuth(options: AuthOptions) {
 				rpID: options.productionHost,
 				// A discoverable credential lets the sign-in page's autofill offer it without an address.
 				authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
+				// Named for the password manager or device that made it, when its AAGUID says which.
+				// iCloud Keychain sends an all-zero AAGUID without attestation, so its passkeys stay unnamed.
+				registration: {
+					afterVerification: ({ verification }) => ({
+						name: getAuthenticatorName(verification.registrationInfo?.aaguid),
+					}),
+				},
+			}),
+			// BotID judges a code request before it can spend an email; a bot gets the forms' usual
+			// failure message. The browser marks the same requests in instrumentation-client.ts.
+			captcha({
+				provider: 'vercel-botid',
+				endpoints: [signInCodeRequestRoute],
+				checkBotId: options.checkBotId,
+				validateRequest: ({ verification }) => {
+					if (verification.isBot) {
+						logger.warn('Sign-in code request refused as automated');
+					}
+					return !verification.isBot;
+				},
 			}),
 			// Last, so it forwards cookies that earlier plugins set.
 			nextCookies(),

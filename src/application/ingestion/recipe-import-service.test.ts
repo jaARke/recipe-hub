@@ -33,9 +33,10 @@ import { parseRecipeContent } from '@/domain/recipe/recipe';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import type { RecipeImport, RecipeImportId } from '@/domain/recipe/recipe-import';
 import { sampleTomatoSalad } from '@/domain/recipe/samples/sample-recipes';
+import { daysInMilliseconds } from '@/lib/dates';
+import { settings } from '@/lib/settings';
 
 const folders = new ImageFolders('development');
-const dayInMilliseconds = 24 * 60 * 60 * 1000;
 const minuteInMilliseconds = 60 * 1000;
 const missingId = '0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e';
 
@@ -167,7 +168,7 @@ function createImports(fakes: ImportFakes = {}) {
 		return started.id;
 	};
 	const backdate = (id: RecipeImportId, days: number) =>
-		imports.backdate(id, new Date(Date.now() - days * dayInMilliseconds));
+		imports.backdate(id, new Date(Date.now() - daysInMilliseconds(days)));
 	return {
 		recipes,
 		imports,
@@ -424,10 +425,10 @@ describe('importFromUrl', () => {
 });
 
 describe('import limit', () => {
-	it('refuses a member past 50 imports in a day, before fetching the page', async () => {
+	it('refuses a member past the daily limit, before fetching the page', async () => {
 		const { pages, serviceFor, startImport } = createImports();
 		const member = memberActor();
-		for (let count = 0; count < 50; count += 1) {
+		for (let count = 0; count < settings.imports.maxImportsPerDay; count += 1) {
 			await startImport(member);
 		}
 
@@ -446,7 +447,7 @@ describe('import limit', () => {
 	it('counts only imports started in the last 24 hours', async () => {
 		const { serviceFor, startImport, backdate } = createImports();
 		const member = memberActor();
-		for (let count = 0; count < 50; count += 1) {
+		for (let count = 0; count < settings.imports.maxImportsPerDay; count += 1) {
 			backdate(await startImport(member), 1.01);
 		}
 
@@ -456,7 +457,7 @@ describe('import limit', () => {
 	it("counts each member's imports alone", async () => {
 		const { serviceFor, startImport } = createImports();
 		const busyMember = memberActor();
-		for (let count = 0; count < 50; count += 1) {
+		for (let count = 0; count < settings.imports.maxImportsPerDay; count += 1) {
 			await startImport(busyMember);
 		}
 
@@ -466,7 +467,7 @@ describe('import limit', () => {
 	it('leaves admins without a limit', async () => {
 		const { serviceFor, startImport } = createImports();
 		const admin = adminActor();
-		for (let count = 0; count < 50; count += 1) {
+		for (let count = 0; count < settings.imports.maxImportsPerDay; count += 1) {
 			await startImport(admin);
 		}
 
@@ -475,14 +476,14 @@ describe('import limit', () => {
 });
 
 describe('expired drafts', () => {
-	it('clears drafts older than 7 days, and their source URLs, before starting an import', async () => {
+	it('clears drafts past their lifetime, and their source URLs, before starting an import', async () => {
 		const { imports, serviceFor, backdate } = createImports();
 		const member = memberActor();
 		const service = serviceFor(member);
 		const expired = (await service.importFromUrl(url)).id;
 		const recent = (await service.importFromUrl(url)).id;
-		backdate(expired, 7.01);
-		backdate(recent, 6.99);
+		backdate(expired, settings.imports.importDraftLifetimeDays + 0.01);
+		backdate(recent, settings.imports.importDraftLifetimeDays - 0.01);
 
 		await service.importFromUrl(url);
 
@@ -654,7 +655,11 @@ describe('importFromScans', () => {
 
 	it.each([
 		['no photos', [], 'Add at least one photo.'],
-		['more than 6 photos', Array.from({ length: 7 }, newScanUpload), 'Use 6 photos or fewer.'],
+		[
+			'more photos than an import reads',
+			Array.from({ length: settings.photos.maxScansPerImport + 1 }, newScanUpload),
+			`Use ${settings.photos.maxScansPerImport} photos or fewer.`,
+		],
 	])('refuses %s with a problem on the list', async (_, pathnames, message) => {
 		const { images, scanReader, serviceFor } = createImports();
 
@@ -797,14 +802,14 @@ describe('importFromScans', () => {
 		expect(scanReader.receivedRequesters).toEqual([{ memberId: member.memberId }]);
 	});
 
-	it('takes up to 6 photos', async () => {
+	it('takes as many photos as an import reads', async () => {
 		const { storeScans, scanReader, serviceFor } = createImports();
-		const pathnames = Array.from({ length: 6 }, newScanUpload);
+		const pathnames = Array.from({ length: settings.photos.maxScansPerImport }, newScanUpload);
 		await storeScans(pathnames);
 
 		await serviceFor(memberActor()).importFromScans(pathnames);
 
-		expect(scanReader.readScanSets[0]).toHaveLength(6);
+		expect(scanReader.readScanSets[0]).toHaveLength(settings.photos.maxScansPerImport);
 	});
 
 	it('says there is no recipe when the photos hold none, and records what the call cost', async () => {
@@ -970,11 +975,12 @@ describe('listUnsavedImports', () => {
 		]);
 	});
 
-	it('lists at most the 10 newest', async () => {
+	it('lists only the newest, up to its limit', async () => {
 		const { serviceFor } = createImports();
-		const service = serviceFor(memberActor());
+		// An admin, whose imports no daily limit cuts short of filling the list.
+		const service = serviceFor(adminActor());
 		const ids: RecipeImportId[] = [];
-		for (let count = 0; count < 11; count += 1) {
+		for (let count = 0; count <= settings.imports.maxUnsavedImports; count += 1) {
 			ids.push((await service.importFromUrl(url)).id);
 		}
 

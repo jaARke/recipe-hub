@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { AccountSpecimens } from '@/components/design-reference/account-specimens';
+import { BrandSpecimens } from '@/components/design-reference/brand-specimens';
 import { ColorSpecimens } from '@/components/design-reference/color-specimens';
 import { CompositionSpecimens } from '@/components/design-reference/composition-specimens';
 import { PrimitiveSpecimens } from '@/components/design-reference/primitive-specimens';
@@ -24,6 +25,13 @@ export function generateMetadata(): Metadata {
 }
 
 const sections = [
+	{
+		id: 'brand',
+		title: 'Brand',
+		description:
+			'The lockup, the wordmark, and the mascot at each size it is drawn. The theme toggle shows them on the dark theme.',
+		Content: BrandSpecimens,
+	},
 	{
 		id: 'color',
 		title: 'Color',
@@ -75,7 +83,7 @@ export default function DesignReferencePage() {
 		<PageContainer width="wide" className="flex flex-col gap-12 py-12 sm:py-16">
 			<header className="flex flex-col gap-6">
 				<div className="flex flex-col gap-3">
-					<h1 className="font-heading text-4xl font-medium">Design reference</h1>
+					<h1 className="font-heading text-4xl font-semibold">Design reference</h1>
 					<p className="max-w-2xl text-lg text-muted-foreground">
 						The tokens, primitives, and compositions behind {siteName}, for tuning the design
 						language. It exists only in development and on preview deployments.

@@ -24,6 +24,18 @@ const inviteHeadingTags = {
 
 type InviteHeadingLevel = keyof typeof inviteHeadingTags;
 
+// Keyed by how the invite ended: a new account, with or without a passkey, or the account the
+// invitee already had.
+const inviteDoneMessages = {
+	'created-with-passkey':
+		'Your account and passkey are ready. Next time, sign in with your passkey.',
+	created:
+		'Your account is ready. Next time, sign in with a code sent to your email. You can add a passkey any time from your account page.',
+	existing: "You already have an account, and you're signed in.",
+} as const;
+
+type InviteOutcome = keyof typeof inviteDoneMessages;
+
 function InviteStepHeading({
 	headingLevel,
 	children,
@@ -34,7 +46,7 @@ function InviteStepHeading({
 	const Heading = inviteHeadingTags[headingLevel];
 
 	return (
-		<Heading id={inviteStepHeadingId} tabIndex={-1} className="font-heading text-2xl font-medium">
+		<Heading id={inviteStepHeadingId} tabIndex={-1} className="font-heading text-2xl font-semibold">
 			{children}
 		</Heading>
 	);
@@ -171,21 +183,17 @@ function InvitePasskeyOffer({
 }
 
 function InviteDone({
-	passkeyCreated,
+	outcome,
 	headingLevel,
 }: {
-	passkeyCreated: boolean;
+	outcome: InviteOutcome;
 	headingLevel: InviteHeadingLevel;
 }) {
 	return (
 		<InviteStep>
 			<div className="flex flex-col gap-3">
 				<InviteStepHeading headingLevel={headingLevel}>You&apos;re all set</InviteStepHeading>
-				<p>
-					{passkeyCreated
-						? 'Your account and passkey are ready. Next time, sign in with your passkey.'
-						: 'Your account is ready. Next time, sign in with a code sent to your email. You can add a passkey any time from your account page.'}
-				</p>
+				<p>{inviteDoneMessages[outcome]}</p>
 			</div>
 			<InviteActions>
 				<Link href={accountPath} className={buttonVariants({ variant: 'outline' })}>
@@ -244,6 +252,31 @@ function InviteLoadFailed({
 	);
 }
 
+// The code is spent once it signs the invitee in, so only the invite's check is tried again.
+function InviteCompleteFailed({
+	headingLevel,
+	onRetry,
+}: {
+	headingLevel: InviteHeadingLevel;
+	onRetry: () => void;
+}) {
+	return (
+		<InviteStep>
+			<div className="flex flex-col gap-3">
+				<InviteStepHeading headingLevel={headingLevel}>
+					We couldn&apos;t finish accepting your invite
+				</InviteStepHeading>
+				<p>You&apos;re signed in. Check your connection and try again.</p>
+			</div>
+			<InviteActions>
+				<Button type="button" onClick={onRetry}>
+					Try again
+				</Button>
+			</InviteActions>
+		</InviteStep>
+	);
+}
+
 // An invite creates a new account, so a signed-in visitor signs out first.
 function InviteSignedIn({
 	displayName,
@@ -286,12 +319,14 @@ function InviteFlowSkeleton() {
 
 export {
 	InviteCodeStep,
+	InviteCompleteFailed,
 	InviteDone,
 	InviteEmailStep,
 	InviteFlowSkeleton,
 	type InviteHeadingLevel,
 	inviteStepHeadingId,
 	InviteLoadFailed,
+	type InviteOutcome,
 	InvitePasskeyOffer,
 	InviteSignedIn,
 	InviteUnavailable,

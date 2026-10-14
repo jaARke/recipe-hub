@@ -39,7 +39,7 @@ import {
 	importDraftFromExtractedRecipe,
 	type ExtractedRecipe,
 } from '@/domain/recipe/extracted-recipe';
-import { maxImportScans, maxImportScanSizeInBytes } from '@/domain/recipe/import-limits';
+import { maxImportScanSizeInBytes } from '@/domain/recipe/import-limits';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import {
 	importDraftCutoff,
@@ -49,20 +49,16 @@ import {
 	type RecipeImportMode,
 } from '@/domain/recipe/recipe-import';
 import { hasNoNul, nonEmptyTextSchema } from '@/domain/text';
+import { daysInMilliseconds } from '@/lib/dates';
 import { deadlineAfter, settleWithin } from '@/lib/deadline';
 import { AppError } from '@/lib/errors';
 import { getLogger } from '@/lib/logger';
-
-// Imports a member may start in any rolling day. Admins have no limit.
-const maxImportsPerDay = 50;
-const dayInMilliseconds = 24 * 60 * 60 * 1000;
-
-// The drafts listed beside the import forms.
-const maxUnsavedImports = 10;
+import { settings } from '@/lib/settings';
 
 // Bounds an import from its first step. It outlasts the slowest import that can still succeed, a
-// 10-second page fetch then a 90-second model call, and ends 10 seconds before the contribute page's
-// maxDuration of 120 seconds, which leaves time to record the failure.
+// 10-second page fetch then a model call, which the settings schema keeps within 100 seconds, and
+// ends 10 seconds before the contribute page's maxDuration of 120 seconds, which leaves time to
+// record the failure.
 const importTimeLimitMs = 110 * 1000;
 
 // Bounds recording a failure, which starts by the import's time limit of 110 seconds, so the member
@@ -83,7 +79,7 @@ const importUrlSchema = z.httpUrl().refine(hasNoNul);
 
 const invalidUrlMessage = 'Enter a web address that starts with http:// or https://.';
 const noScansMessage = 'Add at least one photo.';
-const tooManyScansMessage = `Use ${maxImportScans} photos or fewer.`;
+const tooManyScansMessage = `Use ${settings.photos.maxScansPerImport} photos or fewer.`;
 // For a scan this environment never stored: its upload failed, was cut off, or never happened. A scan
 // another member's recipe or draft names gets it too, so the refusal tells nothing about theirs.
 const unstoredScanMessage = "This photo didn't upload. Remove it and add it again.";
@@ -147,7 +143,10 @@ function importUrl(url: string): string {
 function importLimit(actor: MemberActor, now: Date): RecipeImportLimit | undefined {
 	return actor.role === 'admin'
 		? undefined
-		: { maxImports: maxImportsPerDay, since: new Date(now.getTime() - dayInMilliseconds) };
+		: {
+				maxImports: settings.imports.maxImportsPerDay,
+				since: new Date(now.getTime() - daysInMilliseconds(1)),
+			};
 }
 
 // An expected failure's code says what happened. An unexpected one keeps its stack, and a failed
@@ -273,7 +272,7 @@ export class RecipeImportService {
 		return this.imports.listUnsaved(
 			actor.memberId,
 			importDraftCutoff(new Date()),
-			maxUnsavedImports
+			settings.imports.maxUnsavedImports
 		);
 	}
 
@@ -468,7 +467,7 @@ export class RecipeImportService {
 		memberId: MemberId,
 		deadline: AbortSignal
 	): Promise<ScanImage[]> {
-		if (pathnames.length === 0 || pathnames.length > maxImportScans) {
+		if (pathnames.length === 0 || pathnames.length > settings.photos.maxScansPerImport) {
 			const message = pathnames.length === 0 ? noScansMessage : tooManyScansMessage;
 			throw new InvalidImportError([{ path: 'scans', message }]);
 		}

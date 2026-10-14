@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { InvalidProfileError } from '@/domain/member/errors';
 import { problemsFromZodError } from '@/domain/problem';
-import { nonEmptyTextSchema } from '@/domain/text';
+import { boundedTextSchema } from '@/domain/text';
 
 export const memberIdSchema = z.uuid().brand<'MemberId'>();
 export type MemberId = z.infer<typeof memberIdSchema>;
@@ -10,7 +10,7 @@ export const memberRoleSchema = z.enum(['member', 'admin']);
 export type MemberRole = z.infer<typeof memberRoleSchema>;
 
 // Public: shown beside the recipes a member adds.
-export const displayNameSchema = nonEmptyTextSchema.max(60, 'Use 60 characters or fewer.');
+export const displayNameSchema = boundedTextSchema(60);
 
 // Lowercased, as Better Auth stores and compares addresses.
 export const emailAddressSchema = z
@@ -18,12 +18,6 @@ export const emailAddressSchema = z
 	.trim()
 	.toLowerCase()
 	.pipe(z.email('Enter an email address, like name@example.com.'));
-
-// How long an emailed sign-in code works; Better Auth enforces it and the email states it.
-export const signInCodeLifetimeMinutes = 10;
-
-// How long a session lasts without a visit; each day's first visit renews it.
-export const sessionLifetimeDays = 180;
 
 // The account page's form, where a member changes their name.
 const profileFieldsSchema = z.object({ displayName: displayNameSchema });

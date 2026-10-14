@@ -15,6 +15,8 @@ import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe
 import { recipeContentSchema, recipeIdSchema } from '@/domain/recipe/recipe';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import { sampleChickenSoup } from '@/domain/recipe/samples/sample-recipes';
+import { daysInMilliseconds } from '@/lib/dates';
+import { settings } from '@/lib/settings';
 
 const dishPhoto = 'dish/seed/soup.jpg';
 const scan = 'scan/production/soup-card.jpg';
@@ -23,7 +25,6 @@ const upload = 'dish/development/3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b.jpg';
 const scanUpload = 'scan/development/0b6e2f4a-9c1d-4e8b-a7f3-5d2c1b0a9e8f.jpg';
 // A deployment that, like a preview, also reads production's and the seed's images.
 const folders = new ImageFolders('development', ['production', 'seed']);
-const dayInMilliseconds = 24 * 60 * 60 * 1000;
 // How long the test lock lets a removal wait before it gives up.
 const moveLockWaitMs = 10_000;
 
@@ -94,11 +95,21 @@ function logLines(spy: MockInstance<(...args: unknown[]) => void>): unknown[] {
 }
 
 function daysAgo(days: number): Date {
-	return new Date(Date.now() - days * dayInMilliseconds);
+	return new Date(Date.now() - daysInMilliseconds(days));
 }
 
-// Images stored two days ago: this environment's, which a recipe lists, a draft awaiting review names,
-// or nothing names, and the seed's and production's beside them. The sweep runs with no actor.
+// A day past a lifetime in days, and a day within it.
+function pastLifetime(days: number): Date {
+	return daysAgo(days + 1);
+}
+
+function withinLifetime(days: number): Date {
+	return daysAgo(days - 1);
+}
+
+// Images stored past an unused upload's lifetime: this environment's, which a recipe lists, a draft
+// awaiting review names, or nothing names, and the seed's and production's beside them. The sweep runs
+// with no actor.
 async function createSweep(environment = 'development', expiringPrefixes: string[] = []) {
 	const sweepFolders = new ImageFolders(environment, [], expiringPrefixes);
 	const recipes = new InMemoryRecipeRepository();
@@ -112,7 +123,7 @@ async function createSweep(environment = 'development', expiringPrefixes: string
 	);
 	for (const pathname of [listed.pathname, drafted.pathname, unused, ...others]) {
 		await images.put(pathname, jpeg, 'image/jpeg');
-		images.backdateUpload(pathname, daysAgo(2));
+		images.backdateUpload(pathname, pastLifetime(settings.retention.unusedImageLifetimeDays));
 	}
 
 	const { memberId } = memberActor();
@@ -397,13 +408,16 @@ describe('sweepImages', () => {
 		expect(await removedPathnames(images)).not.toContain(drafted);
 	});
 
-	it('deletes for good images removed more than 40 days ago, and keeps those removed since', async () => {
+	it('deletes for good images removed longer ago than their lifetime, and keeps the rest', async () => {
 		const { images, service, unused } = await createSweep();
 		const recentlyRemoved = 'scan/development/recently-removed.jpg';
 		await images.put(recentlyRemoved, jpeg, 'image/jpeg');
 		await images.remove([unused, recentlyRemoved]);
-		images.backdateRemoval(unused, daysAgo(41));
-		images.backdateRemoval(recentlyRemoved, daysAgo(39));
+		images.backdateRemoval(unused, pastLifetime(settings.retention.removedImageLifetimeDays));
+		images.backdateRemoval(
+			recentlyRemoved,
+			withinLifetime(settings.retention.removedImageLifetimeDays)
+		);
 
 		expect(await service.sweepImages()).toMatchObject({ result: { deletedCount: 1 } });
 		expect(await removedPathnames(images)).toEqual([recentlyRemoved]);
@@ -412,7 +426,7 @@ describe('sweepImages', () => {
 	it('brings back an image something names however long ago it was removed', async () => {
 		const { images, service, listed } = await createSweep();
 		await images.remove([listed]);
-		images.backdateRemoval(listed, daysAgo(41));
+		images.backdateRemoval(listed, pastLifetime(settings.retention.removedImageLifetimeDays));
 
 		expect(await service.sweepImages()).toMatchObject({
 			result: { restoredCount: 1, deletedCount: 0 },
@@ -442,7 +456,7 @@ describe('sweepImages', () => {
 		const longRemoved = 'scan/development/long-removed.jpg';
 		await images.put(longRemoved, jpeg, 'image/jpeg');
 		await images.remove([listed, longRemoved]);
-		images.backdateRemoval(longRemoved, daysAgo(41));
+		images.backdateRemoval(longRemoved, pastLifetime(settings.retention.removedImageLifetimeDays));
 
 		await service.sweepImages();
 
@@ -519,7 +533,8 @@ describe('sweepImages expiring other environments', () => {
 		recentRemoved: 'scan/preview/feature-x-1a2b3c4d/recent-removed.jpg',
 	};
 
-	// Previews' images in the one store: some stored or removed more than 30 days ago, others since.
+	// Previews' images in the one store: some stored or removed longer ago than their lifetime, others
+	// since.
 	// A preview removes its own, through its own view of the store.
 	async function storePreviewImages(images: InMemoryImageStore) {
 		for (const pathname of Object.values(previewImages)) {
@@ -528,11 +543,13 @@ describe('sweepImages expiring other environments', () => {
 		await images
 			.viewAs(new ImageFolders('preview/feature-x-1a2b3c4d'))
 			.remove([previewImages.oldRemoved, previewImages.recentRemoved]);
-		images.backdateUpload(previewImages.old, daysAgo(31));
-		images.backdateUpload(previewImages.oldScan, daysAgo(31));
-		images.backdateRemoval(previewImages.oldRemoved, daysAgo(31));
-		images.backdateUpload(previewImages.recent, daysAgo(29));
-		images.backdateRemoval(previewImages.recentRemoved, daysAgo(29));
+		const expired = pastLifetime(settings.retention.expiringImageLifetimeDays);
+		const recent = withinLifetime(settings.retention.expiringImageLifetimeDays);
+		images.backdateUpload(previewImages.old, expired);
+		images.backdateUpload(previewImages.oldScan, expired);
+		images.backdateRemoval(previewImages.oldRemoved, expired);
+		images.backdateUpload(previewImages.recent, recent);
+		images.backdateRemoval(previewImages.recentRemoved, recent);
 	}
 
 	it("deletes production's expired preview images, removed ones included, and keeps the rest", async () => {

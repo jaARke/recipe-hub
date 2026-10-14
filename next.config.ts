@@ -1,6 +1,11 @@
 import { withBotId } from 'botid/next/config';
 import type { NextConfig } from 'next';
 import { PHASE_DEVELOPMENT_SERVER } from 'next/constants';
+import { settings } from './src/lib/settings';
+import { settingsSchema } from './src/lib/settings-schema';
+
+// A value outside its safe range stops the dev server and the build here, naming its path.
+settingsSchema.parse(settings);
 
 // Static, because nonces force dynamic rendering, so Partial Prerendering's inline scripts need
 // 'unsafe-inline'. vercel.live, Pusher, vercel.com's images, and assets.vercel.com's fonts serve the

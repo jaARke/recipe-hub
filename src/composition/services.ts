@@ -1,5 +1,6 @@
 import 'server-only';
 import { waitUntil } from '@vercel/functions';
+import { checkBotId } from 'botid/server';
 import { headers } from 'next/headers';
 import { after, connection } from 'next/server';
 import { cache } from 'react';
@@ -38,6 +39,7 @@ import {
 	readableImageEnvironments,
 	siteUrl,
 } from '@/lib/env';
+import { settings } from '@/lib/settings';
 
 const emails = new ResendEmailSender({
 	apiKey: env.RESEND_API_KEY,
@@ -51,11 +53,6 @@ const imageFolders = new ImageFolders(
 );
 
 const images = new BlobImageStore({ storeId: env.BLOB_STORE_ID, folders: imageFolders });
-
-// AI Gateway model ids for reading a page's text and photos of a written recipe, chosen by
-// scripts/evaluate and tuned independently.
-const pageModelId = 'anthropic/claude-sonnet-5.5';
-const scanModelId = 'anthropic/claude-sonnet-5.5';
 
 // The hosts a deployment answers on: the one its links name, and its own Vercel hosts.
 const deploymentHosts = [
@@ -79,6 +76,7 @@ function getAuth(): Auth {
 			emails
 		),
 		runInBackground: waitUntil,
+		checkBotId,
 	});
 	return auth;
 }
@@ -130,8 +128,8 @@ export function getRecipeImportService(): RecipeImportService {
 		new DrizzleRecipeImportRepository(db),
 		new GuardedWebPageFetcher({ siteUrl }),
 		new JsonLdPageRecipeExtractor(),
-		new AiPageRecipeExtractor(pageModelId),
-		new AiScanRecipeExtractor(scanModelId),
+		new AiPageRecipeExtractor(settings.ai.pageModelId),
+		new AiScanRecipeExtractor(settings.ai.scanModelId),
 		images,
 		actors,
 		imageFolders

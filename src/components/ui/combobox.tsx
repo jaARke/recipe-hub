@@ -1,5 +1,6 @@
 'use client';
 
+// By subpath, as every other primitive imports Base UI.
 import { Combobox as ComboboxPrimitive } from '@base-ui/react/combobox';
 import { cn } from 'cn';
 import { CheckIcon, ChevronDownIcon, XIcon } from 'lucide-react';
@@ -246,6 +247,7 @@ function ComboboxChipsInput({ className, ...props }: ComboboxPrimitive.Input.Pro
 	return (
 		<ComboboxPrimitive.Input
 			data-slot="combobox-chip-input"
+			// 16 px text on phones, as Input has, so iOS does not zoom into the field.
 			className={cn('min-w-16 flex-1 text-base outline-none md:text-sm', className)}
 			{...props}
 		/>

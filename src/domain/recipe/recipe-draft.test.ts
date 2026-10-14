@@ -3,6 +3,7 @@ import { problemsFromZodError } from '@/domain/problem';
 import { recipeContentSchema } from '@/domain/recipe/recipe';
 import { recipeDraftContentSchema, recipeDraftSchema } from '@/domain/recipe/recipe-draft';
 import { sampleLemonIceboxPie } from '@/domain/recipe/samples/sample-recipes';
+import { settings } from '@/lib/settings';
 
 describe('recipeDraftContentSchema', () => {
 	it('accepts empty content', () => {
@@ -25,6 +26,17 @@ describe('recipeDraftContentSchema', () => {
 
 	it('accepts any valid recipe content', () => {
 		expect(recipeDraftContentSchema.safeParse(sampleLemonIceboxPie).success).toBe(true);
+	});
+
+	it('reads a stored draft past the limits, which saving it then names', () => {
+		const content = {
+			title: 'a'.repeat(settings.recipeLimits.maxTitleLength + 1),
+			instructionSections: [
+				{ steps: [{ text: 'a'.repeat(settings.recipeLimits.maxStepLength + 1) }] },
+			],
+		};
+
+		expect(recipeDraftContentSchema.parse(content)).toEqual(content);
 	});
 
 	it('still rejects malformed values that are present', () => {

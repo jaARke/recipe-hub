@@ -13,6 +13,7 @@ import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe
 import { memberIdSchema } from '@/domain/member/member';
 import { parseRecipeContent } from '@/domain/recipe/recipe';
 import { sampleChickenSoup } from '@/domain/recipe/samples/sample-recipes';
+import { settings } from '@/lib/settings';
 
 const firstPage: RecipeSearchInput = { tags: [], sort: 'relevance', limit: 24, offset: 0 };
 
@@ -109,6 +110,16 @@ describe('searchRecipes', () => {
 		await service.searchRecipes({ ...firstPage, source: 'a'.repeat(500) });
 
 		expect(recipes.receivedQueries).toMatchObject([{ source: 'a'.repeat(500) }]);
+	});
+
+	it('filters by a stored tag or source past the recipe limits, which recipes saved earlier keep', async () => {
+		const { recipes, service } = createSearch(noResults);
+		const tag = 'a'.repeat(settings.recipeLimits.maxTagLength + 1);
+		const source = 'a'.repeat(settings.recipeLimits.maxSourceLength + 1);
+
+		await service.searchRecipes({ ...firstPage, tags: [tag], source });
+
+		expect(recipes.receivedQueries).toMatchObject([{ tags: [tag], source }]);
 	});
 
 	it('strips hidden characters from the source, as every recipe text field does', async () => {

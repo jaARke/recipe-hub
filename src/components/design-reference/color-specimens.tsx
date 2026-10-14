@@ -106,6 +106,11 @@ const lineTokens: readonly LineToken[] = [
 		sampleClassName: 'border border-input',
 	},
 	{
+		token: { utility: 'border-edge', variable: '--edge' },
+		usage: 'Inked edges on cards and outline buttons, and the offset under lifted surfaces.',
+		sampleClassName: 'border border-edge',
+	},
+	{
 		token: { utility: 'ring-ring', variable: '--ring' },
 		usage: 'Focus, as a solid border plus a 3px ring at 50 percent.',
 		sampleClassName: 'border border-ring ring-3 ring-ring/50',
@@ -133,7 +138,7 @@ function ColorSpecimens() {
 					{colorSwatches.map((swatch) => (
 						<li key={swatch.name} className="flex flex-col overflow-hidden rounded-xl border">
 							<div className={cn('flex h-24 items-end gap-3 p-4', swatch.sampleClassName)}>
-								<span className="font-heading text-3xl font-medium">Aa</span>
+								<span className="font-heading text-3xl font-semibold">Aa</span>
 								<span className="text-sm">Buttermilk biscuits</span>
 							</div>
 							<div className="flex flex-1 flex-col gap-3 border-t bg-card p-4">
@@ -149,7 +154,7 @@ function ColorSpecimens() {
 				</ul>
 			</Specimen>
 			<Specimen label="Lines and outlines" frame="bare">
-				<ul className="grid gap-4 sm:grid-cols-3">
+				<ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 					{lineTokens.map((line) => (
 						<li
 							key={line.token.utility}

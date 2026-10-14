@@ -117,7 +117,7 @@ function SampleCarousel({
 							aria-label={`${index + 1} of ${carouselSlides.length}`}
 							className={itemClassName}
 						>
-							<div className="flex aspect-4/3 items-center justify-center rounded-xl bg-muted font-heading text-2xl font-medium">
+							<div className="flex aspect-4/3 items-center justify-center rounded-xl bg-muted font-heading text-2xl font-semibold">
 								{step}
 							</div>
 						</CarouselItem>

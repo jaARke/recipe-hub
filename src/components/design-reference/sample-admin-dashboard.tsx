@@ -5,6 +5,7 @@ import type { AccessRequestDto, InviteDto } from '@/application/access/access-dt
 import type { MemberDto } from '@/application/members/member-dtos';
 import { AdminDashboard } from '@/components/admin/admin-dashboard';
 import { adminFieldNames, type AdminActions } from '@/components/admin/admin-forms';
+import { defaultAdminTab, type AdminTab } from '@/components/admin/admin-tabs';
 import { sampleInviteLink } from '@/components/design-reference/fixtures';
 import { inputProblems, standIn } from '@/components/design-reference/stand-in-actions';
 import { formText, optionalFormText } from '@/components/forms/form-data';
@@ -21,7 +22,7 @@ type SampleAdminDashboardProps = {
 
 // The admin page with stand-ins for its Server Actions. They check input as the services do, email
 // every invite that has an address, and change the lists as the page's refresh would; reloading
-// restores them.
+// restores them. The open tab is kept here, so switching tabs leaves the reference page's URL alone.
 function SampleAdminDashboard({
 	requests: initialRequests,
 	invites: initialInvites,
@@ -30,6 +31,7 @@ function SampleAdminDashboard({
 	const [requests, setRequests] = useState(initialRequests);
 	const [invites, setInvites] = useState(initialInvites);
 	const [members, setMembers] = useState(initialMembers);
+	const [tab, setTab] = useState<AdminTab>(defaultAdminTab);
 
 	const changeRole =
 		(role: MemberRole): FormAction =>
@@ -104,6 +106,8 @@ function SampleAdminDashboard({
 			members={members}
 			actions={actions}
 			headingLevel={4}
+			tab={tab}
+			onTabChange={setTab}
 		/>
 	);
 }

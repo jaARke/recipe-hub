@@ -211,7 +211,7 @@ const subsections = [
 		id: 'search-bar',
 		title: 'Search bar',
 		description:
-			'In the header, a field from sm that starts a fresh search, and on phones a link to the search page. The search page leaves both off, since it has its own field.',
+			'In the header, a field from lg that starts a fresh search, and below lg a link to the search page. The search page leaves both off, since it has its own field.',
 		Content: SearchBarSpecimen,
 	},
 	{
@@ -292,10 +292,10 @@ function RecipeDetailSpecimen() {
 function SearchBarSpecimen() {
 	return (
 		<div className="grid gap-6 md:grid-cols-2">
-			<Specimen label="From sm">
+			<Specimen label="From lg" figureClassName="max-lg:hidden">
 				<HeaderSearchForm id="design-header-search" />
 			</Specimen>
-			<Specimen label="On phones">
+			<Specimen label="Below lg">
 				<HeaderSearchLink />
 			</Specimen>
 		</div>

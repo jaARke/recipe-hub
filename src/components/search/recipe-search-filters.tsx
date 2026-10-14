@@ -316,7 +316,7 @@ function RecipeSearchFiltersSidebar({
 			aria-labelledby={`${idPrefix}-heading`}
 			className={cn('flex flex-col gap-6', className)}
 		>
-			<Heading id={`${idPrefix}-heading`} className="font-heading text-xl font-medium">
+			<Heading id={`${idPrefix}-heading`} className="font-heading text-xl font-semibold">
 				Filters
 			</Heading>
 			<RecipeSearchFilters idPrefix={idPrefix} state={state} facets={facets} />

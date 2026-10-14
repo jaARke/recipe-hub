@@ -23,17 +23,12 @@ function AccountDetails({ displayName, email, renameAction }: AccountDetailsProp
 					<dd className="text-sm text-muted-foreground">Sign-in codes are sent to this address.</dd>
 				</dl>
 			</PageSection>
-			<PageSection id="account-passkeys" title="Passkeys">
-				<p className="text-muted-foreground">
-					A passkey lets you sign in with your face, fingerprint, or screen lock instead of an email
-					code. Don&apos;t add one on a device other people use.
-				</p>
-				<PasskeyManager />
-			</PageSection>
-			<PageSection id="account-sign-out" title="Sign out">
-				<p className="text-muted-foreground">
-					This signs you out on this device. You stay signed in on any others.
-				</p>
+			<PasskeyManager />
+			<PageSection
+				id="account-sign-out"
+				title="Sign out"
+				description="This signs you out on this device. You stay signed in on any others."
+			>
 				<div>
 					<SignOutButton destination={recipeListPath} />
 				</div>
@@ -42,17 +37,18 @@ function AccountDetails({ displayName, email, renameAction }: AccountDetailsProp
 	);
 }
 
+// Mirrors the first two sections, each ruled off like the page's.
 function AccountDetailsSkeleton() {
 	return (
 		<div role="status" aria-live="polite" className="flex flex-col gap-8">
 			<span className="sr-only">Loading your account</span>
-			<div className="flex flex-col gap-4">
+			<div className="flex flex-col gap-4 border-t pt-8">
 				<Skeleton className="h-8 w-32" />
 				<Skeleton className="h-5 w-28" />
 				<Skeleton className="h-9 w-full" />
 				<Skeleton className="h-9 w-28 self-end" />
 			</div>
-			<div className="flex flex-col gap-4">
+			<div className="flex flex-col gap-4 border-t pt-8">
 				<Skeleton className="h-8 w-32" />
 				<Skeleton className="h-5 w-full" />
 				<Skeleton className="h-14 w-full" />

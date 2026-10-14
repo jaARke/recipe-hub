@@ -2,7 +2,11 @@ import { SearchIcon } from 'lucide-react';
 import Form from 'next/form';
 import { recipeSearchPath } from '@/components/recipe/recipe-paths';
 import { HiddenSearchFields } from '@/components/search/hidden-search-fields';
-import { recipeSearchParamNames, type RecipeSearchState } from '@/components/search/search-params';
+import {
+	appliedFilterCount,
+	recipeSearchParamNames,
+	type RecipeSearchState,
+} from '@/components/search/search-params';
 import { SearchQueryInput } from '@/components/search/search-query-input';
 import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
@@ -30,6 +34,8 @@ function RecipeSearchForm({ state }: { state: RecipeSearchState }) {
 								query={state.text ?? ''}
 								enterKeyHint="search"
 								placeholder="Search recipes"
+								// An empty search page is for typing a query, as the header's search icon promises.
+								autoFocus={state.text === undefined && appliedFilterCount(state) === 0}
 								aria-describedby={queryDescriptionId}
 							/>
 							<InputGroupAddon>
