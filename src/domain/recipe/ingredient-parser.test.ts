@@ -6,6 +6,7 @@ import {
 	parseAmountText,
 	parseIngredientLine,
 	preparationSeparator,
+	wordsAfterUnit,
 } from '@/domain/recipe/ingredient-parser';
 import { sampleRecipeContents } from '@/domain/recipe/samples/sample-recipes';
 
@@ -427,6 +428,48 @@ describe('preparationSeparator', () => {
 				preparation: 'chopped',
 			})
 		).toBe(', ');
+	});
+});
+
+describe('wordsAfterUnit', () => {
+	it.each([
+		['1 cup of water', 'of '],
+		['1 Cup Of Water', 'Of '],
+		['a pinch of salt', 'of '],
+		['2 heaping tablespoons of cocoa', 'of '],
+		['1 can (14 oz) of tomatoes', 'of '],
+		['about 1 cup of rice', 'of '],
+		['1 [?] cup of milk', 'of '],
+		['1 cup of sugar, sifted', 'of '],
+		['1 cup of sugar to taste, sifted', 'of '],
+	])('reads what "%s" writes between its unit and its item', (text, words) => {
+		expect(wordsAfterUnit(parseIngredientLine(text))).toBe(words);
+	});
+
+	it.each([
+		'2 cups flour',
+		'2 of the eggs',
+		'1 (14 oz) can of tomatoes',
+		'1 cup flour of the best kind',
+		'2 cups plus 2 tablespoons of flour',
+	])('reads nothing between the unit and the item in "%s"', (text) => {
+		expect(wordsAfterUnit(parseIngredientLine(text))).toBe('');
+	});
+
+	it.each<[string, IngredientLine]>([
+		[
+			'preparation',
+			{
+				text: '1 cup of milk, warmed',
+				amount: { min: 1 },
+				unit: 'cup',
+				item: 'milk',
+				preparation: 'cooled',
+			},
+		],
+		['item', { text: '1 cup of water', amount: { min: 1 }, unit: 'cup', item: 'juice' }],
+	])('reads nothing where the text does not end with the %s', (_part, line) => {
+		expect(wordsAfterUnit(line)).toBe('');
 	});
 });
 

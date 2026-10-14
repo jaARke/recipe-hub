@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { formatAmount } from '@/domain/recipe/amount-format';
 import { approximationWord } from '@/domain/recipe/amount-words';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
-import { preparationSeparator } from '@/domain/recipe/ingredient-parser';
+import { preparationSeparator, wordsAfterUnit } from '@/domain/recipe/ingredient-parser';
 
 type IngredientLineTextProps = {
 	line: IngredientLine;
@@ -32,7 +32,7 @@ function IngredientLineText({ line, renderText = asWritten }: IngredientLineText
 				{amount}
 				{line.unit !== undefined && <> {renderText(line.unit)}</>}
 			</span>{' '}
-			{renderText(line.item)}
+			{renderText(`${wordsAfterUnit(line)}${line.item}`)}
 			{line.preparation !== undefined &&
 				renderText(`${preparationSeparator(line)}${line.preparation}`)}
 		</>

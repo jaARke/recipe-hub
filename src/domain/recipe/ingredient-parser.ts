@@ -51,6 +51,12 @@ const continuedNumber = /[\d,./⁄\-\u2013\u2014]/u;
 // A size in parentheses right after the unit belongs to it: "1 can (14 ounces) tomatoes".
 const unitSize = /^\([^()]*\)(?=\s)/u;
 
+// The "of" a line may write between its unit and its item, left out of the item: "1 cup of sugar".
+const leadingOf = /^of\s+/iu;
+
+// What a line writes between its item and its preparation: a comma, spaces, or both.
+const preparationGap = /[\s,]*$/u;
+
 // Closing phrases that say how an ingredient is used rather than what it is: "Salt to taste".
 const trailingNote =
 	/(?<=[\s,])(?:to taste|as needed|optional|for garnish|for serving|for dusting|for the .+)$/iu;
@@ -154,10 +160,7 @@ function readMeasure(line: string): Measure | undefined {
 	return {
 		amount,
 		unit: size === '' ? unit : reading.slice(unitStart, descriptionStart + size.length),
-		description: description
-			.slice(size.length)
-			.trimStart()
-			.replace(/^of\s+/iu, ''),
+		description: description.slice(size.length).trimStart().replace(leadingOf, ''),
 	};
 }
 
@@ -270,7 +273,24 @@ export function preparationSeparator(line: IngredientLine): string {
 	}
 
 	const before = line.text.slice(0, line.text.length - line.preparation.length);
-	return /[\s,]*$/u.exec(before)?.[0] || ', ';
+	return preparationGap.exec(before)?.[0] || ', ';
+}
+
+// What the line writes between its unit and its item that neither holds: the "of " in "1 cup of
+// water". It is read back from the item, since a scaled line's unit is not the one its text writes.
+export function wordsAfterUnit(line: IngredientLine): string {
+	const { text, item, preparation = '' } = line;
+	if (!text.endsWith(preparation)) {
+		return '';
+	}
+
+	const throughItem = text.slice(0, text.length - preparation.length).replace(preparationGap, '');
+	if (!throughItem.endsWith(item)) {
+		return '';
+	}
+
+	const lastWord = /\S+\s+$/u.exec(throughItem.slice(0, throughItem.length - item.length))?.[0];
+	return lastWord !== undefined && leadingOf.test(lastWord) ? lastWord : '';
 }
 
 // An amount on its own, such as a yield of "4 to 6".
