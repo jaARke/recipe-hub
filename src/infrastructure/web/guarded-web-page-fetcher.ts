@@ -217,8 +217,8 @@ export class GuardedWebPageFetcher implements WebPageFetcher {
 
 	constructor(options: GuardedWebPageFetcherOptions) {
 		this.headers = {
-			// Honest about what is asking. A product token holds no spaces.
-			'user-agent': `${siteName.replaceAll(' ', '')}/1.0 (+${options.siteUrl.origin})`,
+			// Honest about what is asking. A product token is plain ASCII: a curly apostrophe in a header throws.
+			'user-agent': `${siteName.replaceAll(/[^A-Za-z0-9]/g, '')}/1.0 (+${options.siteUrl.origin})`,
 			accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
 			'accept-language': 'en-US,en;q=0.9',
 		};

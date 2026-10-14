@@ -110,7 +110,9 @@ describe('fetch', () => {
 		const result = await createFetcher().fetch(`${publicOrigin}/pancakes`);
 
 		expect(result).toEqual({ url: `${publicOrigin}/pancakes`, html: page });
-		expect(received[0]?.headers['user-agent']).toBe('RecipeHub/1.0 (+https://recipes.example.com)');
+		expect(received[0]?.headers['user-agent']).toBe(
+			'BarbsTable/1.0 (+https://recipes.example.com)'
+		);
 	});
 
 	it('follows redirects to the address finally served, keeping the fragment asked for', async () => {

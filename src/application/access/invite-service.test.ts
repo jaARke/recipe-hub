@@ -200,10 +200,10 @@ describe('issueInvite', () => {
 		expect(emails.sentMessages).toEqual([
 			{
 				to: 'ada@example.com',
-				subject: 'Jake invited you to Recipe Hub',
+				subject: 'Jake invited you to Barb’s Table',
 				text:
 					'Hi Ada,\n\n' +
-					'Jake invited you to Recipe Hub, where you can add recipes to the shared collection.\n\n' +
+					'Jake invited you to Barb’s Table, where you can add recipes to the shared collection.\n\n' +
 					`Open this link to create your account:\n${issued.link}\n\n` +
 					'The link works once and expires on October 19, 2026. To reach Jake, reply to this email.',
 				replyTo: 'jake@example.com',

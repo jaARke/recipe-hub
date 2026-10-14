@@ -338,7 +338,7 @@ describe('passkeys', () => {
 
 		expect(response.status).toBe(200);
 		expect(await response.json()).toMatchObject({
-			rp: { name: 'Recipe Hub', id: 'localhost' },
+			rp: { name: 'Barb’s Table', id: 'localhost' },
 			authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
 		});
 	});

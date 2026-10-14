@@ -1,4 +1,4 @@
-# Recipe Hub
+# Barb’s Table
 
 <!-- BEGIN:nextjs-agent-rules -->
 

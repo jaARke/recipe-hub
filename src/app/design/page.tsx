@@ -10,6 +10,7 @@ import { TypographySpecimens } from '@/components/design-reference/typography-sp
 import { PageContainer } from '@/components/layout/page-container';
 import { buttonVariants } from '@/components/ui/button';
 import { env } from '@/lib/env';
+import { siteName } from '@/lib/site';
 
 const isDesignReferenceEnabled = env.NODE_ENV === 'development' || env.VERCEL_ENV === 'preview';
 
@@ -76,7 +77,7 @@ export default function DesignReferencePage() {
 				<div className="flex flex-col gap-3">
 					<h1 className="font-heading text-4xl font-medium">Design reference</h1>
 					<p className="max-w-2xl text-lg text-muted-foreground">
-						The tokens, primitives, and compositions behind Recipe Hub, for tuning the design
+						The tokens, primitives, and compositions behind {siteName}, for tuning the design
 						language. It exists only in development and on preview deployments.
 					</p>
 				</div>

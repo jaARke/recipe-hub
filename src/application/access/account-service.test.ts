@@ -62,7 +62,7 @@ describe('sendSignInCode', () => {
 				to: 'ada@example.com',
 				subject: 'Your sign-in code',
 				text:
-					'Your Recipe Hub sign-in code is:\n\n482915\n\n' +
+					'Your Barb’s Table sign-in code is:\n\n482915\n\n' +
 					"It expires in 10 minutes. If you didn't ask for a code, you can ignore this email.",
 			},
 		]);
