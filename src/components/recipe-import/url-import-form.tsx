@@ -25,7 +25,7 @@ function UrlImportForm({ action }: UrlImportFormProps) {
 	const failure = state.status === 'error' ? state : undefined;
 
 	return (
-		<form {...formProps} className="flex flex-col gap-8">
+		<form {...formProps} className="flex flex-col gap-7">
 			<FormErrorAlert message={failure?.message} />
 			<TextField
 				id={urlId}

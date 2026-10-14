@@ -19,6 +19,10 @@ function imagePathnamePrefix(role: RecipeImageRole): string {
 	return `${role}/`;
 }
 
+// What a photo this environment never stored is told: its upload failed, was cut off, or never
+// happened.
+export const unstoredImageMessage = 'This photo didn’t upload. Remove it and add it again.';
+
 // Dish photos are public; scans, the original photos of a written recipe, are for members only.
 export const recipeImageRoleSchema = z.enum(['dish', 'scan']);
 export type RecipeImageRole = z.infer<typeof recipeImageRoleSchema>;

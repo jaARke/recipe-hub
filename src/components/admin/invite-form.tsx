@@ -3,6 +3,7 @@
 import { adminFieldNames, type IssuedInvite } from '@/components/admin/admin-forms';
 import { DisplayNameField } from '@/components/admin/display-name-field';
 import { IssuedInviteNotice } from '@/components/admin/issued-invite-notice';
+import { FormActions } from '@/components/forms/form-actions';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
 import { TextField } from '@/components/forms/text-field';
@@ -23,7 +24,8 @@ function InviteForm({ issueInvite }: { issueInvite: FormAction<IssuedInvite> }) 
 
 	return (
 		<div>
-			<form {...formProps} className="flex flex-col gap-6">
+			<form {...formProps} className="flex flex-col gap-7">
+				<FormErrorAlert message={failed?.message} />
 				<FieldGroup>
 					<DisplayNameField
 						id="admin-invite-name"
@@ -42,13 +44,12 @@ function InviteForm({ issueInvite }: { issueInvite: FormAction<IssuedInvite> }) 
 						error={failed?.fieldErrors[adminFieldNames.sendTo]}
 					/>
 				</FieldGroup>
-				<FormErrorAlert message={failed?.message} />
-				<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+				<FormActions>
 					<Button type="submit" disabled={pending} focusableWhenDisabled>
 						{pending && <Spinner data-icon="inline-start" />}
 						{pending ? 'Creating invite' : 'Create invite'}
 					</Button>
-				</div>
+				</FormActions>
 			</form>
 			<div role="status" aria-live="polite">
 				{state.status === 'success' && <IssuedInviteNotice invite={state} className="mt-6" />}

@@ -33,6 +33,7 @@ import {
 	SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { noStepsMessage } from '@/domain/recipe/instruction';
 
 function CourseSelectItems() {
 	return sampleCourses.map((item) => (
@@ -155,7 +156,7 @@ function TextareaSpecimen() {
 						aria-invalid="true"
 						aria-describedby="textarea-invalid-error"
 					/>
-					<FieldError id="textarea-invalid-error">Add at least one step.</FieldError>
+					<FieldError id="textarea-invalid-error">{noStepsMessage}</FieldError>
 				</Field>
 			</FieldGroup>
 		</Specimen>

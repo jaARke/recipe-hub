@@ -29,6 +29,9 @@ type FormActionOptions = {
 	// A custom input's own check, such as a photo count, run as the form submits: its problems keyed by
 	// path, as the server's are, and empty when there are none. It shows them as the server's show.
 	check?: () => FieldErrors;
+	// For a form that shows problems from its own state rather than this hook's: shows what the browser
+	// found as a submit is refused, and shows nothing once a later submit finds it fixed.
+	showProblems?: (fieldErrors: FieldErrors) => void;
 	// Runs once the browser finds nothing to fix, and can still stop the submit, as a warning does.
 	onSubmit?: (event: SubmitEvent<HTMLFormElement>) => void;
 };
@@ -78,14 +81,15 @@ function withoutOutcome<Success extends object>(result: FormState<Success>): For
 // submitted text, so the form keeps it. An action that leads to another page redirects, and Next's
 // redirect passes through to the router. The form spreads formProps, through which the browser's
 // check refuses a submit in place, as the server would, and which turn off the browser's own
-// validation. After each failure, found in the browser or on the server, focus moves to the form's
-// first problem. What an attempt said lasts only while its page is shown: Next keeps a page the member
+// validation. What the browser found goes once a later submit finds it fixed, even one that onSubmit
+// stops. After each failure, found in the browser or on the server, focus moves to the form's first
+// problem. What an attempt said lasts only while its page is shown: Next keeps a page the member
 // leaves and shows it again on return, without the outcome of the result it hid with and without
 // moving focus.
 export function useFormAction<Success extends object>(
 	action: FormAction<Success>,
 	failureMessage: string,
-	{ blankMessages = {}, check, onSubmit }: FormActionOptions = {}
+	{ blankMessages = {}, check, showProblems, onSubmit }: FormActionOptions = {}
 ) {
 	const formRef = useRef<HTMLFormElement>(null);
 	const [actionResult, formAction, pending] = useActionState<FormState<Success>, FormData>(
@@ -106,9 +110,13 @@ export function useFormAction<Success extends object>(
 		},
 		{ status: 'idle' }
 	);
-	// A problem the browser found, which shows until the action's next result replaces it.
-	const [refusal, setRefusal] = useState<{ error: FormError; after: FormState<Success> }>();
-	const result = refusal?.after === actionResult ? refusal.error : actionResult;
+	// What the browser found as the form last submitted: a problem, or nothing once a later submit finds
+	// it fixed. It shows until the action's next result replaces it.
+	const [checked, setChecked] = useState<{
+		result: FormError | { status: 'idle' };
+		after: FormState<Success>;
+	}>();
+	const result = checked?.after === actionResult ? checked.result : actionResult;
 
 	// The result in view when the page last hid, or one a newer result replaced. The cleanup runs as
 	// the page hides and commits before it does, so nothing flashes on return.
@@ -138,11 +146,17 @@ export function useFormAction<Success extends object>(
 		const fieldErrors = { ...blankFieldErrors(formData, blankMessages), ...check?.() };
 		if (hasFieldErrors(fieldErrors)) {
 			event.preventDefault();
-			setRefusal({
-				error: { status: 'error', fieldErrors, values: submittedText(formData) },
+			showProblems?.(fieldErrors);
+			setChecked({
+				result: { status: 'error', fieldErrors, values: submittedText(formData) },
 				after: actionResult,
 			});
 			return;
+		}
+		// Only what the browser found clears here; the server's problems stay until its next result.
+		if (result === checked?.result && result.status === 'error') {
+			showProblems?.({});
+			setChecked({ result: { status: 'idle' }, after: actionResult });
 		}
 		onSubmit?.(event);
 	}

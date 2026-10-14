@@ -11,7 +11,7 @@ import { useFormAction } from '@/components/forms/use-form-action';
 type ProbeFormProps = {
 	action: FormAction;
 	check?: () => FieldErrors;
-	onSubmit?: () => void;
+	onSubmit?: (event: React.SubmitEvent<HTMLFormElement>) => void;
 	children?: React.ReactNode;
 };
 
@@ -197,6 +197,38 @@ describe('useFormAction', () => {
 		expect(screen.queryByText('Enter a name.')).toBeNull();
 		expect(onSubmit).toHaveBeenCalledOnce();
 		expect(action).toHaveBeenCalledOnce();
+	});
+
+	it('clears what the browser found once it is fixed, though onSubmit stops the submit', async () => {
+		const action = vi.fn(succeed);
+		const user = userEvent.setup();
+		render(<ProbeForm action={action} onSubmit={(event) => event.preventDefault()} />);
+
+		await user.click(screen.getByRole('button', { name: 'Save' }));
+		expect(screen.getByText('Enter a name.')).toBeDefined();
+		await saveName(user);
+
+		expect(screen.queryByText('Enter a name.')).toBeNull();
+		expect(nameField().getAttribute('aria-invalid')).toBeNull();
+		expect(nameField().value).toBe('Ada');
+		expect(action).not.toHaveBeenCalled();
+	});
+
+	it('keeps what the server found when onSubmit stops the next submit', async () => {
+		const onSubmit = vi
+			.fn<(event: React.SubmitEvent<HTMLFormElement>) => void>()
+			.mockImplementationOnce(() => {})
+			.mockImplementation((event) => event.preventDefault());
+		const user = userEvent.setup();
+		render(<ProbeForm action={refuse} onSubmit={onSubmit} />);
+
+		await saveName(user);
+		expect(await screen.findByText('Use 60 characters or fewer.')).toBeDefined();
+		await saveName(user, 'Ada L.');
+
+		expect(onSubmit).toHaveBeenCalledTimes(2);
+		expect(screen.getByText('Use 60 characters or fewer.')).toBeDefined();
+		expect(nameField().getAttribute('aria-invalid')).toBe('true');
 	});
 
 	it('leaves a form in a popup inside it to that form', async () => {

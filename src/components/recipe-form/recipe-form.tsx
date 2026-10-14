@@ -4,11 +4,11 @@ import { cn } from 'cn';
 import { ScanTextIcon } from 'lucide-react';
 import * as React from 'react';
 import { flushSync } from 'react-dom';
-import { hasFieldErrors } from '@/components/forms/field-errors';
 import { FieldNote, type FieldNoteContent } from '@/components/forms/field-note';
 import { focusCentered } from '@/components/forms/focus-centered';
+import { FormActions } from '@/components/forms/form-actions';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
-import type { FieldErrors, FormAction } from '@/components/forms/form-state';
+import type { FormAction } from '@/components/forms/form-state';
 import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
 import {
 	ProblemSummary,
@@ -232,8 +232,12 @@ function RecipeForm({
 		}
 		return result;
 	};
+	// What the browser knows a save would be refused for shows as a save's errors do, so the warning
+	// about what is left to check comes only once the save can succeed.
 	const [state, formProps, pending] = useFormAction(saveRecipe, failureMessage, {
-		check: checkRequired,
+		check: () => recipeFormRequiredErrors(values),
+		showProblems: (fieldErrors) =>
+			dispatch({ type: 'attachErrors', fieldErrors, targets: submission.targets }),
 		onSubmit: warnBeforeSaving,
 	});
 
@@ -369,16 +373,6 @@ function RecipeForm({
 		};
 	}
 
-	// What the browser knows a save would be refused for, shown as a save's errors are, so the warning
-	// about what is left to check comes only once the save can succeed.
-	function checkRequired(): FieldErrors {
-		const fieldErrors = recipeFormRequiredErrors(values);
-		if (hasFieldErrors(fieldErrors)) {
-			dispatch({ type: 'attachErrors', fieldErrors, targets: submission.targets });
-		}
-		return fieldErrors;
-	}
-
 	// Saving with anything left to check asks first, unless the member chose to save anyway.
 	function warnBeforeSaving(event: React.SubmitEvent<HTMLFormElement>) {
 		if (savingAnyway.current) {
@@ -404,7 +398,7 @@ function RecipeForm({
 	const hasOriginal = originalImages.length > 0;
 
 	const form = (
-		<form {...formProps} className="flex flex-col gap-8">
+		<form {...formProps} className="flex flex-col gap-7">
 			{/* About the whole form, such as an edit conflict; the summary lists a save's problems. */}
 			<FormErrorAlert message={state.status === 'error' ? state.message : undefined} />
 			<ProblemSummary problems={problems} />
@@ -594,12 +588,15 @@ function RecipeForm({
 					/>
 				</FieldGroup>
 			</SummarizedProblems>
-			<div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
-				{photosInProgress && (
-					<p id={ids.saveNote} className="text-sm text-muted-foreground">
-						Wait for the photos to finish uploading.
-					</p>
-				)}
+			<FormActions
+				status={
+					photosInProgress && (
+						<p id={ids.saveNote} className="text-sm text-muted-foreground">
+							Wait for the photos to finish uploading.
+						</p>
+					)
+				}
+			>
 				<Button
 					id={ids.save}
 					type="submit"
@@ -611,7 +608,7 @@ function RecipeForm({
 					{pending && <Spinner data-icon="inline-start" />}
 					{pending ? 'Saving recipe' : submitLabel}
 				</Button>
-			</div>
+			</FormActions>
 			<UncheckedSaveDialog
 				open={warningOpen}
 				onOpenChange={setWarningOpen}

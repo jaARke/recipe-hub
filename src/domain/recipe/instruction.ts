@@ -3,6 +3,9 @@ import type { ContentLimits } from '@/domain/recipe/content-limits';
 import { sectionHeadingTextSchema } from '@/domain/text';
 import { settings } from '@/lib/settings';
 
+// What a recipe, or a section of its steps, with none is told.
+export const noStepsMessage = 'Add at least one step.';
+
 // An object rather than a string, so a step can gain fields without reshaping stored recipes.
 export function instructionStepSchemaFor(limits: ContentLimits) {
 	return z.object({
@@ -16,7 +19,7 @@ export function instructionSectionSchemaFor(limits: ContentLimits) {
 		heading: limits
 			.text(settings.recipeLimits.maxSectionHeadingLength, sectionHeadingTextSchema)
 			.optional(),
-		steps: z.array(instructionStepSchemaFor(limits)).min(1, 'Add at least one step.'),
+		steps: z.array(instructionStepSchemaFor(limits)).min(1, noStepsMessage),
 	});
 }
 export type InstructionSection = z.infer<ReturnType<typeof instructionSectionSchemaFor>>;

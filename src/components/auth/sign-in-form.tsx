@@ -15,6 +15,7 @@ import { authFieldNames } from '@/components/auth/auth-forms';
 import { ConfirmCodeForm, RequestCodeForm } from '@/components/auth/email-code-forms';
 import { requestSignInCode, signInWithCode } from '@/components/auth/email-codes';
 import { signalUnknownPasskey } from '@/components/auth/signal-unknown-passkey';
+import { FormActions } from '@/components/forms/form-actions';
 import { formText } from '@/components/forms/form-data';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
@@ -83,10 +84,13 @@ function SignInPasskeyOption({ noteId, error, pending, onSignIn }: SignInPasskey
 	return (
 		<div className="flex flex-col gap-4">
 			<FormErrorAlert message={error} />
-			<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-				<p id={noteId} className="text-sm text-muted-foreground">
-					Use your face, fingerprint, or screen lock.
-				</p>
+			<FormActions
+				status={
+					<p id={noteId} className="text-sm text-muted-foreground">
+						Use your face, fingerprint, or screen lock.
+					</p>
+				}
+			>
 				<Button
 					type="button"
 					variant="outline"
@@ -102,7 +106,7 @@ function SignInPasskeyOption({ noteId, error, pending, onSignIn }: SignInPasskey
 					)}
 					{pending ? 'Signing in' : 'Sign in with a passkey'}
 				</Button>
-			</div>
+			</FormActions>
 		</div>
 	);
 }
@@ -219,9 +223,9 @@ function SignInFormSkeleton() {
 				<Skeleton className="h-5 w-12" />
 				<Skeleton className="h-9 w-full" />
 			</div>
-			<Skeleton className="h-9 w-36 self-end" />
+			<Skeleton className="h-9 w-36" />
 			<Skeleton className="h-5 w-full" />
-			<Skeleton className="h-9 w-48 self-end" />
+			<Skeleton className="h-9 w-48" />
 		</div>
 	);
 }

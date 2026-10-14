@@ -1,6 +1,7 @@
 'use client';
 
 import { profileFieldNames } from '@/components/account/account-forms';
+import { FormActions } from '@/components/forms/form-actions';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
 import { FormStatusMessage } from '@/components/forms/form-status-message';
@@ -24,7 +25,7 @@ function DisplayNameForm({ displayName, action }: DisplayNameFormProps) {
 	const failure = state.status === 'error' ? state : undefined;
 
 	return (
-		<form {...formProps} className="flex flex-col gap-6">
+		<form {...formProps} className="flex flex-col gap-7">
 			<FormErrorAlert message={failure?.message} />
 			<TextField
 				id="account-display-name"
@@ -36,16 +37,19 @@ function DisplayNameForm({ displayName, action }: DisplayNameFormProps) {
 				error={failure?.fieldErrors[profileFieldNames.displayName]}
 				defaultValue={failure?.values?.[profileFieldNames.displayName] ?? displayName}
 			/>
-			<div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
-				<FormStatusMessage
-					kind="confirmation"
-					message={state.status === 'success' ? 'Saved.' : undefined}
-				/>
+			<FormActions
+				status={
+					<FormStatusMessage
+						kind="confirmation"
+						message={state.status === 'success' ? 'Saved.' : undefined}
+					/>
+				}
+			>
 				<Button type="submit" disabled={pending} focusableWhenDisabled>
 					{pending && <Spinner data-icon="inline-start" />}
 					{pending ? 'Saving name' : 'Save name'}
 				</Button>
-			</div>
+			</FormActions>
 		</form>
 	);
 }

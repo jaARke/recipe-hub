@@ -6,6 +6,7 @@ import { adminFieldNames, type IssuedInvite } from '@/components/admin/admin-for
 import { DisplayNameField } from '@/components/admin/display-name-field';
 import { IssuedInviteNotice } from '@/components/admin/issued-invite-notice';
 import { ConfirmActionDialog } from '@/components/forms/confirm-action-dialog';
+import { FormActions } from '@/components/forms/form-actions';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
 import { useFormAction } from '@/components/forms/use-form-action';
@@ -87,8 +88,9 @@ function AccessRequestCard({
 				</dl>
 			</CardContent>
 			<CardContent>
-				<form {...formProps} className="flex flex-col gap-6">
+				<form {...formProps} className="flex flex-col gap-7">
 					<input type="hidden" name={adminFieldNames.requestId} value={request.id} />
+					<FormErrorAlert message={failed?.message} />
 					<FieldGroup>
 						<DisplayNameField
 							id={`${idPrefix}-name`}
@@ -110,8 +112,12 @@ function AccessRequestCard({
 							</Field>
 						)}
 					</FieldGroup>
-					<FormErrorAlert message={failed?.message} />
-					<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+					<FormActions>
+						<Button type="submit" disabled={pending} focusableWhenDisabled>
+							{pending && <Spinner data-icon="inline-start" />}
+							{pending ? 'Approving' : 'Approve'}
+							{whichRequest}
+						</Button>
 						<ConfirmActionDialog
 							variant="destructive"
 							trigger={<>Decline{whichRequest}</>}
@@ -126,12 +132,7 @@ function AccessRequestCard({
 						>
 							<input type="hidden" name={adminFieldNames.requestId} value={request.id} />
 						</ConfirmActionDialog>
-						<Button type="submit" disabled={pending} focusableWhenDisabled>
-							{pending && <Spinner data-icon="inline-start" />}
-							{pending ? 'Approving' : 'Approve'}
-							{whichRequest}
-						</Button>
-					</div>
+					</FormActions>
 				</form>
 			</CardContent>
 		</Card>

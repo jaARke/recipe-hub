@@ -46,7 +46,7 @@ import {
 	type RecipeContentInput,
 	type RecipeId,
 } from '@/domain/recipe/recipe';
-import type { RecipeImage } from '@/domain/recipe/recipe-image';
+import { unstoredImageMessage, type RecipeImage } from '@/domain/recipe/recipe-image';
 import {
 	recipeImportIdSchema,
 	reviewableDraft,
@@ -60,10 +60,6 @@ const recipePageSchema = paginationSchema.extend({ sort: z.enum(recipeSorts) });
 
 // A recipe's version as an editor holds it: its updatedAt, from Date.toISOString().
 const versionSchema = z.iso.datetime().transform((value) => new Date(value));
-
-// For an image this environment never stored: its upload failed, was cut off, or never happened. A
-// save naming another member's photo gets it too, so the refusal tells nothing about their photos.
-const unstoredImageMessage = 'This photo didn’t upload. Remove it and add it again.';
 
 const logger = getLogger('recipes');
 
@@ -331,6 +327,7 @@ export class RecipeService {
 			)
 		);
 
+		// Another member's photo is told the same, so the refusal tells nothing about their photos.
 		const problems = stored.flatMap((isStored, index) =>
 			isStored ? [] : [{ path: `images.${index}.pathname`, message: unstoredImageMessage }]
 		);

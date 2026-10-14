@@ -1,9 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import { hasFieldErrors } from '@/components/forms/field-errors';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
-import type { FieldErrors, FormAction } from '@/components/forms/form-state';
+import type { FormAction } from '@/components/forms/form-state';
 import { useFormAction } from '@/components/forms/use-form-action';
 import { PhotoField } from '@/components/recipe-form/photo-field';
 import { uploadPhoto, type PhotoUploader } from '@/components/recipe-form/photo-upload';
@@ -46,21 +45,15 @@ function ScanImportForm({ action, uploadFolder, uploader = uploadPhoto }: ScanIm
 		return result;
 	};
 
-	// Shows what the browser finds before sending as a refusal's problems show.
-	function checkPhotos(): FieldErrors {
-		const fieldErrors = scanImportProblems(values);
-		if (hasFieldErrors(fieldErrors)) {
-			dispatch({ type: 'attachErrors', fieldErrors, targets: submission.targets });
-		}
-		return fieldErrors;
-	}
-
+	// What the browser finds before sending shows as a refusal's problems do.
 	const [state, formProps, pending] = useFormAction(readRecipe, failureMessage, {
-		check: checkPhotos,
+		check: () => scanImportProblems(values),
+		showProblems: (fieldErrors) =>
+			dispatch({ type: 'attachErrors', fieldErrors, targets: submission.targets }),
 	});
 
 	return (
-		<form {...formProps} className="flex flex-col gap-8">
+		<form {...formProps} className="flex flex-col gap-7">
 			<FormErrorAlert message={state.status === 'error' ? state.message : undefined} />
 			{submission.pathnames.map((pathname) => (
 				<input key={pathname} type="hidden" name={recipeImportFieldNames.scans} value={pathname} />

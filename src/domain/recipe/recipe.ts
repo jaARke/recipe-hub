@@ -4,8 +4,8 @@ import { problemsFromZodError } from '@/domain/problem';
 import { storedContent, writtenContent, type ContentLimits } from '@/domain/recipe/content-limits';
 import { recipeTimesSchema } from '@/domain/recipe/duration';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
-import { ingredientSectionSchemaFor } from '@/domain/recipe/ingredient';
-import { instructionSectionSchemaFor } from '@/domain/recipe/instruction';
+import { ingredientSectionSchemaFor, noIngredientsMessage } from '@/domain/recipe/ingredient';
+import { instructionSectionSchemaFor, noStepsMessage } from '@/domain/recipe/instruction';
 import { provenanceSchema } from '@/domain/recipe/provenance';
 import { recipeImageListSchemaFor } from '@/domain/recipe/recipe-image';
 import { recipeYieldSchemaFor } from '@/domain/recipe/recipe-yield';
@@ -27,8 +27,8 @@ export const titleTextSchema = headingTextSchema(titleAsked);
 // form checks for each before sending and says the same.
 export const missingContentMessages = {
 	title: blankTextMessage(titleAsked),
-	ingredientSections: 'Add at least one ingredient.',
-	instructionSections: 'Add at least one step.',
+	ingredientSections: noIngredientsMessage,
+	instructionSections: noStepsMessage,
 } as const;
 
 // A list's sections and what limits them: at least one section, the most sections a list holds, and

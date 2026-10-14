@@ -2,6 +2,7 @@ import 'server-only';
 import { fieldErrorsFrom } from '@/components/forms/field-errors';
 import type { FormError } from '@/components/forms/form-state';
 import { InvalidInputError } from '@/domain/problem';
+import { unstoredImageMessage } from '@/domain/recipe/recipe-image';
 import { AppError } from '@/lib/errors';
 import { settings } from '@/lib/settings';
 
@@ -22,7 +23,7 @@ const errorMessages: Partial<Record<string, string>> = {
 		'That recipe was deleted, or this page is out of date. Reload the page and try again.',
 	'recipe.edit-conflict':
 		'This recipe changed after you opened it. Copy anything you want to keep, then reload the page and make your changes again.',
-	'image.invalid-upload': 'This photo didn’t upload. Remove it and add it again.',
+	'image.invalid-upload': unstoredImageMessage,
 	'import.unavailable': 'This import can’t be saved anymore. Import the recipe again.',
 	'import.page-refused': 'This website doesn’t support importing recipes.',
 	'import.page-unavailable': 'We couldn’t open that page. Check the link and try again.',

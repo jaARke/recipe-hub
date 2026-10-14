@@ -164,24 +164,29 @@ describe('RecipeForm’s review notes', () => {
 		).toEqual([screen.getByRole('textbox', { name: 'Ingredient 1' }).id]);
 	});
 
-	it('shows what the save needs before asking about notes, and asks once it can save', async () => {
+	it('shows what the save needs before asking about notes, and clears it as it asks once it can save', async () => {
 		const action = vi.fn(refuse);
 		const user = userEvent.setup();
 		renderForm({ ...lemonBars, title: undefined }, threeNotes.slice(1), action);
+		const title = screen.getByRole('textbox', { name: 'Title' });
 
 		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
 
 		const summary = screen.getByText('Fix 1 thing to save').closest('[role="alert"]');
 		expect(document.activeElement).toBe(summary);
 		expect(screen.getByRole('link', { name: 'Title: Enter a title.' })).toBeDefined();
+		expect(title.getAttribute('aria-invalid')).toBe('true');
 		expect(screen.queryByRole('alertdialog')).toBeNull();
 		expect(action).not.toHaveBeenCalled();
 
-		await user.type(screen.getByRole('textbox', { name: 'Title' }), 'Lemon bars');
+		await user.type(title, 'Lemon bars');
 		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
 
 		const dialog = await screen.findByRole('alertdialog');
 		expect(within(dialog).getByText('2 things haven’t been checked')).toBeDefined();
+		expect(screen.queryByText('Fix 1 thing to save')).toBeNull();
+		expect(screen.queryByText('Enter a title.')).toBeNull();
+		expect(title.getAttribute('aria-invalid')).toBeNull();
 		expect(action).not.toHaveBeenCalled();
 	});
 

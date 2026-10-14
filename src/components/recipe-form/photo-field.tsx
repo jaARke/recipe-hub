@@ -62,11 +62,11 @@ import {
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Spinner } from '@/components/ui/spinner';
-import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
+import { unstoredImageMessage, type RecipeImageRole } from '@/domain/recipe/recipe-image';
 
 const failureMessages: Record<PhotoFailure, string> = {
 	unreadable: 'This browser can’t read this photo. Try Safari, or save it as a JPEG first.',
-	upload: 'This photo didn’t upload. Remove it and add it again.',
+	upload: unstoredImageMessage,
 };
 
 type PhotoFieldProps = {

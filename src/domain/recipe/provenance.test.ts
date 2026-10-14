@@ -26,4 +26,14 @@ describe('provenanceSchema', () => {
 			provenanceSchema.safeParse({ entryMode: 'url', sourceUrl: 'javascript:alert(1)' }).success
 		).toBe(false);
 	});
+
+	it('refuses a source URL holding a NUL character, which Postgres cannot store', () => {
+		const result = provenanceSchema.safeParse({
+			entryMode: 'url',
+			sourceUrl: 'https://example.com/recipes/\u0000biscuits',
+		});
+		expect(result.error?.issues.map((issue) => issue.message)).toEqual([
+			'Enter a web address that starts with http:// or https://.',
+		]);
+	});
 });

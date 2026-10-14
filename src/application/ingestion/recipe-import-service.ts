@@ -1,5 +1,4 @@
 import 'server-only';
-import { z } from 'zod';
 import { requireMember } from '@/application/authorization';
 import {
 	ImportFailedError,
@@ -40,7 +39,8 @@ import {
 	type ExtractedRecipe,
 } from '@/domain/recipe/extracted-recipe';
 import { maxImportScanSizeInBytes } from '@/domain/recipe/import-limits';
-import type { RecipeImage } from '@/domain/recipe/recipe-image';
+import { invalidSourceUrlMessage, sourceUrlSchema } from '@/domain/recipe/provenance';
+import { unstoredImageMessage, type RecipeImage } from '@/domain/recipe/recipe-image';
 import {
 	importDraftCutoff,
 	noScansMessage,
@@ -50,7 +50,7 @@ import {
 	type RecipeImport,
 	type RecipeImportMode,
 } from '@/domain/recipe/recipe-import';
-import { hasNoNul, plainTextSchema } from '@/domain/text';
+import { limitMessage, plainTextSchema } from '@/domain/text';
 import { daysInMilliseconds } from '@/lib/dates';
 import { deadlineAfter, settleWithin } from '@/lib/deadline';
 import { AppError } from '@/lib/errors';
@@ -75,15 +75,7 @@ const importLeaseMs = 10 * 60 * 1000;
 // The browser re-encodes every scan as a JPEG before uploading it.
 const scanMediaType = 'image/jpeg' satisfies ScanImage['mediaType'];
 
-// As provenance stores a source URL: http or https and a named host, without the NUL character
-// that Postgres text cannot hold.
-const importUrlSchema = z.httpUrl().refine(hasNoNul);
-
-const invalidUrlMessage = 'Enter a web address that starts with http:// or https://.';
-const tooManyScansMessage = `Use ${settings.photos.maxScansPerImport} photos or fewer.`;
-// For a scan this environment never stored: its upload failed, was cut off, or never happened. A scan
-// another member's recipe or draft names gets it too, so the refusal tells nothing about theirs.
-const unstoredScanMessage = 'This photo didn’t upload. Remove it and add it again.';
+const tooManyScansMessage = limitMessage(settings.photos.maxScansPerImport, 'photos');
 const repeatedScanMessage = 'This photo is already attached.';
 const largeScanMessage = 'This photo is too large to read. Crop it to the recipe and add it again.';
 
@@ -136,9 +128,9 @@ function importUrl(url: string): string {
 	if (url.trim() === '') {
 		throw new InvalidImportError([{ path: 'url', message: urlImportBlankMessages.url }]);
 	}
-	const result = importUrlSchema.safeParse(url);
+	const result = sourceUrlSchema.safeParse(url);
 	if (!result.success) {
-		throw new InvalidImportError([{ path: 'url', message: invalidUrlMessage }]);
+		throw new InvalidImportError([{ path: 'url', message: invalidSourceUrlMessage }]);
 	}
 
 	return result.data;
@@ -177,7 +169,7 @@ function assertNoScanProblems(messages: readonly (string | undefined)[]): void {
 
 function scanContentProblem(scan: ScanImage | null): string | undefined {
 	if (scan === null) {
-		return unstoredScanMessage;
+		return unstoredImageMessage;
 	}
 
 	return scan.bytes.byteLength > maxImportScanSizeInBytes ? largeScanMessage : undefined;
@@ -486,8 +478,9 @@ export class RecipeImportService {
 			new Date(),
 			memberId
 		);
+		// Another member's scan is told the same, so the refusal tells nothing about theirs.
 		assertNoScanProblems(
-			pathnames.map((pathname) => (othersScans.has(pathname) ? unstoredScanMessage : undefined))
+			pathnames.map((pathname) => (othersScans.has(pathname) ? unstoredImageMessage : undefined))
 		);
 		const scans = await Promise.all(pathnames.map((pathname) => this.readScan(pathname, deadline)));
 		assertNoScanProblems(scans.map(scanContentProblem));
@@ -504,7 +497,7 @@ export class RecipeImportService {
 			!pathname.startsWith(this.folders.uploadFolder('scan')) ||
 			!this.folders.isUploadName(pathname)
 		) {
-			return unstoredScanMessage;
+			return unstoredImageMessage;
 		}
 
 		return pathnames.indexOf(pathname) === index ? undefined : repeatedScanMessage;
