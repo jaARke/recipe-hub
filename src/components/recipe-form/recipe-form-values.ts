@@ -10,10 +10,14 @@ import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
 import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
 import type { RecipeYield } from '@/domain/recipe/recipe-yield';
 import { tagKey, uniqueTagLabels } from '@/domain/recipe/tag-normalization';
+import {
+	transcriptionMarkersIn,
+	type TranscriptionMarker,
+} from '@/domain/recipe/transcription-markers';
 
 // The recipe form's value and every edit to it. Pure, so the form's behavior is tested without a
 // browser. Sections, items, tags, and photos carry ids that stay with them as they move, and a
-// problem attaches to the item it names, so it follows that item.
+// problem or a review note attaches to the item it names, so it follows that item.
 
 export type RecipeFormListName = 'ingredientSections' | 'instructionSections';
 
@@ -96,16 +100,14 @@ export type RecipeFormValues = {
 	instructionSections: RecipeFormList;
 	tags: readonly RecipeFormTag[];
 	photos: Readonly<Record<RecipeImageRole, readonly RecipeFormPhoto[]>>;
+	// A save's errors, which mark their fields invalid.
 	fieldErrors: Partial<Record<RecipeFormErrorField, string>>;
 	// About the recipe as a whole, or a problem that names nothing in the form.
 	formError?: string;
-	// Whether the problems are a loaded draft's, which the member reviews and can mark as checked,
-	// rather than a save's errors. The first save's errors end the review.
-	reviewingDraft: boolean;
-	// The problems the member has marked as checked while reviewing a draft, by where each shows, so
-	// a mark follows its item. A removed item's mark matches nothing again, since ids are never
-	// reused, and new errors clear every mark.
-	checkedProblems: ReadonlySet<ProblemKey>;
+	// A loaded draft's problems, which the member checks against the original; they are not errors,
+	// and a save's errors leave them. Keyed by where each shows, so a note follows its item; a
+	// removed item's note matches nothing again, since ids are never reused.
+	reviewNotes: ReadonlyMap<ProblemKey, RecipeFormReviewNote>;
 	// Sections, items, tags, and photos all take the next id, so ids are unique within the form.
 	nextId: number;
 };
@@ -120,24 +122,43 @@ export type ProblemTarget =
 	| { kind: 'section' | 'heading' | 'item' | 'photo'; id: number };
 
 // One for each place a problem can show, the whole recipe included.
-type ProblemKey =
+export type ProblemKey =
 	| 'form'
 	| `field:${RecipeFormErrorField}`
 	| `list:${RecipeFormListName}`
 	| `${'section' | 'heading' | 'item' | 'photo'}:${number}`;
 
-// A problem the form shows, with where it shows: the places carry what the form names them by.
+// A draft's note on one place, open until the member edits what it is on or says it looks right.
+export type RecipeFormReviewNote = {
+	message: string;
+	status: 'open' | 'resolved';
+};
+
+// Where a problem or a note shows, with what the form names the place by.
+export type RecipeFormLocation =
+	| { kind: 'form' }
+	| { kind: 'field'; field: RecipeFormErrorField }
+	| { kind: 'list'; list: RecipeFormListName }
+	| { kind: 'section' | 'heading'; list: RecipeFormListName; sectionIndex: number; id: number }
+	| { kind: 'item'; list: RecipeFormListName; place: ItemPlace; id: number }
+	| { kind: 'photo'; role: RecipeImageRole; index: number; id: number };
+
+// A save's error, with where it shows.
 export type RecipeFormProblem = {
 	message: string;
-	// Marked as checked by the member, which changes nothing else about it.
-	checked: boolean;
-	target:
-		| { kind: 'form' }
-		| { kind: 'field'; field: RecipeFormErrorField }
-		| { kind: 'list'; list: RecipeFormListName }
-		| { kind: 'section' | 'heading'; list: RecipeFormListName; sectionIndex: number; id: number }
-		| { kind: 'item'; list: RecipeFormListName; place: ItemPlace; id: number }
-		| { kind: 'photo'; role: RecipeImageRole; index: number; id: number };
+	target: RecipeFormLocation;
+};
+
+// Something to check against the original before saving: an open review note, transcription
+// markers left in the text, or both.
+export type RecipeFormCheck = {
+	target: RecipeFormLocation;
+	// The open note's message.
+	note?: string;
+	markers: readonly TranscriptionMarker[];
+	// Whether the member can say it looks right as it is. Markers are edited away, and a field the
+	// recipe needs is filled in.
+	confirmable: boolean;
 };
 
 // Keyed by the path a problem takes in the recipe content, such as ingredientSections.0.lines.2.
@@ -179,7 +200,8 @@ export type RecipeFormEdit =
 	| { type: 'removeTag'; tagId: number }
 	| PhotoEdit
 	| { type: 'attachErrors'; fieldErrors: FieldErrors; targets: ProblemTargets }
-	| { type: 'setProblemChecked'; target: ProblemTarget | { kind: 'form' }; checked: boolean };
+	// The member says the place looks right as it is, which resolves its note.
+	| { type: 'resolveReviewNote'; target: ProblemTarget | { kind: 'form' } };
 
 // Each list's items, under the name the recipe content gives them.
 const itemKeys = {
@@ -236,7 +258,7 @@ function isBlank(text: string): boolean {
 }
 
 // Blank optional text is left out of the payload, as the domain expects.
-function filledText(text: string): string | undefined {
+export function filledText(text: string): string | undefined {
 	return isBlank(text) ? undefined : text.trim();
 }
 
@@ -319,7 +341,7 @@ function problemTarget(path: string, targets: ProblemTargets): ProblemTarget | u
 	return undefined;
 }
 
-// What the form keeps a problem's check by, which follows an item, section, or photo as it moves.
+// What the form keeps a review note by, which follows an item, section, or photo as it moves.
 export function problemKey(target: ProblemTarget | { kind: 'form' }): ProblemKey {
 	switch (target.kind) {
 		case 'form':
@@ -333,7 +355,7 @@ export function problemKey(target: ProblemTarget | { kind: 'form' }): ProblemKey
 	}
 }
 
-// Replaces every error in the form with these, which clears every check. The first problem for each
+// Replaces every error in the form with these, leaving the review notes. The first problem for each
 // target wins, and one that names nothing in the form shows as a problem with the whole recipe.
 function withErrors(
 	values: RecipeFormValues,
@@ -387,27 +409,47 @@ function withErrors(
 		photos: { dish: photosWithErrors('dish'), scan: photosWithErrors('scan') },
 		fieldErrors: formFieldErrors,
 		formError,
-		checkedProblems: new Set(),
 	};
 }
 
-// A draft's problems as one message for each place they show, so a note on a line that also lost
-// text shows both: each place's distinct messages in order, under the first path that names it.
-function draftFieldErrors(problems: readonly Problem[], targets: ProblemTargets): FieldErrors {
-	const places = new Map<ProblemKey, { path: string; messages: string[] }>();
+// A draft's problems as one open note for each place they show, so a note on a line that also lost
+// text says both: each place's distinct messages in order.
+function draftReviewNotes(
+	problems: readonly Problem[],
+	targets: ProblemTargets
+): Map<ProblemKey, RecipeFormReviewNote> {
+	const places = new Map<ProblemKey, string[]>();
 	for (const { path, message } of problems) {
-		const target = problemTarget(path, targets);
-		// Every problem that names nothing in the form shows as the one with the whole recipe.
-		const key = problemKey(target ?? { kind: 'form' });
-		const place = places.get(key);
-		if (place === undefined) {
-			places.set(key, { path, messages: [message] });
-		} else if (!place.messages.includes(message)) {
-			place.messages.push(message);
+		// Every problem that names nothing in the form is a note on the whole recipe.
+		const key = problemKey(problemTarget(path, targets) ?? { kind: 'form' });
+		const messages = places.get(key);
+		if (messages === undefined) {
+			places.set(key, [message]);
+		} else if (!messages.includes(message)) {
+			messages.push(message);
 		}
 	}
-	return Object.fromEntries(
-		Array.from(places.values(), ({ path, messages }) => [path, messages.join(' ')])
+	return new Map(
+		Array.from(places, ([key, messages]) => [key, { message: messages.join(' '), status: 'open' }])
+	);
+}
+
+function hasOpenNote(
+	reviewNotes: RecipeFormValues['reviewNotes'],
+	target: ProblemTarget | { kind: 'form' }
+): boolean {
+	return reviewNotes.get(problemKey(target))?.status === 'open';
+}
+
+// Heading fields show as sectionsShowHeadings says, or for a heading with an open note, so the note
+// has a field to sit beside.
+function showsHeadingFields(
+	sections: readonly RecipeFormSection[],
+	reviewNotes: RecipeFormValues['reviewNotes']
+): boolean {
+	return (
+		sectionsShowHeadings(sections) ||
+		sections.some((section) => hasOpenNote(reviewNotes, { kind: 'heading', id: section.id }))
 	);
 }
 
@@ -437,8 +479,8 @@ function editableAmountText(amount: Amount): string {
 }
 
 // The form's starting value: empty, a recipe being edited, or a draft to review. A draft's problems
-// attach through the same paths a save's do, so they show from the start, joined where several
-// land in one place.
+// become its review notes, which attach through the same paths a save's errors do, so they show
+// from the start, joined where several land in one place.
 export function recipeFormValues(
 	content?: RecipeContent | RecipeDraftContent,
 	problems: readonly Problem[] = []
@@ -447,31 +489,25 @@ export function recipeFormValues(
 	const newId = () => nextId++;
 	const targets = new Map<string, ProblemTarget>();
 
-	const listFrom = (
+	const sectionsFrom = (
 		list: RecipeFormListName,
 		sections: readonly ContentSection[] | undefined
-	): RecipeFormList => {
+	): RecipeFormSection[] => {
 		if (sections === undefined || sections.length === 0) {
-			return {
-				sections: [{ id: newId(), heading: '', items: [{ id: newId(), text: '' }] }],
-				showsHeadings: false,
-			};
+			return [{ id: newId(), heading: '', items: [{ id: newId(), text: '' }] }];
 		}
-		return {
-			sections: sections.map((section, sectionIndex) => {
-				const id = newId();
-				const items = section.texts.map((text) => ({ id: newId(), text }));
-				addSectionTargets(
-					targets,
-					list,
-					sectionIndex,
-					id,
-					items.map((item) => item.id)
-				);
-				return { id, heading: section.heading ?? '', items };
-			}),
-			showsHeadings: sectionsShowHeadings(sections),
-		};
+		return sections.map((section, sectionIndex) => {
+			const id = newId();
+			const items = section.texts.map((text) => ({ id: newId(), text }));
+			addSectionTargets(
+				targets,
+				list,
+				sectionIndex,
+				id,
+				items.map((item) => item.id)
+			);
+			return { id, heading: section.heading ?? '', items };
+		});
 	};
 
 	const recipeYield = content?.yield;
@@ -488,14 +524,14 @@ export function recipeFormValues(
 		yieldAmount: recipeYield === undefined ? '' : editableAmountText(recipeYield.amount),
 		yieldUnit: recipeYield?.kind === 'makes' ? (recipeYield.unit ?? '') : '',
 	};
-	const ingredientSections = listFrom(
+	const ingredientSections = sectionsFrom(
 		'ingredientSections',
 		content?.ingredientSections?.map((section) => ({
 			heading: section.heading,
 			texts: section.lines.map((line) => line.text),
 		}))
 	);
-	const instructionSections = listFrom(
+	const instructionSections = sectionsFrom(
 		'instructionSections',
 		content?.instructionSections?.map((section) => ({
 			heading: section.heading,
@@ -514,21 +550,22 @@ export function recipeFormValues(
 		});
 	});
 
-	const values: RecipeFormValues = {
+	const reviewNotes = draftReviewNotes(problems, targets);
+	const listOf = (sections: readonly RecipeFormSection[]): RecipeFormList => ({
+		sections,
+		showsHeadings: showsHeadingFields(sections, reviewNotes),
+	});
+	return {
 		text,
 		yieldKind: recipeYield?.kind ?? 'servings',
-		ingredientSections,
-		instructionSections,
+		ingredientSections: listOf(ingredientSections),
+		instructionSections: listOf(instructionSections),
 		tags,
 		photos,
 		fieldErrors: {},
-		reviewingDraft: false,
-		checkedProblems: new Set(),
+		reviewNotes,
 		nextId,
 	};
-	return problems.length === 0
-		? values
-		: { ...withErrors(values, draftFieldErrors(problems, targets), targets), reviewingDraft: true };
 }
 
 // The payload the form sends. Blank items, blank optional text, and sections with neither a heading
@@ -606,68 +643,117 @@ export function recipeFormSubmission(values: RecipeFormValues): RecipeFormSubmis
 	return { payload, targets };
 }
 
-// A problem and where it shows, before the member's check is looked up.
-type PlacedProblem = Omit<RecipeFormProblem, 'checked'>;
+// A place the form shows, with what it holds there.
+type RecipeFormPlace = {
+	target: RecipeFormLocation;
+	error?: string;
+	// The text the member edits there, which can hold transcription markers.
+	text?: string;
+	// The recipe needs this filled in, and it is empty.
+	emptyRequired?: boolean;
+};
 
-function listProblems(values: RecipeFormValues, list: RecipeFormListName): PlacedProblem[] {
-	const { error, sections } = values[list];
-	const problems: PlacedProblem[] = [];
-	if (error !== undefined) {
-		problems.push({ message: error, target: { kind: 'list', list } });
-	}
+function hasItemText(list: RecipeFormList): boolean {
+	return list.sections.some((section) => section.items.some((item) => !isBlank(item.text)));
+}
+
+function fieldPlaces(
+	values: RecipeFormValues,
+	fields: readonly RecipeFormErrorField[]
+): RecipeFormPlace[] {
+	return fields.flatMap((field): RecipeFormPlace[] => {
+		// The unit shows only for a yield the recipe makes, and only then is it sent.
+		if (field === 'yieldUnit' && values.yieldKind !== 'makes') {
+			return [];
+		}
+		return [
+			{
+				target: { kind: 'field', field },
+				error: values.fieldErrors[field],
+				text: field === 'tags' ? undefined : values.text[field],
+				emptyRequired: field === 'title' && isBlank(values.text.title),
+			},
+		];
+	});
+}
+
+// A list's places: the list, then each section's heading where headings show (as they do for a
+// heading error), its items, and the section itself, about its items together.
+function listPlaces(values: RecipeFormValues, list: RecipeFormListName): RecipeFormPlace[] {
+	const { error, sections, showsHeadings } = values[list];
+	const places: RecipeFormPlace[] = [
+		{ target: { kind: 'list', list }, error, emptyRequired: !hasItemText(values[list]) },
+	];
 	sections.forEach((section, sectionIndex) => {
-		if (section.headingError !== undefined) {
-			problems.push({
-				message: section.headingError,
+		if (showsHeadings) {
+			places.push({
 				target: { kind: 'heading', list, sectionIndex, id: section.id },
+				error: section.headingError,
+				text: section.heading,
 			});
 		}
 		section.items.forEach((item, itemIndex) => {
-			if (item.error !== undefined) {
-				problems.push({
-					message: item.error,
-					target: { kind: 'item', list, place: { sectionIndex, itemIndex }, id: item.id },
-				});
-			}
-		});
-		if (section.error !== undefined) {
-			problems.push({
-				message: section.error,
-				target: { kind: 'section', list, sectionIndex, id: section.id },
+			places.push({
+				target: { kind: 'item', list, place: { sectionIndex, itemIndex }, id: item.id },
+				error: item.error,
+				text: item.text,
 			});
-		}
+		});
+		places.push({
+			target: { kind: 'section', list, sectionIndex, id: section.id },
+			error: section.error,
+		});
 	});
-	return problems;
+	return places;
 }
 
-// Every problem the form shows, in the order it shows them, starting with one about the whole recipe.
-export function recipeFormProblems(values: RecipeFormValues): RecipeFormProblem[] {
-	const fieldProblems = (fields: readonly RecipeFormErrorField[]) =>
-		fields.flatMap((field): PlacedProblem[] => {
-			const message = values.fieldErrors[field];
-			return message === undefined ? [] : [{ message, target: { kind: 'field', field } }];
-		});
-	const photoProblems = (role: RecipeImageRole) =>
-		values.photos[role].flatMap((photo, index): PlacedProblem[] =>
-			photo.error === undefined
-				? []
-				: [{ message: photo.error, target: { kind: 'photo', role, index, id: photo.id } }]
-		);
-
-	const problems: PlacedProblem[] = [
-		...(values.formError === undefined
-			? []
-			: [{ message: values.formError, target: { kind: 'form' } } as const]),
-		...fieldProblems(fieldsBeforeLists),
-		...listProblems(values, 'ingredientSections'),
-		...listProblems(values, 'instructionSections'),
-		...fieldProblems(fieldsAfterLists),
-		...photoRoles.flatMap(photoProblems),
-	];
-	return problems.map((problem) => ({
-		...problem,
-		checked: values.checkedProblems.has(problemKey(problem.target)),
+function photoPlaces(values: RecipeFormValues, role: RecipeImageRole): RecipeFormPlace[] {
+	return values.photos[role].map((photo, index) => ({
+		target: { kind: 'photo', role, index, id: photo.id },
+		error: photo.error,
 	}));
+}
+
+// Every place the form shows, in the order it shows them, starting with the whole recipe.
+function recipeFormPlaces(values: RecipeFormValues): RecipeFormPlace[] {
+	return [
+		{ target: { kind: 'form' }, error: values.formError },
+		...fieldPlaces(values, fieldsBeforeLists),
+		...listPlaces(values, 'ingredientSections'),
+		...listPlaces(values, 'instructionSections'),
+		...fieldPlaces(values, fieldsAfterLists),
+		...photoRoles.flatMap((role) => photoPlaces(values, role)),
+	];
+}
+
+// Every error the form shows, in the order it shows them, starting with one about the whole recipe.
+export function recipeFormProblems(values: RecipeFormValues): RecipeFormProblem[] {
+	return recipeFormPlaces(values).flatMap(({ target, error }) =>
+		error === undefined ? [] : [{ message: error, target }]
+	);
+}
+
+// Everything left to check against the original, in the order the form shows it: the open review
+// notes, and the text that still holds a transcription marker.
+export function recipeFormChecks(values: RecipeFormValues): RecipeFormCheck[] {
+	return recipeFormPlaces(values).flatMap(
+		({ target, text, emptyRequired = false }): RecipeFormCheck[] => {
+			const note = values.reviewNotes.get(problemKey(target));
+			const openNote = note?.status === 'open' ? note.message : undefined;
+			const markers = text === undefined ? [] : transcriptionMarkersIn(text);
+			if (openNote === undefined && markers.length === 0) {
+				return [];
+			}
+			return [
+				{
+					target,
+					note: openNote,
+					markers,
+					confirmable: openNote !== undefined && markers.length === 0 && !emptyRequired,
+				},
+			];
+		}
+	);
 }
 
 function updateSections(
@@ -814,7 +900,65 @@ export function editPhotos<Values extends RecipeFormPhotoValues>(
 	}
 }
 
+// The places whose notes an edit answers: the text it changes, and the section and list around a
+// line it changes, whose notes are about their lines. Saying a place looks right answers its note.
+function answeredNoteTargets(
+	values: RecipeFormValues,
+	edit: RecipeFormEdit
+): (ProblemTarget | { kind: 'form' })[] {
+	switch (edit.type) {
+		case 'setText':
+			return [{ kind: 'field', field: edit.field === 'tagDraft' ? 'tags' : edit.field }];
+		case 'setItemText': {
+			const section = values[edit.list].sections.find(({ items }) =>
+				items.some((item) => item.id === edit.itemId)
+			);
+			return [
+				{ kind: 'item', id: edit.itemId },
+				...(section === undefined ? [] : [{ kind: 'section', id: section.id } as const]),
+				{ kind: 'list', list: edit.list },
+			];
+		}
+		case 'setHeading':
+			return [{ kind: 'heading', id: edit.sectionId }];
+		case 'addTags':
+		case 'removeTag':
+			return [{ kind: 'field', field: 'tags' }];
+		case 'setPhotoAlt':
+			return [{ kind: 'photo', id: edit.photoId }];
+		case 'resolveReviewNote':
+			return [edit.target];
+		default:
+			return [];
+	}
+}
+
+// Resolves the open notes on these places; the value stays the same object when none is open.
+function withNotesResolved(
+	values: RecipeFormValues,
+	targets: readonly (ProblemTarget | { kind: 'form' })[]
+): RecipeFormValues {
+	const keys = targets
+		.map(problemKey)
+		.filter((key) => values.reviewNotes.get(key)?.status === 'open');
+	if (keys.length === 0) {
+		return values;
+	}
+	const reviewNotes = new Map(values.reviewNotes);
+	for (const key of keys) {
+		const note = reviewNotes.get(key);
+		if (note !== undefined) {
+			reviewNotes.set(key, { ...note, status: 'resolved' });
+		}
+	}
+	return { ...values, reviewNotes };
+}
+
 export function editRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): RecipeFormValues {
+	return withNotesResolved(editedRecipeForm(values, edit), answeredNoteTargets(values, edit));
+}
+
+function editedRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): RecipeFormValues {
 	switch (edit.type) {
 		case 'setText':
 			return { ...values, text: { ...values.text, [edit.field]: edit.text } };
@@ -870,7 +1014,11 @@ export function editRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): 
 			const sections = list.sections.filter((section) => section.id !== edit.sectionId);
 			return {
 				...values,
-				[edit.list]: { ...list, sections, showsHeadings: sectionsShowHeadings(sections) },
+				[edit.list]: {
+					...list,
+					sections,
+					showsHeadings: showsHeadingFields(sections, values.reviewNotes),
+				},
 			};
 		}
 		case 'setHeading':
@@ -903,15 +1051,8 @@ export function editRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): 
 		case 'setPhotoAlt':
 			return editPhotos(values, edit);
 		case 'attachErrors':
-			return { ...withErrors(values, edit.fieldErrors, edit.targets), reviewingDraft: false };
-		case 'setProblemChecked': {
-			const checkedProblems = new Set(values.checkedProblems);
-			if (edit.checked) {
-				checkedProblems.add(problemKey(edit.target));
-			} else {
-				checkedProblems.delete(problemKey(edit.target));
-			}
-			return { ...values, checkedProblems };
-		}
+			return withErrors(values, edit.fieldErrors, edit.targets);
+		case 'resolveReviewNote':
+			return values;
 	}
 }

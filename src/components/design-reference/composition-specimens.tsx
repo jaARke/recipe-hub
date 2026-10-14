@@ -90,8 +90,8 @@ const sampleEditedRecipe: EditedRecipe = {
 	respellableTags: ['Slow cooked'],
 };
 
-// An import as an extractor might hand it over: no title, and a line and a step to check against
-// the original.
+// An import as a scan's extractor might hand it over: no title, a line it couldn't wholly read, and
+// a step and the whole card to check against the original.
 const sampleDraft: { content: RecipeDraftContent; problems: Problem[] } = {
 	content: {
 		source: 'Great-aunt Edie',
@@ -121,7 +121,7 @@ const sampleDraft: { content: RecipeDraftContent; problems: Problem[] } = {
 				lines: [
 					{ text: '2 eggs', amount: { min: 2 }, item: 'eggs' },
 					{ text: '1 cup sugar', amount: { min: 1 }, unit: 'cup', item: 'sugar' },
-					{ text: '3 tablespoons lemon' },
+					{ text: '3 tablespoons lemon [illegible]' },
 				],
 			},
 		],
@@ -145,6 +145,7 @@ const sampleDraft: { content: RecipeDraftContent; problems: Problem[] } = {
 			path: 'instructionSections.0.steps.1',
 			message: 'Check this step against the original. Part of it was hard to read.',
 		},
+		{ path: '', message: 'The card also holds a recipe for lemon curd, which was left out.' },
 	],
 };
 
@@ -161,7 +162,7 @@ const recipeFormSamples: readonly {
 		editing: sampleEditedRecipe,
 	},
 	{
-		label: 'Reviewing an import, with its problems marked',
+		label: 'Reviewing an import, with its notes to check',
 		initial: recipeFormValues(sampleDraft.content, sampleDraft.problems),
 	},
 ];
@@ -238,7 +239,7 @@ const subsections = [
 		id: 'recipe-form',
 		title: 'Recipe form',
 		description:
-			'For adding and editing a recipe, and for reviewing an import, whose problems a summary at the top lists and links to until the first save; on the review page it takes focus. The member can mark each problem as checked, in the summary or beside its field, which dims it and counts it but never holds up saving. Ingredients and steps are lists of growing fields in sections, and each item’s menu moves or removes it; each ingredient shows how it will read. Tags show as chips and suggest the labels in use, still taking new ones, and editing can respell a tag no other recipe uses (here, Slow cooked on the pot roast). Chosen photos are resized and upload at once, and pages of the original recipe move up and down. Here uploads are simulated, and saving checks the recipe as the site does but saves nothing.',
+			'For adding and editing a recipe, and for reviewing an import. An import’s notes sit under what they’re about, and an intro counts them and starts on the first; on the review page it takes focus. Editing a field clears its note, and so does Looks right, which moves on to the next note and says how many are left; an empty title or list must be filled instead. A scan’s [illegible] or [?] left in the text is noted too, and marked in the line’s preview, until it’s edited away. Saving with anything left to check asks first, with Show me and Save anyway; notes survive a failed save, whose errors a summary at the top lists and links to. Ingredients and steps are lists of growing fields in sections, and each item’s menu moves or removes it; each ingredient shows how it will read. Tags show as chips and suggest the labels in use, still taking new ones, and editing can respell a tag no other recipe uses (here, Slow cooked on the pot roast). Chosen photos are resized and upload at once, and pages of the original recipe move up and down. Here uploads are simulated, and saving checks the recipe as the site does but saves nothing.',
 		Content: RecipeFormSpecimen,
 	},
 	{

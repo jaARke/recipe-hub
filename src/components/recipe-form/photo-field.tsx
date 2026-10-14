@@ -11,15 +11,17 @@ import {
 import * as React from 'react';
 import { flushSync } from 'react-dom';
 import { describedBy } from '@/components/forms/described-by';
-import { FieldProblem, type ProblemCheck } from '@/components/forms/problem-summary';
+import { FieldNote, type FieldNoteContent } from '@/components/forms/field-note';
+import { FieldProblem } from '@/components/forms/problem-summary';
 import { ItemActionsMenu, type ItemAction } from '@/components/recipe-form/item-actions-menu';
 import { normalizePhoto, UnreadablePhotoError } from '@/components/recipe-form/photo-processing';
 import { newPhotoPathname, type PhotoUploader } from '@/components/recipe-form/photo-upload';
-import type {
-	PhotoEdit,
-	PhotoFailure,
-	ProblemTarget,
-	RecipeFormPhoto,
+import {
+	filledText,
+	type PhotoEdit,
+	type PhotoFailure,
+	type ProblemTarget,
+	type RecipeFormPhoto,
 } from '@/components/recipe-form/recipe-form-values';
 import { describePositionMove, itemName } from '@/components/recipe-form/sectioned-list';
 import {
@@ -78,11 +80,12 @@ type PhotoFieldProps = {
 	uploader: PhotoUploader;
 	// About the photos together, such as too many pages to read at once.
 	error?: string;
-	// Each photo problem's check while the member reviews a draft, and none otherwise.
-	problemCheck?: (target: ProblemTarget) => ProblemCheck | undefined;
+	// The note on each photo to check, as when reviewing a draft.
+	noteFor?: (target: ProblemTarget) => FieldNoteContent | undefined;
 };
 
-// The ids of the field's parts, which the form's problem summary links to.
+// The ids of the field's parts, which the form's problem summary links to, and where the form
+// moves focus from note to note.
 function photoFieldIds(prefix: string) {
 	return {
 		description: `${prefix}-description`,
@@ -92,6 +95,7 @@ function photoFieldIds(prefix: string) {
 		actions: (photoId: number) => `${prefix}-photo-${photoId}-actions`,
 		alt: (photoId: number) => `${prefix}-photo-${photoId}-alt`,
 		photoError: (photoId: number) => `${prefix}-photo-${photoId}-error`,
+		photoNote: (photoId: number) => `${prefix}-photo-${photoId}-note`,
 	};
 }
 
@@ -236,7 +240,7 @@ function PhotoField({
 	uploadFolder,
 	uploader,
 	error,
-	problemCheck,
+	noteFor,
 }: PhotoFieldProps) {
 	const inputRef = React.useRef<HTMLInputElement>(null);
 	// Children fire their own enter and leave events; the depth tells a real leave from a move onto a child.
@@ -257,7 +261,7 @@ function PhotoField({
 					{
 						role,
 						pathname: upload.pathname,
-						alt: role === 'dish' ? alt.trim() || undefined : undefined,
+						alt: role === 'dish' ? filledText(alt) : undefined,
 					},
 				]
 			: []
@@ -431,6 +435,7 @@ function PhotoField({
 		const isCover = role === 'dish' && index === 0;
 		const status = photoStatus(photo, isCover);
 		const failure = photo.upload.status === 'failed' ? photo.upload.failure : undefined;
+		const note = noteFor?.({ kind: 'photo', id: photo.id });
 
 		return (
 			<li key={photo.id} className="flex flex-col gap-3">
@@ -463,14 +468,11 @@ function PhotoField({
 				)}
 				{photo.error !== undefined && (
 					// Takes focus after a failed save or import in place of a field.
-					<FieldProblem
-						id={ids.photoError(photo.id)}
-						tabIndex={-1}
-						check={problemCheck?.({ kind: 'photo', id: photo.id })}
-					>
+					<FieldProblem id={ids.photoError(photo.id)} tabIndex={-1}>
 						{photo.error}
 					</FieldProblem>
 				)}
+				{note !== undefined && <FieldNote id={ids.photoNote(photo.id)} name={name} {...note} />}
 				{role === 'dish' && failure === undefined && (
 					<Field>
 						<FieldLabel htmlFor={ids.alt(photo.id)}>

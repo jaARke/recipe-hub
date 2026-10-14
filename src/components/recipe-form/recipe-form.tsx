@@ -1,16 +1,17 @@
 'use client';
 
 import * as React from 'react';
+import { flushSync } from 'react-dom';
+import { FieldNote, type FieldNoteContent } from '@/components/forms/field-note';
+import { focusCentered } from '@/components/forms/focus-centered';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
 import {
-	countChecked,
 	ProblemSummary,
 	SummarizedProblems,
-	type ProblemCheck,
 	type SummarizedProblem,
 } from '@/components/forms/problem-summary';
-import { TextField } from '@/components/forms/text-field';
+import { TextField, textFieldIds } from '@/components/forms/text-field';
 import { TextareaField } from '@/components/forms/textarea-field';
 import { useFocusOnFailure } from '@/components/forms/use-focus-on-failure';
 import { useFormAction } from '@/components/forms/use-form-action';
@@ -24,15 +25,23 @@ import {
 	editRecipeForm,
 	hasPhotosInProgress,
 	problemKey,
+	recipeFormChecks,
 	recipeFormProblems,
 	recipeFormSubmission,
 	type ProblemTarget,
+	type RecipeFormCheck,
 	type RecipeFormErrorField,
 	type RecipeFormListName,
+	type RecipeFormLocation,
 	type RecipeFormProblem,
 	type RecipeFormValues,
 	type RecipeYieldKind,
 } from '@/components/recipe-form/recipe-form-values';
+import {
+	checkedAnnouncement,
+	ReviewNotesIntro,
+	UncheckedSaveDialog,
+} from '@/components/recipe-form/review-notes';
 import { itemLabel, sectionName } from '@/components/recipe-form/sectioned-list';
 import {
 	SectionedListField,
@@ -40,6 +49,7 @@ import {
 } from '@/components/recipe-form/sectioned-list-field';
 import { TagsField, tagsFieldIds, tagsFieldLabel } from '@/components/recipe-form/tags-field';
 import { IngredientLineText } from '@/components/recipe/ingredient-line-text';
+import { HighlightedSegments } from '@/components/search/highlighted-segments';
 import { Button } from '@/components/ui/button';
 import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field';
 import {
@@ -53,6 +63,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
+import {
+	transcriptionMarkerFixes,
+	transcriptionMarkerRuns,
+	transcriptionMarkersIn,
+} from '@/domain/recipe/transcription-markers';
 import { settings } from '@/lib/settings';
 
 const failureMessage = 'We couldn’t save the recipe. Check your connection and try again.';
@@ -106,7 +121,7 @@ type RecipeFormProps = {
 	// Absent when adding a recipe.
 	editing?: EditedRecipe;
 	// The import whose draft the form reviews, which the saved recipe takes its provenance from. The
-	// draft's problems take focus as the page loads.
+	// review's intro takes focus as the page loads.
 	importId?: string;
 	submitLabel: string;
 };
@@ -124,17 +139,38 @@ function useHydrated(): boolean {
 	);
 }
 
-// How the line reads on the recipe page, where that differs from the text as typed.
+// Text with each transcription marker in it marked, so the member finds it.
+function markedText(text: string): React.ReactNode {
+	return (
+		<HighlightedSegments
+			text={transcriptionMarkerRuns(text).map(({ text: run, marker }) => ({
+				text: run,
+				highlighted: marker !== undefined,
+			}))}
+		/>
+	);
+}
+
+// How the line reads on the recipe page, where that differs from the text as typed or still holds a
+// transcription marker.
 function ingredientPreview(text: string): React.ReactNode {
 	const line = parseIngredientLine(text);
-	if (line.amount === undefined) {
+	if (line.amount === undefined && transcriptionMarkersIn(text).length === 0) {
 		return undefined;
 	}
 	return (
 		<>
-			Shows as <IngredientLineText line={line} />
+			Shows as <IngredientLineText line={line} renderText={markedText} />
 		</>
 	);
+}
+
+// The open note's message, then what to do about each marker left in the text.
+function checkMessage({ note, markers }: RecipeFormCheck): string {
+	return [
+		...(note === undefined ? [] : [note]),
+		...markers.map((marker) => transcriptionMarkerFixes[marker]),
+	].join(' ');
 }
 
 // The recipe form for adding, editing, and reviewing an import. Its whole value is sent as JSON in
@@ -160,6 +196,9 @@ function RecipeForm({
 	const ids = {
 		formError: `${baseId}-form-error`,
 		problemSummary: `${baseId}-problem-summary`,
+		reviewIntro: `${baseId}-review-intro`,
+		formNote: `${baseId}-form-note`,
+		save: `${baseId}-save`,
 		saveNote: `${baseId}-save-note`,
 		yieldKind: `${baseId}-yieldKind`,
 		field: (field: TextFieldName) => `${baseId}-${field}`,
@@ -181,55 +220,69 @@ function RecipeForm({
 	// About the whole form, such as an edit conflict; the summary lists a save's problems.
 	const formMessage = state.status === 'error' ? state.message : undefined;
 	useFocusOnFailure(state, formRef, formMessage === undefined ? ids.problemSummary : ids.formError);
-	// Announced as the member checks problems, and never as a draft loads.
-	const [checkAnnouncement, setCheckAnnouncement] = React.useState('');
 
-	// The summary lists the form's problems, each linking to where it shows: a draft's, each with a
-	// check the member can mark, in the summary and beside its field, until the first save; then that
-	// save's errors, which take focus.
-	const problems = recipeFormProblems(values);
-	const summarizedProblems = new Map(
-		problems.map((problem) => [problemKey(problem.target), summarizedProblem(problem)])
-	);
+	// The summary lists a save's errors, each linking to where it shows, and takes focus.
+	const problems = recipeFormProblems(values).map(summarizedProblem);
+	// What is left to check against the original, each with its note in place, until it's edited or
+	// looks right; saving with any left asks first.
+	const checks = recipeFormChecks(values);
+	const checksByKey = new Map(checks.map((check) => [problemKey(check.target), check]));
+	// Announced as "Looks right" clears a note, and never as a draft loads.
+	const [reviewAnnouncement, setReviewAnnouncement] = React.useState('');
+	const [warningOpen, setWarningOpen] = React.useState(false);
+	// Set by "Save anyway", so the save it starts skips the warning.
+	const savingAnyway = React.useRef(false);
 
-	// Reviewing an import starts on its problems, once, not again when a hidden page shows.
-	const focusedProblems = React.useRef(false);
+	// Reviewing an import starts on its intro, once, not again when a hidden page shows.
+	const focusedReview = React.useRef(false);
 	React.useEffect(() => {
-		if (importId === undefined || focusedProblems.current) {
+		if (importId === undefined || focusedReview.current) {
 			return;
 		}
-		focusedProblems.current = true;
-		document.getElementById(ids.problemSummary)?.focus();
-	}, [importId, ids.problemSummary]);
+		focusedReview.current = true;
+		document.getElementById(ids.reviewIntro)?.focus();
+	}, [importId, ids.reviewIntro]);
 
 	function fieldLabel(field: TextFieldName): string {
 		return field === 'yieldAmount' ? yieldAmountLabels[values.yieldKind] : textFieldLabels[field];
 	}
 
-	function problemPlace(
-		target: RecipeFormProblem['target']
-	): Pick<SummarizedProblem, 'label' | 'targetId'> {
+	// What the summary names a place by, the field or error its link focuses, and its note's id.
+	function locationParts(
+		target: RecipeFormLocation
+	): Pick<SummarizedProblem, 'label' | 'targetId'> & { noteId: string } {
 		switch (target.kind) {
 			case 'form':
-				return {};
+				return { noteId: ids.formNote };
 			case 'field':
 				return target.field === 'tags'
-					? { label: tagsFieldLabel, targetId: tagsFieldIds(ids.tags).input }
-					: { label: fieldLabel(target.field), targetId: ids.field(target.field) };
+					? {
+							label: tagsFieldLabel,
+							targetId: tagsFieldIds(ids.tags).input,
+							noteId: tagsFieldIds(ids.tags).note,
+						}
+					: {
+							label: fieldLabel(target.field),
+							targetId: ids.field(target.field),
+							noteId: textFieldIds(ids.field(target.field)).note,
+						};
 			case 'list':
 				return {
 					label: listFieldLabels[target.list].legend,
 					targetId: sectionedListFieldIds(ids.list(target.list)).error,
+					noteId: sectionedListFieldIds(ids.list(target.list)).note,
 				};
 			case 'heading':
 				return {
 					label: `${listFieldLabels[target.list].legend}, section ${target.sectionIndex + 1} heading`,
 					targetId: sectionedListFieldIds(ids.list(target.list)).heading(target.id),
+					noteId: sectionedListFieldIds(ids.list(target.list)).headingNote(target.id),
 				};
 			case 'section':
 				return {
 					label: `${listFieldLabels[target.list].legend}, ${sectionName(values[target.list].sections, target.sectionIndex)}`,
 					targetId: sectionedListFieldIds(ids.list(target.list)).sectionError(target.id),
+					noteId: sectionedListFieldIds(ids.list(target.list)).sectionNote(target.id),
 				};
 			case 'item': {
 				const { sections, showsHeadings } = values[target.list];
@@ -241,6 +294,7 @@ function RecipeForm({
 						showsHeadings
 					),
 					targetId: sectionedListFieldIds(ids.list(target.list)).item(target.id),
+					noteId: sectionedListFieldIds(ids.list(target.list)).itemNote(target.id),
 				};
 			}
 			case 'photo': {
@@ -251,38 +305,47 @@ function RecipeForm({
 							? photoFieldLegends[target.role]
 							: `${photoFieldLegends[target.role]}, ${photoName(photo, target.index, target.role)}`,
 					targetId: photoFieldIds(ids.photos(target.role)).photoError(target.id),
+					noteId: photoFieldIds(ids.photos(target.role)).photoNote(target.id),
 				};
 			}
 		}
 	}
 
-	function summarizedProblem(problem: RecipeFormProblem): SummarizedProblem {
-		const place = problemPlace(problem.target);
-		if (!values.reviewingDraft) {
-			return { message: problem.message, ...place };
+	function summarizedProblem({ message, target }: RecipeFormProblem): SummarizedProblem {
+		const { label, targetId } = locationParts(target);
+		return { message, label, targetId };
+	}
+
+	function focusCheck(check: RecipeFormCheck) {
+		focusCentered(locationParts(check.target).noteId);
+	}
+
+	// Clears the note, then moves on to the next thing to check, or to Save once nothing is left.
+	function confirmCheck(check: RecipeFormCheck) {
+		const index = checks.indexOf(check);
+		const left = checks.filter((other) => other !== check);
+		const next = left[index] ?? left[0];
+		flushSync(() => {
+			dispatch({ type: 'resolveReviewNote', target: check.target });
+			setReviewAnnouncement(checkedAnnouncement(left.length));
+		});
+		if (next === undefined) {
+			document.getElementById(ids.save)?.focus();
+		} else {
+			focusCheck(next);
+		}
+	}
+
+	// The note on a place, while it has something to check.
+	function noteFor(target: ProblemTarget | { kind: 'form' }): FieldNoteContent | undefined {
+		const check = checksByKey.get(problemKey(target));
+		if (check === undefined) {
+			return undefined;
 		}
 		return {
-			message: problem.message,
-			...place,
-			check: {
-				name: place.label ?? problem.message,
-				checked: problem.checked,
-				onCheckedChange: (checked) => checkProblem(problem, checked),
-			},
+			message: checkMessage(check),
+			onConfirm: check.confirmable ? () => confirmCheck(check) : undefined,
 		};
-	}
-
-	function checkProblem(problem: RecipeFormProblem, checked: boolean) {
-		dispatch({ type: 'setProblemChecked', target: problem.target, checked });
-		const checkedCount = problems.filter((other) =>
-			other === problem ? checked : other.checked
-		).length;
-		setCheckAnnouncement(countChecked(checkedCount, problems.length));
-	}
-
-	// The check for the problem beside a field, while the summary lists it.
-	function problemCheck(target: ProblemTarget): ProblemCheck | undefined {
-		return summarizedProblems.get(problemKey(target))?.check;
 	}
 
 	function textFieldProps(field: TextFieldName) {
@@ -290,29 +353,64 @@ function RecipeForm({
 			id: ids.field(field),
 			value: values.text[field],
 			error: values.fieldErrors[field],
-			errorCheck: problemCheck({ kind: 'field', field }),
+			note: noteFor({ kind: 'field', field }),
 			onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
 				dispatch({ type: 'setText', field, text: event.target.value }),
 		};
 	}
 
+	// Saving with anything left to check asks first, unless the member chose to save anyway.
+	function warnBeforeSaving(event: React.FormEvent<HTMLFormElement>) {
+		if (savingAnyway.current) {
+			savingAnyway.current = false;
+			return;
+		}
+		if (checks.length > 0) {
+			event.preventDefault();
+			setWarningOpen(true);
+		}
+	}
+
+	// Submits through the Save button, as a click on it does.
+	function saveAnyway() {
+		savingAnyway.current = true;
+		formRef.current?.requestSubmit(document.getElementById(ids.save));
+	}
+
+	const [firstCheck] = checks;
+	const formNote = noteFor({ kind: 'form' });
+
 	return (
-		<form ref={formRef} action={formAction} noValidate className="flex flex-col gap-8">
+		<form
+			ref={formRef}
+			action={formAction}
+			onSubmit={warnBeforeSaving}
+			noValidate
+			className="flex flex-col gap-8"
+		>
 			{formMessage !== undefined && (
 				<div id={ids.formError} tabIndex={-1}>
 					<FormErrorAlert message={formMessage} />
 				</div>
 			)}
-			{summarizedProblems.size > 0 && (
+			{problems.length > 0 && (
 				<div id={ids.problemSummary} tabIndex={-1}>
-					<ProblemSummary problems={[...summarizedProblems.values()]} />
-					{values.reviewingDraft && (
-						<p role="status" aria-live="polite" className="sr-only">
-							{checkAnnouncement}
-						</p>
-					)}
+					<ProblemSummary problems={problems} />
 				</div>
 			)}
+			{firstCheck !== undefined && (
+				<div className="flex flex-col gap-3">
+					<ReviewNotesIntro
+						id={ids.reviewIntro}
+						count={checks.length}
+						onStart={() => focusCheck(firstCheck)}
+					/>
+					{formNote !== undefined && <FieldNote id={ids.formNote} {...formNote} />}
+				</div>
+			)}
+			<p role="status" aria-live="polite" className="sr-only">
+				{reviewAnnouncement}
+			</p>
 			<input
 				type="hidden"
 				name={recipeFormFieldNames.recipe}
@@ -422,7 +520,7 @@ function RecipeForm({
 						itemPlaceholder="2½ cups all-purpose flour"
 						headingPlaceholder="For the glaze"
 						itemPreview={ingredientPreview}
-						problemCheck={problemCheck}
+						noteFor={noteFor}
 					/>
 					<SectionedListField
 						idPrefix={ids.list('instructionSections')}
@@ -435,7 +533,7 @@ function RecipeForm({
 						itemPlaceholder="Heat the oven to 450°F."
 						headingPlaceholder="For the glaze"
 						numbered
-						problemCheck={problemCheck}
+						noteFor={noteFor}
 					/>
 					<TextareaField
 						{...textFieldProps('notes')}
@@ -449,7 +547,7 @@ function RecipeForm({
 						tagLabels={tagLabels}
 						respellableTags={editing?.respellableTags ?? []}
 						error={values.fieldErrors.tags}
-						errorCheck={problemCheck({ kind: 'field', field: 'tags' })}
+						note={noteFor({ kind: 'field', field: 'tags' })}
 						dispatch={dispatch}
 					/>
 					<PhotoField
@@ -463,7 +561,7 @@ function RecipeForm({
 						dispatch={dispatch}
 						uploadFolder={uploadFolders.dish}
 						uploader={uploader}
-						problemCheck={problemCheck}
+						noteFor={noteFor}
 					/>
 					<PhotoField
 						idPrefix={ids.photos('scan')}
@@ -476,7 +574,7 @@ function RecipeForm({
 						dispatch={dispatch}
 						uploadFolder={uploadFolders.scan}
 						uploader={uploader}
-						problemCheck={problemCheck}
+						noteFor={noteFor}
 					/>
 				</FieldGroup>
 			</SummarizedProblems>
@@ -487,6 +585,7 @@ function RecipeForm({
 					</p>
 				)}
 				<Button
+					id={ids.save}
 					type="submit"
 					// Natively disabled until hydrated, since a click before then would still submit.
 					disabled={!hydrated || photosInProgress || pending}
@@ -497,6 +596,17 @@ function RecipeForm({
 					{pending ? 'Saving recipe' : submitLabel}
 				</Button>
 			</div>
+			<UncheckedSaveDialog
+				open={warningOpen}
+				onOpenChange={setWarningOpen}
+				count={checks.length}
+				onShow={() => {
+					if (firstCheck !== undefined) {
+						focusCheck(firstCheck);
+					}
+				}}
+				onSaveAnyway={saveAnyway}
+			/>
 		</form>
 	);
 }

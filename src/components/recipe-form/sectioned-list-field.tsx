@@ -11,7 +11,12 @@ import {
 import * as React from 'react';
 import { flushSync } from 'react-dom';
 import { describedBy } from '@/components/forms/described-by';
-import { FieldProblem, type ProblemCheck } from '@/components/forms/problem-summary';
+import {
+	FieldNote,
+	fieldNoteMessageId,
+	type FieldNoteContent,
+} from '@/components/forms/field-note';
+import { FieldProblem } from '@/components/forms/problem-summary';
 import { ItemActionsMenu } from '@/components/recipe-form/item-actions-menu';
 import {
 	sectionsShowHeadings,
@@ -60,24 +65,29 @@ type SectionedListFieldProps = {
 	// Shown under an item's field and read with it, such as how an ingredient reads on the recipe
 	// page; nothing shows where it returns undefined.
 	itemPreview?: (text: string) => React.ReactNode;
-	// Each problem's check while the member reviews a draft, and none otherwise.
-	problemCheck?: (target: ProblemTarget) => ProblemCheck | undefined;
+	// The note on each part to check against the original, as when reviewing a draft.
+	noteFor?: (target: ProblemTarget) => FieldNoteContent | undefined;
 };
 
-// The ids of the field's parts, which the form's problem summary links to.
+// The ids of the field's parts, which the form's problem summary links to, and where the form
+// moves focus from note to note.
 function sectionedListFieldIds(prefix: string) {
 	return {
 		description: `${prefix}-description`,
 		error: `${prefix}-error`,
+		note: `${prefix}-note`,
 		addSection: `${prefix}-add-section`,
 		item: (itemId: number) => `${prefix}-item-${itemId}`,
 		itemPreview: (itemId: number) => `${prefix}-item-${itemId}-preview`,
 		itemError: (itemId: number) => `${prefix}-item-${itemId}-error`,
+		itemNote: (itemId: number) => `${prefix}-item-${itemId}-note`,
 		itemActions: (itemId: number) => `${prefix}-item-${itemId}-actions`,
 		heading: (sectionId: number) => `${prefix}-heading-${sectionId}`,
 		headingDescription: (sectionId: number) => `${prefix}-heading-${sectionId}-description`,
 		headingError: (sectionId: number) => `${prefix}-heading-${sectionId}-error`,
+		headingNote: (sectionId: number) => `${prefix}-heading-${sectionId}-note`,
 		sectionError: (sectionId: number) => `${prefix}-section-${sectionId}-error`,
+		sectionNote: (sectionId: number) => `${prefix}-section-${sectionId}-note`,
 		addItem: (sectionId: number) => `${prefix}-add-${sectionId}`,
 	};
 }
@@ -101,7 +111,7 @@ function SectionedListField({
 	headingPlaceholder,
 	numbered = false,
 	itemPreview,
-	problemCheck,
+	noteFor,
 }: SectionedListFieldProps) {
 	const [announcement, setAnnouncement] = React.useState('');
 	const { sections, showsHeadings } = list;
@@ -177,6 +187,7 @@ function SectionedListField({
 		const preview = itemPreview?.(item.text);
 		const hasPreview = preview !== undefined;
 		const invalid = item.error !== undefined;
+		const note = noteFor?.({ kind: 'item', id: item.id });
 		const actions = itemMoves(sections, place).map(({ kind, label: moveLabel, to }) => ({
 			label: moveLabel,
 			icon: moveIcons[kind],
@@ -207,7 +218,8 @@ function SectionedListField({
 						aria-invalid={invalid ? 'true' : undefined}
 						aria-describedby={describedBy(
 							hasPreview && ids.itemPreview(item.id),
-							invalid && ids.itemError(item.id)
+							invalid && ids.itemError(item.id),
+							note !== undefined && fieldNoteMessageId(ids.itemNote(item.id))
 						)}
 						onChange={(event) =>
 							dispatch({
@@ -221,14 +233,8 @@ function SectionedListField({
 					{hasPreview && (
 						<FieldDescription id={ids.itemPreview(item.id)}>{preview}</FieldDescription>
 					)}
-					{invalid && (
-						<FieldProblem
-							id={ids.itemError(item.id)}
-							check={problemCheck?.({ kind: 'item', id: item.id })}
-						>
-							{item.error}
-						</FieldProblem>
-					)}
+					{invalid && <FieldProblem id={ids.itemError(item.id)}>{item.error}</FieldProblem>}
+					{note !== undefined && <FieldNote id={ids.itemNote(item.id)} name={label} {...note} />}
 				</Field>
 				<ItemActionsMenu
 					triggerId={ids.itemActions(item.id)}
@@ -240,7 +246,20 @@ function SectionedListField({
 		);
 	}
 
+	// The section's note, about its items together, and the ids its fieldset is described by.
+	function sectionDescriptions(section: RecipeFormSection) {
+		const note = noteFor?.({ kind: 'section', id: section.id });
+		return {
+			note,
+			describedBy: [
+				section.error !== undefined && ids.sectionError(section.id),
+				note !== undefined && fieldNoteMessageId(ids.sectionNote(section.id)),
+			],
+		};
+	}
+
 	function renderSectionBody(section: RecipeFormSection, sectionIndex: number) {
+		const { note } = sectionDescriptions(section);
 		return (
 			<>
 				{section.items.length > 0 && (
@@ -250,13 +269,16 @@ function SectionedListField({
 				)}
 				{section.error !== undefined && (
 					// Takes focus after a failed save in place of a field.
-					<FieldProblem
-						id={ids.sectionError(section.id)}
-						tabIndex={-1}
-						check={problemCheck?.({ kind: 'section', id: section.id })}
-					>
+					<FieldProblem id={ids.sectionError(section.id)} tabIndex={-1}>
 						{section.error}
 					</FieldProblem>
+				)}
+				{note !== undefined && (
+					<FieldNote
+						id={ids.sectionNote(section.id)}
+						name={`${legend}, ${sectionName(sections, sectionIndex)}`}
+						{...note}
+					/>
 				)}
 			</>
 		);
@@ -283,13 +305,14 @@ function SectionedListField({
 
 	function renderHeadedSection(section: RecipeFormSection, sectionIndex: number) {
 		const headingInvalid = section.headingError !== undefined;
+		const headingNote = noteFor?.({ kind: 'heading', id: section.id });
 		// Only the first section can hold items that come before any heading.
 		const headingHint = sectionIndex === 0;
 
 		return (
 			<FieldSet
 				key={section.id}
-				aria-describedby={section.error === undefined ? undefined : ids.sectionError(section.id)}
+				aria-describedby={describedBy(...sectionDescriptions(section).describedBy)}
 				className="gap-4 rounded-xl border p-4"
 			>
 				<FieldLegend className="sr-only">Section {sectionIndex + 1}</FieldLegend>
@@ -302,7 +325,8 @@ function SectionedListField({
 						aria-invalid={headingInvalid ? 'true' : undefined}
 						aria-describedby={describedBy(
 							headingHint && ids.headingDescription(section.id),
-							headingInvalid && ids.headingError(section.id)
+							headingInvalid && ids.headingError(section.id),
+							headingNote !== undefined && fieldNoteMessageId(ids.headingNote(section.id))
 						)}
 						onChange={(event) =>
 							dispatch({
@@ -319,12 +343,14 @@ function SectionedListField({
 						</FieldDescription>
 					)}
 					{headingInvalid && (
-						<FieldProblem
-							id={ids.headingError(section.id)}
-							check={problemCheck?.({ kind: 'heading', id: section.id })}
-						>
-							{section.headingError}
-						</FieldProblem>
+						<FieldProblem id={ids.headingError(section.id)}>{section.headingError}</FieldProblem>
+					)}
+					{headingNote !== undefined && (
+						<FieldNote
+							id={ids.headingNote(section.id)}
+							name={`${legend}, section ${sectionIndex + 1} heading`}
+							{...headingNote}
+						/>
 					)}
 				</Field>
 				{renderSectionBody(section, sectionIndex)}
@@ -346,31 +372,30 @@ function SectionedListField({
 		);
 	}
 
-	// Without headings the list has one section, whose problems describe the whole list.
+	// Without headings the list has one section, whose error and note describe the whole list.
 	const [onlySection] = sections;
-	const onlySectionError =
-		!showsHeadings && onlySection?.error !== undefined && ids.sectionError(onlySection.id);
+	const onlySectionDescriptions =
+		!showsHeadings && onlySection !== undefined ? sectionDescriptions(onlySection).describedBy : [];
+	const listNote = noteFor?.({ kind: 'list', list: name });
 
 	return (
 		<FieldSet
 			aria-describedby={describedBy(
 				ids.description,
 				list.error !== undefined && ids.error,
-				onlySectionError
+				listNote !== undefined && fieldNoteMessageId(ids.note),
+				...onlySectionDescriptions
 			)}
 		>
 			<FieldLegend>{legend}</FieldLegend>
 			<FieldDescription id={ids.description}>{description}</FieldDescription>
 			{list.error !== undefined && (
 				// Takes focus after a failed save in place of a field.
-				<FieldProblem
-					id={ids.error}
-					tabIndex={-1}
-					check={problemCheck?.({ kind: 'list', list: name })}
-				>
+				<FieldProblem id={ids.error} tabIndex={-1}>
 					{list.error}
 				</FieldProblem>
 			)}
+			{listNote !== undefined && <FieldNote id={ids.note} name={legend} {...listNote} />}
 			{showsHeadings
 				? sections.map((section, sectionIndex) => renderHeadedSection(section, sectionIndex))
 				: onlySection !== undefined && (
