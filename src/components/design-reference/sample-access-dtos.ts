@@ -99,7 +99,7 @@ export const sampleAccessRequests: AccessRequestDto[] = [
 	{
 		id: '0199d0a1-6e2f-7a3b-9c00-000000000001',
 		name: 'Casey',
-		relationship: "Sam's neighbor. We trade recipes at the block party every summer.",
+		relationship: 'Sam’s neighbor. We trade recipes at the block party every summer.',
 		email: 'casey@example.com',
 		createdAt: new Date('2026-10-09T18:20:00.000Z'),
 	},
@@ -107,7 +107,7 @@ export const sampleAccessRequests: AccessRequestDto[] = [
 		id: '0199d0a1-6e2f-7a3b-9c00-000000000002',
 		name: 'Theo',
 		relationship:
-			"Jordan's cousin.\nI'd like to add the bread recipes I learned from my grandmother.",
+			'Jordan’s cousin.\nI’d like to add the bread recipes I learned from my grandmother.',
 		createdAt: new Date('2026-10-11T22:05:00.000Z'),
 	},
 ].map((request) =>

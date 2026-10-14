@@ -4,13 +4,13 @@ Barb’s Table is a recipe catalog for our family's recipes. Anyone can browse a
 
 ## Stack
 
-- [Next.js 16](https://nextjs.org/docs) (App Router, TypeScript) on Vercel
+- [Next.js 16](https://nextjs.org/docs) (App Router, TypeScript) on Vercel, at [barbtable.com](https://barbtable.com), whose DNS is in Route 53
 - [Neon](https://neon.com/docs) Postgres via the Vercel Marketplace, which also powers search, through [Drizzle ORM](https://orm.drizzle.team/docs/overview)
 - [Vercel Blob](https://vercel.com/docs/vercel-blob) (private store) for recipe images
 - The [AI SDK](https://ai-sdk.dev/docs) through the [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) for reading recipe photos and pages into drafts
 - [shadcn/ui](https://ui.shadcn.com/docs) on [Base UI](https://base-ui.com) primitives, with Tailwind CSS v4 tokens
 - [Better Auth](https://www.better-auth.com/docs) with email codes and passkeys, sessions in Postgres
-- [Resend](https://resend.com/docs) for email, through the Vercel Marketplace, sending from `recipes.jakerichard.tech`
+- [Resend](https://resend.com/docs) for email, through the Vercel Marketplace, sending as `Barb’s Table <recipes@mail.barbtable.com>`
 - [Vercel BotID](https://vercel.com/docs/botid) on the access request form and sign-in code requests
 
 ## Development
@@ -31,23 +31,24 @@ Product policy (the limits on recipes, photos, and imports, which apply when con
 
 The design reference at [localhost:3000/design](http://localhost:3000/design) shows every design token, UI primitive, and composition. It exists in development and on preview deployments only. Add primitives with `pnpm shadcn add <name>`, then run `pnpm format` and `pnpm exec eslint . --fix`.
 
-| Script                 | Purpose                                                         |
-| ---------------------- | --------------------------------------------------------------- |
-| `pnpm dev`             | Start the dev server                                            |
-| `pnpm build`           | Production build                                                |
-| `pnpm lint`            | Run every `lint:` script                                        |
-| `pnpm lint:boundaries` | Check the layer boundaries with dependency-cruiser              |
-| `pnpm lint:code`       | ESLint                                                          |
-| `pnpm lint:format`     | Check formatting                                                |
-| `pnpm lint:migrations` | Check the migration history for conflicts                       |
-| `pnpm format`          | Format with Prettier                                            |
-| `pnpm typecheck`       | Generate route types, then run `tsc`                            |
-| `pnpm test`            | Run Vitest: repository tests on PGlite, components in happy-dom |
-| `pnpm db:generate`     | Generate a migration from `src/infrastructure/db/schema.ts`     |
-| `pnpm db:migrate`      | Apply migrations to the database in `DATABASE_URL_UNPOOLED`     |
-| `pnpm db:bootstrap`    | Make the owner, the account at `ADMIN_EMAIL`, an admin          |
-| `pnpm db:seed`         | Seed synthetic recipes and photos (refused in production)       |
-| `pnpm evaluate`        | Score import models on `scripts/evaluate/` (spends AI credit)   |
+| Script                        | Purpose                                                         |
+| ----------------------------- | --------------------------------------------------------------- |
+| `pnpm dev`                    | Start the dev server                                            |
+| `pnpm build`                  | Production build                                                |
+| `pnpm lint`                   | Run every `lint:` script                                        |
+| `pnpm lint:boundaries`        | Check the layer boundaries with dependency-cruiser              |
+| `pnpm lint:code`              | ESLint                                                          |
+| `pnpm lint:format`            | Check formatting                                                |
+| `pnpm lint:migrations`        | Check the migration history for conflicts                       |
+| `pnpm format`                 | Format with Prettier                                            |
+| `pnpm typecheck`              | Generate route types, then run `tsc`                            |
+| `pnpm test`                   | Run Vitest: repository tests on PGlite, components in happy-dom |
+| `pnpm db:generate`            | Generate a migration from `src/infrastructure/db/schema.ts`     |
+| `pnpm db:migrate`             | Apply migrations to the database in `DATABASE_URL_UNPOOLED`     |
+| `pnpm db:bootstrap`           | Make the owner, the account at `ADMIN_EMAIL`, an admin          |
+| `pnpm db:seed`                | Seed synthetic recipes and photos (refused in production)       |
+| `pnpm db:reparse-ingredients` | Diff saved ingredient lines against the parser; `--write` saves |
+| `pnpm evaluate`               | Score import models on `scripts/evaluate/` (spends AI credit)   |
 
 ## Database
 

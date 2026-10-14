@@ -55,8 +55,8 @@ const inviteSteps = [
 	{ value: 'done-with-passkey', label: 'Done, with a passkey' },
 	{ value: 'done', label: 'Done, without a passkey' },
 	{ value: 'done-existing', label: 'Done, with an existing account' },
-	{ value: 'load-failed', label: "Couldn't load" },
-	{ value: 'complete-failed', label: "Couldn't finish" },
+	{ value: 'load-failed', label: 'Couldn’t load' },
+	{ value: 'complete-failed', label: 'Couldn’t finish' },
 	{ value: 'unavailable', label: 'Unavailable' },
 	{ value: 'signed-in', label: 'Already signed in' },
 ] as const;
@@ -232,7 +232,7 @@ function SampleInviteSteps({ preview, inviteeEmail, signedInAs }: SampleInviteSt
 						<RequestCodeForm
 							id={inviteFieldIds.email}
 							autoComplete="email"
-							description="We'll send a code to this address. It's also the address you'll sign in with."
+							description="We’ll send a code to this address. It’s also the address you’ll sign in with."
 							defaultEmail={email}
 							action={requestCode}
 						/>

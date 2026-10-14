@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
+import { toast } from '@/components/ui/toast';
 import { formatDate } from '@/lib/dates';
 
 // What the account page shows of a passkey: the server keeps only its public key.
@@ -44,16 +45,18 @@ type RenamePasskeyDialogProps = {
 	action: FormAction;
 };
 
-// Closes once the name is saved, and focus returns to the passkey's Rename button.
+// Closes once the name is saved, and focus returns to the passkey's Rename button; a toast says so,
+// as a removal's does, since the dialog that held the form is gone.
 function RenamePasskeyDialog({ passkeyId, name, label, action }: RenamePasskeyDialogProps) {
 	const [open, setOpen] = React.useState(false);
 	const [state, formAction, pending] = useFormAction(async (previous, formData) => {
 		const next = await action(previous, formData);
 		if (next.status === 'success') {
+			toast.add({ type: 'success', title: 'Passkey renamed' });
 			setOpen(false);
 		}
 		return next;
-	}, "We couldn't rename that passkey. Check your connection and try again.");
+	}, 'We couldn’t rename that passkey. Check your connection and try again.');
 	const failure = state.status === 'error' ? state : undefined;
 
 	return (
@@ -95,11 +98,11 @@ function RenamePasskeyDialog({ passkeyId, name, label, action }: RenamePasskeyDi
 
 function PasskeyList({ passkeys, renamePasskey, removePasskey }: PasskeyListProps) {
 	if (passkeys.length === 0) {
-		return <p className="text-muted-foreground">You haven&apos;t added a passkey yet.</p>;
+		return <p className="text-muted-foreground">You haven’t added a passkey yet.</p>;
 	}
 
 	return (
-		<ul className="flex flex-col divide-y border-y">
+		<ul className="flex flex-col divide-y">
 			{passkeys.map((passkey) => {
 				const name = passkey.name || 'Passkey';
 				const added = passkey.createdAt ? formatDate(passkey.createdAt) : undefined;
@@ -135,12 +138,12 @@ function PasskeyList({ passkeys, renamePasskey, removePasskey }: PasskeyListProp
 									</>
 								}
 								title={`Remove “${name}”?`}
-								description="You can't sign in with it anymore, and your password manager may delete it from your devices too."
+								description="You can’t sign in with it anymore, and your password manager may delete it from your devices too."
 								cancelLabel="Keep passkey"
 								confirmLabel="Remove passkey"
 								pendingLabel="Removing"
 								successMessage="Passkey removed"
-								failureMessage="We couldn't remove that passkey. Reload the page and try again."
+								failureMessage="We couldn’t remove that passkey. Reload the page and try again."
 								action={removePasskey}
 							>
 								<input type="hidden" name={passkeyFieldNames.id} value={passkey.id} />
@@ -155,7 +158,7 @@ function PasskeyList({ passkeys, renamePasskey, removePasskey }: PasskeyListProp
 
 function PasskeyListSkeleton() {
 	return (
-		<div role="status" aria-live="polite" className="flex flex-col divide-y border-y">
+		<div role="status" aria-live="polite" className="flex flex-col divide-y">
 			<span className="sr-only">Loading passkeys</span>
 			<div className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
 				<div className="flex flex-col gap-1">

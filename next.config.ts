@@ -36,6 +36,11 @@ function nextConfig(phase: string): NextConfig {
 	return {
 		cacheComponents: true,
 		partialPrefetching: true,
+		experimental: {
+			// Vercel restores the previous deployment's .next/cache, and a build warmed by another
+			// tree's cache shipped that tree's design tokens with this tree's classes.
+			turbopackFileSystemCacheForBuild: false,
+		},
 		images: {
 			// Dish photos through the delivery route; the optimizer refuses every other local path.
 			localPatterns: [{ pathname: '/api/images/dish/**', search: '' }],

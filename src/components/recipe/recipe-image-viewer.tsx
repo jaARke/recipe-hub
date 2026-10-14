@@ -7,7 +7,8 @@ import {
 	imageViewerLabels,
 	viewImageLabel,
 } from '@/components/recipe/recipe-image-viewer-labels';
-import { RecipePhoto, RecipeScanImage } from '@/components/recipe/recipe-photo';
+import { ShownRecipeImage, type ShownImage } from '@/components/recipe/shown-recipe-image';
+import { Button } from '@/components/ui/button';
 import {
 	Carousel,
 	CarouselContent,
@@ -23,11 +24,11 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from '@/components/ui/dialog';
-import type { RecipeImage, RecipeImageRole } from '@/domain/recipe/recipe-image';
+import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
 
 type RecipeImageViewerContextValue = {
 	role: RecipeImageRole;
-	images: readonly RecipeImage[];
+	images: readonly ShownImage[];
 };
 
 type RecipeImageViewerProps = RecipeImageViewerContextValue & {
@@ -37,8 +38,16 @@ type RecipeImageViewerProps = RecipeImageViewerContextValue & {
 	children: React.ReactNode;
 };
 
-// The dialog is at most 42rem wide with 1.5rem of padding on each side.
-const viewerPhotoSizes = '(min-width: 704px) 624px, calc(100vw - 80px)';
+// A dish slide's width: the dialog's, at most 42rem less 1.5rem of padding on each side and within
+// a 1rem margin, or narrower on a short screen, as viewerSlideClasses.dish says.
+const viewerPhotoSizes = 'min(624px, 100vw - 80px, (100dvh - 12rem) * 4 / 3)';
+
+// Each role's slide shape, narrowed on a short screen so the slide is at most the screen's height less
+// 12rem: the dialog's margin and padding, its title, and a one-line caption beside Previous and Next.
+const viewerSlideClasses = {
+	dish: 'aspect-4/3 max-w-[calc((100dvh-12rem)*4/3)]',
+	scan: 'aspect-3/4 max-w-[calc((100dvh-12rem)*3/4)]',
+} as const satisfies Record<RecipeImageRole, string>;
 
 const RecipeImageViewerContext = React.createContext<RecipeImageViewerContextValue | null>(null);
 
@@ -63,11 +72,12 @@ function RecipeImageViewer({ role, images, title, children }: RecipeImageViewerP
 				{({ payload }) => (
 					<>
 						{children}
-						{/* Scrolls on a screen too short for the photo and its caption, such as a phone on its side. */}
+						{/* At most the screen's height less a margin, like its width; the slide shrinks to fit, so
+						only a caption longer than a line makes it scroll. */}
 						<DialogContent
 							ref={popupRef}
 							initialFocus={initialFocusRef}
-							className="max-h-dvh overflow-y-auto sm:max-w-2xl"
+							className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
 						>
 							{/* Clears the close button in the corner. */}
 							<DialogHeader className="pr-8">
@@ -106,6 +116,21 @@ function RecipeImageViewerTrigger({
 			aria-label={viewImageLabel(role, index, images.length, images[index]?.alt)}
 			className={cn('block overflow-hidden transition-shadow hover:shadow-md', className)}
 		>
+			{children}
+		</DialogTrigger>
+	);
+}
+
+// Opens the viewer at its first image, named by its own text, such as "View original".
+function RecipeImageViewerButton({
+	className,
+	children,
+}: {
+	className?: string;
+	children: React.ReactNode;
+}) {
+	return (
+		<DialogTrigger payload={0} render={<Button variant="outline" className={className} />}>
 			{children}
 		</DialogTrigger>
 	);
@@ -185,21 +210,14 @@ function RecipeImageCarousel({
 						aria-label={imagePositionLabel(role, index, images.length)}
 						aria-hidden={index !== current}
 					>
-						{role === 'dish' ? (
-							<RecipePhoto
-								pathname={image.pathname}
-								alt={image.alt ?? ''}
-								sizes={viewerPhotoSizes}
-								fit="contain"
-								className="aspect-4/3 rounded-md"
-							/>
-						) : (
-							<RecipeScanImage
-								pathname={image.pathname}
-								alt={image.alt ?? ''}
-								className="aspect-4/3 rounded-md"
-							/>
-						)}
+						<ShownRecipeImage
+							role={role}
+							image={image}
+							alt={image.alt ?? ''}
+							sizes={viewerPhotoSizes}
+							fit="contain"
+							className={cn('mx-auto rounded-md', viewerSlideClasses[role])}
+						/>
 					</CarouselItem>
 				))}
 			</CarouselContent>
@@ -211,6 +229,15 @@ function RecipeImageCarousel({
 				initialFocusRef={initialFocusRef}
 			/>
 		</Carousel>
+	);
+}
+
+function RecipeImageCaptionLines({ alt, position }: { alt?: string; position: string }) {
+	return (
+		<>
+			{alt !== undefined && <p>{alt}</p>}
+			<p className="font-mono text-xs tracking-wide text-muted-foreground uppercase">{position}</p>
+		</>
 	);
 }
 
@@ -233,23 +260,36 @@ function RecipeImageCaption({
 	const opensOnNext = startIndex < images.length - 1;
 	return (
 		<div className="flex items-start justify-between gap-4">
-			<div role="status" aria-live="polite" className="flex min-w-0 flex-col gap-1">
-				{alt !== undefined && <p>{alt}</p>}
-				<p className="font-mono text-xs tracking-wide text-muted-foreground uppercase">
-					{imagePositionLabel(role, index, images.length)}
-				</p>
+			{/* Every image's caption takes the same cell, hidden but the current one's, so the viewer keeps
+			the height of the longest and Previous and Next stay put from image to image. */}
+			<div className="grid min-w-0 *:col-start-1 *:row-start-1">
+				{images.map((image, imageIndex) => (
+					<div key={image.pathname} className="invisible flex flex-col gap-1">
+						<RecipeImageCaptionLines
+							alt={image.alt}
+							position={imagePositionLabel(role, imageIndex, images.length)}
+						/>
+					</div>
+				))}
+				<div role="status" aria-live="polite" className="flex flex-col gap-1">
+					<RecipeImageCaptionLines
+						alt={alt}
+						position={imagePositionLabel(role, index, images.length)}
+					/>
+				</div>
 			</div>
 			<div className="flex shrink-0 gap-2">
-				{/* Below the image rather than beside it, and focusable at either end so focus stays put. */}
+				{/* Below the image rather than beside it, 44 px for a finger, and focusable at either end so
+				focus stays put. */}
 				<CarouselPrevious
 					ref={opensOnNext ? undefined : initialFocusRef}
-					className="static"
+					className="static pointer-coarse:size-11"
 					aria-label={labels.previous}
 					focusableWhenDisabled
 				/>
 				<CarouselNext
 					ref={opensOnNext ? initialFocusRef : undefined}
-					className="static"
+					className="static pointer-coarse:size-11"
 					aria-label={labels.next}
 					focusableWhenDisabled
 				/>
@@ -258,4 +298,4 @@ function RecipeImageCaption({
 	);
 }
 
-export { RecipeImageViewer, RecipeImageViewerTrigger };
+export { RecipeImageViewer, RecipeImageViewerButton, RecipeImageViewerTrigger };

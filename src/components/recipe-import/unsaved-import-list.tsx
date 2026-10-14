@@ -28,8 +28,7 @@ function UnsavedImportsEmptyState() {
 				</EmptyMedia>
 				<EmptyTitle>No drafts</EmptyTitle>
 				<EmptyDescription>
-					Imports you haven&apos;t saved stay here for {settings.imports.importDraftLifetimeDays}{' '}
-					days.
+					Imports you haven’t saved stay here for {settings.imports.importDraftLifetimeDays} days.
 				</EmptyDescription>
 			</EmptyHeader>
 		</Empty>

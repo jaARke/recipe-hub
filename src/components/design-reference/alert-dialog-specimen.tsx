@@ -69,7 +69,7 @@ function AlertDialogSpecimen() {
 					size="default"
 					trigger="Delete recipe"
 					title="Delete “Buttermilk biscuits”?"
-					description="The recipe and its photos are deleted. This can't be undone."
+					description="The recipe and its photos are deleted. This can’t be undone."
 					cancelLabel="Keep recipe"
 					confirmLabel="Delete recipe"
 				/>

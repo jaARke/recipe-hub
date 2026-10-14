@@ -22,7 +22,7 @@ export default function RequestAccessPage() {
 			</div>
 			<RequestAccessForm
 				action={requestAccess}
-				nextSteps={`An admin will review it. If it's approved, you'll get an invite link to create your account, by email if you gave an address. The link works for ${settings.accounts.inviteLifetimeDays} days.`}
+				nextSteps={`An admin will review it. If it’s approved, you’ll get an invite link to create your account, by email if you gave an address. The link works for ${settings.accounts.inviteLifetimeDays} days.`}
 			/>
 			<p className="text-sm text-muted-foreground">
 				Read <TextLink href={privacyPath}>what we store and why</TextLink>.

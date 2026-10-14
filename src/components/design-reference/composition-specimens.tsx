@@ -90,79 +90,78 @@ const sampleEditedRecipe: EditedRecipe = {
 	respellableTags: ['Slow cooked'],
 };
 
-// An import as an extractor might hand it over: no title, and a line and a step to check against
-// the original.
+// The anise cakes card beside it, as the scan extractor might hand it over: the card's ground truth in
+// scripts/evaluate/cases/anise-cakes/expected.json, but with no title, a line it couldn't wholly read,
+// and a step and the whole card to check against the original.
 const sampleDraft: { content: RecipeDraftContent; problems: Problem[] } = {
 	content: {
-		source: 'Great-aunt Edie',
-		yield: { kind: 'makes', amount: { min: 16 }, unit: 'bars' },
-		times: { prepMinutes: 20, cookMinutes: 45 },
+		yield: { kind: 'makes', amount: { min: 50 }, unit: 'one and a half inch cakes' },
 		ingredientSections: [
 			{
-				heading: 'For the crust',
 				lines: [
-					{
-						text: '1 cup all-purpose flour',
-						amount: { min: 1 },
-						unit: 'cup',
-						item: 'all-purpose flour',
-					},
-					{
-						text: '½ cup butter, softened',
-						amount: { min: 0.5 },
-						unit: 'cup',
-						item: 'butter',
-						preparation: 'softened',
-					},
-				],
-			},
-			{
-				heading: 'For the filling',
-				lines: [
-					{ text: '2 eggs', amount: { min: 2 }, item: 'eggs' },
-					{ text: '1 cup sugar', amount: { min: 1 }, unit: 'cup', item: 'sugar' },
-					{ text: '3 tablespoons lemon' },
+					{ text: '1 cup sugar' },
+					{ text: '3 eggs' },
+					{ text: '½ tsp. vanilla' },
+					{ text: '1½ to 2 cup flour' },
+					{ text: '1 tsp. any baking powder' },
+					{ text: '1½ tbls crushed anise [illegible]' },
 				],
 			},
 		],
 		instructionSections: [
 			{
 				steps: [
-					{ text: 'Heat the oven to 350°F and press the crust into an 8-inch pan.' },
-					{ text: 'Bake 20 minutes, then pour in the filling and bake until set.' },
+					{ text: 'Sift. 1 cup sugar.' },
+					{ text: 'Beat until light 3 eggs.' },
+					{ text: 'Add sugar gradually. Beat these ingredients until they are creamy.' },
+					{ text: 'Add. ½ tsp. vanilla.' },
+					{ text: 'Sift. before measuring. 1½ to 2 cup flour' },
+					{ text: 'Resift with 1 tsp. any baking powder.' },
+					{ text: 'Add. 1½ tbls crushed anise Seed.' },
+					{
+						text: 'Beat batter well, Drop from teaspoon, well apart on greased tins. Permit batter to dry for 12 hrs.',
+					},
+					{ text: 'Bake cakes in slow moderate oven 350°.' },
 				],
 			},
 		],
-		tags: ['Dessert'],
+		tags: ['Baking'],
 	},
 	problems: [
-		{ path: 'title', message: "Add a title. The original doesn't show one." },
+		{ path: 'title', message: 'Add a title. The card’s heading was hard to read.' },
 		{
-			path: 'ingredientSections.1.lines.2',
+			path: 'ingredientSections.0.lines.5',
 			message: 'Check this line against the original. Part of it was hard to read.',
 		},
 		{
-			path: 'instructionSections.0.steps.1',
-			message: 'Check this step against the original. Part of it was hard to read.',
+			path: 'instructionSections.0.steps.8',
+			message: 'Check this step against the original. The oven’s temperature was hard to read.',
+		},
+		{
+			path: '',
+			message: 'The recipe runs onto a second card. Check that nothing was missed between them.',
 		},
 	],
 };
 
-// The recipe form's starting values, as its pages build them.
+// The recipe form's starting values, as its pages build them. The review adds stand-in pages of the
+// original as the member's uploads, since a draft's own scans need sign-in.
 const recipeFormSamples: readonly {
 	label: string;
 	initial: RecipeFormValues;
 	editing?: EditedRecipe;
+	standInScans?: boolean;
 }[] = [
 	{ label: 'Adding a recipe', initial: recipeFormValues() },
 	{
-		label: 'Editing a recipe whose first section has a heading',
+		label: 'Editing a recipe whose lists start with a heading',
 		initial: recipeFormValues(parseRecipeContent(sampleSundayPotRoast)),
 		editing: sampleEditedRecipe,
 	},
 	{
-		label: 'Reviewing an import, with its problems marked',
+		label: 'Reviewing an import, with its notes to check',
 		initial: recipeFormValues(sampleDraft.content, sampleDraft.problems),
+		standInScans: true,
 	},
 ];
 
@@ -178,7 +177,7 @@ const subsections = [
 		id: 'recipe-grid',
 		title: 'Recipe grid',
 		description:
-			"One column on phones, two on tablets, three on desktop. Each card is a single link to its recipe, and a recipe without a photo keeps the photo's box.",
+			'One column on phones, two on tablets, three on desktop. Each card is a single link to its recipe, and a recipe without a photo keeps the photo’s box.',
 		Content: RecipeGridSpecimen,
 	},
 	{
@@ -191,14 +190,14 @@ const subsections = [
 		id: 'recipe-pagination',
 		title: 'Recipe pagination',
 		description:
-			"Previous and Next only where they lead somewhere, the first and last pages, and the current page with one on each side. Each page's link comes from the page, so it keeps the rest of the URL, such as the order. Here every link stays on this page.",
+			'Previous and Next only where they lead somewhere, the first and last pages, and the current page with one on each side. Each page’s link comes from the page, so it keeps the rest of the URL, such as the order. Here every link stays on this page.',
 		Content: RecipePaginationSpecimen,
 	},
 	{
 		id: 'recipe-detail',
 		title: 'Recipe detail',
 		description:
-			"Reading width, with ingredients and steps in text-lg. The cover and the row of other photos each open a viewer of every photo, and the pencil beside the title, for the contributor and admins, opens the edit page. Its headings start at h4 here, under this page's own.",
+			'Reading width, with ingredients and steps in text-lg. The cover and the row of other photos each open a viewer of every photo, and the pencil beside the title, for the contributor and admins, opens the edit page. Its headings start at h4 here, under this page’s own.',
 		Content: RecipeDetailSpecimen,
 	},
 	{
@@ -238,14 +237,14 @@ const subsections = [
 		id: 'recipe-form',
 		title: 'Recipe form',
 		description:
-			"For adding and editing a recipe, and for reviewing an import, whose problems a summary at the top lists and links to until the first save; on the review page it takes focus. The member can mark each problem as checked, in the summary or beside its field, which dims it and counts it but never holds up saving. Ingredients and steps are lists of growing fields in sections, and each item's menu moves or removes it; each ingredient shows how it will read. Tags show as chips and suggest the labels in use, still taking new ones, and editing can respell a tag no other recipe uses (here, Slow cooked on the pot roast). Chosen photos are resized and upload at once, and pages of the original recipe move up and down. Here uploads are simulated, and saving checks the recipe as the site does but saves nothing.",
+			'For adding and editing a recipe, and for reviewing an import. An import’s notes sit under what they’re about, and an intro counts them and starts on the first; on the review page it takes focus. Editing a field clears its note, and so does Looks right, which moves on to the next note and says how many are left; an empty title or list must be filled instead. A scan’s [illegible] or [?] left in the text is noted too, and marked in the line’s preview, until it’s edited away. Saving with anything left to check asks first, with Show me and Save anyway; notes survive a failed save, whose errors a summary at the top lists and links to. Ingredients and steps are each one list of growing fields, with headings as rows among the lines: Enter adds a line below, Backspace in an empty one removes it, and a pasted list splits into lines and headings, each announced. A row’s menu moves it up or down, across headings, changes it between a line and a heading, or removes it, and a removed heading’s lines join the ones above; each ingredient shows how it will read. Tags show as chips and suggest the labels in use, still taking new ones, and editing can respell a tag no other recipe uses (here, Slow cooked on the pot roast). Chosen photos are resized and upload at once, and pages of the original recipe move up and down. From lg, a form with pages of the original holds them beside it, in view as the form scrolls, a page at a time with Zoom and Full size; below lg, View original opens the viewer. Here uploads are simulated, the review is of an anise cakes card from the National Archives, whose two pages show as uploads, and saving checks the recipe as the site does but saves nothing.',
 		Content: RecipeFormSpecimen,
 	},
 	{
 		id: 'recipe-entry',
 		title: 'Adding a recipe',
 		description:
-			"Three ways in, one tab each, and a fourth for the member's unsaved drafts, counted in its label; hidden tabs keep what was entered. A link or photos of the pages, which upload as they're chosen, are read into a draft that opens in the recipe form for review. Reading takes up to a minute or two, so the form shows what it's reading and for how long, announcing the stage once and not each second. Here each import waits four seconds and then shows its error, since nothing is imported.",
+			'Three ways in, one tab each, and a fourth for the member’s unsaved drafts, counted in its label; hidden tabs keep what was entered. A link or photos of the pages, which upload as they’re chosen, are read into a draft that opens in the recipe form for review. Reading takes up to a minute or two, so the form shows what it’s reading and for how long, announcing the stage once and not each second. Here each import waits four seconds and then shows its error, since nothing is imported.',
 		Content: RecipeEntrySpecimen,
 	},
 ] as const;
@@ -351,10 +350,15 @@ function NoResultsSpecimen() {
 }
 
 function RecipeFormSpecimen() {
-	return recipeFormSamples.map(({ label, initial, editing }) => (
+	return recipeFormSamples.map(({ label, initial, editing, standInScans }) => (
 		<Specimen key={label} label={label} className="px-0 py-10 sm:py-14">
-			<PageContainer width="reading">
-				<SampleRecipeForm initial={initial} tagLabels={sampleTagLabels} editing={editing} />
+			<PageContainer width="readingOrWide">
+				<SampleRecipeForm
+					initial={initial}
+					tagLabels={sampleTagLabels}
+					editing={editing}
+					standInScans={standInScans}
+				/>
 			</PageContainer>
 		</Specimen>
 	));
@@ -365,7 +369,7 @@ function RecipeEntrySpecimen() {
 		<>
 			{entryDraftSamples.map(({ label, imports }) => (
 				<Specimen key={label} label={label} className="px-0 py-10 sm:py-14">
-					<PageContainer width="reading">
+					<PageContainer width="readingOrWide">
 						<RecipeEntryTabs
 							forms={{
 								manual: (

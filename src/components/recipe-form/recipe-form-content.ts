@@ -45,12 +45,12 @@ const payloadSchema = z.object({
 // The form always sends this shape, so anything else came from an out-of-date page.
 const unreadablePayloadProblem: Problem = {
 	path: '',
-	message: "We couldn't read the recipe. Reload the page and try again.",
+	message: 'We couldn’t read the recipe. Reload the page and try again.',
 };
 
 const unreadableYieldProblem: Problem = {
 	path: 'yield.amount',
-	message: "We couldn't read this amount. Use a number, or two numbers for a range.",
+	message: 'We couldn’t read this amount. Use a number, or two numbers for a range.',
 };
 
 function readPayload(json: string): RecipeFormPayload {

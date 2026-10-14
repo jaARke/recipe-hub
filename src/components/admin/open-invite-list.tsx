@@ -21,7 +21,7 @@ function OpenInvitesEmptyState() {
 				</EmptyMedia>
 				<EmptyTitle>No open invites</EmptyTitle>
 				<EmptyDescription>
-					Invites show up here until they&apos;re used, revoked, or expire.
+					Invites show up here until they’re used, revoked, or expire.
 				</EmptyDescription>
 			</EmptyHeader>
 		</Empty>
@@ -73,7 +73,7 @@ function OpenInviteList({
 							confirmLabel="Revoke invite"
 							pendingLabel="Revoking"
 							successMessage="Invite revoked"
-							failureMessage="We couldn't revoke the invite. Reload the page and try again."
+							failureMessage="We couldn’t revoke the invite. Reload the page and try again."
 							action={revokeInvite}
 						>
 							<input type="hidden" name={adminFieldNames.inviteId} value={invite.id} />

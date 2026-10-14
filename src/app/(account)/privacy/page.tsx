@@ -42,12 +42,12 @@ export default function PrivacyPage() {
 						Your email address is private. Sign-in codes are sent to it, and admins can see it.
 					</li>
 					<li>
-						A sign-in code is stored encrypted until it&apos;s used, or deleted after{' '}
+						A sign-in code is stored encrypted until it’s used, or deleted after{' '}
 						{settings.accounts.signInCodeLifetimeMinutes} minutes.
 					</li>
 					<li>
-						If you add a passkey, the site stores only its public key, which can&apos;t sign you in
-						on its own. The passkey itself stays on your device or in your password manager.
+						If you add a passkey, the site stores only its public key, which can’t sign you in on
+						its own. The passkey itself stays on your device or in your password manager.
 					</li>
 					<li>
 						Each sign-in starts a session, which records the IP address and browser it began from. A
@@ -63,16 +63,16 @@ export default function PrivacyPage() {
 				<ul className={listClassName}>
 					<li>
 						To read a recipe you import, the site may send its photos or the text of its web page to
-						an AI model through Vercel&apos;s AI Gateway. Neither the Gateway nor the model&apos;s
-						provider keeps them after answering.
+						an AI model through Vercel’s AI Gateway. Neither the Gateway nor the model’s provider
+						keeps them after answering.
 					</li>
 					<li>
-						Each request an import makes is labeled with your account id in the AI Gateway&apos;s
-						usage reports, never your name or email address. The model&apos;s provider gets a coded
-						form of that id, so it can trace misuse to an account without knowing who you are.
+						Each request an import makes is labeled with your account id in the AI Gateway’s usage
+						reports, never your name or email address. The model’s provider gets a coded form of
+						that id, so it can trace misuse to an account without knowing who you are.
 					</li>
 					<li>
-						An import&apos;s draft is kept until you save it as a recipe, or deleted after{' '}
+						An import’s draft is kept until you save it as a recipe, or deleted after{' '}
 						{settings.imports.importDraftLifetimeDays} days.
 					</li>
 					<li>
@@ -104,20 +104,20 @@ export default function PrivacyPage() {
 						Vercel Blob.
 					</li>
 					<li>
-						A photo or scan that&apos;s removed, or that belongs to a deleted recipe, is deleted for
-						good after {settings.retention.removedImageLifetimeDays} days.
+						A photo or scan that’s removed, or that belongs to a deleted recipe, is deleted for good
+						after {settings.retention.removedImageLifetimeDays} days.
 					</li>
-					<li>Imports are read by AI models through Vercel&apos;s AI Gateway.</li>
+					<li>Imports are read by AI models through Vercel’s AI Gateway.</li>
 					<li>
 						Changes are tried on test versions of the site before they go live. Test versions use a
-						copy of the database, so they may hold copies of this data too. They aren&apos;t public.
+						copy of the database, so they may hold copies of this data too. They aren’t public.
 					</li>
 				</ul>
 			</PageSection>
 			<PageSection id="privacy-questions" title="Questions">
 				<p>
-					To ask about your data or have it removed, ask the member who invited you. If you&apos;ve
-					only requested access, ask the person you know here.
+					To ask about your data or have it removed, ask the member who invited you. If you’ve only
+					requested access, ask the person you know here.
 				</p>
 			</PageSection>
 		</PageContainer>

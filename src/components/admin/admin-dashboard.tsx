@@ -86,7 +86,7 @@ function AdminDashboard({
 					id="admin-invite"
 					headingTag={section}
 					title="Invite someone"
-					description={`For someone who hasn't requested access. Each link works once and expires after ${settings.accounts.inviteLifetimeDays} days.`}
+					description={`For someone who hasn’t requested access. Each link works once and expires after ${settings.accounts.inviteLifetimeDays} days.`}
 				>
 					<InviteForm issueInvite={actions.issueInvite} />
 				</PageSection>

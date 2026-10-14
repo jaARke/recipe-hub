@@ -32,12 +32,12 @@ const toastExtraction: ExtractedRecipe = {
 };
 
 const missingProblems = {
-	title: { path: 'title', message: "Add a title. The original doesn't show one." },
+	title: { path: 'title', message: 'Add a title. The original doesn’t show one.' },
 	ingredients: {
 		path: 'ingredientSections',
-		message: "Add the ingredients. The original doesn't show any.",
+		message: 'Add the ingredients. The original doesn’t show any.',
 	},
-	steps: { path: 'instructionSections', message: "Add the steps. The original doesn't show any." },
+	steps: { path: 'instructionSections', message: 'Add the steps. The original doesn’t show any.' },
 } satisfies Record<string, Problem>;
 
 function cutMessage(max: number): string {

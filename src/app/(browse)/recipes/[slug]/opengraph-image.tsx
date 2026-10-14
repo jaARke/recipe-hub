@@ -1,17 +1,16 @@
 import { cacheLife } from 'next/cache';
 import { notFound } from 'next/navigation';
-import { connection } from 'next/server';
 import {
 	openGraphFontFamilies,
 	openGraphImageContentType,
 	openGraphImageSize,
+	OpenGraphLockup,
 	renderOpenGraphImage,
 } from '@/app/_lib/open-graph-image';
-import { getCachedRecipe, recipeCacheTags } from '@/app/_lib/recipe-cache';
+import { getCachedRecipe } from '@/app/_lib/recipe-cache';
 import type { PublicRecipeDto } from '@/application/recipes/recipe-dtos';
 import { getRecipeImageService } from '@/composition/services';
 import { coverImage } from '@/domain/recipe/recipe-image';
-import { siteName } from '@/lib/site';
 import { tokenColors } from '@/lib/token-colors';
 
 type ImageProps = {
@@ -30,14 +29,6 @@ type TitleSizes = {
 	medium: number;
 	long: number;
 };
-
-// Vercel's CDN may keep a card a year: its URL carries the recipe's revision, so an edit names a new
-// card, and a write's tag purge drops it when the recipe is deleted.
-const cardCdnMaxAgeSeconds = 365 * 24 * 60 * 60;
-
-// Vercel's CDN strips s-maxage. Browsers check back, since the URL's hash covers this file but not the
-// shared card styles.
-const cardCacheControl = `public, max-age=0, must-revalidate, s-maxage=${cardCdnMaxAgeSeconds}`;
 
 // Satori draws only these: WebP renders blank and AVIF throws.
 const drawableContentTypes = ['image/jpeg', 'image/png'];
@@ -64,12 +55,6 @@ function revisionId(recipe: PublicRecipeDto): string {
 
 function imageAlt(recipe: PublicRecipeDto): string {
 	return recipe.source === undefined ? recipe.title : `${recipe.title}, from ${recipe.source}`;
-}
-
-// The slug asked for and the current one, as getCachedRecipe tags them, so a card cached under an
-// old slug is purged too.
-function cardCacheTags(slug: string, recipe: PublicRecipeDto): string {
-	return [...new Set([slug, recipe.slug])].map(recipeCacheTags.recipe).join(',');
 }
 
 // The line clamp catches titles that are still too long at the smallest size.
@@ -127,15 +112,7 @@ function ShareCard({ title, source, photo }: ShareCardProps) {
 					padding: layout.padding,
 				}}
 			>
-				<div
-					style={{
-						fontFamily: openGraphFontFamilies.heading,
-						fontSize: 32,
-						color: tokenColors.light.primary,
-					}}
-				>
-					{siteName}
-				</div>
+				<OpenGraphLockup size="sm" />
 				<div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
 					<div
 						style={{
@@ -199,27 +176,30 @@ export async function generateImageMetadata({ params }: { params: { slug?: strin
 	];
 }
 
-// Next answers 404 itself for an id that generateImageMetadata did not list.
-export default async function Image({ params }: ImageProps) {
-	// The JPEG encoding is not cached, so the card renders per request and the CDN keeps it.
-	await connection();
-	const { slug } = await params;
+// Cached whole: generateImageMetadata makes this route static, so Next renders an unstored card as a
+// prerender, which uncached work aborts. It takes getCachedRecipe's tags, so a write drops it too.
+async function renderRecipeCard(slug: string): Promise<Uint8Array<ArrayBuffer> | null> {
+	'use cache';
+	cacheLife('days');
 	const recipe = await getCachedRecipe(slug);
 	if (recipe === null) {
-		notFound();
+		return null;
 	}
 
 	const cover = coverImage(recipe.images);
 	const photo = cover === undefined ? null : await getDrawablePhoto(cover.pathname);
-	const card = await renderOpenGraphImage(
+	return renderOpenGraphImage(
 		<ShareCard title={recipe.title} source={recipe.source} photo={photo} />
 	);
+}
 
-	return new Response(card, {
-		headers: {
-			'Content-Type': openGraphImageContentType,
-			'Cache-Control': cardCacheControl,
-			'Vercel-Cache-Tag': cardCacheTags(slug, recipe),
-		},
-	});
+// Next answers 404 itself for an id that generateImageMetadata did not list.
+export default async function Image({ params }: ImageProps) {
+	const { slug } = await params;
+	const card = await renderRecipeCard(slug);
+	if (card === null) {
+		notFound();
+	}
+
+	return new Response(card, { headers: { 'Content-Type': openGraphImageContentType } });
 }

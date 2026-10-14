@@ -1,52 +1,46 @@
 'use client';
 
-import {
-	ArrowDownIcon,
-	ArrowUpIcon,
-	CornerDownRightIcon,
-	PlusIcon,
-	Trash2Icon,
-	type LucideIcon,
-} from 'lucide-react';
+import { cn } from 'cn';
+import { ArrowDownIcon, ArrowUpIcon, HeadingIcon, PlusIcon, TextIcon } from 'lucide-react';
 import * as React from 'react';
 import { flushSync } from 'react-dom';
 import { describedBy } from '@/components/forms/described-by';
-import { FieldProblem, type ProblemCheck } from '@/components/forms/problem-summary';
-import { ItemActionsMenu } from '@/components/recipe-form/item-actions-menu';
 import {
-	sectionsShowHeadings,
-	type ProblemTarget,
-	type RecipeFormEdit,
-	type RecipeFormItem,
-	type RecipeFormList,
-	type RecipeFormListName,
-	type RecipeFormSection,
+	FieldNote,
+	fieldNoteMessageId,
+	type FieldNoteContent,
+} from '@/components/forms/field-note';
+import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
+import { FieldProblem } from '@/components/forms/problem-summary';
+import { ItemActionsMenu, type ItemAction } from '@/components/recipe-form/item-actions-menu';
+import type {
+	ProblemTarget,
+	RecipeFormEdit,
+	RecipeFormList,
+	RecipeFormListName,
+	RecipeFormRow,
+	RecipeFormRowKind,
 } from '@/components/recipe-form/recipe-form-values';
 import {
-	describeMove,
-	itemLabel,
-	itemMoves,
-	sectionName,
-	type ItemMoveKind,
-	type ItemPlace,
+	describeKindChange,
+	describePaste,
+	describeRowAdded,
+	describeRowMove,
+	describeRowRemoval,
+	listRowNames,
+	rowsFromPastedText,
+	sectionLabel,
 } from '@/components/recipe-form/sectioned-list';
 import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-
-const moveIcons: Record<ItemMoveKind, LucideIcon> = {
-	up: ArrowUpIcon,
-	down: ArrowDownIcon,
-	section: CornerDownRightIcon,
-};
 
 type SectionedListFieldProps = {
 	// Starts every id in the field, so the form can link to its problems.
 	idPrefix: string;
 	name: RecipeFormListName;
 	list: RecipeFormList;
-	// The id the form gives the next section or item it adds.
+	// The id the form gives the next row it adds.
 	nextId: number;
 	dispatch: React.Dispatch<RecipeFormEdit>;
 	legend: string;
@@ -55,39 +49,48 @@ type SectionedListFieldProps = {
 	noun: string;
 	itemPlaceholder: string;
 	headingPlaceholder: string;
-	// Steps are numbered, restarting in each section as on the recipe page.
+	// Steps are numbered, restarting after each heading as on the recipe page.
 	numbered?: boolean;
-	// Shown under an item's field and read with it, such as how an ingredient reads on the recipe
+	// Shown under a line's field and read with it, such as how an ingredient reads on the recipe
 	// page; nothing shows where it returns undefined.
 	itemPreview?: (text: string) => React.ReactNode;
-	// Each problem's check while the member reviews a draft, and none otherwise.
-	problemCheck?: (target: ProblemTarget) => ProblemCheck | undefined;
+	// The note on each part to check against the original, as when reviewing a draft.
+	noteFor?: (target: ProblemTarget) => FieldNoteContent | undefined;
 };
 
-// The ids of the field's parts, which the form's problem summary links to.
+// The ids of the field's parts, which the form's problem summary links to, and where the form
+// moves focus from note to note. A section's error and note sit at its heading's row.
 function sectionedListFieldIds(prefix: string) {
 	return {
 		description: `${prefix}-description`,
 		error: `${prefix}-error`,
-		addSection: `${prefix}-add-section`,
-		item: (itemId: number) => `${prefix}-item-${itemId}`,
-		itemPreview: (itemId: number) => `${prefix}-item-${itemId}-preview`,
-		itemError: (itemId: number) => `${prefix}-item-${itemId}-error`,
-		itemActions: (itemId: number) => `${prefix}-item-${itemId}-actions`,
-		heading: (sectionId: number) => `${prefix}-heading-${sectionId}`,
-		headingDescription: (sectionId: number) => `${prefix}-heading-${sectionId}-description`,
-		headingError: (sectionId: number) => `${prefix}-heading-${sectionId}-error`,
-		sectionError: (sectionId: number) => `${prefix}-section-${sectionId}-error`,
-		addItem: (sectionId: number) => `${prefix}-add-${sectionId}`,
+		note: `${prefix}-note`,
+		addItem: `${prefix}-add-item`,
+		addHeading: `${prefix}-add-heading`,
+		row: (rowId: number) => `${prefix}-row-${rowId}`,
+		rowPreview: (rowId: number) => `${prefix}-row-${rowId}-preview`,
+		rowError: (rowId: number) => `${prefix}-row-${rowId}-error`,
+		rowNote: (rowId: number) => `${prefix}-row-${rowId}-note`,
+		rowActions: (rowId: number) => `${prefix}-row-${rowId}-actions`,
+		sectionError: (headingId: number) => `${prefix}-section-${headingId}-error`,
+		sectionNote: (headingId: number) => `${prefix}-section-${headingId}-note`,
 	};
 }
 
-function focusElement(id: string) {
-	document.getElementById(id)?.focus();
+// Focuses the field with this id, with the caret at the start or end of its text.
+function focusField(id: string, caret: 'start' | 'end') {
+	const element = document.getElementById(id);
+	element?.focus();
+	if (element instanceof HTMLTextAreaElement) {
+		const at = caret === 'start' ? 0 : element.value.length;
+		element.setSelectionRange(at, at);
+	}
 }
 
-// A list of growing fields in sections, such as a recipe's ingredients. Each item's menu moves or
-// removes it, and a section can have a heading.
+// A list of growing fields, one per row: lines, and headings over the lines after them, as a
+// recipe's ingredients have "For the glaze". Each row's menu moves it, changes its kind, or removes
+// it, with no dragging. Enter adds a line below, Backspace in an empty one removes it, and pasting
+// several lines splits them into rows, each change announced.
 function SectionedListField({
 	idPrefix,
 	name,
@@ -101,298 +104,275 @@ function SectionedListField({
 	headingPlaceholder,
 	numbered = false,
 	itemPreview,
-	problemCheck,
+	noteFor,
 }: SectionedListFieldProps) {
-	const [announcement, setAnnouncement] = React.useState('');
-	const { sections, showsHeadings } = list;
-	const ItemList = numbered ? 'ol' : 'ul';
+	const [announcement, announce] = useLiveAnnouncement();
+	const { rows } = list;
+	const names = listRowNames(rows, noun);
 	const ids = sectionedListFieldIds(idPrefix);
 
-	// Structural edits commit at once, so focus can move to what they render.
-	function commit(edit: RecipeFormEdit) {
-		flushSync(() => dispatch(edit));
-	}
-
-	function addItem(section: RecipeFormSection) {
-		commit({ type: 'addItem', list: name, sectionId: section.id });
-		focusElement(ids.item(nextId));
-	}
-
-	function removeItem(section: RecipeFormSection, itemIndex: number) {
-		const neighbor = section.items[itemIndex - 1] ?? section.items[itemIndex + 1];
-		const item = section.items[itemIndex];
-		if (item === undefined) {
-			return;
-		}
-		commit({ type: 'removeItem', list: name, itemId: item.id });
-		focusElement(neighbor === undefined ? ids.addItem(section.id) : ids.item(neighbor.id));
-	}
-
-	function moveItem(item: RecipeFormItem, from: ItemPlace, to: ItemPlace) {
+	// Structural edits commit at once with what they announce, so focus can move to what they render.
+	function commit(edit: RecipeFormEdit, said: string) {
 		flushSync(() => {
-			dispatch({ type: 'moveItem', list: name, itemId: item.id, to });
-			setAnnouncement(describeMove(sections, from, to, noun));
+			dispatch(edit);
+			announce(said);
 		});
-		const trigger = document.getElementById(ids.itemActions(item.id));
-		// The menu gives focus back to its trigger after a move within a section, but a move to
-		// another section mounts the row anew.
-		if (from.sectionIndex !== to.sectionIndex) {
-			trigger?.focus();
-		}
-		trigger?.scrollIntoView({ block: 'nearest' });
 	}
 
-	function addSection() {
-		commit({ type: 'addSection', list: name });
-		focusElement(ids.heading(nextId));
+	// At the end, or below the row at afterIndex.
+	function addRow(kind: RecipeFormRowKind, afterIndex?: number) {
+		const index = afterIndex === undefined ? rows.length : afterIndex + 1;
+		const added = rows.toSpliced(index, 0, { kind, id: nextId, text: '' });
+		commit(
+			{
+				type: 'addRow',
+				list: name,
+				kind,
+				afterRowId: afterIndex === undefined ? undefined : rows[afterIndex]?.id,
+			},
+			describeRowAdded(added, index, noun)
+		);
+		focusField(ids.row(nextId), 'end');
 	}
 
-	function removeSection(sectionIndex: number) {
-		const section = sections[sectionIndex];
-		if (section === undefined) {
+	// Focus goes to the end of the row above, as Backspace leaves it, or else to the row below, or the
+	// button that adds a line.
+	function removeRow(index: number) {
+		const row = rows[index];
+		if (row === undefined) {
 			return;
 		}
-		const previous = sections[sectionIndex - 1];
-		const next = sections[sectionIndex + 1];
-		const headingsStay = sectionsShowHeadings(sections.toSpliced(sectionIndex, 1));
-		commit({ type: 'removeSection', list: name, sectionId: section.id });
-		if (previous !== undefined) {
-			focusElement(ids.addItem(previous.id));
-		} else if (next !== undefined && headingsStay) {
-			focusElement(ids.heading(next.id));
-		} else if (next !== undefined) {
-			// Without headings, the section left starts with its first item, or its add button.
-			const [firstItem] = next.items;
-			focusElement(firstItem === undefined ? ids.addItem(next.id) : ids.item(firstItem.id));
+		const above = rows[index - 1];
+		const below = rows[index + 1];
+		commit({ type: 'removeRow', list: name, rowId: row.id }, describeRowRemoval(rows, index, noun));
+		if (above !== undefined) {
+			focusField(ids.row(above.id), 'end');
+		} else if (below !== undefined) {
+			focusField(ids.row(below.id), 'start');
+		} else {
+			document.getElementById(ids.addItem)?.focus();
 		}
 	}
 
-	function renderItem(section: RecipeFormSection, sectionIndex: number, itemIndex: number) {
-		const item = section.items[itemIndex];
-		if (item === undefined) {
+	// The menu gives focus back to its trigger, which stays mounted as its row moves.
+	function moveRow(row: RecipeFormRow, index: number, toIndex: number) {
+		commit(
+			{ type: 'moveRow', list: name, rowId: row.id, toIndex },
+			describeRowMove(rows, index, toIndex, noun)
+		);
+		document.getElementById(ids.rowActions(row.id))?.scrollIntoView({ block: 'nearest' });
+	}
+
+	function changeKind(row: RecipeFormRow, index: number) {
+		commit(
+			{
+				type: 'setRowKind',
+				list: name,
+				rowId: row.id,
+				kind: row.kind === 'heading' ? 'item' : 'heading',
+			},
+			describeKindChange(rows, index, noun)
+		);
+	}
+
+	// Plain Enter adds a line below, wherever the caret is; Shift+Enter keeps its line break. A held
+	// Backspace stops at the line it empties, so clearing one never eats into the rows above, and the
+	// only row stays to type in.
+	function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>, index: number) {
+		const row = rows[index];
+		if (
+			row === undefined ||
+			event.nativeEvent.isComposing ||
+			event.altKey ||
+			event.ctrlKey ||
+			event.metaKey
+		) {
+			return;
+		}
+		if (event.key === 'Enter' && !event.shiftKey) {
+			event.preventDefault();
+			addRow('item', index);
+		} else if (event.key === 'Backspace' && !event.repeat && row.text === '' && rows.length > 1) {
+			event.preventDefault();
+			removeRow(index);
+		}
+	}
+
+	// A single line pastes as usual, at the caret.
+	function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>, row: RecipeFormRow) {
+		const pasted = rowsFromPastedText(event.clipboardData.getData('text/plain'));
+		if (pasted.length < 2) {
+			return;
+		}
+		event.preventDefault();
+		const { value, selectionStart, selectionEnd } = event.currentTarget;
+		commit(
+			{
+				type: 'pasteRows',
+				list: name,
+				rowId: row.id,
+				text: `${value.slice(0, selectionStart)}${value.slice(selectionEnd)}`,
+				rows: pasted,
+			},
+			describePaste(pasted, noun)
+		);
+		focusField(ids.row(nextId + pasted.length - 1), 'end');
+	}
+
+	function rowActions(row: RecipeFormRow, index: number): ItemAction[] {
+		return [
+			{
+				label: 'Move up',
+				icon: ArrowUpIcon,
+				onSelect: index > 0 ? () => moveRow(row, index, index - 1) : undefined,
+			},
+			{
+				label: 'Move down',
+				icon: ArrowDownIcon,
+				onSelect: index < rows.length - 1 ? () => moveRow(row, index, index + 1) : undefined,
+			},
+			row.kind === 'heading'
+				? { label: `Change to ${noun}`, icon: TextIcon, onSelect: () => changeKind(row, index) }
+				: { label: 'Change to heading', icon: HeadingIcon, onSelect: () => changeKind(row, index) },
+		];
+	}
+
+	function renderRow(row: RecipeFormRow, index: number) {
+		const rowNames = names[index];
+		if (rowNames === undefined) {
 			return null;
 		}
-		const place = { sectionIndex, itemIndex };
-		const label = itemLabel(noun, sections, place, showsHeadings);
-		const preview = itemPreview?.(item.text);
+		const { label, number, headingName } = rowNames;
+		const isHeading = row.kind === 'heading';
+		const preview = isHeading ? undefined : itemPreview?.(row.text);
 		const hasPreview = preview !== undefined;
-		const invalid = item.error !== undefined;
-		const actions = itemMoves(sections, place).map(({ kind, label: moveLabel, to }) => ({
-			label: moveLabel,
-			icon: moveIcons[kind],
-			onSelect: to && (() => moveItem(item, place, to)),
-		}));
+		const note = noteFor?.({ kind: 'row', id: row.id });
+		// A heading shows the problems with its section too, about the lines under it.
+		const sectionError = isHeading ? row.sectionError : undefined;
+		const sectionNote = isHeading ? noteFor?.({ kind: 'section', id: row.id }) : undefined;
+		const invalid = row.error !== undefined || sectionError !== undefined;
 
 		return (
-			<li key={item.id} className="flex items-start gap-2">
-				{numbered && (
+			<li
+				key={row.id}
+				// Space above a heading sets its lines apart from the ones before it.
+				className={cn('flex items-start gap-2', isHeading && index > 0 && 'mt-4')}
+			>
+				{numbered && !isHeading && (
 					// Shares the textarea's border, padding, and type size, so it sits on the first line.
 					<span
 						aria-hidden="true"
 						className="mt-px w-8 shrink-0 py-2 text-right font-mono text-base text-muted-foreground tabular-nums md:text-sm"
 					>
-						{itemIndex + 1}.
+						{number}.
 					</span>
 				)}
 				<Field data-invalid={invalid ? 'true' : undefined}>
-					<FieldLabel htmlFor={ids.item(item.id)} className="sr-only">
+					<FieldLabel htmlFor={ids.row(row.id)} className="sr-only">
 						{label}
 					</FieldLabel>
 					<Textarea
-						id={ids.item(item.id)}
+						id={ids.row(row.id)}
 						size="compact"
 						rows={1}
-						value={item.text}
-						placeholder={itemPlaceholder}
+						value={row.text}
+						placeholder={isHeading ? headingPlaceholder : itemPlaceholder}
+						// The heading's weight is for what is typed; its placeholder reads as every other one.
+						className={cn(isHeading && 'font-semibold placeholder:font-normal md:text-base')}
 						aria-invalid={invalid ? 'true' : undefined}
 						aria-describedby={describedBy(
-							hasPreview && ids.itemPreview(item.id),
-							invalid && ids.itemError(item.id)
+							hasPreview && ids.rowPreview(row.id),
+							row.error !== undefined && ids.rowError(row.id),
+							sectionError !== undefined && ids.sectionError(row.id),
+							note !== undefined && fieldNoteMessageId(ids.rowNote(row.id)),
+							sectionNote !== undefined && fieldNoteMessageId(ids.sectionNote(row.id))
 						)}
 						onChange={(event) =>
 							dispatch({
-								type: 'setItemText',
+								type: 'setRowText',
 								list: name,
-								itemId: item.id,
+								rowId: row.id,
 								text: event.target.value,
 							})
 						}
+						onKeyDown={(event) => handleKeyDown(event, index)}
+						onPaste={(event) => handlePaste(event, row)}
 					/>
-					{hasPreview && (
-						<FieldDescription id={ids.itemPreview(item.id)}>{preview}</FieldDescription>
+					{hasPreview && <FieldDescription id={ids.rowPreview(row.id)}>{preview}</FieldDescription>}
+					{row.error !== undefined && (
+						<FieldProblem id={ids.rowError(row.id)}>{row.error}</FieldProblem>
 					)}
-					{invalid && (
-						<FieldProblem
-							id={ids.itemError(item.id)}
-							check={problemCheck?.({ kind: 'item', id: item.id })}
-						>
-							{item.error}
-						</FieldProblem>
+					{sectionError !== undefined && (
+						<FieldProblem id={ids.sectionError(row.id)}>{sectionError}</FieldProblem>
+					)}
+					{note !== undefined && <FieldNote id={ids.rowNote(row.id)} name={label} {...note} />}
+					{sectionNote !== undefined && headingName !== undefined && (
+						<FieldNote
+							id={ids.sectionNote(row.id)}
+							name={sectionLabel(legend, headingName)}
+							{...sectionNote}
+						/>
 					)}
 				</Field>
 				<ItemActionsMenu
-					triggerId={ids.itemActions(item.id)}
+					triggerId={ids.rowActions(row.id)}
 					itemLabel={label}
-					actions={actions}
-					onRemove={() => removeItem(section, itemIndex)}
+					actions={rowActions(row, index)}
+					onRemove={() => removeRow(index)}
 				/>
 			</li>
 		);
 	}
 
-	function renderSectionBody(section: RecipeFormSection, sectionIndex: number) {
-		return (
-			<>
-				{section.items.length > 0 && (
-					<ItemList className="flex flex-col gap-2">
-						{section.items.map((_item, itemIndex) => renderItem(section, sectionIndex, itemIndex))}
-					</ItemList>
-				)}
-				{section.error !== undefined && (
-					// Takes focus after a failed save in place of a field.
-					<FieldProblem
-						id={ids.sectionError(section.id)}
-						tabIndex={-1}
-						check={problemCheck?.({ kind: 'section', id: section.id })}
-					>
-						{section.error}
-					</FieldProblem>
-				)}
-			</>
-		);
-	}
-
-	function renderAddItem(section: RecipeFormSection, sectionIndex: number) {
-		return (
-			<Button
-				id={ids.addItem(section.id)}
-				type="button"
-				variant="outline"
-				size="sm"
-				className="self-start"
-				onClick={() => addItem(section)}
-			>
-				<PlusIcon data-icon="inline-start" aria-hidden="true" />
-				Add {noun}
-				{showsHeadings && (
-					<span className="sr-only"> to {sectionName(sections, sectionIndex)}</span>
-				)}
-			</Button>
-		);
-	}
-
-	function renderHeadedSection(section: RecipeFormSection, sectionIndex: number) {
-		const headingInvalid = section.headingError !== undefined;
-		// Only the first section can hold items that come before any heading.
-		const headingHint = sectionIndex === 0;
-
-		return (
-			<FieldSet
-				key={section.id}
-				aria-describedby={section.error === undefined ? undefined : ids.sectionError(section.id)}
-				className="gap-4 rounded-xl border p-4"
-			>
-				<FieldLegend className="sr-only">Section {sectionIndex + 1}</FieldLegend>
-				<Field data-invalid={headingInvalid ? 'true' : undefined}>
-					<FieldLabel htmlFor={ids.heading(section.id)}>Heading (optional)</FieldLabel>
-					<Input
-						id={ids.heading(section.id)}
-						value={section.heading}
-						placeholder={headingPlaceholder}
-						aria-invalid={headingInvalid ? 'true' : undefined}
-						aria-describedby={describedBy(
-							headingHint && ids.headingDescription(section.id),
-							headingInvalid && ids.headingError(section.id)
-						)}
-						onChange={(event) =>
-							dispatch({
-								type: 'setHeading',
-								list: name,
-								sectionId: section.id,
-								heading: event.target.value,
-							})
-						}
-					/>
-					{headingHint && (
-						<FieldDescription id={ids.headingDescription(section.id)}>
-							Leave blank for {legend.toLowerCase()} that come before any section.
-						</FieldDescription>
-					)}
-					{headingInvalid && (
-						<FieldProblem
-							id={ids.headingError(section.id)}
-							check={problemCheck?.({ kind: 'heading', id: section.id })}
-						>
-							{section.headingError}
-						</FieldProblem>
-					)}
-				</Field>
-				{renderSectionBody(section, sectionIndex)}
-				<div className="flex flex-wrap items-center justify-between gap-2">
-					{renderAddItem(section, sectionIndex)}
-					{sections.length > 1 && (
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							onClick={() => removeSection(sectionIndex)}
-						>
-							<Trash2Icon data-icon="inline-start" aria-hidden="true" />
-							Remove section<span className="sr-only"> {sectionIndex + 1}</span>
-						</Button>
-					)}
-				</div>
-			</FieldSet>
-		);
-	}
-
-	// Without headings the list has one section, whose problems describe the whole list.
-	const [onlySection] = sections;
-	const onlySectionError =
-		!showsHeadings && onlySection?.error !== undefined && ids.sectionError(onlySection.id);
+	const listNote = noteFor?.({ kind: 'list', list: name });
 
 	return (
 		<FieldSet
 			aria-describedby={describedBy(
 				ids.description,
 				list.error !== undefined && ids.error,
-				onlySectionError
+				listNote !== undefined && fieldNoteMessageId(ids.note)
 			)}
 		>
 			<FieldLegend>{legend}</FieldLegend>
 			<FieldDescription id={ids.description}>{description}</FieldDescription>
 			{list.error !== undefined && (
 				// Takes focus after a failed save in place of a field.
-				<FieldProblem
-					id={ids.error}
-					tabIndex={-1}
-					check={problemCheck?.({ kind: 'list', list: name })}
-				>
+				<FieldProblem id={ids.error} tabIndex={-1}>
 					{list.error}
 				</FieldProblem>
 			)}
-			{showsHeadings
-				? sections.map((section, sectionIndex) => renderHeadedSection(section, sectionIndex))
-				: onlySection !== undefined && (
-						<div className="flex flex-col gap-3">
-							{renderSectionBody(onlySection, 0)}
-							{renderAddItem(onlySection, 0)}
-						</div>
-					)}
-			<Button
-				id={ids.addSection}
-				type="button"
-				variant="ghost"
-				size="sm"
-				className="self-start"
-				onClick={addSection}
-			>
-				<PlusIcon data-icon="inline-start" aria-hidden="true" />
-				Add section<span className="sr-only"> to {legend.toLowerCase()}</span>
-			</Button>
-			<p role="status" aria-live="polite" className="sr-only">
-				{announcement}
-			</p>
+			{listNote !== undefined && <FieldNote id={ids.note} name={legend} {...listNote} />}
+			<div className="flex flex-col gap-3">
+				{rows.length > 0 && (
+					<ul aria-label={legend} className="flex flex-col gap-2">
+						{rows.map((row, index) => renderRow(row, index))}
+					</ul>
+				)}
+				<div className="flex flex-wrap gap-2">
+					<Button
+						id={ids.addItem}
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={() => addRow('item')}
+					>
+						<PlusIcon data-icon="inline-start" aria-hidden="true" />
+						Add {noun}
+					</Button>
+					<Button
+						id={ids.addHeading}
+						type="button"
+						variant="ghost"
+						size="sm"
+						onClick={() => addRow('heading')}
+					>
+						<PlusIcon data-icon="inline-start" aria-hidden="true" />
+						Add heading<span className="sr-only"> to {legend.toLowerCase()}</span>
+					</Button>
+				</div>
+			</div>
+			<LiveAnnouncer announcement={announcement} />
 		</FieldSet>
 	);
 }

@@ -1,44 +1,72 @@
 import { describe, expect, it } from 'vitest';
+import type { RecipeFormRowText } from '@/components/recipe-form/recipe-form-values';
 import {
-	describeMove,
-	itemLabel,
-	itemMoves,
+	describeKindChange,
+	describePaste,
+	describeRowAdded,
+	describeRowMove,
+	describeRowRemoval,
 	itemName,
-	sectionName,
+	listRowNames,
+	rowsFromPastedText,
+	sectionLabel,
 } from '@/components/recipe-form/sectioned-list';
 
-function section(heading: string, ...texts: string[]) {
-	return { heading, items: texts.map((text) => ({ text })) };
+function line(text: string): RecipeFormRowText {
+	return { kind: 'item', text };
 }
 
-const sections = [
-	section('', '2 cups flour', '1 teaspoon salt', '', '1 cup milk'),
-	section('For the glaze', '1 cup powdered sugar', '2 tablespoons milk'),
-	section('  ', '1 egg'),
+function heading(text: string): RecipeFormRowText {
+	return { kind: 'heading', text };
+}
+
+// Two lines before any heading, a glaze of two lines, and a topping whose heading is still blank.
+const rows = [
+	line('2 cups flour'),
+	line('1 teaspoon salt'),
+	heading('For the glaze'),
+	line('1 cup powdered sugar'),
+	line(''),
+	heading('  '),
+	line('1 egg'),
 ];
 
-describe('sectionName', () => {
-	it('uses the heading, or the section number where there is none', () => {
-		expect(sectionName(sections, 1)).toBe('For the glaze');
-		expect(sectionName(sections, 0)).toBe('section 1');
-		expect(sectionName(sections, 2)).toBe('section 3');
+describe('listRowNames', () => {
+	it('numbers lines from 1 again after each heading, naming the heading they are under', () => {
+		expect(listRowNames(rows, 'step').map(({ label }) => label)).toEqual([
+			'Step 1',
+			'Step 2',
+			'Step heading 1',
+			'Step 1, For the glaze',
+			'Step 2, For the glaze',
+			'Step heading 2',
+			'Step 1, heading 2',
+		]);
+	});
+
+	it('gives each row its number and the heading over it', () => {
+		expect(listRowNames(rows, 'ingredient')).toEqual([
+			{ label: 'Ingredient 1', number: 1 },
+			{ label: 'Ingredient 2', number: 2 },
+			{ label: 'Ingredient heading 1', number: 1, headingName: 'For the glaze' },
+			{ label: 'Ingredient 1, For the glaze', number: 1, headingName: 'For the glaze' },
+			{ label: 'Ingredient 2, For the glaze', number: 2, headingName: 'For the glaze' },
+			{ label: 'Ingredient heading 2', number: 2, headingName: 'heading 2' },
+			{ label: 'Ingredient 1, heading 2', number: 1, headingName: 'heading 2' },
+		]);
+	});
+
+	it('names nothing for a list without headings', () => {
+		expect(listRowNames([line('Mix.'), line('Bake.')], 'step')).toEqual([
+			{ label: 'Step 1', number: 1 },
+			{ label: 'Step 2', number: 2 },
+		]);
 	});
 });
 
-describe('itemLabel', () => {
-	it('numbers an item within its section', () => {
-		expect(itemLabel('ingredient', sections, { sectionIndex: 0, itemIndex: 2 }, false)).toBe(
-			'Ingredient 3'
-		);
-	});
-
-	it('names the section, since numbers restart in each one', () => {
-		expect(itemLabel('step', sections, { sectionIndex: 1, itemIndex: 1 }, true)).toBe(
-			'Step 2, For the glaze'
-		);
-		expect(itemLabel('step', sections, { sectionIndex: 2, itemIndex: 0 }, true)).toBe(
-			'Step 1, section 3'
-		);
+describe('sectionLabel', () => {
+	it('names the list and the heading', () => {
+		expect(sectionLabel('Ingredients', 'For the glaze')).toBe('Ingredients, For the glaze');
 	});
 });
 
@@ -58,59 +86,157 @@ describe('itemName', () => {
 	});
 });
 
-describe('describeMove', () => {
-	it('names both positions for a move within a section', () => {
-		expect(
-			describeMove(
-				sections,
-				{ sectionIndex: 0, itemIndex: 3 },
-				{ sectionIndex: 0, itemIndex: 2 },
-				'ingredient'
-			)
-		).toBe('Moved “1 cup milk” from position 4 to 3 of 4.');
+describe('describeRowMove', () => {
+	it('names both positions for a line that stays under its heading', () => {
+		expect(describeRowMove(rows, 1, 0, 'ingredient')).toBe(
+			'Moved “1 teaspoon salt” from position 2 to 1 of 2.'
+		);
+		expect(describeRowMove(rows, 3, 4, 'ingredient')).toBe(
+			'Moved “1 cup powdered sugar” from position 1 to 2 of 2.'
+		);
 	});
 
-	it('names the section and the new position for a move to another section', () => {
-		expect(
-			describeMove(
-				sections,
-				{ sectionIndex: 0, itemIndex: 0 },
-				{ sectionIndex: 1, itemIndex: 2 },
-				'ingredient'
-			)
-		).toBe('Moved “2 cups flour” to For the glaze, position 3 of 3.');
-		expect(
-			describeMove(
-				sections,
-				{ sectionIndex: 0, itemIndex: 2 },
-				{ sectionIndex: 2, itemIndex: 1 },
-				'ingredient'
-			)
-		).toBe('Moved ingredient to section 3, position 2 of 2.');
+	it('names the heading a line moves under, and its new position', () => {
+		expect(describeRowMove(rows, 1, 2, 'ingredient')).toBe(
+			'Moved “1 teaspoon salt” to For the glaze, position 1 of 3.'
+		);
+		expect(describeRowMove(rows, 6, 5, 'ingredient')).toBe(
+			'Moved “1 egg” to For the glaze, position 3 of 3.'
+		);
+	});
+
+	it('names the first heading for a line that moves up above it', () => {
+		expect(describeRowMove(rows, 3, 2, 'ingredient')).toBe(
+			'Moved “1 cup powdered sugar” above For the glaze, position 3 of 3.'
+		);
+	});
+
+	it('counts the lines under a heading that moves', () => {
+		expect(describeRowMove(rows, 2, 1, 'ingredient')).toBe(
+			'Moved “For the glaze” up, with 3 ingredients under it.'
+		);
+		expect(describeRowMove(rows, 5, 6, 'ingredient')).toBe(
+			'Moved heading down, with no ingredients under it.'
+		);
+		expect(describeRowMove([heading('For the glaze'), line('1 egg')], 0, 1, 'step')).toBe(
+			'Moved “For the glaze” down, with no steps under it.'
+		);
+		expect(describeRowMove([line('Mix.'), heading('Finish'), line('Bake.')], 1, 0, 'step')).toBe(
+			'Moved “Finish” up, with 2 steps under it.'
+		);
+		expect(describeRowMove([heading('Finish'), line('Mix.'), line('Bake.')], 0, 1, 'step')).toBe(
+			'Moved “Finish” down, with 1 step under it.'
+		);
 	});
 });
 
-describe('itemMoves', () => {
-	it('offers up, down, and the end of every other section', () => {
-		expect(itemMoves(sections, { sectionIndex: 1, itemIndex: 0 })).toEqual([
-			{ kind: 'up', label: 'Move up', to: undefined },
-			{ kind: 'down', label: 'Move down', to: { sectionIndex: 1, itemIndex: 1 } },
-			{ kind: 'section', label: 'Move to section 1', to: { sectionIndex: 0, itemIndex: 4 } },
-			{ kind: 'section', label: 'Move to section 3', to: { sectionIndex: 2, itemIndex: 1 } },
+describe('describeRowAdded', () => {
+	it('names the row as it is once added', () => {
+		expect(describeRowAdded(rows.toSpliced(4, 0, line('')), 4, 'ingredient')).toBe(
+			'Added Ingredient 2, For the glaze.'
+		);
+		expect(describeRowAdded([...rows, heading('')], 7, 'ingredient')).toBe(
+			'Added Ingredient heading 3.'
+		);
+	});
+});
+
+describe('describeRowRemoval', () => {
+	it('names a removed line', () => {
+		expect(describeRowRemoval(rows, 4, 'ingredient')).toBe('Removed Ingredient 2, For the glaze.');
+	});
+
+	it('says a removed heading’s lines stay', () => {
+		expect(describeRowRemoval(rows, 2, 'ingredient')).toBe(
+			'Removed Ingredient heading 1. The 2 ingredients under it stay.'
+		);
+		expect(describeRowRemoval(rows, 5, 'step')).toBe(
+			'Removed Step heading 2. The step under it stays.'
+		);
+		expect(describeRowRemoval([line('Mix.'), heading('Finish')], 1, 'step')).toBe(
+			'Removed Step heading 1.'
+		);
+	});
+});
+
+describe('describeKindChange', () => {
+	it('names the row by its text, then by what it is called now', () => {
+		expect(describeKindChange(rows, 3, 'ingredient')).toBe(
+			'Changed “1 cup powdered sugar” to Ingredient heading 2.'
+		);
+		expect(describeKindChange(rows, 2, 'ingredient')).toBe(
+			'Changed “For the glaze” to Ingredient 3.'
+		);
+		expect(describeKindChange(rows, 5, 'ingredient')).toBe(
+			'Changed heading to Ingredient 3, For the glaze.'
+		);
+	});
+});
+
+describe('describePaste', () => {
+	it('counts the lines and headings a paste brought', () => {
+		expect(
+			describePaste(
+				[heading('Crust'), line('a'), line('b'), heading('Filling'), line('c')],
+				'ingredient'
+			)
+		).toBe('Pasted 3 ingredients and 2 headings.');
+		expect(describePaste([line('Mix.'), line('Bake.')], 'step')).toBe('Pasted 2 steps.');
+		expect(describePaste([heading('Crust'), line('Mix.')], 'step')).toBe(
+			'Pasted 1 step and 1 heading.'
+		);
+		expect(describePaste([heading('Crust'), heading('Filling')], 'step')).toBe(
+			'Pasted 2 headings.'
+		);
+	});
+});
+
+describe('rowsFromPastedText', () => {
+	it('makes a line of each line with words, without blank lines', () => {
+		expect(rowsFromPastedText('2 cups flour\r\n\r\n  1 teaspoon salt  \n')).toEqual([
+			line('2 cups flour'),
+			line('1 teaspoon salt'),
 		]);
 	});
 
-	it('leads nowhere down from the last item', () => {
-		const [up, down] = itemMoves(sections, { sectionIndex: 0, itemIndex: 3 });
-
-		expect(up?.to).toEqual({ sectionIndex: 0, itemIndex: 2 });
-		expect(down?.to).toBeUndefined();
+	it('drops bullets and checkboxes', () => {
+		expect(
+			rowsFromPastedText(
+				'• 2 cups flour\n- 1 teaspoon salt\n* 3 eggs\n▢ 1 cup milk\n☐ 1 lemon\n–2 limes'
+			)
+		).toEqual([
+			line('2 cups flour'),
+			line('1 teaspoon salt'),
+			line('3 eggs'),
+			line('1 cup milk'),
+			line('1 lemon'),
+			line('2 limes'),
+		]);
 	});
 
-	it('offers only up and down without other sections', () => {
-		expect(itemMoves([sections[0] ?? section('')], { sectionIndex: 0, itemIndex: 1 })).toEqual([
-			{ kind: 'up', label: 'Move up', to: { sectionIndex: 0, itemIndex: 0 } },
-			{ kind: 'down', label: 'Move down', to: { sectionIndex: 0, itemIndex: 2 } },
+	it('drops step numbers, but keeps an amount that starts a line', () => {
+		expect(
+			rowsFromPastedText(
+				'1. Heat the oven.\n2) Mix the flour.\nStep 3: Bake.\nSTEP 4 - Cool.\nStep 5\n1.5 cups milk\n2 eggs'
+			)
+		).toEqual([
+			line('Heat the oven.'),
+			line('Mix the flour.'),
+			line('Bake.'),
+			line('Cool.'),
+			line('1.5 cups milk'),
+			line('2 eggs'),
+		]);
+	});
+
+	it('makes a heading of each line ending in a colon', () => {
+		expect(
+			rowsFromPastedText('For the crust:\n• 1 cup flour\n2. For the glaze :\n1 cup sugar\n:')
+		).toEqual([
+			heading('For the crust'),
+			line('1 cup flour'),
+			heading('For the glaze'),
+			line('1 cup sugar'),
 		]);
 	});
 });

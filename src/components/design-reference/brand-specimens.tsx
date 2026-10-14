@@ -16,7 +16,7 @@ const wordmarkHeights = ['h-5', 'h-8', 'h-12'] as const;
 function BrandSpecimens() {
 	return (
 		<div className="flex flex-col gap-10">
-			<Specimen label="Lockup: the header's link home, named by the wordmark">
+			<Specimen label="Lockup: the header’s link home, named by the wordmark">
 				<Lockup />
 			</Specimen>
 			<Specimen label="Wordmark: Shantell Sans outlined, filled with the text color">

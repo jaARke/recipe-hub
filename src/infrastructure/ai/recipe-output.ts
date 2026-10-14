@@ -1,6 +1,7 @@
 import 'server-only';
 import { z } from 'zod';
 import { reviewNoteFields, type ExtractedRecipe } from '@/domain/recipe/extracted-recipe';
+import { transcriptionMarkers } from '@/domain/recipe/transcription-markers';
 
 // What the model returns, kept apart from the domain's draft so every provider's structured output
 // accepts it: every key is required with null for absent (OpenAI's strict mode), no oneOf (Gemini),
@@ -68,7 +69,7 @@ export const scanOutputSchema = z.object({
 	transcription: z
 		.string()
 		.describe(
-			'Every word on the pages in reading order, exactly as written, with [illegible] and [?] markers.'
+			`Every word on the pages in reading order, exactly as written, with ${transcriptionMarkers.illegible} and ${transcriptionMarkers.unsure} markers.`
 		),
 	...recipeFields,
 });

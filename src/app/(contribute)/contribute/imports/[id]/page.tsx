@@ -53,7 +53,7 @@ function ImportUnavailableEmptyState() {
 				<EmptyMedia variant="icon">
 					<FileXIcon aria-hidden="true" />
 				</EmptyMedia>
-				<EmptyTitle>This draft isn&apos;t available</EmptyTitle>
+				<EmptyTitle>This draft isn’t available</EmptyTitle>
 				<EmptyDescription>
 					A draft can be reviewed for {settings.imports.importDraftLifetimeDays} days by the member
 					who imported it. Import the recipe again to get a new draft.
@@ -116,7 +116,7 @@ function ImportReviewSkeleton() {
 
 export default function ImportReviewPage({ params }: PageProps<'/contribute/imports/[id]'>) {
 	return (
-		<PageContainer width="reading" className="flex flex-col gap-8 py-12 sm:py-16">
+		<PageContainer width="readingOrWide" className="flex flex-col gap-8 py-12 sm:py-16">
 			<h1 className="font-heading text-4xl font-semibold">Review the import</h1>
 			<Suspense fallback={<ImportReviewSkeleton />}>
 				<ImportReview params={params} />

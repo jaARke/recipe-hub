@@ -73,7 +73,7 @@ async function ContributeForMember() {
 
 export default function ContributePage() {
 	return (
-		<PageContainer width="reading" className="flex flex-col gap-8 py-12 sm:py-16">
+		<PageContainer width="readingOrWide" className="flex flex-col gap-8 py-12 sm:py-16">
 			<h1 className="font-heading text-4xl font-semibold">Add a recipe</h1>
 			<Suspense fallback={<RecipeEntryTabsSkeleton />}>
 				<ContributeForMember />

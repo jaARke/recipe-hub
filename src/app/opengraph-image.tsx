@@ -3,6 +3,7 @@ import {
 	openGraphFontFamilies,
 	openGraphImageContentType,
 	openGraphImageSize,
+	OpenGraphLockup,
 	renderOpenGraphImage,
 } from '@/app/_lib/open-graph-image';
 import { siteDescription, siteName } from '@/lib/site';
@@ -34,17 +35,7 @@ function SiteCard() {
 					padding: '72px 96px 80px 96px',
 				}}
 			>
-				<div
-					style={{
-						fontFamily: openGraphFontFamilies.heading,
-						fontSize: 128,
-						lineHeight: 1,
-						letterSpacing: '-0.02em',
-						color: tokenColors.light.primary,
-					}}
-				>
-					{siteName}
-				</div>
+				<OpenGraphLockup size="lg" />
 				<div
 					style={{
 						maxWidth: 820,

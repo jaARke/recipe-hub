@@ -31,7 +31,7 @@ const inviteDoneMessages = {
 		'Your account and passkey are ready. Next time, sign in with your passkey.',
 	created:
 		'Your account is ready. Next time, sign in with a code sent to your email. You can add a passkey any time from your account page.',
-	existing: "You already have an account, and you're signed in.",
+	existing: 'You already have an account, and you’re signed in.',
 } as const;
 
 type InviteOutcome = keyof typeof inviteDoneMessages;
@@ -76,8 +76,8 @@ function InviteWelcome({
 					Welcome, {preview.displayName}
 				</InviteStepHeading>
 				<p>
-					You&apos;re invited to {siteName}, where members add recipes to the shared collection.
-					Confirm your email address to create your account.
+					You’re invited to {siteName}, where members add recipes to the shared collection. Confirm
+					your email address to create your account.
 				</p>
 				<p className="text-muted-foreground">
 					This invite expires on{' '}
@@ -144,7 +144,7 @@ function InvitePasskeyOffer({
 		<InviteStep>
 			<div className="flex flex-col gap-3">
 				<InviteStepHeading headingLevel={headingLevel}>Create a passkey</InviteStepHeading>
-				<p>Your account is ready, and you&apos;re signed in.</p>
+				<p>Your account is ready, and you’re signed in.</p>
 				<p>
 					{siteName} uses a passkey instead of a password. Your phone or computer keeps it for you,
 					and you unlock it the way you unlock your device: face, fingerprint, or screen lock.
@@ -192,7 +192,7 @@ function InviteDone({
 	return (
 		<InviteStep>
 			<div className="flex flex-col gap-3">
-				<InviteStepHeading headingLevel={headingLevel}>You&apos;re all set</InviteStepHeading>
+				<InviteStepHeading headingLevel={headingLevel}>You’re all set</InviteStepHeading>
 				<p>{inviteDoneMessages[outcome]}</p>
 			</div>
 			<InviteActions>
@@ -211,9 +211,7 @@ function InviteUnavailable({ headingLevel }: { headingLevel: InviteHeadingLevel 
 	return (
 		<InviteStep>
 			<div className="flex flex-col gap-3">
-				<InviteStepHeading headingLevel={headingLevel}>
-					This invite can&apos;t be used
-				</InviteStepHeading>
+				<InviteStepHeading headingLevel={headingLevel}>This invite can’t be used</InviteStepHeading>
 				<p>
 					The link may have expired, been used already, or been copied only in part. Ask the person
 					who invited you for a new one, or request access.
@@ -239,7 +237,7 @@ function InviteLoadFailed({
 		<InviteStep>
 			<div className="flex flex-col gap-3">
 				<InviteStepHeading headingLevel={headingLevel}>
-					We couldn&apos;t load your invite
+					We couldn’t load your invite
 				</InviteStepHeading>
 				<p>Check your connection and try again.</p>
 			</div>
@@ -264,9 +262,9 @@ function InviteCompleteFailed({
 		<InviteStep>
 			<div className="flex flex-col gap-3">
 				<InviteStepHeading headingLevel={headingLevel}>
-					We couldn&apos;t finish accepting your invite
+					We couldn’t finish accepting your invite
 				</InviteStepHeading>
-				<p>You&apos;re signed in. Check your connection and try again.</p>
+				<p>You’re signed in. Check your connection and try again.</p>
 			</div>
 			<InviteActions>
 				<Button type="button" onClick={onRetry}>
@@ -290,12 +288,10 @@ function InviteSignedIn({
 	return (
 		<InviteStep>
 			<div className="flex flex-col gap-3">
-				<InviteStepHeading headingLevel={headingLevel}>
-					You&apos;re already signed in
-				</InviteStepHeading>
+				<InviteStepHeading headingLevel={headingLevel}>You’re already signed in</InviteStepHeading>
 				<p>
-					You&apos;re signed in as {displayName}. This invite creates a new account, so sign out
-					first to use it.
+					You’re signed in as {displayName}. This invite creates a new account, so sign out first to
+					use it.
 				</p>
 			</div>
 			<InviteActions>{signOutButton}</InviteActions>

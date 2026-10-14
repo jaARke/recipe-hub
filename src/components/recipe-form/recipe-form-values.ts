@@ -1,6 +1,5 @@
 import type { FieldErrors } from '@/components/forms/form-state';
 import type { RecipeFormPayload } from '@/components/recipe-form/recipe-form-fields';
-import type { ItemPlace } from '@/components/recipe-form/sectioned-list';
 import type { Problem } from '@/domain/problem';
 import type { Amount } from '@/domain/recipe/amount';
 import { formatAmount } from '@/domain/recipe/amount-format';
@@ -10,35 +9,39 @@ import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
 import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
 import type { RecipeYield } from '@/domain/recipe/recipe-yield';
 import { tagKey, uniqueTagLabels } from '@/domain/recipe/tag-normalization';
+import {
+	transcriptionMarkersIn,
+	type TranscriptionMarker,
+} from '@/domain/recipe/transcription-markers';
 
 // The recipe form's value and every edit to it. Pure, so the form's behavior is tested without a
-// browser. Sections, items, tags, and photos carry ids that stay with them as they move, and a
-// problem attaches to the item it names, so it follows that item.
+// browser. Rows, tags, and photos carry ids that stay with them as they move, and a problem or a
+// review note attaches to the row it names, so it follows that row.
 
 export type RecipeFormListName = 'ingredientSections' | 'instructionSections';
 
-// One ingredient as written, or one step.
-export type RecipeFormItem = {
-	id: number;
-	text: string;
-	error?: string;
-};
+// A row of a list: a line, which is one ingredient as written or one step, or a heading over the
+// lines after it, such as "For the glaze". A row keeps its id as it moves or changes kind.
+export type RecipeFormRow =
+	| { kind: 'item'; id: number; text: string; error?: string }
+	| {
+			kind: 'heading';
+			id: number;
+			text: string;
+			error?: string;
+			// About the lines under the heading together, such as there being none.
+			sectionError?: string;
+	  };
 
-export type RecipeFormSection = {
-	id: number;
-	heading: string;
-	items: readonly RecipeFormItem[];
-	headingError?: string;
-	// About the section's items together, such as a heading with nothing under it.
-	error?: string;
-};
+export type RecipeFormRowKind = RecipeFormRow['kind'];
 
+// A row as text, such as one a pasted list makes.
+export type RecipeFormRowText = Pick<RecipeFormRow, 'kind' | 'text'>;
+
+// One flat list, which the recipe stores as sections: each heading starts one, and the lines before
+// the first heading form one without a heading.
 export type RecipeFormList = {
-	sections: readonly RecipeFormSection[];
-	// Set once a section has a heading or a heading error, or a second section is added. Typing never
-	// clears it, so a heading field never disappears while it holds text or has focus; removing
-	// sections can.
-	showsHeadings: boolean;
+	rows: readonly RecipeFormRow[];
 	// About the list as a whole, such as having no ingredients at all.
 	error?: string;
 };
@@ -96,48 +99,66 @@ export type RecipeFormValues = {
 	instructionSections: RecipeFormList;
 	tags: readonly RecipeFormTag[];
 	photos: Readonly<Record<RecipeImageRole, readonly RecipeFormPhoto[]>>;
+	// A save's errors, which mark their fields invalid.
 	fieldErrors: Partial<Record<RecipeFormErrorField, string>>;
 	// About the recipe as a whole, or a problem that names nothing in the form.
 	formError?: string;
-	// Whether the problems are a loaded draft's, which the member reviews and can mark as checked,
-	// rather than a save's errors. The first save's errors end the review.
-	reviewingDraft: boolean;
-	// The problems the member has marked as checked while reviewing a draft, by where each shows, so
-	// a mark follows its item. A removed item's mark matches nothing again, since ids are never
-	// reused, and new errors clear every mark.
-	checkedProblems: ReadonlySet<ProblemKey>;
-	// Sections, items, tags, and photos all take the next id, so ids are unique within the form.
+	// A loaded draft's problems, which the member checks against the original; they are not errors,
+	// and a save's errors leave them. Keyed by where each shows, so a note follows its row; a
+	// removed row's note matches nothing again, since ids are never reused.
+	reviewNotes: ReadonlyMap<ProblemKey, RecipeFormReviewNote>;
+	// Rows, tags, and photos all take the next id, so ids are unique within the form.
 	nextId: number;
 };
 
 // The photo fields' part of the value, which the photo import keeps on its own.
 export type RecipeFormPhotoValues = Pick<RecipeFormValues, 'photos' | 'nextId'>;
 
-// Where a problem shows: a field, a whole list, a section or its heading, an item, or a photo.
+// Where a problem shows: a field, a whole list, a row, the section a heading starts (by the heading's
+// id), or a photo.
 export type ProblemTarget =
 	| { kind: 'field'; field: RecipeFormErrorField }
 	| { kind: 'list'; list: RecipeFormListName }
-	| { kind: 'section' | 'heading' | 'item' | 'photo'; id: number };
+	| { kind: 'row' | 'section' | 'photo'; id: number };
 
 // One for each place a problem can show, the whole recipe included.
-type ProblemKey =
+export type ProblemKey =
 	| 'form'
 	| `field:${RecipeFormErrorField}`
 	| `list:${RecipeFormListName}`
-	| `${'section' | 'heading' | 'item' | 'photo'}:${number}`;
+	| `${'row' | 'section' | 'photo'}:${number}`;
 
-// A problem the form shows, with where it shows: the places carry what the form names them by.
+// A draft's note on one place, open until the member edits what it is on or says it looks right.
+export type RecipeFormReviewNote = {
+	message: string;
+	status: 'open' | 'resolved';
+};
+
+// Where a problem or a note shows, with what the form names the place by.
+export type RecipeFormLocation =
+	| { kind: 'form' }
+	| { kind: 'field'; field: RecipeFormErrorField }
+	| { kind: 'list'; list: RecipeFormListName }
+	// A section shows at its heading, whose index among the rows it has.
+	| { kind: 'row' | 'section'; list: RecipeFormListName; index: number; id: number }
+	| { kind: 'photo'; role: RecipeImageRole; index: number; id: number };
+
+// A save's error, with where it shows.
 export type RecipeFormProblem = {
 	message: string;
-	// Marked as checked by the member, which changes nothing else about it.
-	checked: boolean;
-	target:
-		| { kind: 'form' }
-		| { kind: 'field'; field: RecipeFormErrorField }
-		| { kind: 'list'; list: RecipeFormListName }
-		| { kind: 'section' | 'heading'; list: RecipeFormListName; sectionIndex: number; id: number }
-		| { kind: 'item'; list: RecipeFormListName; place: ItemPlace; id: number }
-		| { kind: 'photo'; role: RecipeImageRole; index: number; id: number };
+	target: RecipeFormLocation;
+};
+
+// Something to check against the original before saving: an open review note, transcription
+// markers left in the text, or both.
+export type RecipeFormCheck = {
+	target: RecipeFormLocation;
+	// The open note's message.
+	note?: string;
+	markers: readonly TranscriptionMarker[];
+	// Whether the member can say it looks right as it is. Markers are edited away, and a field the
+	// recipe needs is filled in.
+	confirmable: boolean;
 };
 
 // Keyed by the path a problem takes in the recipe content, such as ingredientSections.0.lines.2.
@@ -166,20 +187,30 @@ export type PhotoEdit =
 export type RecipeFormEdit =
 	| { type: 'setText'; field: RecipeFormTextField; text: string }
 	| { type: 'setYieldKind'; kind: RecipeYieldKind }
-	| { type: 'setItemText'; list: RecipeFormListName; itemId: number; text: string }
-	| { type: 'addItem'; list: RecipeFormListName; sectionId: number }
-	| { type: 'removeItem'; list: RecipeFormListName; itemId: number }
-	// The destination indexes the list as it is without the item.
-	| { type: 'moveItem'; list: RecipeFormListName; itemId: number; to: ItemPlace }
-	| { type: 'addSection'; list: RecipeFormListName }
-	| { type: 'removeSection'; list: RecipeFormListName; sectionId: number }
-	| { type: 'setHeading'; list: RecipeFormListName; sectionId: number; heading: string }
+	| { type: 'setRowText'; list: RecipeFormListName; rowId: number; text: string }
+	// A blank row, below the row with this id, or at the end without one.
+	| { type: 'addRow'; list: RecipeFormListName; kind: RecipeFormRowKind; afterRowId?: number }
+	// A heading's lines stay, joining the lines above it.
+	| { type: 'removeRow'; list: RecipeFormListName; rowId: number }
+	// The destination indexes the list as it is without the row.
+	| { type: 'moveRow'; list: RecipeFormListName; rowId: number; toIndex: number }
+	| { type: 'setRowKind'; list: RecipeFormListName; rowId: number; kind: RecipeFormRowKind }
+	// A pasted list's rows, which take the next ids in order and go below the row, which keeps the
+	// text around the paste; a row left blank gives way to them.
+	| {
+			type: 'pasteRows';
+			list: RecipeFormListName;
+			rowId: number;
+			text: string;
+			rows: readonly RecipeFormRowText[];
+	  }
 	// Adds each tag not already chosen, as tagLabelsToAdd finds them, and clears the tag field.
 	| { type: 'addTags'; labels: readonly string[] }
 	| { type: 'removeTag'; tagId: number }
 	| PhotoEdit
 	| { type: 'attachErrors'; fieldErrors: FieldErrors; targets: ProblemTargets }
-	| { type: 'setProblemChecked'; target: ProblemTarget | { kind: 'form' }; checked: boolean };
+	// The member says the place looks right as it is, which resolves its note.
+	| { type: 'resolveReviewNote'; target: ProblemTarget | { kind: 'form' } };
 
 // Each list's items, under the name the recipe content gives them.
 const itemKeys = {
@@ -236,21 +267,8 @@ function isBlank(text: string): boolean {
 }
 
 // Blank optional text is left out of the payload, as the domain expects.
-function filledText(text: string): string | undefined {
+export function filledText(text: string): string | undefined {
 	return isBlank(text) ? undefined : text.trim();
-}
-
-// Heading fields show for more than one section, or for one whose heading holds text or has an
-// error, so the error has a field to show beside.
-export function sectionsShowHeadings(
-	sections: readonly { heading?: string; headingError?: string }[]
-): boolean {
-	return (
-		sections.length > 1 ||
-		sections.some(
-			({ heading = '', headingError }) => !isBlank(heading) || headingError !== undefined
-		)
-	);
 }
 
 function minutesText(minutes: number | undefined): string {
@@ -288,20 +306,23 @@ export function storedPathname({ upload }: RecipeFormPhoto): string | undefined 
 	return upload.status === 'saved' || upload.status === 'uploaded' ? upload.pathname : undefined;
 }
 
-// Records where problems with a section, its heading, and its items show, at the section's place
-// in the content.
+// Records where problems with a section, its heading, and its lines show, at the section's place in
+// the content. A section's problems show at its heading's row; one without a heading has no row of
+// its own, its lines joining the lines above, so its problems fall to the list's.
 function addSectionTargets(
 	targets: Map<string, ProblemTarget>,
 	list: RecipeFormListName,
 	sectionIndex: number,
-	sectionId: number,
+	headingId: number | undefined,
 	itemIds: readonly number[]
 ) {
 	const sectionPath = `${list}.${sectionIndex}`;
-	targets.set(sectionPath, { kind: 'section', id: sectionId });
-	targets.set(`${sectionPath}.heading`, { kind: 'heading', id: sectionId });
+	if (headingId !== undefined) {
+		targets.set(sectionPath, { kind: 'section', id: headingId });
+		targets.set(`${sectionPath}.heading`, { kind: 'row', id: headingId });
+	}
 	itemIds.forEach((itemId, itemIndex) => {
-		targets.set(`${sectionPath}.${itemKeys[list]}.${itemIndex}`, { kind: 'item', id: itemId });
+		targets.set(`${sectionPath}.${itemKeys[list]}.${itemIndex}`, { kind: 'row', id: itemId });
 	});
 }
 
@@ -319,7 +340,7 @@ function problemTarget(path: string, targets: ProblemTargets): ProblemTarget | u
 	return undefined;
 }
 
-// What the form keeps a problem's check by, which follows an item, section, or photo as it moves.
+// What the form keeps a review note by, which follows a row, section, or photo as it moves.
 export function problemKey(target: ProblemTarget | { kind: 'form' }): ProblemKey {
 	switch (target.kind) {
 		case 'form':
@@ -333,7 +354,7 @@ export function problemKey(target: ProblemTarget | { kind: 'form' }): ProblemKey
 	}
 }
 
-// Replaces every error in the form with these, which clears every check. The first problem for each
+// Replaces every error in the form with these, leaving the review notes. The first problem for each
 // target wins, and one that names nothing in the form shows as a problem with the whole recipe.
 function withErrors(
 	values: RecipeFormValues,
@@ -358,22 +379,15 @@ function withErrors(
 	}
 
 	const errorFor = (target: ProblemTarget) => messages.get(problemKey(target));
-	const listWithErrors = (list: RecipeFormListName): RecipeFormList => {
-		const sections = values[list].sections.map((section) => ({
-			...section,
-			headingError: errorFor({ kind: 'heading', id: section.id }),
-			error: errorFor({ kind: 'section', id: section.id }),
-			items: section.items.map((item) => ({
-				...item,
-				error: errorFor({ kind: 'item', id: item.id }),
-			})),
-		}));
-		return {
-			sections,
-			showsHeadings: values[list].showsHeadings || sectionsShowHeadings(sections),
-			error: errorFor({ kind: 'list', list }),
-		};
-	};
+	const listWithErrors = (list: RecipeFormListName): RecipeFormList => ({
+		rows: values[list].rows.map((row) => {
+			const error = errorFor({ kind: 'row', id: row.id });
+			return row.kind === 'heading'
+				? { ...row, error, sectionError: errorFor({ kind: 'section', id: row.id }) }
+				: { ...row, error };
+		}),
+		error: errorFor({ kind: 'list', list }),
+	});
 	const photosWithErrors = (role: RecipeImageRole) =>
 		values.photos[role].map((photo) => ({
 			...photo,
@@ -387,27 +401,28 @@ function withErrors(
 		photos: { dish: photosWithErrors('dish'), scan: photosWithErrors('scan') },
 		fieldErrors: formFieldErrors,
 		formError,
-		checkedProblems: new Set(),
 	};
 }
 
-// A draft's problems as one message for each place they show, so a note on a line that also lost
-// text shows both: each place's distinct messages in order, under the first path that names it.
-function draftFieldErrors(problems: readonly Problem[], targets: ProblemTargets): FieldErrors {
-	const places = new Map<ProblemKey, { path: string; messages: string[] }>();
+// A draft's problems as one open note for each place they show, so a note on a line that also lost
+// text says both: each place's distinct messages in order.
+function draftReviewNotes(
+	problems: readonly Problem[],
+	targets: ProblemTargets
+): Map<ProblemKey, RecipeFormReviewNote> {
+	const places = new Map<ProblemKey, string[]>();
 	for (const { path, message } of problems) {
-		const target = problemTarget(path, targets);
-		// Every problem that names nothing in the form shows as the one with the whole recipe.
-		const key = problemKey(target ?? { kind: 'form' });
-		const place = places.get(key);
-		if (place === undefined) {
-			places.set(key, { path, messages: [message] });
-		} else if (!place.messages.includes(message)) {
-			place.messages.push(message);
+		// Every problem that names nothing in the form is a note on the whole recipe.
+		const key = problemKey(problemTarget(path, targets) ?? { kind: 'form' });
+		const messages = places.get(key);
+		if (messages === undefined) {
+			places.set(key, [message]);
+		} else if (!messages.includes(message)) {
+			messages.push(message);
 		}
 	}
-	return Object.fromEntries(
-		Array.from(places.values(), ({ path, messages }) => [path, messages.join(' ')])
+	return new Map(
+		Array.from(places, ([key, messages]) => [key, { message: messages.join(' '), status: 'open' }])
 	);
 }
 
@@ -437,8 +452,8 @@ function editableAmountText(amount: Amount): string {
 }
 
 // The form's starting value: empty, a recipe being edited, or a draft to review. A draft's problems
-// attach through the same paths a save's do, so they show from the start, joined where several
-// land in one place.
+// become its review notes, which attach through the same paths a save's errors do, so they show
+// from the start, joined where several land in one place.
 export function recipeFormValues(
 	content?: RecipeContent | RecipeDraftContent,
 	problems: readonly Problem[] = []
@@ -447,31 +462,31 @@ export function recipeFormValues(
 	const newId = () => nextId++;
 	const targets = new Map<string, ProblemTarget>();
 
+	// A heading's row, then a row for each line. Sections without headings follow on from the lines
+	// above them, so two of them in a row load as one run of lines.
 	const listFrom = (
 		list: RecipeFormListName,
 		sections: readonly ContentSection[] | undefined
 	): RecipeFormList => {
 		if (sections === undefined || sections.length === 0) {
-			return {
-				sections: [{ id: newId(), heading: '', items: [{ id: newId(), text: '' }] }],
-				showsHeadings: false,
-			};
+			return { rows: [{ kind: 'item', id: newId(), text: '' }] };
 		}
-		return {
-			sections: sections.map((section, sectionIndex) => {
-				const id = newId();
-				const items = section.texts.map((text) => ({ id: newId(), text }));
-				addSectionTargets(
-					targets,
-					list,
-					sectionIndex,
-					id,
-					items.map((item) => item.id)
-				);
-				return { id, heading: section.heading ?? '', items };
-			}),
-			showsHeadings: sectionsShowHeadings(sections),
-		};
+		const rows = sections.flatMap((section, sectionIndex): RecipeFormRow[] => {
+			const heading =
+				section.heading === undefined
+					? undefined
+					: { kind: 'heading' as const, id: newId(), text: section.heading };
+			const items = section.texts.map((text) => ({ kind: 'item' as const, id: newId(), text }));
+			addSectionTargets(
+				targets,
+				list,
+				sectionIndex,
+				heading?.id,
+				items.map((item) => item.id)
+			);
+			return heading === undefined ? items : [heading, ...items];
+		});
+		return { rows };
 	};
 
 	const recipeYield = content?.yield;
@@ -514,7 +529,7 @@ export function recipeFormValues(
 		});
 	});
 
-	const values: RecipeFormValues = {
+	return {
 		text,
 		yieldKind: recipeYield?.kind ?? 'servings',
 		ingredientSections,
@@ -522,39 +537,51 @@ export function recipeFormValues(
 		tags,
 		photos,
 		fieldErrors: {},
-		reviewingDraft: false,
-		checkedProblems: new Set(),
+		reviewNotes: draftReviewNotes(problems, targets),
 		nextId,
 	};
-	return problems.length === 0
-		? values
-		: { ...withErrors(values, draftFieldErrors(problems, targets), targets), reviewingDraft: true };
 }
 
-// The payload the form sends. Blank items, blank optional text, and sections with neither a heading
-// nor an item are left out; a section with a heading and no items stays, so the domain flags it.
+// The payload the form sends, its lists as sections: each heading starts one, and the lines before
+// the first heading form one without a heading. Blank rows and blank optional text are left out, so
+// a blank heading's lines join the lines above it; a heading with no lines stays, so the domain flags
+// it.
 export function recipeFormSubmission(values: RecipeFormValues): RecipeFormSubmission {
 	const targets = new Map<string, ProblemTarget>();
 
 	const submittedSections = (list: RecipeFormListName) => {
 		const sections: { heading?: string; texts: string[] }[] = [];
-		for (const section of values[list].sections) {
-			const items = section.items.filter((item) => !isBlank(item.text));
-			if (isBlank(section.heading) && items.length === 0) {
-				continue;
+		let heading: RecipeFormRow | undefined;
+		let items: RecipeFormRow[] = [];
+		const addSection = () => {
+			if (heading === undefined && items.length === 0) {
+				return;
 			}
 			addSectionTargets(
 				targets,
 				list,
 				sections.length,
-				section.id,
+				heading?.id,
 				items.map((item) => item.id)
 			);
 			sections.push({
-				heading: filledText(section.heading),
+				heading: heading?.text.trim(),
 				texts: items.map((item) => item.text.trim()),
 			});
+		};
+		for (const row of values[list].rows) {
+			if (isBlank(row.text)) {
+				continue;
+			}
+			if (row.kind === 'heading') {
+				addSection();
+				heading = row;
+				items = [];
+			} else {
+				items.push(row);
+			}
 		}
+		addSection();
 		return sections;
 	};
 
@@ -606,106 +633,151 @@ export function recipeFormSubmission(values: RecipeFormValues): RecipeFormSubmis
 	return { payload, targets };
 }
 
-// A problem and where it shows, before the member's check is looked up.
-type PlacedProblem = Omit<RecipeFormProblem, 'checked'>;
+// A place the form shows, with what it holds there.
+type RecipeFormPlace = {
+	target: RecipeFormLocation;
+	error?: string;
+	// The texts the member edits there, which can hold transcription markers.
+	texts?: readonly string[];
+	// The recipe needs this filled in, and it is empty.
+	emptyRequired?: boolean;
+};
 
-function listProblems(values: RecipeFormValues, list: RecipeFormListName): PlacedProblem[] {
-	const { error, sections } = values[list];
-	const problems: PlacedProblem[] = [];
-	if (error !== undefined) {
-		problems.push({ message: error, target: { kind: 'list', list } });
-	}
-	sections.forEach((section, sectionIndex) => {
-		if (section.headingError !== undefined) {
-			problems.push({
-				message: section.headingError,
-				target: { kind: 'heading', list, sectionIndex, id: section.id },
-			});
+function hasItemText(list: RecipeFormList): boolean {
+	return list.rows.some((row) => row.kind === 'item' && !isBlank(row.text));
+}
+
+// The text a field holds; the tags field holds its tags and the one being typed, which saving adds.
+function fieldTexts(values: RecipeFormValues, field: RecipeFormErrorField): readonly string[] {
+	return field === 'tags'
+		? [...values.tags.map((tag) => tag.label), values.text.tagDraft]
+		: [values.text[field]];
+}
+
+function fieldPlaces(
+	values: RecipeFormValues,
+	fields: readonly RecipeFormErrorField[]
+): RecipeFormPlace[] {
+	return fields.flatMap((field): RecipeFormPlace[] => {
+		// The unit shows only for a yield the recipe makes, and only then is it sent.
+		if (field === 'yieldUnit' && values.yieldKind !== 'makes') {
+			return [];
 		}
-		section.items.forEach((item, itemIndex) => {
-			if (item.error !== undefined) {
-				problems.push({
-					message: item.error,
-					target: { kind: 'item', list, place: { sectionIndex, itemIndex }, id: item.id },
-				});
-			}
+		return [
+			{
+				target: { kind: 'field', field },
+				error: values.fieldErrors[field],
+				texts: fieldTexts(values, field),
+				emptyRequired: field === 'title' && isBlank(values.text.title),
+			},
+		];
+	});
+}
+
+// A list's places: the list, then each row, and after each heading the section it starts, about
+// the lines under it together, which shows at the heading's row too.
+function listPlaces(values: RecipeFormValues, list: RecipeFormListName): RecipeFormPlace[] {
+	const { error, rows } = values[list];
+	const places: RecipeFormPlace[] = [
+		{ target: { kind: 'list', list }, error, emptyRequired: !hasItemText(values[list]) },
+	];
+	rows.forEach((row, index) => {
+		places.push({
+			target: { kind: 'row', list, index, id: row.id },
+			error: row.error,
+			texts: [row.text],
 		});
-		if (section.error !== undefined) {
-			problems.push({
-				message: section.error,
-				target: { kind: 'section', list, sectionIndex, id: section.id },
+		if (row.kind === 'heading') {
+			places.push({
+				target: { kind: 'section', list, index, id: row.id },
+				error: row.sectionError,
 			});
 		}
 	});
-	return problems;
+	return places;
 }
 
-// Every problem the form shows, in the order it shows them, starting with one about the whole recipe.
-export function recipeFormProblems(values: RecipeFormValues): RecipeFormProblem[] {
-	const fieldProblems = (fields: readonly RecipeFormErrorField[]) =>
-		fields.flatMap((field): PlacedProblem[] => {
-			const message = values.fieldErrors[field];
-			return message === undefined ? [] : [{ message, target: { kind: 'field', field } }];
-		});
-	const photoProblems = (role: RecipeImageRole) =>
-		values.photos[role].flatMap((photo, index): PlacedProblem[] =>
-			photo.error === undefined
-				? []
-				: [{ message: photo.error, target: { kind: 'photo', role, index, id: photo.id } }]
-		);
-
-	const problems: PlacedProblem[] = [
-		...(values.formError === undefined
-			? []
-			: [{ message: values.formError, target: { kind: 'form' } } as const]),
-		...fieldProblems(fieldsBeforeLists),
-		...listProblems(values, 'ingredientSections'),
-		...listProblems(values, 'instructionSections'),
-		...fieldProblems(fieldsAfterLists),
-		...photoRoles.flatMap(photoProblems),
-	];
-	return problems.map((problem) => ({
-		...problem,
-		checked: values.checkedProblems.has(problemKey(problem.target)),
+// A dish photo's description is saved, unless the photo failed and has none to save.
+function photoPlaces(values: RecipeFormValues, role: RecipeImageRole): RecipeFormPlace[] {
+	return values.photos[role].map((photo, index) => ({
+		target: { kind: 'photo', role, index, id: photo.id },
+		error: photo.error,
+		texts: role === 'dish' && photo.upload.status !== 'failed' ? [photo.alt] : undefined,
 	}));
 }
 
-function updateSections(
-	values: RecipeFormValues,
-	list: RecipeFormListName,
-	update: (sections: readonly RecipeFormSection[]) => readonly RecipeFormSection[]
-): RecipeFormValues {
-	return { ...values, [list]: { ...values[list], sections: update(values[list].sections) } };
+// Every place the form shows, in the order it shows them, starting with the whole recipe.
+function recipeFormPlaces(values: RecipeFormValues): RecipeFormPlace[] {
+	return [
+		{ target: { kind: 'form' }, error: values.formError },
+		...fieldPlaces(values, fieldsBeforeLists),
+		...listPlaces(values, 'ingredientSections'),
+		...listPlaces(values, 'instructionSections'),
+		...fieldPlaces(values, fieldsAfterLists),
+		...photoRoles.flatMap((role) => photoPlaces(values, role)),
+	];
 }
 
-function updateSection(
-	values: RecipeFormValues,
-	list: RecipeFormListName,
-	sectionId: number,
-	update: (section: RecipeFormSection) => RecipeFormSection
-): RecipeFormValues {
-	return updateSections(values, list, (sections) =>
-		sections.map((section) => (section.id === sectionId ? update(section) : section))
+// Every error the form shows, in the order it shows them, starting with one about the whole recipe.
+export function recipeFormProblems(values: RecipeFormValues): RecipeFormProblem[] {
+	return recipeFormPlaces(values).flatMap(({ target, error }) =>
+		error === undefined ? [] : [{ message: error, target }]
 	);
 }
 
-// Takes the item out of its section, then puts it at the destination.
-function withItemMoved(
-	sections: readonly RecipeFormSection[],
-	itemId: number,
-	to: ItemPlace
-): readonly RecipeFormSection[] {
-	const item = sections.flatMap((section) => section.items).find(({ id }) => id === itemId);
-	if (item === undefined) {
-		return sections;
+// Everything left to check against the original, in the order the form shows it: the open review
+// notes, and the text that still holds a transcription marker.
+export function recipeFormChecks(values: RecipeFormValues): RecipeFormCheck[] {
+	return recipeFormPlaces(values).flatMap(
+		({ target, texts = [], emptyRequired = false }): RecipeFormCheck[] => {
+			const note = values.reviewNotes.get(problemKey(target));
+			const openNote = note?.status === 'open' ? note.message : undefined;
+			// A line apart, so no marker spans two texts.
+			const markers = transcriptionMarkersIn(texts.join('\n'));
+			if (openNote === undefined && markers.length === 0) {
+				return [];
+			}
+			return [
+				{
+					target,
+					note: openNote,
+					markers,
+					confirmable: openNote !== undefined && markers.length === 0 && !emptyRequired,
+				},
+			];
+		}
+	);
+}
+
+function updateRows(
+	values: RecipeFormValues,
+	list: RecipeFormListName,
+	update: (rows: readonly RecipeFormRow[]) => readonly RecipeFormRow[]
+): RecipeFormValues {
+	return { ...values, [list]: { ...values[list], rows: update(values[list].rows) } };
+}
+
+// The row as the other kind. Its errors were about it as the kind it was, so they go; its note is
+// about its text, which stays, so the note follows it.
+function rowOfKind(row: RecipeFormRow, kind: RecipeFormRowKind): RecipeFormRow {
+	return row.kind === kind ? row : { kind, id: row.id, text: row.text };
+}
+
+// The rows with a pasted list's rows below the row, which keeps the text around the paste, or in
+// its place when that is blank.
+function withRowsPasted(
+	rows: readonly RecipeFormRow[],
+	edit: Extract<RecipeFormEdit, { type: 'pasteRows' }>,
+	firstId: number
+): readonly RecipeFormRow[] {
+	const index = rows.findIndex((row) => row.id === edit.rowId);
+	const row = rows[index];
+	if (row === undefined) {
+		return rows;
 	}
-	return sections.map((section, sectionIndex) => {
-		const items = section.items.filter(({ id }) => id !== itemId);
-		return {
-			...section,
-			items: sectionIndex === to.sectionIndex ? items.toSpliced(to.itemIndex, 0, item) : items,
-		};
-	});
+	const pasted = edit.rows.map(({ kind, text }, offset) => ({ kind, id: firstId + offset, text }));
+	const kept = isBlank(edit.text) ? [] : [{ ...row, text: edit.text }];
+	return rows.toSpliced(index, 1, ...kept, ...pasted);
 }
 
 // Applies the update to the photo with this id, whichever field it is in; undefined removes it.
@@ -741,17 +813,17 @@ function updateUpload<Values extends RecipeFormPhotoValues>(
 	});
 }
 
-// Takes the photo out of the list, then puts it at the index; a list without it is unchanged.
-function withPhotoMoved(
-	photos: readonly RecipeFormPhoto[],
-	photoId: number,
+// Takes the row or photo out of the list, then puts it at the index; a list without it is unchanged.
+function withMoved<Entry extends { id: number }>(
+	entries: readonly Entry[],
+	entryId: number,
 	toIndex: number
-): readonly RecipeFormPhoto[] {
-	const photo = photos.find(({ id }) => id === photoId);
-	if (photo === undefined) {
-		return photos;
+): readonly Entry[] {
+	const entry = entries.find(({ id }) => id === entryId);
+	if (entry === undefined) {
+		return entries;
 	}
-	return photos.filter(({ id }) => id !== photoId).toSpliced(toIndex, 0, photo);
+	return entries.filter(({ id }) => id !== entryId).toSpliced(toIndex, 0, entry);
 }
 
 export function editPhotos<Values extends RecipeFormPhotoValues>(
@@ -799,14 +871,14 @@ export function editPhotos<Values extends RecipeFormPhotoValues>(
 		case 'makeCoverPhoto':
 			return {
 				...values,
-				photos: { ...values.photos, dish: withPhotoMoved(values.photos.dish, edit.photoId, 0) },
+				photos: { ...values.photos, dish: withMoved(values.photos.dish, edit.photoId, 0) },
 			};
 		case 'movePhoto':
 			return {
 				...values,
 				photos: {
-					dish: withPhotoMoved(values.photos.dish, edit.photoId, edit.toIndex),
-					scan: withPhotoMoved(values.photos.scan, edit.photoId, edit.toIndex),
+					dish: withMoved(values.photos.dish, edit.photoId, edit.toIndex),
+					scan: withMoved(values.photos.scan, edit.photoId, edit.toIndex),
 				},
 			};
 		case 'setPhotoAlt':
@@ -814,70 +886,178 @@ export function editPhotos<Values extends RecipeFormPhotoValues>(
 	}
 }
 
+// The section the row at this index is in: the heading at or above it, or for the lines before any
+// heading, the list.
+function sectionTargetAt(
+	rows: readonly RecipeFormRow[],
+	index: number,
+	list: RecipeFormListName
+): ProblemTarget {
+	const heading = rows.slice(0, index + 1).findLast((row) => row.kind === 'heading');
+	return heading === undefined ? { kind: 'list', list } : { kind: 'section', id: heading.id };
+}
+
+// The places a list's text changes answer: a row whose text changed answers its own note, and a line
+// whose text changed, or one added with text, answers its section's and its list's, whose notes are
+// about their lines.
+function rowChangeTargets(
+	before: readonly RecipeFormRow[],
+	after: readonly RecipeFormRow[],
+	list: RecipeFormListName
+): ProblemTarget[] {
+	const textsBefore = new Map(before.map((row) => [row.id, row.text]));
+	return after.flatMap((row, index): ProblemTarget[] => {
+		const textBefore = textsBefore.get(row.id);
+		const added = textBefore === undefined;
+		if (added ? isBlank(row.text) : textBefore === row.text) {
+			return [];
+		}
+		const own: ProblemTarget[] = added ? [] : [{ kind: 'row', id: row.id }];
+		return row.kind === 'heading'
+			? own
+			: [...own, sectionTargetAt(after, index, list), { kind: 'list', list }];
+	});
+}
+
+// The section a heading's lines join once the heading is gone or is a line itself: the section of
+// its first line still in the list, or else of the row before it.
+function joinedSectionTarget(
+	before: readonly RecipeFormRow[],
+	after: readonly RecipeFormRow[],
+	headingIndex: number,
+	list: RecipeFormListName
+): ProblemTarget {
+	const indexesAfter = new Map(after.map((row, index) => [row.id, index]));
+	const lines = before.slice(headingIndex + 1);
+	const nextHeading = lines.findIndex((row) => row.kind === 'heading');
+	const neighbors = [
+		...(nextHeading === -1 ? lines : lines.slice(0, nextHeading)),
+		...before.slice(0, headingIndex).reverse(),
+	];
+	for (const neighbor of neighbors) {
+		const index = indexesAfter.get(neighbor.id);
+		if (index !== undefined) {
+			return sectionTargetAt(after, index, list);
+		}
+	}
+	return { kind: 'list', list };
+}
+
+// Moves the open note of each section an edit dissolved, by removing its heading or changing it to a
+// line, to the section its lines joined, so a note is never hidden while it is open. An open note
+// already there takes the moved one's message after its own.
+function withDissolvedSectionNotesMoved(
+	values: RecipeFormValues,
+	edited: RecipeFormValues,
+	list: RecipeFormListName
+): RecipeFormValues {
+	const before = values[list].rows;
+	const after = edited[list].rows;
+	const headingsAfter = new Set(after.flatMap((row) => (row.kind === 'heading' ? [row.id] : [])));
+	let reviewNotes: Map<ProblemKey, RecipeFormReviewNote> | undefined;
+	before.forEach((row, index) => {
+		const key = problemKey({ kind: 'section', id: row.id });
+		const note = edited.reviewNotes.get(key);
+		if (row.kind !== 'heading' || headingsAfter.has(row.id) || note?.status !== 'open') {
+			return;
+		}
+		reviewNotes ??= new Map(edited.reviewNotes);
+		const joinedKey = problemKey(joinedSectionTarget(before, after, index, list));
+		const joined = reviewNotes.get(joinedKey);
+		reviewNotes.delete(key);
+		reviewNotes.set(
+			joinedKey,
+			joined?.status === 'open' ? { ...joined, message: `${joined.message} ${note.message}` } : note
+		);
+	});
+	return reviewNotes === undefined ? edited : { ...edited, reviewNotes };
+}
+
+// The places whose notes an edit outside the lists answers: the text it changes. Saying a place
+// looks right answers its note.
+function answeredNoteTargets(edit: RecipeFormEdit): (ProblemTarget | { kind: 'form' })[] {
+	switch (edit.type) {
+		case 'setText':
+			return [{ kind: 'field', field: edit.field === 'tagDraft' ? 'tags' : edit.field }];
+		case 'addTags':
+		case 'removeTag':
+			return [{ kind: 'field', field: 'tags' }];
+		case 'setPhotoAlt':
+			return [{ kind: 'photo', id: edit.photoId }];
+		case 'resolveReviewNote':
+			return [edit.target];
+		default:
+			return [];
+	}
+}
+
+// Resolves the open notes on these places; the value stays the same object when none is open.
+function withNotesResolved(
+	values: RecipeFormValues,
+	targets: readonly (ProblemTarget | { kind: 'form' })[]
+): RecipeFormValues {
+	const keys = targets
+		.map(problemKey)
+		.filter((key) => values.reviewNotes.get(key)?.status === 'open');
+	if (keys.length === 0) {
+		return values;
+	}
+	const reviewNotes = new Map(values.reviewNotes);
+	for (const key of keys) {
+		const note = reviewNotes.get(key);
+		if (note !== undefined) {
+			reviewNotes.set(key, { ...note, status: 'resolved' });
+		}
+	}
+	return { ...values, reviewNotes };
+}
+
 export function editRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): RecipeFormValues {
+	const edited = editedRecipeForm(values, edit);
+	if (!('list' in edit)) {
+		return withNotesResolved(edited, answeredNoteTargets(edit));
+	}
+	// An edit to a list answers what its text changes answer, and keeps the notes it would hide.
+	const { list } = edit;
+	return withNotesResolved(
+		withDissolvedSectionNotesMoved(values, edited, list),
+		rowChangeTargets(values[list].rows, edited[list].rows, list)
+	);
+}
+
+function editedRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): RecipeFormValues {
 	switch (edit.type) {
 		case 'setText':
 			return { ...values, text: { ...values.text, [edit.field]: edit.text } };
 		case 'setYieldKind':
 			return { ...values, yieldKind: edit.kind };
-		case 'setItemText':
-			return updateSections(values, edit.list, (sections) =>
-				sections.map((section) => ({
-					...section,
-					items: section.items.map((item) =>
-						item.id === edit.itemId ? { ...item, text: edit.text } : item
-					),
-				}))
+		case 'setRowText':
+			return updateRows(values, edit.list, (rows) =>
+				rows.map((row) => (row.id === edit.rowId ? { ...row, text: edit.text } : row))
 			);
-		case 'addItem':
+		case 'addRow': {
+			const added = { kind: edit.kind, id: values.nextId, text: '' };
+			const after = values[edit.list].rows.findIndex((row) => row.id === edit.afterRowId);
 			return {
-				...updateSection(values, edit.list, edit.sectionId, (section) => ({
-					...section,
-					items: [...section.items, { id: values.nextId, text: '' }],
-				})),
+				...updateRows(values, edit.list, (rows) =>
+					after === -1 ? [...rows, added] : rows.toSpliced(after + 1, 0, added)
+				),
 				nextId: values.nextId + 1,
 			};
-		case 'removeItem':
-			return updateSections(values, edit.list, (sections) =>
-				sections.map((section) => ({
-					...section,
-					items: section.items.filter((item) => item.id !== edit.itemId),
-				}))
-			);
-		case 'moveItem':
-			return updateSections(values, edit.list, (sections) =>
-				withItemMoved(sections, edit.itemId, edit.to)
-			);
-		case 'addSection': {
-			const section = {
-				id: values.nextId,
-				heading: '',
-				items: [{ id: values.nextId + 1, text: '' }],
-			};
-			const list = values[edit.list];
-			return {
-				...values,
-				[edit.list]: { ...list, sections: [...list.sections, section], showsHeadings: true },
-				nextId: values.nextId + 2,
-			};
 		}
-		case 'removeSection': {
-			const list = values[edit.list];
-			// A list always keeps one section.
-			if (list.sections.length === 1) {
-				return values;
-			}
-			const sections = list.sections.filter((section) => section.id !== edit.sectionId);
+		case 'removeRow':
+			return updateRows(values, edit.list, (rows) => rows.filter((row) => row.id !== edit.rowId));
+		case 'moveRow':
+			return updateRows(values, edit.list, (rows) => withMoved(rows, edit.rowId, edit.toIndex));
+		case 'setRowKind':
+			return updateRows(values, edit.list, (rows) =>
+				rows.map((row) => (row.id === edit.rowId ? rowOfKind(row, edit.kind) : row))
+			);
+		case 'pasteRows':
 			return {
-				...values,
-				[edit.list]: { ...list, sections, showsHeadings: sectionsShowHeadings(sections) },
+				...updateRows(values, edit.list, (rows) => withRowsPasted(rows, edit, values.nextId)),
+				nextId: values.nextId + edit.rows.length,
 			};
-		}
-		case 'setHeading':
-			return updateSection(values, edit.list, edit.sectionId, (section) => ({
-				...section,
-				heading: edit.heading,
-			}));
 		case 'addTags': {
 			const labels = tagLabelsToAdd(values.tags, edit.labels);
 			return {
@@ -903,15 +1083,8 @@ export function editRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): 
 		case 'setPhotoAlt':
 			return editPhotos(values, edit);
 		case 'attachErrors':
-			return { ...withErrors(values, edit.fieldErrors, edit.targets), reviewingDraft: false };
-		case 'setProblemChecked': {
-			const checkedProblems = new Set(values.checkedProblems);
-			if (edit.checked) {
-				checkedProblems.add(problemKey(edit.target));
-			} else {
-				checkedProblems.delete(problemKey(edit.target));
-			}
-			return { ...values, checkedProblems };
-		}
+			return withErrors(values, edit.fieldErrors, edit.targets);
+		case 'resolveReviewNote':
+			return values;
 	}
 }

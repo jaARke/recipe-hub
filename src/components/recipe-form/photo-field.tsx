@@ -11,19 +11,30 @@ import {
 import * as React from 'react';
 import { flushSync } from 'react-dom';
 import { describedBy } from '@/components/forms/described-by';
-import { FieldProblem, type ProblemCheck } from '@/components/forms/problem-summary';
+import { FieldNote, type FieldNoteContent } from '@/components/forms/field-note';
+import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
+import { FieldProblem } from '@/components/forms/problem-summary';
 import { ItemActionsMenu, type ItemAction } from '@/components/recipe-form/item-actions-menu';
 import { normalizePhoto, UnreadablePhotoError } from '@/components/recipe-form/photo-processing';
 import { newPhotoPathname, type PhotoUploader } from '@/components/recipe-form/photo-upload';
-import type {
-	PhotoEdit,
-	PhotoFailure,
-	ProblemTarget,
-	RecipeFormPhoto,
+import {
+	filledText,
+	storedPathname,
+	type PhotoEdit,
+	type PhotoFailure,
+	type ProblemTarget,
+	type RecipeFormPhoto,
 } from '@/components/recipe-form/recipe-form-values';
 import { describePositionMove, itemName } from '@/components/recipe-form/sectioned-list';
-import { recipeImageSrc } from '@/components/recipe/recipe-paths';
-import { RecipePhoto } from '@/components/recipe/recipe-photo';
+import {
+	RecipeImageViewer,
+	RecipeImageViewerTrigger,
+} from '@/components/recipe/recipe-image-viewer';
+import {
+	LocalPhoto,
+	ShownRecipeImage,
+	type ShownImage,
+} from '@/components/recipe/shown-recipe-image';
 import {
 	Attachment,
 	AttachmentActions,
@@ -54,8 +65,8 @@ import { Spinner } from '@/components/ui/spinner';
 import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
 
 const failureMessages: Record<PhotoFailure, string> = {
-	unreadable: "This browser can't read this photo. Try Safari, or save it as a JPEG first.",
-	upload: "This photo didn't upload. Remove it and add it again.",
+	unreadable: 'This browser can’t read this photo. Try Safari, or save it as a JPEG first.',
+	upload: 'This photo didn’t upload. Remove it and add it again.',
 };
 
 type PhotoFieldProps = {
@@ -75,11 +86,12 @@ type PhotoFieldProps = {
 	uploader: PhotoUploader;
 	// About the photos together, such as too many pages to read at once.
 	error?: string;
-	// Each photo problem's check while the member reviews a draft, and none otherwise.
-	problemCheck?: (target: ProblemTarget) => ProblemCheck | undefined;
+	// The note on each photo to check, as when reviewing a draft.
+	noteFor?: (target: ProblemTarget) => FieldNoteContent | undefined;
 };
 
-// The ids of the field's parts, which the form's problem summary links to.
+// The ids of the field's parts, which the form's problem summary links to, and where the form
+// moves focus from note to note.
 function photoFieldIds(prefix: string) {
 	return {
 		description: `${prefix}-description`,
@@ -89,6 +101,7 @@ function photoFieldIds(prefix: string) {
 		actions: (photoId: number) => `${prefix}-photo-${photoId}-actions`,
 		alt: (photoId: number) => `${prefix}-photo-${photoId}-alt`,
 		photoError: (photoId: number) => `${prefix}-photo-${photoId}-error`,
+		photoNote: (photoId: number) => `${prefix}-photo-${photoId}-note`,
 	};
 }
 
@@ -101,10 +114,22 @@ function carriesFiles(event: React.DragEvent) {
 	return event.dataTransfer.types.includes('Files');
 }
 
-// The chosen file's name, or the photo's place for one the recipe already has. Scans are the pages
-// of the original recipe, so their names never repeat a dish photo's.
-function photoName(photo: RecipeFormPhoto, index: number, role: RecipeImageRole): string {
-	return photo.fileName ?? `${role === 'dish' ? 'Photo' : 'Page'} ${index + 1}`;
+// The chosen file's name, or for a photo the recipe already has, its place among the photos the
+// viewer holds, as its button and the viewer count it. Scans are the pages of the original recipe, so
+// their names never repeat a dish photo's.
+function photoName(
+	photos: readonly RecipeFormPhoto[],
+	index: number,
+	role: RecipeImageRole
+): string {
+	const fileName = photos[index]?.fileName;
+	if (fileName !== undefined) {
+		return fileName;
+	}
+	const place = photos
+		.slice(0, index + 1)
+		.filter((photo) => storedPathname(photo) !== undefined).length;
+	return `${role === 'dish' ? 'Photo' : 'Page'} ${place}`;
 }
 
 function attachmentState(photo: RecipeFormPhoto) {
@@ -128,7 +153,7 @@ function photoStatus(photo: RecipeFormPhoto, isCover: boolean): string | undefin
 		case 'uploading':
 			return 'Uploading';
 		case 'failed':
-			return photo.upload.failure === 'unreadable' ? "Can't read this photo" : "Didn't upload";
+			return photo.upload.failure === 'unreadable' ? 'Can’t read this photo' : 'Didn’t upload';
 		case 'uploaded':
 			return isCover ? 'Cover photo' : 'Uploaded';
 		case 'saved':
@@ -136,28 +161,41 @@ function photoStatus(photo: RecipeFormPhoto, isCover: boolean): string | undefin
 	}
 }
 
-// Made here rather than on choosing, so the URL is revoked whenever the thumbnail unmounts or its
-// page is hidden, and made again when it shows.
-function LocalPhotoThumbnail({ file }: { file: File }) {
-	const imageRef = React.useRef<HTMLImageElement>(null);
-
-	React.useEffect(() => {
-		const image = imageRef.current;
-		if (image === null) {
-			return;
+// The photos the viewer shows, in the field's order: each stored one, saved or just uploaded, so the
+// member can see one larger or read the original while checking the form. A photo uploaded but not
+// saved shows from its file. A dish photo shows its description as it will be saved, and a scan saves
+// none.
+function photoViewerImages(
+	photos: readonly RecipeFormPhoto[],
+	role: RecipeImageRole
+): ShownImage[] {
+	return photos.flatMap((photo) => {
+		const pathname = storedPathname(photo);
+		if (pathname === undefined) {
+			return [];
 		}
-		const url = URL.createObjectURL(file);
-		image.src = url;
-		return () => URL.revokeObjectURL(url);
-	}, [file]);
-
-	// next/image needs its source at render time; this one is made and revoked in the effect.
-	// eslint-disable-next-line @next/next/no-img-element
-	return <img ref={imageRef} alt="" />;
+		const { upload, alt } = photo;
+		return [
+			{
+				pathname,
+				alt: role === 'dish' ? filledText(alt) : undefined,
+				file: upload.status === 'uploaded' ? upload.file : undefined,
+			},
+		];
+	});
 }
 
-// The title beside it names the photo, so the thumbnail is decorative.
-function PhotoThumbnail({ photo, role }: { photo: RecipeFormPhoto; role: RecipeImageRole }) {
+// The title beside it names the photo, so the thumbnail is decorative; a stored photo's is a button
+// that opens the viewer, which names it.
+function PhotoThumbnail({
+	photo,
+	role,
+	viewerImages,
+}: {
+	photo: RecipeFormPhoto;
+	role: RecipeImageRole;
+	viewerImages: readonly ShownImage[];
+}) {
 	const { upload } = photo;
 	switch (upload.status) {
 		case 'processing':
@@ -173,30 +211,35 @@ function PhotoThumbnail({ photo, role }: { photo: RecipeFormPhoto; role: RecipeI
 				</AttachmentMedia>
 			);
 		case 'uploading':
-		case 'uploaded':
 			return (
 				<AttachmentMedia variant="image">
-					<LocalPhotoThumbnail file={upload.file} />
+					<LocalPhoto file={upload.file} alt="" className="size-full" />
 				</AttachmentMedia>
 			);
-		case 'saved':
+		case 'uploaded':
+		case 'saved': {
+			const index = viewerImages.findIndex((image) => image.pathname === upload.pathname);
+			const image = viewerImages[index];
+			if (image === undefined) {
+				return null;
+			}
+			// The button rounds and clips the photo itself, so its focus ring draws outside the thumbnail.
 			return (
-				<AttachmentMedia variant="image">
-					{role === 'dish' ? (
-						<RecipePhoto
-							pathname={upload.pathname}
+				<AttachmentMedia variant="image" className="overflow-visible">
+					<RecipeImageViewerTrigger index={index} className="size-full rounded-lg">
+						<ShownRecipeImage
+							role={role}
+							image={image}
 							alt=""
 							sizes="40px"
 							loading="lazy"
+							fit="cover"
 							className="size-full"
 						/>
-					) : (
-						// Scans are for members only, so they never pass through the image optimizer.
-						// eslint-disable-next-line @next/next/no-img-element
-						<img src={recipeImageSrc(upload.pathname)} alt="" loading="lazy" />
-					)}
+					</RecipeImageViewerTrigger>
 				</AttachmentMedia>
 			);
+		}
 	}
 }
 
@@ -214,18 +257,22 @@ function PhotoField({
 	uploadFolder,
 	uploader,
 	error,
-	problemCheck,
+	noteFor,
 }: PhotoFieldProps) {
 	const inputRef = React.useRef<HTMLInputElement>(null);
 	// Children fire their own enter and leave events; the depth tells a real leave from a move onto a child.
 	const dragDepth = React.useRef(0);
 	const [isDragging, setIsDragging] = React.useState(false);
-	const [announcement, setAnnouncement] = React.useState('');
+	const [announcement, announce] = useLiveAnnouncement();
 	// One for each photo still processing or uploading, so removing it or leaving the page stops it.
 	const uploadsRef = React.useRef(new Map<number, AbortController>());
 	const ids = photoFieldIds(idPrefix);
 	const isFull = photos.length >= limit;
+	// Saving makes the first stored dish photo the cover, so a failed or unfinished one ahead of it isn't.
+	const coverIndex =
+		role === 'dish' ? photos.findIndex((photo) => storedPathname(photo) !== undefined) : -1;
 	const limitMessage = `You can add up to ${limit} photos here. Remove one to add another.`;
+	const viewerImages = photoViewerImages(photos, role);
 
 	React.useEffect(() => {
 		const uploads = uploadsRef.current;
@@ -258,7 +305,7 @@ function PhotoField({
 				return;
 			}
 			dispatch({ type: 'finishPhotoUpload', photoId });
-			setAnnouncement(`Uploaded ${file.name}.`);
+			announce(`Uploaded ${file.name}.`);
 		} catch (error) {
 			// A cancelled upload can fail with any error, so the signal is what tells.
 			if (controller.signal.aborted) {
@@ -266,7 +313,7 @@ function PhotoField({
 			}
 			const failure = error instanceof UnreadablePhotoError ? 'unreadable' : 'upload';
 			dispatch({ type: 'failPhoto', photoId, failure });
-			setAnnouncement(`${file.name}: ${failureMessages[failure]}`);
+			announce(`${file.name}: ${failureMessages[failure]}`);
 		} finally {
 			uploads.delete(photoId);
 		}
@@ -285,9 +332,9 @@ function PhotoField({
 		}
 		const sentences = [
 			added.length > 0 && `Added ${countPhotos(added.length)}.`,
-			leftOut > 0 && `${countPhotos(leftOut)} didn't fit. ${limitMessage}`,
+			leftOut > 0 && `${countPhotos(leftOut)} didn’t fit. ${limitMessage}`,
 		];
-		setAnnouncement(sentences.filter((sentence) => typeof sentence === 'string').join(' '));
+		announce(sentences.filter((sentence) => typeof sentence === 'string').join(' '));
 	}
 
 	function removePhoto(photo: RecipeFormPhoto, index: number) {
@@ -295,7 +342,7 @@ function PhotoField({
 		const neighbor = photos[index + 1] ?? photos[index - 1];
 		flushSync(() => {
 			dispatch({ type: 'removePhoto', photoId: photo.id });
-			setAnnouncement(`Removed ${photoName(photo, index, role)}.`);
+			announce(`Removed ${photoName(photos, index, role)}.`);
 		});
 		document
 			.getElementById(neighbor === undefined ? ids.choose : ids.actions(neighbor.id))
@@ -306,9 +353,7 @@ function PhotoField({
 	function makeCover(photo: RecipeFormPhoto, index: number) {
 		flushSync(() => {
 			dispatch({ type: 'makeCoverPhoto', photoId: photo.id });
-			setAnnouncement(
-				`${photoName(photo, index, role)} is now the cover photo, first in the list.`
-			);
+			announce(`${photoName(photos, index, role)} is now the cover photo, first in the list.`);
 		});
 		document.getElementById(ids.actions(photo.id))?.scrollIntoView({ block: 'nearest' });
 	}
@@ -317,9 +362,9 @@ function PhotoField({
 	function movePhoto(photo: RecipeFormPhoto, index: number, toIndex: number) {
 		flushSync(() => {
 			dispatch({ type: 'movePhoto', photoId: photo.id, toIndex });
-			setAnnouncement(
+			announce(
 				describePositionMove(
-					itemName(photoName(photo, index, role), 'photo'),
+					itemName(photoName(photos, index, role), 'photo'),
 					index,
 					toIndex,
 					photos.length
@@ -344,13 +389,14 @@ function PhotoField({
 						: () => movePhoto(photo, index, toIndex),
 			}));
 		}
-		const isCover = index === 0;
 		const failed = photo.upload.status === 'failed';
 		return [
 			{
 				label: 'Use as cover photo',
 				icon: StarIcon,
-				onSelect: isCover || failed ? undefined : () => makeCover(photo, index),
+				// Moving the cover, or the first photo, to the front changes nothing.
+				onSelect:
+					index === coverIndex || index === 0 || failed ? undefined : () => makeCover(photo, index),
 			},
 		];
 	}
@@ -391,15 +437,15 @@ function PhotoField({
 	}
 
 	function renderPhoto(photo: RecipeFormPhoto, index: number) {
-		const name = photoName(photo, index, role);
-		const isCover = role === 'dish' && index === 0;
-		const status = photoStatus(photo, isCover);
+		const name = photoName(photos, index, role);
+		const status = photoStatus(photo, index === coverIndex);
 		const failure = photo.upload.status === 'failed' ? photo.upload.failure : undefined;
+		const note = noteFor?.({ kind: 'photo', id: photo.id });
 
 		return (
 			<li key={photo.id} className="flex flex-col gap-3">
 				<Attachment state={attachmentState(photo)} className="w-full">
-					<PhotoThumbnail photo={photo} role={role} />
+					<PhotoThumbnail photo={photo} role={role} viewerImages={viewerImages} />
 					<AttachmentContent>
 						<AttachmentTitle>{name}</AttachmentTitle>
 						{status !== undefined && <AttachmentDescription>{status}</AttachmentDescription>}
@@ -427,14 +473,11 @@ function PhotoField({
 				)}
 				{photo.error !== undefined && (
 					// Takes focus after a failed save or import in place of a field.
-					<FieldProblem
-						id={ids.photoError(photo.id)}
-						tabIndex={-1}
-						check={problemCheck?.({ kind: 'photo', id: photo.id })}
-					>
+					<FieldProblem id={ids.photoError(photo.id)} tabIndex={-1}>
 						{photo.error}
 					</FieldProblem>
 				)}
+				{note !== undefined && <FieldNote id={ids.photoNote(photo.id)} name={name} {...note} />}
 				{role === 'dish' && failure === undefined && (
 					<Field>
 						<FieldLabel htmlFor={ids.alt(photo.id)}>
@@ -513,15 +556,15 @@ function PhotoField({
 				/>
 			</Empty>
 			{photos.length > 0 && (
-				<ul aria-label={legend} className="flex flex-col gap-4">
-					{photos.map((photo, index) => renderPhoto(photo, index))}
-				</ul>
+				<RecipeImageViewer role={role} title={legend} images={viewerImages}>
+					<ul aria-label={legend} className="flex flex-col gap-4">
+						{photos.map((photo, index) => renderPhoto(photo, index))}
+					</ul>
+				</RecipeImageViewer>
 			)}
-			<p role="status" aria-live="polite" className="sr-only">
-				{announcement}
-			</p>
+			<LiveAnnouncer announcement={announcement} />
 		</FieldSet>
 	);
 }
 
-export { PhotoField, photoFieldIds, photoName };
+export { PhotoField, photoFieldIds, photoName, photoViewerImages };

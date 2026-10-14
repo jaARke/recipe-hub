@@ -61,7 +61,7 @@ function RequestAccessForm({ action, nextSteps }: RequestAccessFormProps) {
 					label="How do you know us?"
 					required
 					autoComplete="off"
-					description="So an admin can tell who's asking, such as whose friend or neighbor you are."
+					description="So an admin can tell who’s asking, such as whose friend or neighbor you are."
 					error={fieldError(accessRequestFieldNames.relationship)}
 					defaultValue={value(accessRequestFieldNames.relationship)}
 				/>

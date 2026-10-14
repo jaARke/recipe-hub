@@ -7,6 +7,7 @@ import type {
 	ExtractedYield,
 } from '@/domain/recipe/extracted-recipe';
 import { parseAmountText } from '@/domain/recipe/ingredient-parser';
+import { transcriptionMarkerRuns } from '@/domain/recipe/transcription-markers';
 
 export const scoredFields = [
 	'title',
@@ -91,9 +92,6 @@ const noRecipeScores: FieldScores = {
 	headings: 0,
 };
 
-// The marker a model puts after a reading it is unsure of, which is not part of the text.
-const doubtMarker = /\s*\[\?\]/g;
-
 const singleQuotes = /[\u2018\u2019\u201a\u201b\u2032]/g;
 
 const doubleQuotes = /[\u201c-\u201f\u2033]/g;
@@ -117,12 +115,17 @@ type LineMatch = {
 	similarity: number;
 };
 
+// The mark a model puts after a reading it is unsure of, which is not part of the text.
+function withoutDoubtMarkers(text: string): string {
+	return transcriptionMarkerRuns(text)
+		.map((run) => (run.marker === 'unsure' ? '' : run.text))
+		.join('');
+}
+
 // Text compared as a reader sees it. Case is kept. A handwritten "1½" can be typed as "1 1/2", so
 // fractions take the ASCII form.
 function normalizedText(text: string): string {
-	return text
-		.normalize('NFC')
-		.replace(doubtMarker, '')
+	return withoutDoubtMarkers(text.normalize('NFC'))
 		.replace(singleQuotes, "'")
 		.replace(doubleQuotes, '"')
 		.replace(dashes, '-')

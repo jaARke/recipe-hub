@@ -48,7 +48,7 @@ describe('codeRequestError', () => {
 
 	it('falls back to a general message', () => {
 		expect(codeRequestError({ status: 500 })).toMatchObject({
-			message: "We couldn't send a code. Try again in a moment.",
+			message: 'We couldn’t send a code. Try again in a moment.',
 		});
 	});
 });
@@ -58,7 +58,7 @@ describe('codeSignInError', () => {
 		[
 			'INVALID_OTP',
 			400,
-			"That code didn't work. Check the email and try again, or send a new code.",
+			'That code didn’t work. Check the email and try again, or send a new code.',
 		],
 		['OTP_EXPIRED', 400, 'That code has expired. Send a new code.'],
 		['TOO_MANY_ATTEMPTS', 403, 'That code was entered wrong too many times. Send a new code.'],
@@ -71,13 +71,13 @@ describe('codeSignInError', () => {
 
 	it('tells an invitee whose invite closed to ask for a new one', () => {
 		expect(codeSignInError({ status: 403 })).toMatchObject({
-			message: "Your invite can't be used anymore. Ask the person who invited you for a new one.",
+			message: 'Your invite can’t be used anymore. Ask the person who invited you for a new one.',
 		});
 	});
 
 	it('asks a rate-limited visitor to wait, and falls back to a general message', () => {
 		expect(codeSignInError(rateLimited).message).toMatch(/^Too many tries/);
-		expect(codeSignInError({ status: 500 }).message).toBe("We couldn't sign you in. Try again.");
+		expect(codeSignInError({ status: 500 }).message).toBe('We couldn’t sign you in. Try again.');
 	});
 });
 
@@ -112,14 +112,14 @@ describe('passkeySignInErrorMessage', () => {
 
 	it('explains a passkey the site no longer knows', () => {
 		expect(passkeySignInErrorMessage({ code: 'PASSKEY_NOT_FOUND', status: 401 })).toMatch(
-			/^That passkey isn't set up for an account here\./
+			/^That passkey isn’t set up for an account here\./
 		);
 	});
 
 	it('asks a rate-limited visitor to wait, and falls back to a general message', () => {
 		expect(passkeySignInErrorMessage(rateLimited)).toMatch(/^Too many tries/);
 		expect(passkeySignInErrorMessage({ code: 'AUTHENTICATION_FAILED', status: 401 })).toBe(
-			"We couldn't sign you in with that passkey. Try again, or sign in with an email code."
+			'We couldn’t sign you in with that passkey. Try again, or sign in with an email code.'
 		);
 	});
 });
@@ -142,7 +142,7 @@ describe('passkeyRegistrationErrorMessage', () => {
 			{ code: 'UNAUTHORIZED', status: 401 },
 			'Your session has ended. Sign in again to add a passkey.',
 		],
-		[{ code: 'UNKNOWN_ERROR', status: 500 }, "We couldn't add a passkey. Try again."],
+		[{ code: 'UNKNOWN_ERROR', status: 500 }, 'We couldn’t add a passkey. Try again.'],
 	])('maps %j', (error, message) => {
 		expect(passkeyRegistrationErrorMessage(error)).toBe(message);
 	});
@@ -152,7 +152,7 @@ describe('passkeyRemovalErrorMessage', () => {
 	it.each([
 		[{ code: 'PASSKEY_NOT_FOUND', status: 404 }, 'That passkey was already removed.'],
 		[{ status: 401 }, 'Your session has ended. Sign in again to remove a passkey.'],
-		[{ status: 500 }, "We couldn't remove that passkey. Try again."],
+		[{ status: 500 }, 'We couldn’t remove that passkey. Try again.'],
 	])('maps %j', (error, message) => {
 		expect(passkeyRemovalErrorMessage(error)).toBe(message);
 	});
@@ -176,8 +176,8 @@ describe('passkeyRenameError', () => {
 		],
 		[rateLimited, 'Too many tries in a short time. Wait a minute, then try again.'],
 		[{ status: 401 }, 'Your session has ended. Sign in again to rename a passkey.'],
-		[{ code: 'VALIDATION_ERROR', status: 400 }, "We couldn't rename that passkey. Try again."],
-		[{ status: 500 }, "We couldn't rename that passkey. Try again."],
+		[{ code: 'VALIDATION_ERROR', status: 400 }, 'We couldn’t rename that passkey. Try again.'],
+		[{ status: 500 }, 'We couldn’t rename that passkey. Try again.'],
 	])('maps %j to a message about the form', (error, message) => {
 		expect(passkeyRenameError(error)).toEqual({ status: 'error', message, fieldErrors: {} });
 	});

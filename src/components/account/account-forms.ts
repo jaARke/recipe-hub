@@ -19,4 +19,4 @@ export const passkeyFieldNames = {
 // Shown when a request can't be sent, whether a rate limit or a lost connection stopped it or
 // BotID refused it, so a refused bot learns nothing.
 export const requestAccessFailureMessage =
-	"We couldn't send your request. Wait a few minutes and try again.";
+	'We couldn’t send your request. Wait a few minutes and try again.';

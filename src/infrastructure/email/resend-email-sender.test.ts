@@ -9,8 +9,13 @@ type Reply = { status: number; body: object };
 
 const message: EmailMessage = {
 	to: 'grace@example.com',
-	subject: 'Jake invited you to Barb’s Table',
-	text: 'Open this link to create your account.',
+	kind: 'invite',
+	data: {
+		inviteeName: 'Grace',
+		inviterName: 'Jake',
+		link: 'https://recipes.example.com/invite#token',
+		expiresAt: new Date('2026-10-20T01:30:00Z'),
+	},
 	replyTo: 'jake@example.com',
 	idempotencyKey: 'invite/0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e',
 };
@@ -46,11 +51,15 @@ afterEach(async () => {
 });
 
 function createSender(): ResendEmailSender {
-	return new ResendEmailSender({ apiKey: 're_test', domain: 'recipes.example.com' });
+	return new ResendEmailSender({
+		apiKey: 're_test',
+		domain: 'recipes.example.com',
+		siteUrl: new URL('https://site.example.com'),
+	});
 }
 
 describe('send', () => {
-	it('sends plain text from the site address with the reply-to and idempotency key', async () => {
+	it('sends the rendered message from the site address with the reply-to and idempotency key', async () => {
 		await createSender().send(message);
 
 		expect(received).toHaveLength(1);
@@ -60,12 +69,27 @@ describe('send', () => {
 			body: {
 				from: 'Barb’s Table <recipes@recipes.example.com>',
 				to: 'grace@example.com',
-				subject: message.subject,
-				text: message.text,
+				subject: 'Jake invited you to Barb’s Table',
+				html: expect.stringContaining('src="https://site.example.com/email/lockup.png"'),
+				text: expect.stringContaining(
+					'Create your account\n\nhttps://recipes.example.com/invite#token'
+				),
 				reply_to: 'jake@example.com',
 			},
 		});
-		expect(received[0]?.body).not.toHaveProperty('html');
+	});
+
+	it('sends no reply-to when the message names none', async () => {
+		await createSender().send({
+			to: 'grace@example.com',
+			kind: 'sign-in-code',
+			data: { code: '482915', lifetimeMinutes: 30 },
+		});
+
+		expect(received[0]?.body).toMatchObject({
+			subject: '482915 is your Barb’s Table sign-in code',
+		});
+		expect(received[0]?.body).not.toHaveProperty('reply_to');
 	});
 
 	it('throws a delivery error that keeps only the code and status of a refusal', async () => {

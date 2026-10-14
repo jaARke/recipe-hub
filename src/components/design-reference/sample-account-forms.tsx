@@ -40,7 +40,7 @@ function SampleRequestAccessForm() {
 	return (
 		<RequestAccessForm
 			action={sendRequest}
-			nextSteps={`An admin will review it. If it's approved, you'll get an invite link to create your account, by email if you gave an address. The link works for ${settings.accounts.inviteLifetimeDays} days.`}
+			nextSteps={`An admin will review it. If it’s approved, you’ll get an invite link to create your account, by email if you gave an address. The link works for ${settings.accounts.inviteLifetimeDays} days.`}
 		/>
 	);
 }

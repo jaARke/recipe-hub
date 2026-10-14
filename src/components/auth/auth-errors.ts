@@ -62,7 +62,7 @@ export function codeRequestError(error: AuthClientError): FormError {
 	if (hasCode(error, 'INVALID_EMAIL')) {
 		return fieldError(authFieldNames.email, 'Enter an email address, like name@example.com.');
 	}
-	return formError("We couldn't send a code. Try again in a moment.");
+	return formError('We couldn’t send a code. Try again in a moment.');
 }
 
 // A first sign-in creates an invitee's account, which the server refuses with a bare 403 once the
@@ -74,7 +74,7 @@ export function codeSignInError(error: AuthClientError): FormError {
 	if (hasCode(error, 'INVALID_OTP')) {
 		return fieldError(
 			authFieldNames.code,
-			"That code didn't work. Check the email and try again, or send a new code."
+			'That code didn’t work. Check the email and try again, or send a new code.'
 		);
 	}
 	if (hasCode(error, 'OTP_EXPIRED')) {
@@ -88,10 +88,10 @@ export function codeSignInError(error: AuthClientError): FormError {
 	}
 	if (error.status === 403) {
 		return formError(
-			"Your invite can't be used anymore. Ask the person who invited you for a new one."
+			'Your invite can’t be used anymore. Ask the person who invited you for a new one.'
 		);
 	}
-	return formError("We couldn't sign you in. Try again.");
+	return formError('We couldn’t sign you in. Try again.');
 }
 
 export function isPasskeyCancellation(error: AuthClientError): boolean {
@@ -111,9 +111,9 @@ export function passkeySignInErrorMessage(error: AuthClientError): string {
 		return tooManyTriesMessage;
 	}
 	if (hasCode(error, 'PASSKEY_NOT_FOUND')) {
-		return "That passkey isn't set up for an account here. Sign in with an email code, then add a new passkey on your account page.";
+		return 'That passkey isn’t set up for an account here. Sign in with an email code, then add a new passkey on your account page.';
 	}
-	return "We couldn't sign you in with that passkey. Try again, or sign in with an email code.";
+	return 'We couldn’t sign you in with that passkey. Try again, or sign in with an email code.';
 }
 
 // Adding a passkey needs a sign-in from the last day, so an older session must sign in again first.
@@ -134,7 +134,7 @@ export function passkeyRegistrationErrorMessage(error: AuthClientError): string 
 	if (error.status === 401) {
 		return 'Your session has ended. Sign in again to add a passkey.';
 	}
-	return "We couldn't add a passkey. Try again.";
+	return 'We couldn’t add a passkey. Try again.';
 }
 
 export function passkeyRemovalErrorMessage(error: AuthClientError): string {
@@ -147,7 +147,7 @@ export function passkeyRemovalErrorMessage(error: AuthClientError): string {
 	if (error.status === 401) {
 		return 'Your session has ended. Sign in again to remove a passkey.';
 	}
-	return "We couldn't remove that passkey. Try again.";
+	return 'We couldn’t remove that passkey. Try again.';
 }
 
 // The server checks a new name as it checks a display name, and its message says what to fix.
@@ -164,5 +164,5 @@ export function passkeyRenameError(error: AuthClientError): FormError {
 	if (error.status === 401) {
 		return formError('Your session has ended. Sign in again to rename a passkey.');
 	}
-	return formError("We couldn't rename that passkey. Try again.");
+	return formError('We couldn’t rename that passkey. Try again.');
 }

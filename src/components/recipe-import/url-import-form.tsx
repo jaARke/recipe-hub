@@ -9,7 +9,7 @@ import { useFormAction } from '@/components/forms/use-form-action';
 import { recipeImportFieldNames } from '@/components/recipe-import/recipe-import-forms';
 import { RecipeImportSubmit } from '@/components/recipe-import/recipe-import-submit';
 
-const failureMessage = "We couldn't import the recipe. Check your connection and try again.";
+const failureMessage = 'We couldn’t import the recipe. Check your connection and try again.';
 
 type UrlImportFormProps = {
 	// Opens the draft for review once the page is read.
@@ -42,7 +42,7 @@ function UrlImportForm({ action }: UrlImportFormProps) {
 				label="Recipe link"
 				required
 				autoComplete="off"
-				description="Paste the address of the page with the recipe. You'll check what's read before saving it."
+				description="Paste the address of the page with the recipe. You’ll check what’s read before saving it."
 				error={failure?.fieldErrors[recipeImportFieldNames.url]}
 				defaultValue={failure?.values?.[recipeImportFieldNames.url]}
 			/>

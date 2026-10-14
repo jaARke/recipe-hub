@@ -3,7 +3,13 @@
 import { PlusIcon } from 'lucide-react';
 import * as React from 'react';
 import { describedBy } from '@/components/forms/described-by';
-import { FieldProblem, type ProblemCheck } from '@/components/forms/problem-summary';
+import {
+	FieldNote,
+	fieldNoteMessageId,
+	type FieldNoteContent,
+} from '@/components/forms/field-note';
+import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
+import { FieldProblem } from '@/components/forms/problem-summary';
 import {
 	tagLabelsFrom,
 	tagLabelsToAdd,
@@ -36,8 +42,8 @@ type TagsFieldProps = {
 	// The edited recipe's tags that no other recipe uses, which the field offers to respell.
 	respellableTags: readonly string[];
 	error: string | undefined;
-	// Lets the member mark the error as checked, as when reviewing a draft's problems.
-	errorCheck?: ProblemCheck;
+	// Something to check against the original, as when reviewing a draft. It is no error.
+	note?: FieldNoteContent;
 	dispatch: React.Dispatch<RecipeFormEdit>;
 };
 
@@ -52,12 +58,14 @@ type TagOption = {
 // The field's label, which the form's problem summary repeats.
 const tagsFieldLabel = 'Tags';
 
-// The ids of the field's parts, which the form's problem summary links to.
+// The ids of the field's parts, which the form's problem summary links to, and where the form
+// moves focus to its note.
 function tagsFieldIds(prefix: string) {
 	return {
 		input: `${prefix}-input`,
 		description: `${prefix}-description`,
 		error: `${prefix}-error`,
+		note: `${prefix}-note`,
 	};
 }
 
@@ -93,12 +101,12 @@ function TagsField({
 	tagLabels,
 	respellableTags,
 	error,
-	errorCheck,
+	note,
 	dispatch,
 }: TagsFieldProps) {
 	const anchor = useComboboxAnchor();
 	const { contains } = useComboboxFilter({ multiple: true });
-	const [announcement, setAnnouncement] = React.useState('');
+	const [announcement, announce] = useLiveAnnouncement();
 	// What the list highlights, so Enter adds the typed text when it highlights nothing.
 	const highlighted = React.useRef<TagOption | undefined>(undefined);
 	const invalid = error !== undefined;
@@ -140,7 +148,7 @@ function TagsField({
 	function addTags(labels: readonly string[]) {
 		const added = tagLabelsToAdd(tags, labels);
 		dispatch({ type: 'addTags', labels });
-		setAnnouncement(added.length > 0 ? `Added ${added.join(', ')}.` : 'Already added.');
+		announce(added.length > 0 ? `Added ${added.join(', ')}.` : 'Already added.');
 	}
 
 	function addTypedTags(text: string) {
@@ -190,7 +198,7 @@ function TagsField({
 						dispatch({ type: 'removeTag', tagId: tag.id });
 					}
 					if (removed.length > 0) {
-						setAnnouncement(`Removed ${removed.map(({ label }) => label).join(', ')}.`);
+						announce(`Removed ${removed.map(({ label }) => label).join(', ')}.`);
 					}
 				}}
 			>
@@ -205,7 +213,11 @@ function TagsField({
 						// Base UI turns capitalization off; a tag starts with a capital, as most labels in use do.
 						autoCapitalize="sentences"
 						aria-invalid={invalid ? 'true' : undefined}
-						aria-describedby={describedBy(ids.description, invalid && ids.error)}
+						aria-describedby={describedBy(
+							ids.description,
+							invalid && ids.error,
+							note !== undefined && fieldNoteMessageId(ids.note)
+						)}
 						onKeyDown={(event) => {
 							if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
 								// Enter never saves the recipe; with nothing highlighted it adds the typed text.
@@ -250,15 +262,10 @@ function TagsField({
 				Such as Dessert or Weeknight. Separate several with commas. To remove a tag, use the left
 				arrow to reach it and press Backspace.
 			</FieldDescription>
-			{invalid && (
-				<FieldProblem id={ids.error} check={errorCheck}>
-					{error}
-				</FieldProblem>
-			)}
+			{invalid && <FieldProblem id={ids.error}>{error}</FieldProblem>}
+			{note !== undefined && <FieldNote id={ids.note} name={tagsFieldLabel} {...note} />}
 			{/* Base UI hides what lies outside an open list from screen readers, except live regions. */}
-			<p role="status" aria-live="polite" className="sr-only">
-				{announcement}
-			</p>
+			<LiveAnnouncer announcement={announcement} />
 		</Field>
 	);
 }

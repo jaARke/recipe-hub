@@ -79,7 +79,7 @@ function CourseChips({
 // Without the trigger button, which upstream leaves unnamed: the list opens as the input is used.
 function ComboboxSpecimen() {
 	return (
-		<Specimen label="The recipe form's tags field builds on the chips, suggesting the labels in use">
+		<Specimen label="The recipe form’s tags field builds on the chips, suggesting the labels in use">
 			<FieldGroup className="grid gap-6 sm:grid-cols-2">
 				<Field>
 					<FieldLabel htmlFor="combobox-single">One value, typed or chosen</FieldLabel>

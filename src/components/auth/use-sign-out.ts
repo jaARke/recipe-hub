@@ -23,7 +23,7 @@ export function useSignOut() {
 			if (error !== null) {
 				toast.add({
 					type: 'error',
-					title: "We couldn't sign you out",
+					title: 'We couldn’t sign you out',
 					description: 'Check your connection and try again.',
 				});
 				return;

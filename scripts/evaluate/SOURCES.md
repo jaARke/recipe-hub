@@ -111,3 +111,7 @@ image.save(output, "JPEG", quality=QUALITY, subsampling="4:2:0", optimize=True)
 ```
 
 Every output holds only the JFIF header, quantization and Huffman tables, the frame, and the scan: no EXIF, XMP, IPTC, ICC profile, or comment.
+
+## Copies
+
+The design reference's stand-in scans, `src/components/design-reference/stand-in-scans/anise-cakes-page-1.jpg` and `anise-cakes-page-2.jpg`, are the anise-cakes pages scaled with sharp 0.35.5 to at most 1600 px on the long edge and never enlarged, then saved as JPEG at quality 82 with mozjpeg, so `/design`'s import review shows real pages without sign-in.

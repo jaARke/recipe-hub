@@ -31,8 +31,7 @@ function AdminOnlyEmptyState() {
 					This page is for admins
 				</EmptyTitle>
 				<EmptyDescription>
-					Admins review access requests and invite people. Your account doesn&apos;t have admin
-					access.
+					Admins review access requests and invite people. Your account doesn’t have admin access.
 				</EmptyDescription>
 			</EmptyHeader>
 			<EmptyContent>

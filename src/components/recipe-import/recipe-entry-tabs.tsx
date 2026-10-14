@@ -1,6 +1,7 @@
 import type * as React from 'react';
 import type { UnsavedImportDto } from '@/application/ingestion/recipe-import-dtos';
 import { CountBadge } from '@/components/layout/count-badge';
+import { readingWidthClassName } from '@/components/layout/page-container';
 import { RecipeFormSkeleton } from '@/components/recipe-form/recipe-form';
 import { UnsavedImportList } from '@/components/recipe-import/unsaved-import-list';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -17,6 +18,14 @@ const entryModeTabs = [
 ] as const satisfies readonly { mode: EntryMode; label: string }[];
 
 const draftsTab = 'drafts';
+
+// From lg, the recipe form widens the page to hold the original recipe beside it, and every other
+// panel keeps reading width.
+const panelClassNames = {
+	manual: undefined,
+	url: readingWidthClassName,
+	photo: readingWidthClassName,
+} as const satisfies Record<EntryMode, string | undefined>;
 
 type RecipeEntryTabsProps = {
 	forms: Record<EntryMode, React.ReactNode>;
@@ -46,11 +55,22 @@ function RecipeEntryTabs({ forms, unsavedImports, now }: RecipeEntryTabsProps) {
 				</TabsTrigger>
 			</TabsList>
 			{entryModeTabs.map(({ mode }) => (
-				<TabsContent key={mode} value={mode} keepMounted tabIndex={-1}>
+				<TabsContent
+					key={mode}
+					value={mode}
+					keepMounted
+					tabIndex={-1}
+					className={panelClassNames[mode]}
+				>
 					{forms[mode]}
 				</TabsContent>
 			))}
-			<TabsContent value={draftsTab} keepMounted tabIndex={draftCount > 0 ? -1 : undefined}>
+			<TabsContent
+				value={draftsTab}
+				keepMounted
+				tabIndex={draftCount > 0 ? -1 : undefined}
+				className={readingWidthClassName}
+			>
 				<UnsavedImportList imports={unsavedImports} now={now} />
 			</TabsContent>
 		</Tabs>

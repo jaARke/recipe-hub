@@ -68,7 +68,7 @@ const sections = [
 		id: 'accounts',
 		title: 'Accounts and admin',
 		description:
-			"The header's account controls, the account pages, and the admin page, with sample members and stand-ins for their actions.",
+			'The header’s account controls, the account pages, and the admin page, with sample members and stand-ins for their actions.',
 		Content: AccountSpecimens,
 	},
 ] as const;

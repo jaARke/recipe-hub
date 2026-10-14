@@ -213,7 +213,7 @@ function InviteFlow({
 					<RequestCodeForm
 						id={fieldIds.email}
 						autoComplete="email"
-						description="We'll send a code to this address. It's also the address you'll sign in with."
+						description="We’ll send a code to this address. It’s also the address you’ll sign in with."
 						defaultEmail={lastEmail}
 						action={requestCode}
 					/>
