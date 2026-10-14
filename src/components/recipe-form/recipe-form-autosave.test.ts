@@ -7,7 +7,7 @@ import {
 	recipeFormAutosaveVersion,
 	recipeFormSubject,
 	restoredRecipeForm,
-	unsavedUploadPathnames,
+	unsavedUploads,
 	type AutosavedRecipeForm,
 } from '@/components/recipe-form/recipe-form-autosave';
 import {
@@ -116,12 +116,12 @@ describe('recipeFormAutosaveKey', () => {
 		expect(recipeFormAutosaveKey({ kind: 'import', importId })).toBe(
 			`member:recipe-form:import:${importId}`
 		);
-		expect(recipeFormAutosaveKey({ kind: 'recipe', recipeId, version: 'a' })).toBe(
+		expect(recipeFormAutosaveKey({ kind: 'recipe', recipeId })).toBe(
 			`member:recipe-form:recipe:${recipeId}`
 		);
-		expect(recipeFormAutosaveKey({ kind: 'recipe', recipeId, version: 'b' })).toBe(
-			`member:recipe-form:recipe:${recipeId}`
-		);
+		const edit = (version: string) => recipeFormSubject({ editing: { id: recipeId, version } });
+		expect(recipeFormAutosaveKey(edit('a'))).toBe(`member:recipe-form:recipe:${recipeId}`);
+		expect(recipeFormAutosaveKey(edit('b'))).toBe(`member:recipe-form:recipe:${recipeId}`);
 	});
 
 	it('takes the subject from what the form edits, and an edit’s version with it', () => {
@@ -269,15 +269,15 @@ describe('readAutosavedRecipeForm', () => {
 describe('restoredRecipeForm', () => {
 	const initial = recipeFormValues(lemonBars);
 
-	it('looks up only the uploads the form didn’t load with', () => {
-		expect(unsavedUploadPathnames(storedEdit, initial)).toEqual([
-			'dish/development/slice.jpg',
-			'dish/development/swept.jpg',
+	it('looks up only the uploads the form didn’t load with, by the photos that show them', () => {
+		expect(unsavedUploads(storedEdit, initial)).toEqual([
+			{ photoId: 3, pathname: 'dish/development/slice.jpg' },
+			{ photoId: 4, pathname: 'dish/development/swept.jpg' },
 		]);
 	});
 
 	it('takes back what was stored, with no errors', () => {
-		const restored = restoredRecipeForm(storedEdit, initial, new Set());
+		const restored = restoredRecipeForm(storedEdit, initial);
 
 		expect(restored.text).toEqual({ ...blankText, title: 'Lemon squares' });
 		expect(restored.yieldKind).toBe('makes');
@@ -295,12 +295,8 @@ describe('restoredRecipeForm', () => {
 		expect(restored.formError).toBeUndefined();
 	});
 
-	it('keeps a loaded photo saved, shows a stored upload from storage, and a missing one as not uploaded', () => {
-		const restored = restoredRecipeForm(
-			storedEdit,
-			initial,
-			new Set(['dish/development/swept.jpg'])
-		);
+	it('keeps a loaded photo saved, shows each stored upload from storage, and one never stored as not uploaded', () => {
+		const restored = restoredRecipeForm(storedEdit, initial);
 
 		expect(restored.photos).toEqual({
 			dish: [
@@ -319,7 +315,7 @@ describe('restoredRecipeForm', () => {
 					id: 4,
 					fileName: 'IMG_0003.jpg',
 					alt: '',
-					upload: { status: 'failed', failure: 'upload' },
+					upload: { status: 'uploaded', pathname: 'dish/development/swept.jpg' },
 				},
 				{
 					id: 5,
@@ -332,12 +328,11 @@ describe('restoredRecipeForm', () => {
 		});
 	});
 
-	it('saves the rest without the missing photos, and waits for nothing', () => {
-		const restored = restoredRecipeForm(
-			storedEdit,
-			initial,
-			new Set(['dish/development/swept.jpg'])
-		);
+	it('saves the rest without the photos never stored or found gone, and waits for nothing', () => {
+		const restored = editRecipeForm(restoredRecipeForm(storedEdit, initial), {
+			type: 'failMissingUpload',
+			photoId: 4,
+		});
 
 		expect(hasPhotosInProgress(restored)).toBe(false);
 		expect(recipeFormSubmission(restored).payload.images).toEqual([
@@ -347,7 +342,7 @@ describe('restoredRecipeForm', () => {
 	});
 
 	it('brings each note back in the state it was in, on its place', () => {
-		const restored = restoredRecipeForm(storedEdit, initial, new Set());
+		const restored = restoredRecipeForm(storedEdit, initial);
 
 		expect(recipeFormChecks(restored)).toEqual([
 			{
@@ -360,7 +355,7 @@ describe('restoredRecipeForm', () => {
 	});
 
 	it('goes on with ids above every restored one, even past the stored next id', () => {
-		const restored = restoredRecipeForm({ ...storedEdit, nextId: 4 }, initial, new Set());
+		const restored = restoredRecipeForm({ ...storedEdit, nextId: 4 }, initial);
 
 		expect(restored.nextId).toBe(9);
 		const added = editRecipeForm(restored, {
@@ -372,6 +367,6 @@ describe('restoredRecipeForm', () => {
 	});
 
 	it('keeps the stored next id where it is above every id', () => {
-		expect(restoredRecipeForm({ ...storedEdit, nextId: 12 }, initial, new Set()).nextId).toBe(12);
+		expect(restoredRecipeForm({ ...storedEdit, nextId: 12 }, initial).nextId).toBe(12);
 	});
 });

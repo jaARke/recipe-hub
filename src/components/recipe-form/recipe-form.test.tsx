@@ -638,6 +638,16 @@ describe('RecipeForm’s autosave', () => {
 		return fetch;
 	}
 
+	// Each photo's name and the status under it.
+	function photoStatuses() {
+		return within(screen.getByRole('list', { name: 'Photos' }))
+			.getAllByRole('listitem')
+			.map((row) => ({
+				name: row.querySelector('[data-slot="attachment-title"]')?.textContent,
+				status: row.querySelector('[data-slot="attachment-description"]')?.textContent,
+			}));
+	}
+
 	afterEach(() => {
 		vi.restoreAllMocks();
 		vi.unstubAllGlobals();
@@ -698,14 +708,15 @@ describe('RecipeForm’s autosave', () => {
 		render(<AutosavedForm action={action} />);
 		await screen.findByText('Restored your unsaved changes');
 
-		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+		// The button reads "Saving recipe" until the last save settles.
+		await user.click(await screen.findByRole('button', { name: 'Save recipe' }));
 		expect(await screen.findByText('Fix 1 thing to save')).toBeDefined();
 		expect(stored(newRecipeKey)?.text.title).toBe('Lemon bars');
 
 		action.mockImplementation(async () => {
 			throw new TypeError('Failed to fetch');
 		});
-		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+		await user.click(await screen.findByRole('button', { name: 'Save recipe' }));
 		expect(
 			await screen.findByText('We couldn’t save the recipe. Check your connection and try again.')
 		).toBeDefined();
@@ -744,16 +755,13 @@ describe('RecipeForm’s autosave', () => {
 			'/api/images/dish/development/kept.jpg',
 			'/api/images/dish/development/swept.jpg',
 		]);
+		await waitFor(() =>
+			expect(photoStatuses()).toEqual([
+				{ name: 'kept.jpg', status: 'Cover photo' },
+				{ name: 'swept.jpg', status: 'Didn’t upload' },
+			])
+		);
 		const rows = within(screen.getByRole('list', { name: 'Photos' })).getAllByRole('listitem');
-		expect(
-			rows.map((row) => ({
-				name: row.querySelector('[data-slot="attachment-title"]')?.textContent,
-				status: row.querySelector('[data-slot="attachment-description"]')?.textContent,
-			}))
-		).toEqual([
-			{ name: 'kept.jpg', status: 'Cover photo' },
-			{ name: 'swept.jpg', status: 'Didn’t upload' },
-		]);
 		expect(
 			within(rows[1] as HTMLElement).getByText(
 				'This photo didn’t upload. Remove it and add it again.'
@@ -766,6 +774,37 @@ describe('RecipeForm’s autosave', () => {
 		const sent = action.mock.calls[0]?.[1].get('recipe');
 		expect(JSON.parse(typeof sent === 'string' ? sent : '{}').images).toEqual([
 			{ role: 'dish', pathname: 'dish/development/kept.jpg', alt: 'Bars' },
+		]);
+	});
+
+	it('keeps what is typed while a restored upload is looked up, and then shows the upload gone', async () => {
+		const user = userEvent.setup();
+		localStorage.setItem(newRecipeKey, JSON.stringify(storedNewRecipe));
+		// The swept upload's lookup answers only when the test says.
+		const sweptLookup = Promise.withResolvers<Response>();
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string) =>
+				url.includes('swept') ? sweptLookup.promise : new Response(null, { status: 200 })
+			)
+		);
+		render(<AutosavedForm />);
+
+		await user.clear(title());
+		await user.type(title(), 'Lemon squares');
+		sweptLookup.resolve(new Response(null, { status: 404 }));
+
+		await waitFor(() =>
+			expect(photoStatuses()).toEqual([
+				{ name: 'kept.jpg', status: 'Cover photo' },
+				{ name: 'swept.jpg', status: 'Didn’t upload' },
+			])
+		);
+		expect(title().value).toBe('Lemon squares');
+		expect(stored(newRecipeKey)?.text.title).toBe('Lemon squares');
+		expect(stored(newRecipeKey)?.photos.dish.map(({ pathname }) => pathname)).toEqual([
+			'dish/development/kept.jpg',
+			undefined,
 		]);
 	});
 

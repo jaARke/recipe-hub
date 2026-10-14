@@ -658,6 +658,47 @@ describe('editRecipeForm', () => {
 		);
 	});
 
+	it('fails an uploaded photo whose upload is found gone, and changes nothing for any other', () => {
+		const values = edited(
+			lemonBarsForm(),
+			{ type: 'addPhotos', role: 'dish', fileNames: ['IMG_0001.jpg', 'IMG_0002.jpg'] },
+			{
+				type: 'startPhotoUpload',
+				photoId: 12,
+				pathname: 'dish/development/a.jpg',
+				file: photoFile,
+			},
+			{ type: 'finishPhotoUpload', photoId: 12 },
+			{ type: 'startPhotoUpload', photoId: 13, pathname: 'dish/development/b.jpg', file: photoFile }
+		);
+
+		expect(
+			edited(values, { type: 'failMissingUpload', photoId: 12 }).photos.dish.map(
+				(photo) => photo.upload
+			)
+		).toEqual([
+			{ status: 'saved', pathname: 'dish/production/bars.jpg' },
+			{ status: 'saved', pathname: 'dish/production/slice.jpg' },
+			{ status: 'failed', failure: 'upload' },
+			{
+				status: 'uploading',
+				pathname: 'dish/development/b.jpg',
+				file: photoFile,
+				fraction: 0,
+			},
+		]);
+		// A saved photo, and one still uploading.
+		expect(
+			edited(
+				values,
+				{ type: 'failMissingUpload', photoId: 10 },
+				{ type: 'failMissingUpload', photoId: 13 }
+			)
+		).toEqual(values);
+		const removed = edited(values, { type: 'removePhoto', photoId: 12 });
+		expect(edited(removed, { type: 'failMissingUpload', photoId: 12 })).toEqual(removed);
+	});
+
 	it('replaces the whole form, going on from the higher next id so no id is given twice', () => {
 		const loaded = recipeFormValues();
 		const added = edited(

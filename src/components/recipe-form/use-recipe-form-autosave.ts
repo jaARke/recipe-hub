@@ -9,8 +9,9 @@ import {
 	recipeFormAutosaveKey,
 	recipeFormAutosaveVersion,
 	restoredRecipeForm,
-	unsavedUploadPathnames,
+	unsavedUploads,
 	type RecipeFormSubject,
+	type UnsavedUpload,
 } from '@/components/recipe-form/recipe-form-autosave';
 import type { RecipeFormEdit, RecipeFormValues } from '@/components/recipe-form/recipe-form-values';
 import {
@@ -29,26 +30,28 @@ type RecipeFormAutosaveOptions = {
 	onRestore: () => void;
 };
 
-// The uploads the image route says are gone. One it can't answer for stays, and saving says if it
-// is gone.
-async function missingUploads(pathnames: readonly string[]): Promise<Set<string>> {
+// The photos whose uploads the image route says are gone. One it can't answer for stays, and saving
+// says if it is gone.
+async function missingUploads(uploads: readonly UnsavedUpload[]): Promise<number[]> {
 	const missing = await Promise.all(
-		pathnames.map(async (pathname) => {
+		uploads.map(async ({ photoId, pathname }) => {
 			try {
-				return (await isPhotoStored(pathname)) ? [] : [pathname];
+				return (await isPhotoStored(pathname)) ? [] : [photoId];
 			} catch {
 				return [];
 			}
 		})
 	);
-	return new Set(missing.flat());
+	return missing.flat();
 }
 
 // Keeps the form's unsaved changes in this browser as the member edits, and brings them back as the
 // form first shows, not again when a hidden page shows. Writing waits until they are back, so the
-// form as it loads never replaces them, and a form back to how it loaded keeps nothing. Changes that
-// came back are the draft's state rather than what an attempt said, so they stay marked restored
-// until the member discards them. clear removes the entry, as a save that leads away must first.
+// form as it loads never replaces them, and a form back to how it loaded keeps nothing. They come
+// back at once, and a lookup that then finds an upload gone changes only its photo, so nothing typed
+// meanwhile is lost. Changes that came back are the draft's state rather than what an attempt said,
+// so they stay marked restored until the member discards them. clear removes the entry, as a save
+// that leads away must first.
 export function useRecipeFormAutosave({
 	subject,
 	initial,
@@ -81,11 +84,13 @@ export function useRecipeFormAutosave({
 			setSettled(true);
 			return;
 		}
-		const missing = await missingUploads(unsavedUploadPathnames(stored, initial));
-		dispatch({ type: 'replaceForm', values: restoredRecipeForm(stored, initial, missing) });
+		dispatch({ type: 'replaceForm', values: restoredRecipeForm(stored, initial) });
 		setRestored(true);
 		setSettled(true);
 		onRestore();
+		for (const photoId of await missingUploads(unsavedUploads(stored, initial))) {
+			dispatch({ type: 'failMissingUpload', photoId });
+		}
 	});
 
 	React.useEffect(() => {

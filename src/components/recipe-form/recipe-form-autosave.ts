@@ -100,6 +100,9 @@ export type AutosavedRecipeForm = z.infer<typeof entrySchema>;
 
 type AutosavedPhoto = z.infer<typeof photoSchema>;
 
+// An upload stored since the form loaded, by the photo that shows it.
+export type UnsavedUpload = { photoId: number; pathname: string };
+
 // Rows, tags, and photos share one run of ids.
 function formIds({
 	ingredientSections,
@@ -121,8 +124,11 @@ const readableEntrySchema = entrySchema.refine((form) => {
 	return new Set(ids).size === ids.length;
 });
 
-// One entry for each form, so an edit's entry for an older version of the recipe is replaced.
-export function recipeFormAutosaveKey(subject: RecipeFormSubject): string {
+// One entry for each form, so an edit's entry for an older version of the recipe is replaced. The key
+// names the recipe and not the version, so a recipe's entry is found without one.
+export function recipeFormAutosaveKey(
+	subject: Exclude<RecipeFormSubject, { kind: 'recipe' }> | { kind: 'recipe'; recipeId: string }
+): string {
 	switch (subject.kind) {
 		case 'new':
 			return memberBrowserStorageKey(`${keyPrefix}:new`);
@@ -216,29 +222,28 @@ function loadedPathnames(initial: RecipeFormValues): Set<string> {
 }
 
 // The stored uploads the form didn't load with. The image sweep removes an upload a day after nothing
-// names it, so each is looked up before it comes back.
-export function unsavedUploadPathnames(
+// names it, so each is looked up once it is back.
+export function unsavedUploads(
 	stored: AutosavedRecipeForm,
 	initial: RecipeFormValues
-): string[] {
+): UnsavedUpload[] {
 	const loaded = loadedPathnames(initial);
-	return [...stored.photos.dish, ...stored.photos.scan].flatMap(({ pathname }) =>
-		pathname === undefined || loaded.has(pathname) ? [] : [pathname]
+	return [...stored.photos.dish, ...stored.photos.scan].flatMap(({ id, pathname }) =>
+		pathname === undefined || loaded.has(pathname) ? [] : [{ photoId: id, pathname }]
 	);
 }
 
 // The stored form in place of the one that loaded. A photo the form loaded with is saved, a stored
-// upload shows from storage, and one that is gone or was never stored comes back as one that didn't
-// upload, which saving leaves out. Ids go on above every restored one, so nothing new takes the id,
-// or the note, of something removed.
+// upload shows from storage until its lookup says it is gone, and one never stored comes back as one
+// that didn't upload, which saving leaves out. Ids go on above every restored one, so nothing new
+// takes the id, or the note, of something removed.
 export function restoredRecipeForm(
 	stored: AutosavedRecipeForm,
-	initial: RecipeFormValues,
-	missingPathnames: ReadonlySet<string>
+	initial: RecipeFormValues
 ): RecipeFormValues {
 	const loaded = loadedPathnames(initial);
 	const upload = (pathname: string | undefined): PhotoUpload => {
-		if (pathname === undefined || missingPathnames.has(pathname)) {
+		if (pathname === undefined) {
 			return { status: 'failed', failure: 'upload' };
 		}
 		return loaded.has(pathname) ? { status: 'saved', pathname } : { status: 'uploaded', pathname };

@@ -214,7 +214,10 @@ export type RecipeFormEdit =
 	| { type: 'resolveReviewNote'; target: ProblemTarget | { kind: 'form' } }
 	// The whole form, as unsaved changes come back or are discarded. Ids go on from the higher next id,
 	// so none the form has given out is given again.
-	| { type: 'replaceForm'; values: RecipeFormValues };
+	| { type: 'replaceForm'; values: RecipeFormValues }
+	// A restored upload the image route says is gone, which then shows as one that didn't upload. Only
+	// an uploaded photo changes, so nothing does once the member removed or discarded it.
+	| { type: 'failMissingUpload'; photoId: number };
 
 // Each list's items, under the name the recipe content gives them.
 const itemKeys = {
@@ -1112,5 +1115,9 @@ function editedRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): Recip
 			return values;
 		case 'replaceForm':
 			return { ...edit.values, nextId: Math.max(edit.values.nextId, values.nextId) };
+		case 'failMissingUpload':
+			return updateUpload(values, edit.photoId, (upload) =>
+				upload.status === 'uploaded' ? { status: 'failed', failure: 'upload' } : undefined
+			);
 	}
 }

@@ -6,8 +6,8 @@ import { deadlineAfter } from '@/lib/deadline';
 // Authorizes each upload and answers with its presigned URL.
 const uploadRoutePath = '/api/uploads';
 
-// Long enough for a slow connection to answer, and short enough that unsaved changes waiting on the
-// answer come back soon.
+// Long enough for a slow connection to answer, and short enough that a restored photo storage no
+// longer holds soon shows it didn't upload.
 const photoLookupTimeLimitMs = 10_000;
 
 // Reports progress from 0 to 1, and rejects when the upload fails or the signal aborts it.
