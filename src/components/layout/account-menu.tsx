@@ -1,5 +1,6 @@
 'use client';
 
+import { ChevronDownIcon } from 'lucide-react';
 import Link from 'next/link';
 import { accountPath, requestAccessPath, signInPath } from '@/components/auth/auth-paths';
 import { useSignOut } from '@/components/auth/use-sign-out';
@@ -69,14 +70,11 @@ function AccountMenu({ member }: { member: HeaderMember }) {
 		<DropdownMenu>
 			<DropdownMenuTrigger
 				render={
-					<Button
-						variant="secondary"
-						size="icon"
-						aria-label={`Account menu for ${member.displayName}`}
-					/>
+					<Button variant="secondary" aria-label={`Account menu for ${member.displayName}`} />
 				}
 			>
 				{memberInitial(member.displayName)}
+				<ChevronDownIcon data-icon="inline-end" aria-hidden="true" />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="min-w-48">
 				<AccountMenuItems member={member} />

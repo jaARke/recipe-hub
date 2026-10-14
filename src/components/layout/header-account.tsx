@@ -32,22 +32,27 @@ async function HeaderAccount({ member }: HeaderAccountProps) {
 	);
 }
 
-// The theme menu and the account control, 8 px apart in a box as wide as they are with "Sign in", so
-// nothing else in the header moves when the account streams in after the page. A member's narrower
-// control leaves the spare width to the theme menu's left.
+// The account control's slot, as wide as "Sign in" in every state, which the account menu's trigger
+// fills, so nothing beside it moves when the session arrives.
+function AccountSlot({ children }: { children: React.ReactNode }) {
+	return (
+		<div className="grid *:col-start-1 *:row-start-1">
+			<SignInSpace />
+			{children}
+		</div>
+	);
+}
+
+// The theme menu and the account control, 8 px apart.
 function HeaderAccountGroup({ member, className }: HeaderAccountProps & { className?: string }) {
 	return (
-		<div className={cn('grid justify-items-end *:col-start-1 *:row-start-1', className)}>
-			<div aria-hidden="true" className="invisible flex gap-2">
-				<span className={buttonVariants({ variant: 'ghost', size: 'icon' })} />
-				<SignInSpace />
-			</div>
-			<div className="flex items-center gap-2">
-				<ThemeToggle />
-				<React.Suspense fallback={<SignInSpace />}>
+		<div className={cn('flex items-center gap-2', className)}>
+			<ThemeToggle />
+			<AccountSlot>
+				<React.Suspense>
 					<HeaderAccount member={member} />
 				</React.Suspense>
-			</div>
+			</AccountSlot>
 		</div>
 	);
 }

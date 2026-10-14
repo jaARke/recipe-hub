@@ -30,7 +30,7 @@ function SiteHeader({ member }: SiteHeaderProps) {
 					</Suspense>
 				</div>
 				<HeaderSearchBar formId={headerSearchFormId} />
-				<HeaderAccountGroup member={member} className="hidden md:grid" />
+				<HeaderAccountGroup member={member} className="hidden md:flex" />
 				<SiteMenu member={member} className="md:hidden" />
 			</PageContainer>
 		</header>
