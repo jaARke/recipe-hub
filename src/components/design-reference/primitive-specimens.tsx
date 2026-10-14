@@ -8,6 +8,7 @@ import { ComboboxSpecimen } from '@/components/design-reference/combobox-specime
 import {
 	AlertSpecimen,
 	AttachmentSpecimen,
+	AvatarSpecimen,
 	CardSpecimen,
 	EmptySpecimen,
 	ProgressSpecimen,
@@ -42,6 +43,7 @@ import { ToastSpecimen } from '@/components/design-reference/toast-specimen';
 const primitives = [
 	{ id: 'button', title: 'Button', Content: ButtonSpecimen },
 	{ id: 'badge', title: 'Badge', Content: BadgeSpecimen },
+	{ id: 'avatar', title: 'Avatar', Content: AvatarSpecimen },
 	{ id: 'pagination', title: 'Pagination', Content: PaginationSpecimen },
 	{ id: 'card', title: 'Card', Content: CardSpecimen },
 	{ id: 'input', title: 'Input', Content: InputSpecimen },

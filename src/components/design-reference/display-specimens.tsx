@@ -20,6 +20,7 @@ import {
 	AttachmentMedia,
 	AttachmentTitle,
 } from '@/components/ui/attachment';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
 	Card,
@@ -215,6 +216,24 @@ function AlertSpecimen() {
 	);
 }
 
+function AvatarSpecimen() {
+	return (
+		<Specimen label="A member's initial, as members have no photo, at sm, default, and lg">
+			<div className="flex items-center gap-4">
+				<Avatar size="sm">
+					<AvatarFallback>B</AvatarFallback>
+				</Avatar>
+				<Avatar>
+					<AvatarFallback>B</AvatarFallback>
+				</Avatar>
+				<Avatar size="lg">
+					<AvatarFallback>B</AvatarFallback>
+				</Avatar>
+			</div>
+		</Specimen>
+	);
+}
+
 function SkeletonSpecimen() {
 	return (
 		<Specimen label="Placeholders sized to the content they stand in for">
@@ -334,6 +353,7 @@ function SeparatorSpecimen() {
 export {
 	AlertSpecimen,
 	AttachmentSpecimen,
+	AvatarSpecimen,
 	CardSpecimen,
 	EmptySpecimen,
 	ProgressSpecimen,
