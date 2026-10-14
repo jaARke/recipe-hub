@@ -8,7 +8,8 @@ import { deleteRecipe, updateRecipe } from '@/app/(contribute)/recipes/[slug]/ed
 import { ForbiddenError, SignInRequiredError } from '@/application/authorization';
 import type { EditableRecipeDto } from '@/application/recipes/recipe-dtos';
 import { signInHref } from '@/components/auth/auth-paths';
-import { PageContainer } from '@/components/layout/page-container';
+import { FormActions } from '@/components/forms/form-actions';
+import { PageContainer, readingWidthClassName } from '@/components/layout/page-container';
 import { PageSection } from '@/components/layout/page-section';
 import { DeleteRecipeDialog } from '@/components/recipe-form/delete-recipe-dialog';
 import { RecipeForm, RecipeFormSkeleton } from '@/components/recipe-form/recipe-form';
@@ -114,11 +115,13 @@ async function RecipeEditor({ params }: Pick<PageProps<'/recipes/[slug]/edit'>, 
 			<PageSection
 				id="delete-recipe"
 				title="Delete recipe"
+				// The form beside the original widens the page; this section keeps reading width.
+				className={readingWidthClassName}
 				description="Deleting the recipe also deletes its photos, and it can’t be undone."
 			>
-				<div>
+				<FormActions>
 					<DeleteRecipeDialog recipeId={recipe.id} title={recipe.title} action={deleteRecipe} />
-				</div>
+				</FormActions>
 			</PageSection>
 		</div>
 	);
@@ -128,7 +131,7 @@ export default function EditRecipePage({ params }: PageProps<'/recipes/[slug]/ed
 	return (
 		<PageContainer width="readingOrWide" className="flex flex-col gap-8 py-12 sm:py-16">
 			<h1 className="font-heading text-4xl font-semibold">Edit recipe</h1>
-			<Suspense fallback={<RecipeFormSkeleton />}>
+			<Suspense fallback={<RecipeFormSkeleton besideOriginal />}>
 				<RecipeEditor params={params} />
 			</Suspense>
 		</PageContainer>

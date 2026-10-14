@@ -688,6 +688,8 @@ describe('recipeFormProblems', () => {
 				ingredientSections: 'Check the ingredients.',
 				notes: 'Check the notes.',
 				'yield.amount': 'Check the yield.',
+				description: 'Check the description.',
+				source: 'Check the source.',
 				title: 'Add a title.',
 				'': 'Part of the card was hard to read.',
 			},
@@ -697,7 +699,7 @@ describe('recipeFormProblems', () => {
 		expect(recipeFormProblems(failed)).toEqual([
 			{ message: 'Part of the card was hard to read.', target: { kind: 'form' } },
 			{ message: 'Add a title.', target: { kind: 'field', field: 'title' } },
-			{ message: 'Check the yield.', target: { kind: 'field', field: 'yieldAmount' } },
+			{ message: 'Check the source.', target: { kind: 'field', field: 'source' } },
 			{ message: 'Check the ingredients.', target: { kind: 'list', list: 'ingredientSections' } },
 			{
 				message: 'Check the heading.',
@@ -716,6 +718,8 @@ describe('recipeFormProblems', () => {
 				target: { kind: 'row', list: 'instructionSections', index: 1, id: 5 },
 			},
 			{ message: 'Check the notes.', target: { kind: 'field', field: 'notes' } },
+			{ message: 'Check the description.', target: { kind: 'field', field: 'description' } },
+			{ message: 'Check the yield.', target: { kind: 'field', field: 'yieldAmount' } },
 			{ message: 'Check the tags.', target: { kind: 'field', field: 'tags' } },
 			{
 				message: 'Check this page.',

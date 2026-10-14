@@ -1,5 +1,6 @@
 'use client';
 
+import { cn } from 'cn';
 import * as React from 'react';
 import { focusFellToPage } from '@/components/forms/focus-fell-to-page';
 import { CountBadge } from '@/components/layout/count-badge';
@@ -15,6 +16,7 @@ type PageSectionProps = {
 	// The section's item count. An item that leaves while focused, such as a declined request, drops
 	// focus to the page, so the heading takes it and keyboard users go on from here.
 	itemCount?: number;
+	className?: string;
 	children: React.ReactNode;
 };
 
@@ -28,6 +30,7 @@ function PageSection({
 	description,
 	count,
 	itemCount,
+	className,
 	children,
 }: PageSectionProps) {
 	const headingId = `${id}-heading`;
@@ -49,7 +52,7 @@ function PageSection({
 		<section
 			id={id}
 			aria-labelledby={headingId}
-			className="flex flex-col gap-4 not-first:border-t not-first:pt-8"
+			className={cn('flex flex-col gap-4 not-first:border-t not-first:pt-8', className)}
 		>
 			<div className="flex flex-col gap-2">
 				<Heading

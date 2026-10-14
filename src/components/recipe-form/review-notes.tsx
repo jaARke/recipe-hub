@@ -56,6 +56,21 @@ function ReviewNotesIntro({
 	);
 }
 
+// Beside Save in the form's action bar while anything is left to check: how many, and Next, which
+// goes to the next note. Its count isn't announced as it changes, as the intro's isn't.
+function ReviewNotesNext({ id, count, onNext }: { id: string; count: number; onNext: () => void }) {
+	return (
+		<div className="flex shrink-0 items-center gap-3">
+			<p id={id} className="text-sm text-muted-foreground">
+				{count} to check
+			</p>
+			<Button type="button" variant="outline" aria-describedby={id} onClick={onNext}>
+				Next
+			</Button>
+		</div>
+	);
+}
+
 type UncheckedSaveDialogProps = {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
@@ -125,4 +140,4 @@ function UncheckedSaveDialog({
 	);
 }
 
-export { ReviewNotesIntro, UncheckedSaveDialog };
+export { ReviewNotesIntro, ReviewNotesNext, UncheckedSaveDialog };

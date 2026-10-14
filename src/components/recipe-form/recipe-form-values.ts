@@ -220,18 +220,18 @@ const itemKeys = {
 
 const photoRoles = ['dish', 'scan'] as const satisfies readonly RecipeImageRole[];
 
-// Text fields in the order the form shows them, around the lists and the tags.
-const fieldsBeforeLists = [
-	'title',
+// Text fields and the tags in the order the form shows them, around the lists.
+const fieldsBeforeLists = ['title', 'source'] as const satisfies readonly RecipeFormErrorField[];
+const fieldsAfterLists = [
+	'notes',
 	'description',
-	'source',
 	'prepMinutes',
 	'cookMinutes',
 	'totalMinutes',
 	'yieldAmount',
 	'yieldUnit',
+	'tags',
 ] as const satisfies readonly RecipeFormErrorField[];
-const fieldsAfterLists = ['notes', 'tags'] as const satisfies readonly RecipeFormErrorField[];
 
 // Problems whose paths never change, whatever the form holds.
 const fixedTargets: ProblemTargets = new Map<string, ProblemTarget>([

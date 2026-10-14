@@ -13,8 +13,13 @@ import {
 	type ShownImage,
 } from '@/components/recipe/shown-recipe-image';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const labels = imageViewerLabels('scan');
+
+// In view as the form scrolls: the pane clears the sticky header (h-14 and its border) by 1.5rem and
+// ends 2rem above the screen's bottom.
+const paneClassName = 'sticky top-20 flex h-[calc(100dvh-7rem)] flex-col gap-3';
 
 type OriginalRecipePaneProps = {
 	// The form's scans, in its order.
@@ -24,8 +29,7 @@ type OriginalRecipePaneProps = {
 	className?: string;
 };
 
-// The original recipe beside the form, a page at a time, in view as the form scrolls: it clears the
-// sticky header (h-14 and its border) by 1.5rem and ends 2rem above the screen's bottom. Zoom doubles
+// The original recipe beside the form, a page at a time, in view as the form scrolls. Zoom doubles
 // the page, which then scrolls, and Full size opens the page by itself in a new tab. No carousel: a
 // zoomed page takes the arrow keys to scroll, which a carousel would take to change pages.
 function OriginalRecipePane({ images, title, className }: OriginalRecipePaneProps) {
@@ -46,10 +50,7 @@ function OriginalRecipePane({ images, title, className }: OriginalRecipePaneProp
 	const showPage = (pageIndex: number) => setShownPathname(images[pageIndex]?.pathname);
 
 	return (
-		<aside
-			aria-label={title}
-			className={cn('sticky top-20 flex h-[calc(100dvh-7rem)] flex-col gap-3', className)}
-		>
+		<aside aria-label={title} className={cn(paneClassName, className)}>
 			<div className="flex flex-wrap items-center justify-between gap-2">
 				{images.length > 1 && (
 					<div className="flex items-center gap-2">
@@ -131,4 +132,14 @@ function OriginalRecipePane({ images, title, className }: OriginalRecipePaneProp
 	);
 }
 
-export { OriginalRecipePane };
+// Holds the pane's place while the form loads: its buttons over the page.
+function OriginalRecipePaneSkeleton({ className }: { className?: string }) {
+	return (
+		<div className={cn(paneClassName, className)}>
+			<Skeleton className="h-8 w-44 self-end" />
+			<Skeleton className="min-h-0 flex-1" />
+		</div>
+	);
+}
+
+export { OriginalRecipePane, OriginalRecipePaneSkeleton };

@@ -101,6 +101,33 @@ describe('RecipeForm’s review notes', () => {
 		expect(screen.queryByText(/need a second look/)).toBeNull();
 	});
 
+	it('moves Next to the open note after where focus last was in the form, wrapping past the last', async () => {
+		const user = userEvent.setup();
+		renderForm(lemonBars, threeNotes);
+		const next = screen.getByRole('button', { name: 'Next' });
+		const count = () => document.getElementById(next.getAttribute('aria-describedby') ?? '');
+		expect(count()?.textContent).toBe('3 to check');
+
+		await user.click(next);
+		expect(document.activeElement).toBe(noteWith('Check the title.'));
+		await user.click(next);
+		expect(document.activeElement).toBe(noteWith('Check this line.'));
+		await user.click(next);
+		expect(document.activeElement).toBe(noteWith('Check this step.'));
+		await user.click(next);
+		expect(document.activeElement).toBe(noteWith('Check the title.'));
+
+		await user.click(screen.getByRole('textbox', { name: 'Ingredient 1' }));
+		await user.click(next);
+		expect(document.activeElement).toBe(noteWith('Check this line.'));
+
+		await user.click(lookRight('Ingredient 2'));
+		expect(document.activeElement).toBe(noteWith('Check this step.'));
+		expect(count()?.textContent).toBe('2 to check');
+		await user.click(next);
+		expect(document.activeElement).toBe(noteWith('Check the title.'));
+	});
+
 	it('starts checking at the first note', async () => {
 		const user = userEvent.setup();
 		renderForm(lemonBars, threeNotes);
