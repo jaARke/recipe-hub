@@ -78,6 +78,22 @@ describe('PasskeyList', () => {
 		expect(screen.queryByText('Use 60 characters or fewer.')).toBeNull();
 	});
 
+	it('keeps the rename dialog open while the name saves, so it cannot be sent twice', async () => {
+		const rename = vi.fn<FormAction>(() => new Promise(() => {}));
+		const user = userEvent.setup();
+		render(<PasskeyList passkeys={passkeys} renamePasskey={rename} removePasskey={succeed} />);
+
+		const trigger = screen.getByRole('button', { name: 'Rename Work laptop' });
+		await user.click(trigger);
+		await user.click(await screen.findByRole('button', { name: 'Save name' }));
+		await user.keyboard('{Escape}');
+		await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+		expect(trigger.getAttribute('aria-expanded')).toBe('true');
+		await user.click(screen.getByRole('button', { name: /Saving name$/ }));
+		expect(rename).toHaveBeenCalledOnce();
+	});
+
 	it('closes the removal dialog once the passkey is removed', async () => {
 		const add = vi.spyOn(toast, 'add');
 		const user = userEvent.setup();

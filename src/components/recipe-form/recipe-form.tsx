@@ -19,6 +19,7 @@ import {
 import { TextField, textFieldIds } from '@/components/forms/text-field';
 import { TextareaField } from '@/components/forms/textarea-field';
 import { useFormAction } from '@/components/forms/use-form-action';
+import { useHydrated } from '@/components/forms/use-hydrated';
 import { wideContentProps } from '@/components/layout/page-container';
 import { FieldRow, RowTextField } from '@/components/recipe-form/field-row';
 import {
@@ -164,19 +165,6 @@ type RecipeFormProps = {
 	autosave?: boolean;
 	submitLabel: string;
 };
-
-function subscribeToNothing() {
-	return () => {};
-}
-
-// False in the server's render and while hydrating, then true.
-function useHydrated(): boolean {
-	return React.useSyncExternalStore(
-		subscribeToNothing,
-		() => true,
-		() => false
-	);
-}
 
 // Text with each transcription marker in it marked, so the member finds it.
 function markedText(text: string): React.ReactNode {

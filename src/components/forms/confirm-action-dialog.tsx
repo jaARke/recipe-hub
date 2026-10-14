@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
+import { useActionDialog } from '@/components/forms/use-action-dialog';
 import { useFormAction } from '@/components/forms/use-form-action';
 import {
 	AlertDialog,
@@ -68,7 +69,7 @@ function ConfirmActionForm({
 			</AlertDialogHeader>
 			<FormErrorAlert message={state.status === 'error' ? state.message : undefined} />
 			<AlertDialogFooter>
-				<AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
+				<AlertDialogCancel disabled={pending}>{cancelLabel}</AlertDialogCancel>
 				<AlertDialogAction type="submit" variant={variant} disabled={pending} focusableWhenDisabled>
 					{pending && <Spinner data-icon="inline-start" />}
 					{pending ? pendingLabel : confirmLabel}
@@ -78,8 +79,8 @@ function ConfirmActionForm({
 	);
 }
 
-// Asks before a destructive or consequential action, shows a refused one's reason in place, and
-// closes once it succeeds.
+// Asks before a destructive or consequential action, stays open while it runs, shows a refused
+// one's reason in place, and closes once it succeeds.
 function ConfirmActionDialog({
 	trigger,
 	successMessage,
@@ -88,24 +89,17 @@ function ConfirmActionDialog({
 	variant,
 	...formProps
 }: ConfirmActionDialogProps) {
-	const [open, setOpen] = React.useState(false);
+	const [dialogProps, confirm] = useActionDialog(action, () => {
+		toast.add({ type: 'success', title: successMessage });
+		onSuccess?.();
+	});
 	const triggerRef = React.useRef<HTMLButtonElement>(null);
 	// Focus returns to the trigger. When the action removed it with its item, Base UI would fall back
 	// to an element focused earlier, so focus is left for the page to place.
 	const returnFocusToTrigger = () => triggerRef.current?.isConnected === true;
 
-	const confirm: FormAction = async (previous, formData) => {
-		const next = await action(previous, formData);
-		if (next.status === 'success') {
-			toast.add({ type: 'success', title: successMessage });
-			setOpen(false);
-			onSuccess?.();
-		}
-		return next;
-	};
-
 	return (
-		<AlertDialog open={open} onOpenChange={setOpen}>
+		<AlertDialog {...dialogProps}>
 			<AlertDialogTrigger
 				ref={triggerRef}
 				render={<Button variant={variant === 'destructive' ? 'destructive' : 'outline'} />}

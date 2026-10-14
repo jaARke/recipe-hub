@@ -1,12 +1,12 @@
 'use client';
 
 import { KeyRoundIcon } from 'lucide-react';
-import * as React from 'react';
 import { passkeyFieldNames } from '@/components/account/account-forms';
 import { ConfirmActionDialog } from '@/components/forms/confirm-action-dialog';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction } from '@/components/forms/form-state';
 import { TextField } from '@/components/forms/text-field';
+import { useActionDialog } from '@/components/forms/use-action-dialog';
 import { useFormAction } from '@/components/forms/use-form-action';
 import { Button } from '@/components/ui/button';
 import {
@@ -77,7 +77,9 @@ function RenamePasskeyForm({ passkeyId, name, action }: RenamePasskeyFormProps) 
 				defaultValue={failure?.values?.[passkeyFieldNames.name] ?? name}
 			/>
 			<DialogFooter>
-				<DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+				<DialogClose render={<Button variant="outline" />} disabled={pending}>
+					Cancel
+				</DialogClose>
 				<Button type="submit" disabled={pending} focusableWhenDisabled>
 					{pending && <Spinner data-icon="inline-start" />}
 					{pending ? 'Saving name' : 'Save name'}
@@ -90,19 +92,12 @@ function RenamePasskeyForm({ passkeyId, name, action }: RenamePasskeyFormProps) 
 // Closes once the name is saved, and focus returns to the passkey's Rename button; a toast says so,
 // as a removal's does, since the dialog that held the form is gone.
 function RenamePasskeyDialog({ passkeyId, name, label, action }: RenamePasskeyDialogProps) {
-	const [open, setOpen] = React.useState(false);
-
-	const rename: FormAction = async (previous, formData) => {
-		const next = await action(previous, formData);
-		if (next.status === 'success') {
-			toast.add({ type: 'success', title: 'Passkey renamed' });
-			setOpen(false);
-		}
-		return next;
-	};
+	const [dialogProps, rename] = useActionDialog(action, () =>
+		toast.add({ type: 'success', title: 'Passkey renamed' })
+	);
 
 	return (
-		<Dialog open={open} onOpenChange={setOpen}>
+		<Dialog {...dialogProps}>
 			<DialogTrigger render={<Button variant="outline" />}>
 				Rename<span className="sr-only">{label}</span>
 			</DialogTrigger>
