@@ -11,6 +11,7 @@ import { InMemoryFavoriteRepository } from '@/application/testing/in-memory-favo
 import { InMemoryInviteRepository } from '@/application/testing/in-memory-invite-repository';
 import { InMemoryMemberRepository } from '@/application/testing/in-memory-member-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
+import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
 import type { AccessRequestFields } from '@/domain/member/access-request';
 
 const appUrl = new URL('https://recipes.example.com');
@@ -32,7 +33,8 @@ function createAccess() {
 	const requests = new InMemoryAccessRequestRepository();
 	const members = new InMemoryMemberRepository(
 		new InMemoryInviteRepository(),
-		new InMemoryFavoriteRepository(new InMemoryRecipeRepository())
+		new InMemoryFavoriteRepository(new InMemoryRecipeRepository()),
+		new InMemorySavedDraftRepository()
 	);
 	const emails = new InMemoryEmailSender();
 	const serviceFor = (actor: Actor) =>

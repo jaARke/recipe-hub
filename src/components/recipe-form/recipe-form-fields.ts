@@ -9,7 +9,17 @@ export const recipeFormFieldNames = {
 	recipeVersion: 'recipeVersion',
 	// The import a create form reviews, whose provenance the saved recipe takes.
 	importId: 'importId',
+	// The form's snapshot as JSON, which saving a draft sends.
+	draft: 'draft',
+	// The saved draft the form holds, which saving the recipe deletes.
+	draftId: 'draftId',
 } as const;
+
+// What saving a draft returns: the draft, which the form then names, and when it was saved.
+export type SavedDraftResult = {
+	draftId: string;
+	savedAt: Date;
+};
 
 // The recipe a form edits, and the version it loaded, so a save over a newer one is refused.
 export type EditedRecipe = {

@@ -2,13 +2,15 @@
 
 import { cn } from 'cn';
 import { HistoryIcon, ScanTextIcon } from 'lucide-react';
-import { unstable_rethrow } from 'next/navigation';
+import { unstable_rethrow, useRouter } from 'next/navigation';
 import * as React from 'react';
 import { flushSync } from 'react-dom';
+import { hasFieldErrors } from '@/components/forms/field-errors';
 import { FieldNote, type FieldNoteContent } from '@/components/forms/field-note';
 import { focusCentered } from '@/components/forms/focus-centered';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction, FormState } from '@/components/forms/form-state';
+import { FormStatusMessage } from '@/components/forms/form-status-message';
 import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
 import {
 	ProblemSummary,
@@ -19,8 +21,12 @@ import { TextField, textFieldIds } from '@/components/forms/text-field';
 import { TextareaField } from '@/components/forms/textarea-field';
 import { useFormAction } from '@/components/forms/use-form-action';
 import { useHydrated } from '@/components/forms/use-hydrated';
+import { useTransientState } from '@/components/forms/use-transient-state';
 import { wideContentProps } from '@/components/layout/page-container';
 import { ActionBar } from '@/components/recipe-form/action-bar';
+import { DeleteDraftDialog } from '@/components/recipe-form/delete-draft-dialog';
+import { DeleteRecipeDialog } from '@/components/recipe-form/delete-recipe-dialog';
+import { DeleteSection } from '@/components/recipe-form/delete-section';
 import { FieldRow, RowTextField } from '@/components/recipe-form/field-row';
 import {
 	OriginalRecipePane,
@@ -33,11 +39,21 @@ import {
 	photoViewerImages,
 } from '@/components/recipe-form/photo-field';
 import { uploadPhoto, type PhotoUploader } from '@/components/recipe-form/photo-upload';
-import { recipeFormSubject } from '@/components/recipe-form/recipe-form-autosave';
+import {
+	recipeFormSubject,
+	type RecipeFormSubject,
+} from '@/components/recipe-form/recipe-form-autosave';
 import {
 	recipeFormFieldNames,
 	type EditedRecipe,
+	type SavedDraftResult,
 } from '@/components/recipe-form/recipe-form-fields';
+import {
+	recipeFormSnapshot,
+	restoredRecipeForm,
+	savedDraftSnapshot,
+	showSameRecipeForm,
+} from '@/components/recipe-form/recipe-form-snapshot';
 import {
 	editRecipeForm,
 	hasPhotosInProgress,
@@ -68,13 +84,15 @@ import {
 } from '@/components/recipe-form/sectioned-list-field';
 import { TagsField, tagsFieldIds, tagsFieldLabel } from '@/components/recipe-form/tags-field';
 import { useRecipeFormAutosave } from '@/components/recipe-form/use-recipe-form-autosave';
+import { draftsTabPath, savedDraftPath } from '@/components/recipe-import/recipe-entry-paths';
 import { IngredientLineText } from '@/components/recipe/ingredient-line-text';
 import {
 	RecipeImageViewer,
 	RecipeImageViewerButton,
 } from '@/components/recipe/recipe-image-viewer';
+import { recipeListPath } from '@/components/recipe/recipe-paths';
 import { HighlightedSegments } from '@/components/search/highlighted-segments';
-import { Alert, AlertTitle } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field';
 import {
@@ -93,11 +111,24 @@ import {
 	transcriptionMarkerRuns,
 	transcriptionMarkersIn,
 } from '@/domain/recipe/transcription-markers';
+import { formatDayAndTime, formatTime } from '@/lib/dates';
 import { settings } from '@/lib/settings';
 
 const failureMessage = 'We couldn’t save the recipe. Check your connection and try again.';
 
-const restoredMessage = 'Restored your unsaved changes';
+const draftFailureMessage = 'We couldn’t save the draft. Check your connection and try again.';
+
+// What Discard returns the form to, by what it edits; a form holding a saved draft returns to it.
+const discardTargets = {
+	new: 'an empty form',
+	import: 'the recipe as it was imported',
+	draft: 'your saved draft',
+	recipe: 'the recipe as it was saved',
+} as const satisfies Record<RecipeFormSubject['kind'], string>;
+
+// What saving a draft last said in the action bar.
+type DraftStatus =
+	{ kind: 'saved'; savedAt: Date } | { kind: 'unchanged' } | { kind: 'failed'; message: string };
 
 const yieldKindItems = [
 	{ value: 'servings', label: 'Serves' },
@@ -146,8 +177,26 @@ const photoFieldLegends = {
 	scan: 'Original recipe',
 } as const satisfies Record<RecipeImageRole, string>;
 
+// A draft the member saved, which the form opened or saved.
+export type OpenedDraft = {
+	id: string;
+	savedAt: Date;
+};
+
+// Saving the form as a draft and deleting the draft, on a new recipe and an import's review.
+export type RecipeFormDrafts = {
+	save: FormAction<SavedDraftResult>;
+	delete: FormAction;
+	// The draft the form opened, if any.
+	opened?: OpenedDraft;
+	// Whether the page's URL names the draft once it is first saved, so a reload opens it: the add
+	// page's does, and an import's review is named by its import.
+	inUrl: boolean;
+};
+
 type RecipeFormProps = {
-	// Built with recipeFormValues, from nothing, a recipe to edit, or a draft to review.
+	// Built with recipeFormValues, from nothing, a recipe to edit, or a draft to review, or from a
+	// saved draft with restoredRecipeForm.
 	initial: RecipeFormValues;
 	// Redirects to the recipe once it is saved, which also starts the form over.
 	action: FormAction;
@@ -161,8 +210,13 @@ type RecipeFormProps = {
 	// The import whose draft the form reviews, which the saved recipe takes its provenance from. The
 	// review's intro takes focus as the page loads.
 	importId?: string;
-	// Keeps unsaved changes in this browser and brings them back as the form loads again.
-	autosave?: boolean;
+	// Keeps unsaved changes in this browser for the member signed in, and brings them back as the form
+	// loads again.
+	autosave?: { memberId: string };
+	// Absent when editing a published recipe, which has no draft.
+	drafts?: RecipeFormDrafts;
+	// Deletes the recipe being edited, offered after the form.
+	deleteRecipe?: { title: string; action: FormAction };
 	submitLabel: string;
 };
 
@@ -206,7 +260,8 @@ function checkMessage({ note, markers }: RecipeFormCheck): string {
 
 // The recipe form for adding, editing, and reviewing an import. Its whole value is sent as JSON in
 // one field; the action maps it with recipeContentFromForm. Saving waits for hydration, since a
-// submit before then would send what the server rendered rather than what was typed.
+// submit before then would send what the server rendered rather than what was typed. After the form
+// comes what deletes what it edits: the recipe, or a draft it holds.
 function RecipeForm({
 	initial,
 	action,
@@ -215,22 +270,38 @@ function RecipeForm({
 	uploader = uploadPhoto,
 	editing,
 	importId,
-	autosave = false,
+	autosave,
+	drafts,
+	deleteRecipe,
 	submitLabel,
 }: RecipeFormProps) {
 	const baseId = React.useId();
+	const router = useRouter();
 	const [values, dispatch] = React.useReducer(editRecipeForm, initial);
 	const hydrated = useHydrated();
+	// The saved draft the form holds, and what the server holds for the form: the form as it loaded,
+	// or its draft as last saved.
+	const [savedDraft, setSavedDraft] = React.useState(drafts?.opened);
+	const [baseline, setBaseline] = React.useState(initial);
+	const unchanged = React.useMemo(
+		() => showSameRecipeForm(recipeFormSnapshot(values), recipeFormSnapshot(baseline)),
+		[values, baseline]
+	);
+	const subject = recipeFormSubject({ editing, importId, draftId: savedDraft?.id });
 	// Announced as "Looks right" clears a note and as unsaved changes come back or go, and never as a
 	// draft loads.
 	const [announcement, announce] = useLiveAnnouncement();
 	const autosaved = useRecipeFormAutosave({
-		subject: autosave ? recipeFormSubject({ editing, importId }) : undefined,
-		initial,
+		memberId: autosave?.memberId,
+		subject,
+		baseline,
 		values,
+		unchanged,
 		dispatch,
-		onRestore: () => announce(`${restoredMessage}.`),
+		onRestore: (restoredAt) => announce(`${restoredTitle(restoredAt)}.`),
 	});
+	const [draftPending, startDraftSave] = React.useTransition();
+	const [draftStatus, setDraftStatus] = useTransientState<DraftStatus>();
 	const submission = recipeFormSubmission(values);
 	const isEditing = editing !== undefined;
 	const photosInProgress = hasPhotosInProgress(values);
@@ -249,7 +320,7 @@ function RecipeForm({
 
 	// A save's problems name places in what it sent, so they land through that submission's targets.
 	// A save that succeeds leads to the recipe through Next's redirect, the one error unstable_rethrow
-	// passes on here. The form remounts as the page goes, so its unsaved changes are cleared first.
+	// passes on here. Next keeps the page it leaves, so its unsaved changes are let go first.
 	const saveRecipe: FormAction = async (previous, formData) => {
 		const { targets } = submission;
 		let result: FormState;
@@ -259,7 +330,7 @@ function RecipeForm({
 			try {
 				unstable_rethrow(error);
 			} catch {
-				autosaved.clear();
+				autosaved.leave();
 			}
 			throw error;
 		}
@@ -471,6 +542,58 @@ function RecipeForm({
 		document.getElementById(ids.field('title'))?.focus();
 	}
 
+	// Saves whatever the form holds, with nothing required, and says so in the action bar; a form that
+	// shows what is already saved, or a new one left empty, has nothing to save. What it saved becomes
+	// what Discard returns to, as a reload would open it.
+	function saveDraft() {
+		if (drafts === undefined) {
+			return;
+		}
+		if (unchanged && (savedDraft !== undefined || importId === undefined)) {
+			setDraftStatus({ kind: 'unchanged' });
+			return;
+		}
+		const snapshot = savedDraftSnapshot(values);
+		const { targets } = submission;
+		const formData = new FormData();
+		formData.set(recipeFormFieldNames.draft, JSON.stringify(snapshot));
+		if (savedDraft !== undefined) {
+			formData.set(recipeFormFieldNames.draftId, savedDraft.id);
+		}
+		if (importId !== undefined) {
+			formData.set(recipeFormFieldNames.importId, importId);
+		}
+		startDraftSave(async () => {
+			let result: FormState<SavedDraftResult>;
+			try {
+				result = await drafts.save({ status: 'idle' }, formData);
+			} catch (error) {
+				unstable_rethrow(error);
+				result = { status: 'error', message: draftFailureMessage, fieldErrors: {} };
+			}
+			if (result.status === 'success') {
+				const saved = { id: result.draftId, savedAt: result.savedAt };
+				setSavedDraft(saved);
+				setBaseline(restoredRecipeForm(snapshot, initial));
+				setDraftStatus({ kind: 'saved', savedAt: saved.savedAt });
+				if (drafts.inUrl && saved.id !== savedDraft?.id) {
+					window.history.replaceState(null, '', savedDraftPath(saved.id));
+				}
+			} else if (result.status === 'error') {
+				if (hasFieldErrors(result.fieldErrors)) {
+					dispatch({ type: 'attachErrors', fieldErrors: result.fieldErrors, targets });
+				}
+				setDraftStatus({ kind: 'failed', message: result.message ?? 'The draft wasn’t saved.' });
+			}
+		});
+	}
+
+	// Leaves for the destination once what the form edits is deleted, letting its changes go first.
+	function leaveFor(destination: string) {
+		autosaved.leave();
+		router.replace(destination);
+	}
+
 	const [firstCheck] = checks;
 	const formNote = noteFor({ kind: 'form' });
 	// The scans to read beside the form from lg, which widen the page, or in the viewer below lg.
@@ -501,7 +624,13 @@ function RecipeForm({
 
 	const fields = (
 		<div onFocus={rememberFocus} className="flex flex-col gap-4">
-			{autosaved.restored && <RestoredChangesNotice onDiscard={discardChanges} />}
+			{autosaved.restoredAt !== undefined && (
+				<RestoredChangesNotice
+					restoredAt={autosaved.restoredAt}
+					returnsTo={savedDraft === undefined ? discardTargets[subject.kind] : discardTargets.draft}
+					onDiscard={discardChanges}
+				/>
+			)}
 			{/* About the whole form, such as an edit conflict; the summary lists a save's problems. */}
 			<FormErrorAlert message={state.status === 'error' ? state.message : undefined} />
 			<ProblemSummary problems={problems} />
@@ -537,6 +666,9 @@ function RecipeForm({
 			)}
 			{importId !== undefined && (
 				<input type="hidden" name={recipeFormFieldNames.importId} value={importId} />
+			)}
+			{savedDraft !== undefined && (
+				<input type="hidden" name={recipeFormFieldNames.draftId} value={savedDraft.id} />
 			)}
 			<SummarizedProblems>
 				<FieldGroup>
@@ -679,71 +811,160 @@ function RecipeForm({
 		</div>
 	);
 
+	const deletion =
+		editing !== undefined && deleteRecipe !== undefined ? (
+			<DeleteSection subject="recipe">
+				<DeleteRecipeDialog
+					recipeId={editing.id}
+					title={deleteRecipe.title}
+					action={deleteRecipe.action}
+					// The edit page is gone, so the list takes its place in the history.
+					onDeleted={() => leaveFor(recipeListPath)}
+				/>
+			</DeleteSection>
+		) : (
+			drafts !== undefined &&
+			savedDraft !== undefined && (
+				<DeleteSection subject="draft">
+					<DeleteDraftDialog
+						draft={{ kind: 'saved', id: savedDraft.id }}
+						title={values.text.title.trim() || undefined}
+						action={drafts.delete}
+						// The draft is gone, so the drafts left take its place in the history.
+						onDeleted={() => leaveFor(draftsTabPath)}
+					/>
+				</DeleteSection>
+			)
+		);
+
 	// The action bar follows the original and the fields, so it spans the page, and stays in the form,
 	// which Save submits.
 	return (
-		<form {...formProps}>
-			<BesideOriginal
-				original={
-					hasOriginal && (
-						<OriginalRecipePane
-							images={originalImages}
-							title={photoFieldLegends.scan}
-							className="max-lg:hidden"
-						/>
-					)
-				}
-			>
-				{fields}
-			</BesideOriginal>
-			<ActionBar
-				status={
-					<>
-						{photosInProgress && (
-							<p id={ids.saveNote} className="text-sm text-muted-foreground">
-								Wait for the photos to finish uploading.
-							</p>
-						)}
-						{firstCheck !== undefined && (
-							<ReviewNotesNext id={ids.checksLeft} count={checks.length} onNext={goToNextCheck} />
-						)}
-					</>
-				}
-			>
-				<Button
-					id={ids.save}
-					type="submit"
-					// Natively disabled until hydrated, since a click before then would still submit.
-					disabled={!hydrated || photosInProgress || pending}
-					focusableWhenDisabled={hydrated}
-					aria-describedby={photosInProgress ? ids.saveNote : undefined}
-				>
-					{pending && <Spinner data-icon="inline-start" />}
-					{pending ? 'Saving recipe' : submitLabel}
-				</Button>
-			</ActionBar>
-			<UncheckedSaveDialog
-				open={warningOpen}
-				onOpenChange={setWarningOpen}
-				count={checks.length}
-				onShow={() => {
-					if (firstCheck !== undefined) {
-						focusCheck(firstCheck);
+		<div className="flex flex-col gap-12">
+			<form {...formProps}>
+				<BesideOriginal
+					original={
+						hasOriginal && (
+							<OriginalRecipePane
+								images={originalImages}
+								title={photoFieldLegends.scan}
+								className="max-lg:hidden"
+							/>
+						)
 					}
-				}}
-				onSaveAnyway={saveAnyway}
-			/>
-		</form>
+				>
+					{fields}
+				</BesideOriginal>
+				<ActionBar
+					status={
+						<>
+							{drafts !== undefined && (
+								<FormStatusMessage
+									kind={draftStatus?.kind === 'saved' ? 'confirmation' : 'progress'}
+									message={draftStatusMessage(draftStatus, savedDraft !== undefined)}
+								/>
+							)}
+							{photosInProgress && (
+								<p id={ids.saveNote} className="text-sm text-muted-foreground">
+									Wait for the photos to finish uploading.
+								</p>
+							)}
+							{firstCheck !== undefined && (
+								<ReviewNotesNext id={ids.checksLeft} count={checks.length} onNext={goToNextCheck} />
+							)}
+						</>
+					}
+				>
+					<Button
+						id={ids.save}
+						type="submit"
+						// Natively disabled until hydrated, since a click before then would still submit, and while
+						// a draft saves, which saving the recipe deletes.
+						disabled={!hydrated || photosInProgress || pending || draftPending}
+						focusableWhenDisabled={hydrated}
+						aria-describedby={photosInProgress ? ids.saveNote : undefined}
+					>
+						{pending && <Spinner data-icon="inline-start" />}
+						{pending ? 'Saving recipe' : submitLabel}
+					</Button>
+					{drafts !== undefined && (
+						<Button
+							type="button"
+							variant="outline"
+							disabled={!hydrated || photosInProgress || pending || draftPending}
+							focusableWhenDisabled={hydrated}
+							aria-describedby={photosInProgress ? ids.saveNote : undefined}
+							onClick={saveDraft}
+						>
+							{draftPending && <Spinner data-icon="inline-start" />}
+							{draftPending ? (
+								'Saving draft'
+							) : (
+								// One run of text, which the button's gap would split, reading "Save draft" on phones so
+								// the row fits beside Save.
+								<span>
+									Save <span className="max-sm:hidden">as </span>draft
+								</span>
+							)}
+						</Button>
+					)}
+				</ActionBar>
+				<UncheckedSaveDialog
+					open={warningOpen}
+					onOpenChange={setWarningOpen}
+					count={checks.length}
+					onShow={() => {
+						if (firstCheck !== undefined) {
+							focusCheck(firstCheck);
+						}
+					}}
+					onSaveAnyway={saveAnyway}
+				/>
+			</form>
+			{deletion}
+		</div>
 	);
 }
 
-// Heads the form while it holds unsaved changes kept in this browser from an earlier visit, and
-// discards them. Restoring them is announced, so nothing reads this out as it appears.
-function RestoredChangesNotice({ onDiscard }: { onDiscard: () => void }) {
+// Such as "Restored changes made in this browser on October 14 at 3:12 PM".
+function restoredTitle(restoredAt: Date): string {
+	return `Restored changes made in this browser on ${formatDayAndTime(restoredAt)}`;
+}
+
+// What the action bar says of the last draft save, if anything.
+function draftStatusMessage(
+	status: DraftStatus | undefined,
+	holdsDraft: boolean
+): string | undefined {
+	switch (status?.kind) {
+		case undefined:
+			return undefined;
+		case 'saved':
+			return `Draft saved at ${formatTime(status.savedAt)}`;
+		case 'unchanged':
+			return holdsDraft ? 'No changes since the draft was saved' : 'Nothing to save yet';
+		case 'failed':
+			return status.message;
+	}
+}
+
+// Heads the form while it holds unsaved changes kept in this browser from an earlier visit: when they
+// were made, and what discarding them returns to. Restoring them is announced, so nothing reads this
+// out as it appears.
+function RestoredChangesNotice({
+	restoredAt,
+	returnsTo,
+	onDiscard,
+}: {
+	restoredAt: Date;
+	returnsTo: string;
+	onDiscard: () => void;
+}) {
 	return (
 		<Alert role={undefined} aria-live={undefined}>
 			<HistoryIcon aria-hidden="true" />
-			<AlertTitle>{restoredMessage}</AlertTitle>
+			<AlertTitle>{restoredTitle(restoredAt)}</AlertTitle>
+			<AlertDescription>Discard them to go back to {returnsTo}.</AlertDescription>
 			<Button
 				type="button"
 				variant="outline"

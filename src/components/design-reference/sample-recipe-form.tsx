@@ -9,11 +9,12 @@ import standInScanPage2 from '@/components/design-reference/stand-in-scans/anise
 import { formText } from '@/components/forms/form-data';
 import type { FormAction, FormState } from '@/components/forms/form-state';
 import type { PhotoUploader } from '@/components/recipe-form/photo-upload';
-import { RecipeForm } from '@/components/recipe-form/recipe-form';
+import { RecipeForm, type RecipeFormDrafts } from '@/components/recipe-form/recipe-form';
 import { recipeContentFromForm } from '@/components/recipe-form/recipe-form-content';
 import {
 	recipeFormFieldNames,
 	type EditedRecipe,
+	type SavedDraftResult,
 } from '@/components/recipe-form/recipe-form-fields';
 import {
 	editRecipeForm,
@@ -120,6 +121,29 @@ const saveSampleRecipe: FormAction = (_state, formData) =>
 		}
 	);
 
+// Says a draft was saved, under the one id the samples share, and keeps nothing.
+const saveSampleDraft: FormAction<SavedDraftResult> = () =>
+	standIn<FormState<SavedDraftResult>>({
+		status: 'success',
+		draftId: 'sample-draft',
+		savedAt: new Date(),
+	});
+
+// Refuses, so the sample stays here rather than leaving for the list or the drafts.
+const deleteSample: FormAction = () =>
+	standIn<FormState>({
+		status: 'error',
+		message: 'Nothing was deleted: this sample form shows the layout only.',
+		fieldErrors: {},
+	});
+
+// The page's URL stays the design reference's.
+const sampleDrafts: RecipeFormDrafts = {
+	save: saveSampleDraft,
+	delete: deleteSample,
+	inUrl: false,
+};
+
 function SampleRecipeForm({
 	initial,
 	tagLabels,
@@ -148,9 +172,13 @@ function SampleRecipeForm({
 			tagLabels={tagLabels}
 			uploader={sampleUpload}
 			editing={editing}
-			submitLabel="Save recipe"
+			drafts={editing === undefined ? sampleDrafts : undefined}
+			deleteRecipe={
+				editing === undefined ? undefined : { title: initial.text.title, action: deleteSample }
+			}
+			submitLabel={editing === undefined ? 'Save recipe' : 'Save changes'}
 		/>
 	);
 }
 
-export { SampleRecipeForm, sampleUpload, sampleUploadFolders };
+export { deleteSample, SampleRecipeForm, sampleUpload, sampleUploadFolders };

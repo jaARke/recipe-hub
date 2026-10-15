@@ -4,12 +4,17 @@ import Link from 'next/link';
 import { permanentRedirect, redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { getCachedTagLabels } from '@/app/_lib/recipe-cache';
-import { createRecipe } from '@/app/(site)/(contribute)/contribute/actions';
+import { loadFormMember } from '@/app/(site)/(contribute)/_lib/load-form-member';
+import { createRecipe, deleteDraft, saveDraft } from '@/app/(site)/(contribute)/contribute/actions';
 import { SignInRequiredError } from '@/application/authorization';
 import type { ImportReviewDto } from '@/application/ingestion/recipe-import-dtos';
 import { signInHref } from '@/components/auth/auth-paths';
 import { PageContainer } from '@/components/layout/page-container';
 import { RecipeForm, RecipeFormSkeleton } from '@/components/recipe-form/recipe-form';
+import {
+	readRecipeFormSnapshot,
+	restoredRecipeForm,
+} from '@/components/recipe-form/recipe-form-snapshot';
 import { recipeFormValues } from '@/components/recipe-form/recipe-form-values';
 import { recipeImportPath } from '@/components/recipe-import/recipe-import-paths';
 import { RecipeImportedFrom } from '@/components/recipe/recipe-detail';
@@ -24,7 +29,11 @@ import {
 	EmptyTitle,
 } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getRecipeImageService, getRecipeImportService } from '@/composition/services';
+import {
+	getRecipeImageService,
+	getRecipeImportService,
+	getSavedDraftService,
+} from '@/composition/services';
 import { settings } from '@/lib/settings';
 
 export const metadata: Metadata = {
@@ -82,7 +91,16 @@ async function ImportReview({ params }: Pick<PageProps<'/contribute/imports/[id]
 	}
 
 	const { draft } = review;
-	const tagLabels = await getCachedTagLabels();
+	const [member, savedDraft, tagLabels] = await Promise.all([
+		loadFormMember(recipeImportPath(id)),
+		getSavedDraftService().getImportDraft(draft.id),
+		getCachedTagLabels(),
+	]);
+	const imported = recipeFormValues(draft.content, draft.problems);
+	// The member's saved draft takes the import's place; one the form can't read, as after a change to
+	// what it keeps, leaves the import's.
+	const snapshot = savedDraft === null ? undefined : readRecipeFormSnapshot(savedDraft.values);
+	const opened = savedDraft === null || snapshot === undefined ? undefined : savedDraft;
 	return (
 		<div className="flex flex-col gap-8">
 			{draft.sourceUrl === undefined ? (
@@ -93,12 +111,18 @@ async function ImportReview({ params }: Pick<PageProps<'/contribute/imports/[id]
 			<RecipeForm
 				// The form reads initial once, and another draft's page can reuse it.
 				key={draft.id}
-				initial={recipeFormValues(draft.content, draft.problems)}
+				initial={snapshot === undefined ? imported : restoredRecipeForm(snapshot, imported)}
 				action={createRecipe}
 				uploadFolders={getRecipeImageService().uploadFolders()}
 				tagLabels={tagLabels}
 				importId={draft.id}
-				autosave
+				autosave={{ memberId: member.id }}
+				drafts={{
+					save: saveDraft,
+					delete: deleteDraft,
+					opened: opened === undefined ? undefined : { id: opened.id, savedAt: opened.savedAt },
+					inUrl: false,
+				}}
 				submitLabel="Save recipe"
 			/>
 		</div>

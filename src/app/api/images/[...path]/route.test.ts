@@ -9,6 +9,7 @@ import { InMemoryImageMoveLock } from '@/application/testing/in-memory-image-mov
 import { InMemoryImageStore } from '@/application/testing/in-memory-image-store';
 import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
+import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
 
 const services = vi.hoisted(() => ({ imageService: undefined as unknown }));
 
@@ -31,6 +32,7 @@ async function serveImages() {
 	services.imageService = new RecipeImageService(
 		recipes,
 		new InMemoryRecipeImportRepository(recipes),
+		new InMemorySavedDraftRepository(),
 		images,
 		new FixedActorProvider(anonymousActor()),
 		folders,

@@ -19,6 +19,7 @@ import { InMemoryInviteRepository } from '@/application/testing/in-memory-invite
 import { InMemoryMemberRepository } from '@/application/testing/in-memory-member-repository';
 import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
+import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
 import {
 	recipeContentSchema,
 	type RecipeContentInput,
@@ -88,9 +89,11 @@ function manualEntry(content: RecipeContentInput): CreateRecipeInput {
 async function createCatalog() {
 	const recipes = new InMemoryRecipeRepository();
 	const imports = new InMemoryRecipeImportRepository(recipes);
+	const drafts = new InMemorySavedDraftRepository();
 	const members = new InMemoryMemberRepository(
 		new InMemoryInviteRepository(),
-		new InMemoryFavoriteRepository(recipes)
+		new InMemoryFavoriteRepository(recipes),
+		drafts
 	);
 	const images = new InMemoryImageStore(folders);
 	const storedImages = [
@@ -105,7 +108,15 @@ async function createCatalog() {
 	}
 
 	const serviceFor = (actor: Actor) =>
-		new RecipeService(recipes, imports, members, images, new FixedActorProvider(actor), folders);
+		new RecipeService(
+			recipes,
+			imports,
+			drafts,
+			members,
+			images,
+			new FixedActorProvider(actor),
+			folders
+		);
 	// The version an editor that loaded the recipe just now sends back with its save.
 	const versionOf = async (id: RecipeId) => {
 		const recipe = await recipes.findById(id);
@@ -137,12 +148,31 @@ async function createCatalog() {
 		await imports.recordSuccess(id, importResults[mode]);
 		return id;
 	};
+	// A draft the member saved from the recipe form, naming the images.
+	const saveDraft = async (
+		actor: MemberActor,
+		imagePathnames: string[] = [],
+		importId?: RecipeImportId
+	) => {
+		const draft = await drafts.create({
+			memberId: actor.memberId,
+			...(importId !== undefined && { importId }),
+			values: {},
+			imagePathnames,
+		});
+		if (draft === null) {
+			throw new Error('The draft was refused');
+		}
+		return draft.id;
+	};
 	return {
 		recipes,
 		imports,
+		drafts,
 		members,
 		images,
 		serviceFor,
+		saveDraft,
 		addMember,
 		versionOf,
 		startImport,
@@ -195,12 +225,13 @@ afterEach(() => {
 
 describe('public reads', () => {
 	it('never ask who is calling, so pages can cache them', async () => {
-		const { recipes, imports, members, images, serviceFor, addMember } = await createCatalog();
+		const { recipes, imports, drafts, members, images, serviceFor, addMember } =
+			await createCatalog();
 		const ref = await serviceFor(await addMember('Ada')).createRecipe(
 			manualEntry(sampleTomatoSalad)
 		);
 		const actors = new FixedActorProvider(memberActor());
-		const reader = new RecipeService(recipes, imports, members, images, actors, folders);
+		const reader = new RecipeService(recipes, imports, drafts, members, images, actors, folders);
 
 		await reader.getRecipe(ref.slug);
 		await reader.listRecipes({ limit: 10, offset: 0, sort: 'newest' });
@@ -597,6 +628,38 @@ describe('createRecipe', () => {
 		);
 	});
 
+	it("refuses a photo another member's saved draft names, as never uploaded", async () => {
+		const { serviceFor, addMember, saveDraft } = await createCatalog();
+		await saveDraft(await addMember('Ada'), [secondDishPhoto.pathname]);
+		const member = serviceFor(await addMember('Lou'));
+
+		await expect(
+			member.createRecipe(manualEntry({ ...sampleTomatoSalad, images: [secondDishPhoto] }))
+		).rejects.toThrow(
+			expect.objectContaining({
+				code: 'recipe.invalid',
+				problems: [{ path: 'images.0.pathname', message: unstoredImageMessage }],
+			})
+		);
+	});
+
+	it('deletes the draft the recipe was saved from, and never another member’s', async () => {
+		const { drafts, serviceFor, addMember, saveDraft } = await createCatalog();
+		const author = await addMember('Ada');
+		const other = await addMember('Lou');
+		const draftId = await saveDraft(author, [secondDishPhoto.pathname]);
+		const othersDraftId = await saveDraft(other);
+
+		await serviceFor(author).createRecipe({
+			content: { ...sampleTomatoSalad, images: [secondDishPhoto] },
+			draftId,
+		});
+		await serviceFor(author).createRecipe({ content: sampleChickenSoup, draftId: othersDraftId });
+
+		expect(await drafts.findById(draftId)).toBeNull();
+		expect(await drafts.findById(othersDraftId)).not.toBeNull();
+	});
+
 	it("reuses the member's own photos and scans from their recipes and drafts", async () => {
 		const { serviceFor, addMember, importDraft } = await createCatalog();
 		const owner = await addMember('Ada');
@@ -732,6 +795,17 @@ describe('createRecipe from an import', () => {
 		});
 		expect(recipeImport).not.toHaveProperty('draft');
 		expect(recipeImport).not.toHaveProperty('sourceUrl');
+	});
+
+	it("deletes the draft that continued the import's review", async () => {
+		const author = memberActor();
+		const { drafts, serviceFor, importDraft, saveDraft } = await createCatalog();
+		const importId = await importDraft(author);
+		const draftId = await saveDraft(author, [], importId);
+
+		await serviceFor(author).createRecipe(fromImport(importId));
+
+		expect(await drafts.findById(draftId)).toBeNull();
 	});
 
 	it('refuses a second save from the import', async () => {

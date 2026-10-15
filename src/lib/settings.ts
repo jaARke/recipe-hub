@@ -20,8 +20,8 @@ export const settings: z.output<typeof settingsSchema> = {
 		// Imports a member may start in any rolling 24 hours, so one account cannot spend the AI budget
 		// alone. Admins have no limit.
 		maxImportsPerDay: 50,
-		// The unsaved drafts listed beside the import forms, newest first: the ones a member is likely
-		// still reviewing.
+		// The drafts listed beside the import forms, saved drafts and imports' drafts together, newest
+		// first: the ones a member is likely still working on.
 		maxUnsavedImports: 10,
 		// How long a member has to review an import's draft and save it as a recipe; then the draft and
 		// its source URL are cleared.

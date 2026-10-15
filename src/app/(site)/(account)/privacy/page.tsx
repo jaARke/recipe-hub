@@ -140,8 +140,9 @@ export default function PrivacyPage() {
 					<li>
 						Changes you haven’t saved to a recipe you’re adding, editing, or reviewing are kept in
 						your browser, so they come back if the page reloads. They’re cleared when you save the
-						recipe, discard them, or sign out, and until then anyone using this browser can see
-						them.
+						recipe, discard them, or sign out, and otherwise{' '}
+						{dayCount(settings.drafts.savedDraftLifetimeDays)} after your last change; until then
+						anyone using this browser can see them.
 					</li>
 					<li>
 						In the cooking view, each browser tab remembers which ingredients you’ve checked off as

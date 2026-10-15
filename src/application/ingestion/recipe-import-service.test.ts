@@ -25,6 +25,7 @@ import { FixedWebPageFetcher } from '@/application/testing/fixed-web-page-fetche
 import { InMemoryImageStore } from '@/application/testing/in-memory-image-store';
 import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
+import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
 import {
 	importDraftFromExtractedRecipe,
 	type ExtractedRecipe,
@@ -110,6 +111,7 @@ function scanImages(pathnames: readonly string[]): RecipeImage[] {
 function createImports(fakes: ImportFakes = {}) {
 	const recipes = new InMemoryRecipeRepository();
 	const imports = new InMemoryRecipeImportRepository(recipes);
+	const drafts = new InMemorySavedDraftRepository();
 	const images = new InMemoryImageStore(folders);
 	const pages = fakes.pages ?? new FixedWebPageFetcher(page);
 	const structuredData = fakes.structuredData ?? new FixedPageRecipeExtractor(null);
@@ -121,6 +123,7 @@ function createImports(fakes: ImportFakes = {}) {
 		new RecipeImportService(
 			recipes,
 			imports,
+			drafts,
 			pages,
 			structuredData,
 			pageReader,
@@ -172,6 +175,7 @@ function createImports(fakes: ImportFakes = {}) {
 	return {
 		recipes,
 		imports,
+		drafts,
 		images,
 		pages,
 		structuredData,
@@ -504,6 +508,33 @@ describe('expired drafts', () => {
 		expect(expiredImport).not.toHaveProperty('sourceUrl');
 		expect(await imports.findById(recent)).toMatchObject({ sourceUrl: url });
 		expect(logged('Expired import drafts cleared')).toMatchObject({ importCount: 1 });
+	});
+
+	it('deletes saved drafts past their lifetime before starting an import', async () => {
+		const { drafts, serviceFor } = createImports();
+		const member = memberActor();
+		const saved = async () => {
+			const draft = await drafts.create({
+				memberId: member.memberId,
+				values: {},
+				imagePathnames: [],
+			});
+			if (draft === null) {
+				throw new Error('The draft was refused');
+			}
+			return draft.id;
+		};
+		const expired = await saved();
+		const recent = await saved();
+		const lifetime = settings.drafts.savedDraftLifetimeDays;
+		drafts.backdate(expired, new Date(Date.now() - daysInMilliseconds(lifetime + 0.01)));
+		drafts.backdate(recent, new Date(Date.now() - daysInMilliseconds(lifetime - 0.01)));
+
+		await serviceFor(member).importFromUrl(url);
+
+		expect(await drafts.findById(expired)).toBeNull();
+		expect(await drafts.findById(recent)).not.toBeNull();
+		expect(logged('Expired saved drafts deleted')).toMatchObject({ draftCount: 1 });
 	});
 });
 
@@ -947,57 +978,6 @@ describe('getImportReview', () => {
 
 		expect(await service.getImportReview(expired)).toBeNull();
 		expect(await service.getImportReview(cleared)).toBeNull();
-	});
-});
-
-describe('listUnsavedImports', () => {
-	it('refuses an anonymous visitor', async () => {
-		const { serviceFor } = createImports();
-
-		await expect(serviceFor(anonymousActor()).listUnsavedImports()).rejects.toThrow(
-			SignInRequiredError
-		);
-	});
-
-	it("lists the member's reviewable drafts, newest first", async () => {
-		const { recipes, storeScans, serviceFor, backdate } = createImports();
-		await storeScans([scanUpload]);
-		const member = memberActor();
-		const service = serviceFor(member);
-		const first = (await service.importFromUrl(url)).id;
-		const photo = (await service.importFromScans([scanUpload])).id;
-		const saved = (await service.importFromUrl(url)).id;
-		const expired = (await service.importFromUrl(url)).id;
-		await serviceFor(memberActor()).importFromUrl(url);
-		await recipes.create({
-			content: parseRecipeContent(sampleTomatoSalad),
-			provenance: { entryMode: 'manual' },
-			importId: saved,
-			contributorId: member.memberId,
-			slugBase: 'tomato-salad',
-		});
-		backdate(expired, 7.01);
-
-		const unsaved = await service.listUnsavedImports();
-
-		expect(unsaved).toEqual([
-			{ id: photo, mode: 'photo', title: 'Lemon bars', createdAt: expect.any(Date) },
-			{ id: first, mode: 'url', title: 'Fresh lemonade', createdAt: expect.any(Date) },
-		]);
-	});
-
-	it('lists only the newest, up to its limit', async () => {
-		const { serviceFor } = createImports();
-		// An admin, whose imports no daily limit cuts short of filling the list.
-		const service = serviceFor(adminActor());
-		const ids: RecipeImportId[] = [];
-		for (let count = 0; count <= settings.imports.maxUnsavedImports; count += 1) {
-			ids.push((await service.importFromUrl(url)).id);
-		}
-
-		const unsaved = await service.listUnsavedImports();
-
-		expect(unsaved.map(({ id }) => id)).toEqual(ids.slice(1).reverse());
 	});
 });
 

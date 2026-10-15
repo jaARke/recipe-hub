@@ -1,6 +1,7 @@
 import 'server-only';
 import { z } from 'zod';
 import { requireMember } from '@/application/authorization';
+import { savedDraftIdSchema } from '@/application/drafts/saved-draft';
 import { ImportUnavailableError } from '@/application/ingestion/errors';
 import { paginationSchema } from '@/application/pagination';
 import type { ActorProvider } from '@/application/ports/actor-provider';
@@ -14,13 +15,14 @@ import {
 	type RecipeRepository,
 	type UpdatedRecipe,
 } from '@/application/ports/recipe-repository';
+import type { SavedDraftRepository } from '@/application/ports/saved-draft-repository';
+import { unattachableImageProblems } from '@/application/recipes/attachable-images';
 import {
 	InvalidRecipePageError,
 	RecipeEditConflictError,
 	RecipeNotFoundError,
 } from '@/application/recipes/errors';
 import type { ImageFolders } from '@/application/recipes/image-folders';
-import { imagesInUse } from '@/application/recipes/images-in-use';
 import {
 	toEditableRecipeDto,
 	toPublicRecipeDto,
@@ -46,7 +48,7 @@ import {
 	type RecipeContentInput,
 	type RecipeId,
 } from '@/domain/recipe/recipe';
-import { unstoredImageMessage, type RecipeImage } from '@/domain/recipe/recipe-image';
+import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import {
 	recipeImportIdSchema,
 	reviewableDraft,
@@ -67,6 +69,8 @@ export type CreateRecipeInput = {
 	content: RecipeContentInput;
 	// The import the member reviewed, whose provenance the recipe takes; absent for manual entry.
 	importId?: string;
+	// The draft the member saved the recipe from, which goes once the recipe is saved.
+	draftId?: string;
 };
 
 // Where a new recipe came from: manual entry, or an import it is saved from.
@@ -75,6 +79,7 @@ type RecipeOrigin = Pick<NewRecipe, 'provenance' | 'importId'>;
 export class RecipeService {
 	private readonly recipes: RecipeRepository;
 	private readonly imports: RecipeImportRepository;
+	private readonly drafts: SavedDraftRepository;
 	private readonly members: MemberRepository;
 	private readonly images: ImageStore;
 	private readonly actors: ActorProvider;
@@ -83,6 +88,7 @@ export class RecipeService {
 	constructor(
 		recipes: RecipeRepository,
 		imports: RecipeImportRepository,
+		drafts: SavedDraftRepository,
 		members: MemberRepository,
 		images: ImageStore,
 		actors: ActorProvider,
@@ -90,6 +96,7 @@ export class RecipeService {
 	) {
 		this.recipes = recipes;
 		this.imports = imports;
+		this.drafts = drafts;
 		this.members = members;
 		this.images = images;
 		this.actors = actors;
@@ -186,6 +193,9 @@ export class RecipeService {
 		});
 		if (origin.importId !== undefined) {
 			await this.clearImportDraft(origin.importId, recipe.id);
+		}
+		if (input.draftId !== undefined) {
+			await this.deleteSavedDraft(input.draftId, actor.memberId, recipe.id);
 		}
 		return toRecipeRef(recipe);
 	}
@@ -296,53 +306,59 @@ export class RecipeService {
 		return recipe;
 	}
 
-	// Each image the recipe does not already have must be an upload this environment stored that no
-	// other member's recipe or draft names, since an image another recipe names is never removed, and
-	// naming theirs would keep it from them. Images it has stay as they are, such as production's photos
-	// on a preview's copy. Only the contributor's own recipes and drafts may name them already, so an
-	// admin's edit adds only what the contributor could.
+	// The images the recipe may name, as the contributor's: see unattachableImageProblems.
 	private async assertImagesAttachable(
 		images: readonly RecipeImage[],
 		existing: readonly RecipeImage[],
 		contributorId: MemberId
 	): Promise<void> {
-		const existingPathnames = new Set(existing.map(({ pathname }) => pathname));
-		const added = images
-			.map(({ pathname }) => pathname)
-			.filter((pathname) => !existingPathnames.has(pathname) && this.folders.contains(pathname));
-		const othersImages = await imagesInUse(
-			added,
-			this.recipes,
-			this.imports,
-			new Date(),
-			contributorId
-		);
-		const stored = await Promise.all(
-			images.map(
-				async ({ pathname }) =>
-					existingPathnames.has(pathname) ||
-					(this.folders.contains(pathname) &&
-						!othersImages.has(pathname) &&
-						(await this.images.has(pathname)))
-			)
-		);
-
-		// Another member's photo is told the same, so the refusal tells nothing about their photos.
-		const problems = stored.flatMap((isStored, index) =>
-			isStored ? [] : [{ path: `images.${index}.pathname`, message: unstoredImageMessage }]
+		const problems = await unattachableImageProblems(
+			images.map(({ pathname }) => pathname),
+			existing.map(({ pathname }) => pathname),
+			contributorId,
+			{
+				folders: this.folders,
+				images: this.images,
+				recipes: this.recipes,
+				imports: this.imports,
+				drafts: this.drafts,
+			}
 		);
 		if (problems.length > 0) {
 			throw new InvalidRecipeError(problems);
 		}
 	}
 
-	// After the recipe commits. A failure leaves the draft for its expiry to clear, and the import is
-	// already spent, since the recipe names it.
+	// After the recipe commits, with the draft the member saved from the import's review. A failure
+	// leaves the drafts for their expiry to clear, and the import is already spent, since the recipe
+	// names it.
 	private async clearImportDraft(importId: RecipeImportId, recipeId: RecipeId): Promise<void> {
 		try {
 			await this.imports.clearDraft(importId);
+			await this.drafts.deleteByImportId(importId);
 		} catch (err) {
 			logger.warn('Import draft could not be cleared', { importId, recipeId, err });
+		}
+	}
+
+	// After the recipe commits, as clearImportDraft does. Ids arrive from forms, so a malformed one, or
+	// one that names another member's draft, deletes nothing.
+	private async deleteSavedDraft(
+		draftId: string,
+		memberId: MemberId,
+		recipeId: RecipeId
+	): Promise<void> {
+		const parsed = savedDraftIdSchema.safeParse(draftId);
+		if (!parsed.success) {
+			return;
+		}
+		try {
+			const draft = await this.drafts.findById(parsed.data);
+			if (draft?.memberId === memberId) {
+				await this.drafts.delete(draft.id);
+			}
+		} catch (err) {
+			logger.warn('Saved draft could not be deleted', { draftId: parsed.data, recipeId, err });
 		}
 	}
 

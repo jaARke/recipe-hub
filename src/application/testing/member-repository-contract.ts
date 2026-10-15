@@ -4,6 +4,7 @@ import type { FavoriteRepository } from '@/application/ports/favorite-repository
 import type { InviteRepository } from '@/application/ports/invite-repository';
 import type { MemberRepository, NewMember } from '@/application/ports/member-repository';
 import type { RecipeRepository } from '@/application/ports/recipe-repository';
+import type { SavedDraft, SavedDraftRepository } from '@/application/ports/saved-draft-repository';
 import { inviteExpiry, type Invite } from '@/domain/member/invite';
 import { memberIdSchema, removedMemberEmail, type MemberId } from '@/domain/member/member';
 import { recipeContentSchema, type Recipe, type RecipeContentInput } from '@/domain/recipe/recipe';
@@ -17,6 +18,8 @@ export type MemberRepositoryFixture = {
 	// Where the favorites a removal deletes are stored, and the recipes they name.
 	favorites: FavoriteRepository;
 	recipes: RecipeRepository;
+	// Where the saved drafts a removal deletes are stored.
+	drafts: SavedDraftRepository;
 };
 
 const missingId = memberIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e');
@@ -52,6 +55,19 @@ export function describeMemberRepositoryContract(fixture: () => MemberRepository
 			contributorId,
 			slugBase: slugify(content.title),
 		});
+	}
+
+	async function saveDraft(memberId: MemberId): Promise<SavedDraft> {
+		const draft = await fixture().drafts.create({
+			memberId,
+			title: 'Lemon bars',
+			values: { title: 'Lemon bars' },
+			imagePathnames: [],
+		});
+		if (draft === null) {
+			throw new Error('The draft was refused');
+		}
+		return draft;
 	}
 
 	describe('create', () => {
@@ -259,6 +275,19 @@ export function describeMemberRepositoryContract(fixture: () => MemberRepository
 
 			expect(await favorites.count(member.id)).toBe(0);
 			expect(await favorites.list(other.id, { limit: 10, offset: 0 })).toEqual([soup]);
+		});
+
+		it("deletes the member's saved drafts, and no others", async () => {
+			const { members, drafts } = fixture();
+			const member = await members.create(ada);
+			const other = await members.create(grace);
+			const removed = await saveDraft(member.id);
+			const kept = await saveDraft(other.id);
+
+			await members.remove(member.id);
+
+			expect(await drafts.findById(removed.id)).toBeNull();
+			expect(await drafts.findById(kept.id)).toEqual(kept);
 		});
 
 		it('leaves the member out of the lists', async () => {

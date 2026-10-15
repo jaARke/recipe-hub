@@ -12,6 +12,7 @@ import { InMemoryImageMoveLock } from '@/application/testing/in-memory-image-mov
 import { InMemoryImageStore } from '@/application/testing/in-memory-image-store';
 import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
+import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
 import { recipeContentSchema, recipeIdSchema } from '@/domain/recipe/recipe';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import { sampleChickenSoup } from '@/domain/recipe/samples/sample-recipes';
@@ -67,6 +68,7 @@ function serviceFor(images: InMemoryImageStore, actor: Actor) {
 		service: new RecipeImageService(
 			recipes,
 			new InMemoryRecipeImportRepository(recipes),
+			new InMemorySavedDraftRepository(),
 			images,
 			actors,
 			folders,
@@ -82,6 +84,7 @@ function productionServiceFor(images: InMemoryImageStore, actor: Actor) {
 	return new RecipeImageService(
 		recipes,
 		new InMemoryRecipeImportRepository(recipes),
+		new InMemorySavedDraftRepository(),
 		images,
 		new FixedActorProvider(actor),
 		new ImageFolders('production'),
@@ -108,20 +111,22 @@ function withinLifetime(days: number): Date {
 }
 
 // Images stored past an unused upload's lifetime: this environment's, which a recipe lists, a draft
-// awaiting review names, or nothing names, and the seed's and production's beside them. The sweep runs
-// with no actor.
+// awaiting review names, a draft a member saved names, or nothing names, and the seed's and
+// production's beside them. The sweep runs with no actor.
 async function createSweep(environment = 'development', expiringPrefixes: string[] = []) {
 	const sweepFolders = new ImageFolders(environment, [], expiringPrefixes);
 	const recipes = new InMemoryRecipeRepository();
 	const imports = new InMemoryRecipeImportRepository(recipes);
+	const drafts = new InMemorySavedDraftRepository();
 	const images = new InMemoryImageStore(sweepFolders);
 	const listed: RecipeImage = { role: 'dish', pathname: `dish/${environment}/listed.jpg` };
 	const drafted: RecipeImage = { role: 'scan', pathname: `scan/${environment}/drafted.jpg` };
+	const saved = `dish/${environment}/saved.jpg`;
 	const unused = `dish/${environment}/unused.jpg`;
 	const others = ['dish/seed/soup.jpg', 'dish/production/soup.jpg'].filter(
 		(pathname) => !sweepFolders.contains(pathname)
 	);
-	for (const pathname of [listed.pathname, drafted.pathname, unused, ...others]) {
+	for (const pathname of [listed.pathname, drafted.pathname, saved, unused, ...others]) {
 		await images.put(pathname, jpeg, 'image/jpeg');
 		images.backdateUpload(pathname, pastLifetime(settings.retention.unusedImageLifetimeDays));
 	}
@@ -140,12 +145,17 @@ async function createSweep(environment = 'development', expiringPrefixes: string
 	await imports.recordSuccess(started.id, {
 		draft: { content: { title: 'Soup card', images: [drafted] }, problems: [] },
 	});
+	const savedDraft = await drafts.create({ memberId, values: {}, imagePathnames: [saved] });
+	if (savedDraft === null) {
+		throw new Error('The draft was refused');
+	}
 
 	const lock = new InMemoryImageMoveLock(moveLockWaitMs);
 	const { tasks, scheduleTask } = heldTasks();
 	const service = new RecipeImageService(
 		recipes,
 		imports,
+		drafts,
 		images,
 		new FixedActorProvider(anonymousActor()),
 		sweepFolders,
@@ -155,11 +165,14 @@ async function createSweep(environment = 'development', expiringPrefixes: string
 	return {
 		images,
 		recipes,
+		drafts,
 		lock,
 		tasks,
 		service,
 		listed: listed.pathname,
 		drafted: drafted.pathname,
+		saved,
+		savedDraftId: savedDraft.id,
 		unused,
 		others,
 	};
@@ -352,26 +365,34 @@ describe('authorizeUpload', () => {
 
 describe('sweepImages', () => {
 	it("removes this environment's uploads that nothing has named for a day, and nothing else", async () => {
-		const { images, service, listed, drafted, unused, others } = await createSweep();
+		const { images, service, listed, drafted, saved, unused, others } = await createSweep();
 		const fresh = 'dish/development/fresh.jpg';
 		await images.put(fresh, jpeg, 'image/jpeg');
 
 		expect(await service.sweepImages()).toEqual(sweptCounts({ removedCount: 1 }));
 		expect(images.removedPathnames).toEqual([unused]);
-		for (const pathname of [listed, drafted, fresh, ...others]) {
+		for (const pathname of [listed, drafted, saved, fresh, ...others]) {
 			expect(await images.has(pathname)).toBe(true);
 		}
 	});
 
-	it('brings back removed images that a recipe or draft names again, as after a database restore', async () => {
-		const { images, service, listed, drafted } = await createSweep();
-		await images.remove([listed, drafted]);
+	it('removes the images a saved draft names once the draft has expired', async () => {
+		const { images, drafts, service, saved, savedDraftId, unused } = await createSweep();
+		drafts.backdate(savedDraftId, pastLifetime(settings.drafts.savedDraftLifetimeDays));
 
-		expect(await service.sweepImages()).toMatchObject({ result: { restoredCount: 2 } });
-		expect(await images.has(listed)).toBe(true);
-		expect(await images.has(drafted)).toBe(true);
-		expect(await removedPathnames(images)).not.toContain(listed);
-		expect(await removedPathnames(images)).not.toContain(drafted);
+		expect(await service.sweepImages()).toEqual(sweptCounts({ removedCount: 2 }));
+		expect(images.removedPathnames).toEqual([saved, unused]);
+	});
+
+	it('brings back removed images that a recipe or draft names again, as after a database restore', async () => {
+		const { images, service, listed, drafted, saved } = await createSweep();
+		await images.remove([listed, drafted, saved]);
+
+		expect(await service.sweepImages()).toMatchObject({ result: { restoredCount: 3 } });
+		for (const pathname of [listed, drafted, saved]) {
+			expect(await images.has(pathname)).toBe(true);
+			expect(await removedPathnames(images)).not.toContain(pathname);
+		}
 	});
 
 	it('deletes for good images removed longer ago than their lifetime, and keeps the rest', async () => {
@@ -519,9 +540,10 @@ describe('sweepImages expiring other environments', () => {
 	}
 
 	it("deletes production's expired preview images, removed ones included, and keeps the rest", async () => {
-		const { images, service, listed, drafted, unused, others } = await createSweep('production', [
-			'preview/',
-		]);
+		const { images, service, listed, drafted, saved, unused, others } = await createSweep(
+			'production',
+			['preview/']
+		);
 		await storePreviewImages(images);
 
 		expect(await service.sweepImages()).toEqual(sweptCounts({ removedCount: 1, expiredCount: 3 }));
@@ -530,7 +552,7 @@ describe('sweepImages expiring other environments', () => {
 		expect(await images.hasRemoved(previewImages.oldRemoved)).toBe(false);
 		expect(await images.has(previewImages.recent)).toBe(true);
 		expect(await images.hasRemoved(previewImages.recentRemoved)).toBe(true);
-		for (const pathname of [listed, drafted, ...others]) {
+		for (const pathname of [listed, drafted, saved, ...others]) {
 			expect(await images.has(pathname)).toBe(true);
 		}
 		expect(await images.hasRemoved(unused)).toBe(true);
@@ -650,8 +672,8 @@ describe('scheduleSweep with the images an edit or delete let go', () => {
 		]);
 	});
 
-	it("keeps those a recipe lists or a draft awaiting review names, logged as kept, and other environments'", async () => {
-		const { images, service, tasks, listed, drafted, others } = await createRemoval();
+	it("keeps those a recipe lists or a draft names, logged as kept, and other environments'", async () => {
+		const { images, service, tasks, listed, drafted, saved, others } = await createRemoval();
 		const othersImages: RecipeImage[] = others.map((pathname) => ({ role: 'dish', pathname }));
 
 		service.scheduleSweep({
@@ -659,24 +681,24 @@ describe('scheduleSweep with the images an edit or delete let go', () => {
 			images: [
 				{ role: 'dish', pathname: listed },
 				{ role: 'scan', pathname: drafted },
+				{ role: 'dish', pathname: saved },
 				...othersImages,
 				releasedImage,
 			],
 		});
 		await tasks[0]?.();
 
-		for (const pathname of [listed, drafted, ...others]) {
+		for (const pathname of [listed, drafted, saved, ...others]) {
 			expect(await images.has(pathname)).toBe(true);
+			expect(images.removedPathnames).not.toContain(pathname);
 		}
-		expect(images.removedPathnames).not.toContain(listed);
-		expect(images.removedPathnames).not.toContain(drafted);
 		expect(logLines(consoleInfo)).toContainEqual({
 			level: 'info',
 			logger: 'images',
 			message: 'Recipe images removed',
 			recipeId,
 			pathnames: [released],
-			keptPathnames: [listed, drafted],
+			keptPathnames: [listed, drafted, saved],
 		});
 	});
 

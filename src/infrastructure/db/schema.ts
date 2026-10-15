@@ -141,6 +141,36 @@ export const recipeImports = pgTable(
 	]
 );
 
+// The drafts members save from the recipe form, each kept for a while after its last save. An
+// import's own draft lives on its record in recipe_imports; a draft here that continues an import's
+// review names the import.
+export const recipeDrafts = pgTable(
+	'recipe_drafts',
+	{
+		id: uuid('id')
+			.primaryKey()
+			.default(sql`uuidv7()`),
+		memberId: uuid('member_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		// Unique, so an import has at most one draft.
+		importId: uuid('import_id')
+			.unique()
+			.references(() => recipeImports.id, { onDelete: 'set null' }),
+		// What the member's list of drafts names it by; null while the recipe has no title.
+		title: text('title'),
+		// The recipe form's values, untyped because only the form reads them, and checks them as it does.
+		values: jsonb('values').notNull(),
+		// The images the values name, which the image sweep keeps while the draft lasts.
+		imagePathnames: text('image_pathnames').array().notNull().default([]),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+		// When it was last saved, from which it expires.
+		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+	},
+	// Serves a member's list of drafts, newest first.
+	(table) => [index('recipe_drafts_member_id_updated_at_idx').on(table.memberId, table.updatedAt)]
+);
+
 // The recipes each member keeps as favorites. Users are never deleted, so a member's removal deletes
 // theirs itself.
 export const favorites = pgTable(

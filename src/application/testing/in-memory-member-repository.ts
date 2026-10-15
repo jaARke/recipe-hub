@@ -6,6 +6,7 @@ import type {
 } from '@/application/ports/member-repository';
 import type { InMemoryFavoriteRepository } from '@/application/testing/in-memory-favorite-repository';
 import type { InMemoryInviteRepository } from '@/application/testing/in-memory-invite-repository';
+import type { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
 import {
 	memberIdSchema,
 	removedMemberEmail,
@@ -21,12 +22,18 @@ export class InMemoryMemberRepository implements MemberRepository {
 	private readonly members = new Map<MemberId, Member>();
 	private readonly invites: InMemoryInviteRepository;
 	private readonly favorites: InMemoryFavoriteRepository;
+	private readonly drafts: InMemorySavedDraftRepository;
 
-	// The invites a removal revokes and the favorites it deletes, as the database's removal does in its
-	// transaction.
-	constructor(invites: InMemoryInviteRepository, favorites: InMemoryFavoriteRepository) {
+	// The invites a removal revokes and the favorites and saved drafts it deletes, as the database's
+	// removal does in its transaction.
+	constructor(
+		invites: InMemoryInviteRepository,
+		favorites: InMemoryFavoriteRepository,
+		drafts: InMemorySavedDraftRepository
+	) {
 		this.invites = invites;
 		this.favorites = favorites;
+		this.drafts = drafts;
 	}
 
 	async findById(id: MemberId): Promise<Member | null> {
@@ -75,7 +82,7 @@ export class InMemoryMemberRepository implements MemberRepository {
 	}
 
 	// Keeps no sessions, passkeys, or codes, so the removal frees the address, revokes its invites, and
-	// deletes the member's favorites.
+	// deletes the member's favorites and saved drafts.
 	async remove(id: MemberId): Promise<Member | null> {
 		const existing = this.findNotRemoved(id);
 		if (existing === undefined) {
@@ -85,6 +92,7 @@ export class InMemoryMemberRepository implements MemberRepository {
 		const now = new Date();
 		this.invites.revokeOpenByEmail(existing.email, now);
 		this.favorites.removeAllOf(id);
+		this.drafts.removeAllOf(id);
 		return this.replace(id, { email: removedMemberEmail(id), removedAt: now });
 	}
 

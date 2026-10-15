@@ -4,14 +4,12 @@ import Link from 'next/link';
 import { notFound, permanentRedirect, redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { getCachedRecipe, getCachedTagLabels } from '@/app/_lib/recipe-cache';
+import { loadFormMember } from '@/app/(site)/(contribute)/_lib/load-form-member';
 import { deleteRecipe, updateRecipe } from '@/app/(site)/(contribute)/recipes/[slug]/edit/actions';
 import { ForbiddenError, SignInRequiredError } from '@/application/authorization';
 import type { EditableRecipeDto } from '@/application/recipes/recipe-dtos';
 import { signInHref } from '@/components/auth/auth-paths';
-import { FormActions } from '@/components/forms/form-actions';
-import { PageContainer, readingPartWidthClassName } from '@/components/layout/page-container';
-import { PageSection } from '@/components/layout/page-section';
-import { DeleteRecipeDialog } from '@/components/recipe-form/delete-recipe-dialog';
+import { PageContainer } from '@/components/layout/page-container';
 import { RecipeForm, RecipeFormSkeleton } from '@/components/recipe-form/recipe-form';
 import { recipeFormValues } from '@/components/recipe-form/recipe-form-values';
 import { recipeEditPath, recipePath } from '@/components/recipe/recipe-paths';
@@ -95,36 +93,27 @@ async function RecipeEditor({ params }: Pick<PageProps<'/recipes/[slug]/edit'>, 
 		permanentRedirect(recipeEditPath(recipe.slug));
 	}
 
-	const tagLabels = await getCachedTagLabels();
+	const [member, tagLabels] = await Promise.all([
+		loadFormMember(recipeEditPath(slug)),
+		getCachedTagLabels(),
+	]);
 	return (
-		<div className="flex flex-col gap-12">
-			<RecipeForm
-				// A recipe changed elsewhere starts the form again; Next keeps recent pages, and their state, alive.
-				key={recipe.updatedAt.toISOString()}
-				initial={recipeFormValues(recipe)}
-				action={updateRecipe}
-				uploadFolders={getRecipeImageService().uploadFolders()}
-				tagLabels={tagLabels}
-				editing={{
-					id: recipe.id,
-					version: recipe.updatedAt.toISOString(),
-					respellableTags: recipe.respellableTags,
-				}}
-				autosave
-				submitLabel="Save changes"
-			/>
-			<PageSection
-				id="delete-recipe"
-				title="Delete recipe"
-				// The form beside the original widens the page; this section keeps reading width.
-				className={readingPartWidthClassName}
-				description="Deleting the recipe also deletes its photos, and it can’t be undone."
-			>
-				<FormActions>
-					<DeleteRecipeDialog recipeId={recipe.id} title={recipe.title} action={deleteRecipe} />
-				</FormActions>
-			</PageSection>
-		</div>
+		<RecipeForm
+			// A recipe changed elsewhere starts the form again; Next keeps recent pages, and their state, alive.
+			key={recipe.updatedAt.toISOString()}
+			initial={recipeFormValues(recipe)}
+			action={updateRecipe}
+			uploadFolders={getRecipeImageService().uploadFolders()}
+			tagLabels={tagLabels}
+			editing={{
+				id: recipe.id,
+				version: recipe.updatedAt.toISOString(),
+				respellableTags: recipe.respellableTags,
+			}}
+			autosave={{ memberId: member.id }}
+			deleteRecipe={{ title: recipe.title, action: deleteRecipe }}
+			submitLabel="Save changes"
+		/>
 	);
 }
 

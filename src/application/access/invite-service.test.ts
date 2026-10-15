@@ -17,6 +17,7 @@ import { InMemoryFavoriteRepository } from '@/application/testing/in-memory-favo
 import { InMemoryInviteRepository } from '@/application/testing/in-memory-invite-repository';
 import { InMemoryMemberRepository } from '@/application/testing/in-memory-member-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
+import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
 import { daysInMilliseconds } from '@/lib/dates';
 import { settings } from '@/lib/settings';
 
@@ -41,7 +42,8 @@ function createInvites() {
 	const requests = new InMemoryAccessRequestRepository();
 	const members = new InMemoryMemberRepository(
 		invites,
-		new InMemoryFavoriteRepository(new InMemoryRecipeRepository())
+		new InMemoryFavoriteRepository(new InMemoryRecipeRepository()),
+		new InMemorySavedDraftRepository()
 	);
 	const emails = new InMemoryEmailSender();
 	const serviceFor = (actor: Actor) =>

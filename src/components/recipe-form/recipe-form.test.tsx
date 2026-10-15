@@ -3,11 +3,15 @@ import userEvent from '@testing-library/user-event';
 import { redirect } from 'next/navigation';
 import * as React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { FormAction } from '@/components/forms/form-state';
+import type { FormAction, FormState } from '@/components/forms/form-state';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
-import { RecipeForm } from '@/components/recipe-form/recipe-form';
+import { RecipeForm, type RecipeFormDrafts } from '@/components/recipe-form/recipe-form';
 import type { AutosavedRecipeForm } from '@/components/recipe-form/recipe-form-autosave';
-import type { EditedRecipe } from '@/components/recipe-form/recipe-form-fields';
+import type { EditedRecipe, SavedDraftResult } from '@/components/recipe-form/recipe-form-fields';
+import {
+	recipeFormSnapshot,
+	type RecipeFormSnapshot,
+} from '@/components/recipe-form/recipe-form-snapshot';
 import {
 	editRecipeForm,
 	recipeFormValues,
@@ -16,6 +20,15 @@ import {
 } from '@/components/recipe-form/recipe-form-values';
 import type { Problem } from '@/domain/problem';
 import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
+import { daysInMilliseconds, formatDayAndTime, formatTime } from '@/lib/dates';
+import { settings } from '@/lib/settings';
+
+const router = vi.hoisted(() => ({ replace: vi.fn() }));
+
+vi.mock('next/navigation', async (importOriginal) => ({
+	...(await importOriginal<typeof import('next/navigation')>()),
+	useRouter: () => router,
+}));
 
 const uploadFolders = { dish: 'dish/development/', scan: 'scan/development/' };
 
@@ -603,48 +616,65 @@ describe('RecipeForm’s lists', () => {
 	});
 });
 
+const memberId = '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b';
+const otherMemberId = '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6c';
+const recipeId = '0b6f3c7e-3c1a-4d8e-9a57-2f1d6b8e4c10';
+const importId = '6d2b9f4a-8e1c-4b7d-a3f5-1c9e7d2b6a84';
+const draftId = '0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e';
+
+const newRecipeKey = `member:recipe-form:${memberId}:new`;
+const draftKey = `member:recipe-form:${memberId}:draft:${draftId}`;
+
+type AutosavedFormProps = {
+	initial?: RecipeFormValues;
+	action?: FormAction;
+	editing?: EditedRecipe;
+	importId?: string;
+	drafts?: RecipeFormDrafts;
+	deleteRecipe?: { title: string; action: FormAction };
+	member?: string;
+};
+
+function AutosavedForm({
+	initial = recipeFormValues(),
+	action = refuse,
+	editing,
+	importId: reviewed,
+	drafts,
+	deleteRecipe,
+	member = memberId,
+}: AutosavedFormProps) {
+	return (
+		<RecipeForm
+			initial={initial}
+			action={action}
+			uploadFolders={uploadFolders}
+			tagLabels={[]}
+			uploader={vi.fn()}
+			editing={editing}
+			importId={reviewed}
+			autosave={{ memberId: member }}
+			drafts={drafts}
+			deleteRecipe={deleteRecipe}
+			submitLabel="Save recipe"
+		/>
+	);
+}
+
+function stored(key: string): RecipeFormSnapshot | undefined {
+	const entry = localStorage.getItem(key);
+	return entry === null ? undefined : (JSON.parse(entry) as AutosavedRecipeForm).form;
+}
+
+function title(): HTMLInputElement {
+	return screen.getByRole<HTMLInputElement>('textbox', { name: 'Title' });
+}
+
+// The notice for changes restored from this browser, which says when they were made; its
+// announcement ends with a period.
+const restoredNotice = /^Restored changes made in this browser on .*M$/;
+
 describe('RecipeForm’s autosave', () => {
-	const newRecipeKey = 'member:recipe-form:new';
-	const recipeId = '0b6f3c7e-3c1a-4d8e-9a57-2f1d6b8e4c10';
-	const importId = '6d2b9f4a-8e1c-4b7d-a3f5-1c9e7d2b6a84';
-
-	type AutosavedFormProps = {
-		initial?: RecipeFormValues;
-		action?: FormAction;
-		editing?: EditedRecipe;
-		importId?: string;
-	};
-
-	function AutosavedForm({
-		initial = recipeFormValues(),
-		action = refuse,
-		editing,
-		importId: reviewed,
-	}: AutosavedFormProps) {
-		return (
-			<RecipeForm
-				initial={initial}
-				action={action}
-				uploadFolders={uploadFolders}
-				tagLabels={[]}
-				uploader={vi.fn()}
-				editing={editing}
-				importId={reviewed}
-				autosave
-				submitLabel="Save recipe"
-			/>
-		);
-	}
-
-	function stored(key: string): AutosavedRecipeForm | undefined {
-		const entry = localStorage.getItem(key);
-		return entry === null ? undefined : (JSON.parse(entry) as AutosavedRecipeForm);
-	}
-
-	function title(): HTMLInputElement {
-		return screen.getByRole<HTMLInputElement>('textbox', { name: 'Title' });
-	}
-
 	const blankText = {
 		title: '',
 		description: '',
@@ -658,9 +688,12 @@ describe('RecipeForm’s autosave', () => {
 		tagDraft: '',
 	};
 
+	// When the stored changes were made.
+	const writtenAt = new Date('2026-10-14T19:12:00.000Z');
+
 	// A new recipe that can save, as a reload left it: a title, a line, a step, and two uploads, the
 	// second of which the sweep has since removed.
-	const storedNewRecipe: AutosavedRecipeForm = {
+	const storedNewRecipe: RecipeFormSnapshot = {
 		text: { ...blankText, title: 'Lemon bars' },
 		yieldKind: 'servings',
 		ingredientSections: { rows: [{ kind: 'item', id: 0, text: '1 cup flour' }] },
@@ -676,6 +709,11 @@ describe('RecipeForm’s autosave', () => {
 		reviewNotes: [],
 		nextId: 4,
 	};
+
+	// The entry the form keeps, written at the moment given or just now.
+	function entryFor(form: RecipeFormSnapshot, at: Date = new Date()): string {
+		return JSON.stringify({ writtenAt: at.toISOString(), form } satisfies AutosavedRecipeForm);
+	}
 
 	// Answers the image route's lookups: the swept upload is gone, and every other photo is stored.
 	function answerLookups() {
@@ -712,9 +750,10 @@ describe('RecipeForm’s autosave', () => {
 
 		render(<AutosavedForm />);
 
-		expect(await screen.findByText('Restored your unsaved changes')).toBeDefined();
+		expect(await screen.findByText(restoredNotice)).toBeDefined();
+		expect(screen.getByText('Discard them to go back to an empty form.')).toBeDefined();
 		expect(
-			screen.getByText('Restored your unsaved changes.').closest('[role="status"]')
+			screen.getByText(/^Restored changes made in this browser on .*\.$/).closest('[role="status"]')
 		).not.toBeNull();
 		expect(title().value).toBe('Lemon bars');
 		expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Ingredient 1' }).value).toBe(
@@ -724,7 +763,7 @@ describe('RecipeForm’s autosave', () => {
 		await user.click(screen.getByRole('button', { name: 'Discard unsaved changes' }));
 
 		expect(title().value).toBe('');
-		expect(screen.queryByText('Restored your unsaved changes')).toBeNull();
+		expect(screen.queryByText(restoredNotice)).toBeNull();
 		expect(screen.getByText('Discarded your unsaved changes.')).toBeDefined();
 		expect(document.activeElement).toBe(title());
 		expect(localStorage.getItem(newRecipeKey)).toBeNull();
@@ -751,10 +790,10 @@ describe('RecipeForm’s autosave', () => {
 	it('keeps the changes when a save is refused, or never reaches the site', async () => {
 		const action = vi.fn(refuse);
 		const user = userEvent.setup();
-		localStorage.setItem(newRecipeKey, JSON.stringify(storedNewRecipe));
+		localStorage.setItem(newRecipeKey, entryFor(storedNewRecipe, writtenAt));
 		answerLookups();
 		render(<AutosavedForm action={action} />);
-		await screen.findByText('Restored your unsaved changes');
+		await screen.findByText(restoredNotice);
 
 		// The button reads "Saving recipe" until the last save settles.
 		await user.click(await screen.findByRole('button', { name: 'Save recipe' }));
@@ -776,14 +815,14 @@ describe('RecipeForm’s autosave', () => {
 		// React reports the error the page's boundary catches.
 		vi.spyOn(console, 'error').mockImplementation(() => {});
 		const user = userEvent.setup();
-		localStorage.setItem(newRecipeKey, JSON.stringify(storedNewRecipe));
+		localStorage.setItem(newRecipeKey, entryFor(storedNewRecipe, writtenAt));
 		answerLookups();
 		render(
 			<LeavingPage>
 				<AutosavedForm action={async () => redirect('/recipes/lemon-bars')} />
 			</LeavingPage>
 		);
-		await screen.findByText('Restored your unsaved changes');
+		await screen.findByText(restoredNotice);
 
 		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
 
@@ -794,10 +833,10 @@ describe('RecipeForm’s autosave', () => {
 	it('shows a restored upload the sweep removed as one that didn’t upload, and saves the rest', async () => {
 		const action = vi.fn(refuse);
 		const user = userEvent.setup();
-		localStorage.setItem(newRecipeKey, JSON.stringify(storedNewRecipe));
+		localStorage.setItem(newRecipeKey, entryFor(storedNewRecipe, writtenAt));
 		const fetch = answerLookups();
 		render(<AutosavedForm action={action} />);
-		await screen.findByText('Restored your unsaved changes');
+		await screen.findByText(restoredNotice);
 
 		expect(fetch.mock.calls.map(([url]) => url)).toEqual([
 			'/api/images/dish/development/kept.jpg',
@@ -827,7 +866,7 @@ describe('RecipeForm’s autosave', () => {
 
 	it('keeps what is typed while a restored upload is looked up, and then shows the upload gone', async () => {
 		const user = userEvent.setup();
-		localStorage.setItem(newRecipeKey, JSON.stringify(storedNewRecipe));
+		localStorage.setItem(newRecipeKey, entryFor(storedNewRecipe, writtenAt));
 		// The swept upload's lookup answers only when the test says.
 		const sweptLookup = Promise.withResolvers<Response>();
 		vi.stubGlobal(
@@ -866,9 +905,10 @@ describe('RecipeForm’s autosave', () => {
 			/>
 		);
 		await user.type(title(), ' squares');
-		expect(stored(`member:recipe-form:recipe:${recipeId}`)?.version).toBe(
-			'2026-10-14T12:00:00.000Z'
-		);
+		expect(
+			JSON.parse(localStorage.getItem(`member:recipe-form:${memberId}:recipe:${recipeId}`) ?? '{}')
+				.version
+		).toBe('2026-10-14T12:00:00.000Z');
 		first.unmount();
 
 		render(
@@ -879,8 +919,8 @@ describe('RecipeForm’s autosave', () => {
 		);
 
 		expect(title().value).toBe('Lemon bars');
-		expect(screen.queryByText('Restored your unsaved changes')).toBeNull();
-		expect(localStorage.getItem(`member:recipe-form:recipe:${recipeId}`)).toBeNull();
+		expect(screen.queryByText(restoredNotice)).toBeNull();
+		expect(localStorage.getItem(`member:recipe-form:${memberId}:recipe:${recipeId}`)).toBeNull();
 	});
 
 	it('brings an import’s review back with its notes as they were', async () => {
@@ -888,12 +928,12 @@ describe('RecipeForm’s autosave', () => {
 		const initial = recipeFormValues(lemonBars, threeNotes);
 		const first = render(<AutosavedForm initial={initial} importId={importId} />);
 		await user.click(lookRight('Ingredient 2'));
-		expect(stored(`member:recipe-form:import:${importId}`)).toBeDefined();
+		expect(stored(`member:recipe-form:${memberId}:import:${importId}`)).toBeDefined();
 		first.unmount();
 
 		render(<AutosavedForm initial={initial} importId={importId} />);
 
-		expect(await screen.findByText('Restored your unsaved changes')).toBeDefined();
+		expect(await screen.findByText(restoredNotice)).toBeDefined();
 		expect(screen.getByText('2 things need a second look')).toBeDefined();
 		expect(screen.queryByText('Check this line.')).toBeNull();
 		expect(screen.getByText('Check this step.')).toBeDefined();
@@ -901,23 +941,140 @@ describe('RecipeForm’s autosave', () => {
 
 	it('keeps the notice while its page is hidden and shown again, and never brings back what it discarded', async () => {
 		const user = userEvent.setup();
-		localStorage.setItem(newRecipeKey, JSON.stringify(storedNewRecipe));
+		localStorage.setItem(newRecipeKey, entryFor(storedNewRecipe, writtenAt));
 		answerLookups();
 		const page = renderKeptPage(<AutosavedForm />);
-		await screen.findByText('Restored your unsaved changes');
+		await screen.findByText(restoredNotice);
 
 		await page.hide();
 		await page.show();
-		expect(screen.getByText('Restored your unsaved changes')).toBeDefined();
+		expect(screen.getByText(restoredNotice)).toBeDefined();
 
 		await user.click(screen.getByRole('button', { name: 'Discard unsaved changes' }));
 		await user.type(title(), 'Lemon tart');
 		await page.hide();
 		await page.show();
 
-		expect(screen.queryByText('Restored your unsaved changes')).toBeNull();
+		expect(screen.queryByText(restoredNotice)).toBeNull();
 		expect(title().value).toBe('Lemon tart');
 		expect(stored(newRecipeKey)?.text.title).toBe('Lemon tart');
+	});
+
+	it('restores nothing where the changes look as the form loaded, as a blank line swapped for another', async () => {
+		const user = userEvent.setup();
+		const first = render(<AutosavedForm />);
+		await user.type(screen.getByRole('textbox', { name: 'Ingredient 1' }), '{Enter}');
+		await user.click(screen.getByRole('button', { name: 'Actions for Ingredient 1' }));
+		await user.click(await screen.findByRole('menuitem', { name: 'Remove' }));
+		expect(screen.getAllByRole('textbox', { name: /^Ingredient/ })).toHaveLength(1);
+		expect(localStorage.getItem(newRecipeKey)).toBeNull();
+		first.unmount();
+		// What an older form kept for the same swap: the rows' ids moved on, and nothing shows else.
+		localStorage.setItem(
+			newRecipeKey,
+			entryFor({
+				...recipeFormSnapshot(recipeFormValues()),
+				ingredientSections: { rows: [{ kind: 'item', id: 2, text: '' }] },
+				nextId: 3,
+			})
+		);
+
+		render(<AutosavedForm />);
+
+		await waitFor(() => expect(localStorage.getItem(newRecipeKey)).toBeNull());
+		expect(screen.queryByText(restoredNotice)).toBeNull();
+	});
+
+	it('says when the restored changes were made, and clears once the form shows what it loaded', async () => {
+		const user = userEvent.setup();
+		localStorage.setItem(
+			newRecipeKey,
+			entryFor(
+				{ ...recipeFormSnapshot(recipeFormValues()), text: { ...blankText, title: 'L' } },
+				writtenAt
+			)
+		);
+		render(<AutosavedForm />);
+
+		expect(
+			await screen.findByText(
+				`Restored changes made in this browser on ${formatDayAndTime(writtenAt)}`
+			)
+		).toBeDefined();
+		expect(formatDayAndTime(writtenAt)).toBe('October 14 at 3:12 PM');
+
+		await user.clear(title());
+
+		expect(screen.queryByText(restoredNotice)).toBeNull();
+		expect(localStorage.getItem(newRecipeKey)).toBeNull();
+		await user.type(title(), 'Lemon bars');
+		expect(screen.queryByText(restoredNotice)).toBeNull();
+	});
+
+	it('names what Discard returns to by what the form edits', async () => {
+		const restoredOver = (initial: RecipeFormValues) => ({
+			...recipeFormSnapshot(initial),
+			text: { ...recipeFormSnapshot(initial).text, title: 'Lemon squares' },
+		});
+		const imported = recipeFormValues(lemonBars, threeNotes);
+		localStorage.setItem(
+			`member:recipe-form:${memberId}:import:${importId}`,
+			entryFor(restoredOver(imported))
+		);
+		const review = render(<AutosavedForm initial={imported} importId={importId} />);
+		expect(
+			await screen.findByText('Discard them to go back to the recipe as it was imported.')
+		).toBeDefined();
+		review.unmount();
+
+		const edited = recipeFormValues(lemonBars);
+		localStorage.setItem(
+			`member:recipe-form:${memberId}:recipe:${recipeId}`,
+			JSON.stringify({ ...JSON.parse(entryFor(restoredOver(edited))), version: 'a' })
+		);
+		render(
+			<AutosavedForm
+				initial={edited}
+				editing={{ id: recipeId, version: 'a', respellableTags: [] }}
+			/>
+		);
+		expect(
+			await screen.findByText('Discard them to go back to the recipe as it was saved.')
+		).toBeDefined();
+	});
+
+	it('never restores another member’s changes on this browser', async () => {
+		const user = userEvent.setup();
+		const first = render(<AutosavedForm member={otherMemberId} />);
+		await user.type(title(), 'Lemon bars');
+		first.unmount();
+
+		render(<AutosavedForm />);
+
+		await waitFor(() => expect(title().value).toBe(''));
+		expect(screen.queryByText(restoredNotice)).toBeNull();
+		expect(stored(`member:recipe-form:${otherMemberId}:new`)?.text.title).toBe('Lemon bars');
+	});
+
+	it('removes entries as old as a saved draft’s lifetime, any member’s, as a form loads', async () => {
+		const expired = new Date(
+			Date.now() - daysInMilliseconds(settings.drafts.savedDraftLifetimeDays) - 1000
+		);
+		const othersExpired = `member:recipe-form:${otherMemberId}:draft:${draftId}`;
+		const othersRecent = `member:recipe-form:${otherMemberId}:new`;
+		localStorage.setItem(newRecipeKey, entryFor(storedNewRecipe, expired));
+		localStorage.setItem(othersExpired, entryFor(storedNewRecipe, expired));
+		localStorage.setItem(othersRecent, entryFor(storedNewRecipe));
+		// Kept before entries named their member and said when they were written.
+		localStorage.setItem('member:recipe-form:new', JSON.stringify(storedNewRecipe));
+
+		render(<AutosavedForm />);
+
+		await waitFor(() => expect(localStorage.getItem(othersExpired)).toBeNull());
+		expect(localStorage.getItem(newRecipeKey)).toBeNull();
+		expect(localStorage.getItem('member:recipe-form:new')).toBeNull();
+		expect(localStorage.getItem(othersRecent)).not.toBeNull();
+		expect(title().value).toBe('');
 	});
 
 	it('works as without it where the browser blocks storage', async () => {
@@ -932,7 +1089,258 @@ describe('RecipeForm’s autosave', () => {
 		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
 
 		await waitFor(() => expect(action).toHaveBeenCalledOnce());
-		expect(screen.queryByText('Restored your unsaved changes')).toBeNull();
+		expect(screen.queryByText(restoredNotice)).toBeNull();
+	});
+});
+
+describe('RecipeForm’s drafts', () => {
+	const savedAt = new Date('2026-10-15T19:12:00.000Z');
+
+	// Saves every draft as the one id, at the one moment.
+	function saving(result: FormState<SavedDraftResult> = { status: 'success', draftId, savedAt }) {
+		return vi.fn<FormAction<SavedDraftResult>>(async () => result);
+	}
+
+	function draftsWith(
+		save: FormAction<SavedDraftResult>,
+		changes: Partial<RecipeFormDrafts> = {}
+	): RecipeFormDrafts {
+		return { save, delete: vi.fn(), inUrl: true, ...changes };
+	}
+
+	function saveAsDraft() {
+		return screen.getByRole('button', { name: 'Save as draft' });
+	}
+
+	// The snapshot the save sent.
+	function sentDraft(save: ReturnType<typeof saving>, call = 0): RecipeFormSnapshot {
+		const sent = save.mock.calls[call]?.[1].get('draft');
+		return JSON.parse(typeof sent === 'string' ? sent : '{}') as RecipeFormSnapshot;
+	}
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+		localStorage.clear();
+		window.history.replaceState(null, '', '/');
+	});
+
+	it('says an untouched new recipe has nothing to save, and saves no empty draft', async () => {
+		const save = saving();
+		const user = userEvent.setup();
+		render(<AutosavedForm drafts={draftsWith(save)} />);
+
+		await user.click(saveAsDraft());
+
+		expect(await screen.findByText('Nothing to save yet')).toBeDefined();
+		expect(save).not.toHaveBeenCalled();
+	});
+
+	it('saves whatever the form holds, with nothing required, and says when', async () => {
+		const save = saving();
+		const user = userEvent.setup();
+		render(<AutosavedForm drafts={draftsWith(save)} />);
+		await user.type(title(), 'Lemon bars');
+
+		await user.click(saveAsDraft());
+
+		expect(await screen.findByText(`Draft saved at ${formatTime(savedAt)}`)).toBeDefined();
+		expect(formatTime(savedAt)).toBe('3:12 PM');
+		expect(sentDraft(save).text.title).toBe('Lemon bars');
+		expect(save.mock.calls[0]?.[1].get('draftId')).toBeNull();
+		expect(screen.queryByText(/^Fix \d+ things? to save$/)).toBeNull();
+		expect(document.querySelector('[aria-invalid="true"]')).toBeNull();
+		// A reload opens the draft from the server, so the URL names it and the browser keeps nothing.
+		expect(`${location.pathname}${location.search}`).toBe(`/contribute?draft=${draftId}`);
+		expect(localStorage.getItem(newRecipeKey)).toBeNull();
+		expect(localStorage.getItem(draftKey)).toBeNull();
+	});
+
+	it('saves over the draft once saved, says when nothing changed since, and keeps later changes under the draft', async () => {
+		const save = saving();
+		const user = userEvent.setup();
+		render(<AutosavedForm drafts={draftsWith(save)} />);
+		await user.type(title(), 'Lemon bars');
+		await user.click(saveAsDraft());
+		await screen.findByText(`Draft saved at ${formatTime(savedAt)}`);
+
+		await user.click(saveAsDraft());
+		expect(await screen.findByText('No changes since the draft was saved')).toBeDefined();
+		expect(save).toHaveBeenCalledOnce();
+
+		await user.type(title(), ' squares');
+		expect(stored(draftKey)?.text.title).toBe('Lemon bars squares');
+		await user.click(saveAsDraft());
+		await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+		expect(save.mock.calls[1]?.[1].get('draftId')).toBe(draftId);
+	});
+
+	it('opens a saved draft, discards back to it, and saves the recipe from it, naming the draft', async () => {
+		const action = vi.fn(refuse);
+		const user = userEvent.setup();
+		const opened = recipeFormValues(lemonBars);
+		localStorage.setItem(
+			draftKey,
+			JSON.stringify({
+				writtenAt: new Date().toISOString(),
+				form: recipeFormSnapshot(
+					editRecipeForm(opened, { type: 'setText', field: 'title', text: 'Lemon squares' })
+				),
+			} satisfies AutosavedRecipeForm)
+		);
+		render(
+			<AutosavedForm
+				initial={opened}
+				action={action}
+				drafts={draftsWith(saving(), { opened: { id: draftId, savedAt } })}
+			/>
+		);
+		expect(await screen.findByText('Discard them to go back to your saved draft.')).toBeDefined();
+
+		await user.click(screen.getByRole('button', { name: 'Discard unsaved changes' }));
+		expect(title().value).toBe('Lemon bars');
+		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+
+		await waitFor(() => expect(action).toHaveBeenCalledOnce());
+		expect(action.mock.calls[0]?.[1].get('draftId')).toBe(draftId);
+	});
+
+	it('keeps an import’s review at its own address, and saves its import with the draft', async () => {
+		const save = saving();
+		const user = userEvent.setup();
+		window.history.replaceState(null, '', `/contribute/imports/${importId}`);
+		render(
+			<AutosavedForm
+				initial={recipeFormValues(lemonBars, threeNotes)}
+				importId={importId}
+				drafts={draftsWith(save, { inUrl: false })}
+			/>
+		);
+
+		// Unlike a new recipe, an import's review is worth keeping as it was read.
+		await user.click(saveAsDraft());
+
+		await screen.findByText(`Draft saved at ${formatTime(savedAt)}`);
+		expect(save.mock.calls[0]?.[1].get('importId')).toBe(importId);
+		expect(sentDraft(save).reviewNotes).toHaveLength(3);
+		expect(location.pathname).toBe(`/contribute/imports/${importId}`);
+	});
+
+	it('shows an image the draft may not keep at its photo, and says the draft wasn’t saved', async () => {
+		const user = userEvent.setup();
+		const withPhoto = recipeFormValues({
+			title: 'Lemon bars',
+			images: [{ role: 'dish', pathname: 'dish/development/bars.jpg' }],
+		});
+		const save = saving({
+			status: 'error',
+			fieldErrors: { 'images.0.pathname': 'This photo didn’t upload. Remove it and add it again.' },
+		});
+		render(<AutosavedForm initial={withPhoto} drafts={draftsWith(save)} />);
+		await user.type(title(), ' squares');
+
+		await user.click(saveAsDraft());
+
+		expect(await screen.findByText('The draft wasn’t saved.')).toBeDefined();
+		expect(screen.getByText('Fix 1 thing to save')).toBeDefined();
+		expect(
+			within(screen.getByRole('list', { name: 'Photos' })).getByText(
+				'This photo didn’t upload. Remove it and add it again.'
+			)
+		).toBeDefined();
+	});
+
+	it('says the draft wasn’t saved when the save never reaches the site', async () => {
+		const user = userEvent.setup();
+		const save = vi.fn<FormAction<SavedDraftResult>>(async () => {
+			throw new TypeError('Failed to fetch');
+		});
+		render(<AutosavedForm drafts={draftsWith(save)} />);
+		await user.type(title(), 'Lemon bars');
+
+		await user.click(saveAsDraft());
+
+		expect(
+			await screen.findByText('We couldn’t save the draft. Check your connection and try again.')
+		).toBeDefined();
+		expect(location.search).toBe('');
+	});
+
+	it('offers no draft when editing a published recipe', () => {
+		render(
+			<AutosavedForm
+				initial={recipeFormValues(lemonBars)}
+				editing={{ id: recipeId, version: 'a', respellableTags: [] }}
+			/>
+		);
+
+		expect(screen.queryByRole('button', { name: /draft/i })).toBeNull();
+	});
+});
+
+describe('RecipeForm’s delete section', () => {
+	const succeed: FormAction = async () => ({ status: 'success' });
+
+	afterEach(() => {
+		vi.clearAllMocks();
+		localStorage.clear();
+	});
+
+	async function confirmDelete(name: string) {
+		const user = userEvent.setup();
+		const section = screen.getByRole('region', { name });
+		await user.click(within(section).getByRole('button', { name }));
+		await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name }));
+	}
+
+	it('deletes the recipe being edited, its unsaved changes and no others first, and leaves for the list', async () => {
+		const user = userEvent.setup();
+		const recipeKey = `member:recipe-form:${memberId}:recipe:${recipeId}`;
+		const newRecipeEntry = JSON.stringify({
+			writtenAt: new Date().toISOString(),
+			form: recipeFormSnapshot(recipeFormValues()),
+		} satisfies AutosavedRecipeForm);
+		localStorage.setItem(newRecipeKey, newRecipeEntry);
+		let entryAsItLeft: string | null | undefined;
+		router.replace.mockImplementation(() => {
+			entryAsItLeft = localStorage.getItem(recipeKey);
+		});
+		render(
+			<AutosavedForm
+				initial={recipeFormValues(lemonBars)}
+				editing={{ id: recipeId, version: 'a', respellableTags: [] }}
+				deleteRecipe={{ title: 'Lemon bars', action: succeed }}
+			/>
+		);
+		await user.type(title(), ' squares');
+		expect(localStorage.getItem(recipeKey)).not.toBeNull();
+
+		await confirmDelete('Delete recipe');
+
+		await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/'));
+		expect(entryAsItLeft).toBeNull();
+		expect(localStorage.getItem(recipeKey)).toBeNull();
+		expect(localStorage.getItem(newRecipeKey)).toBe(newRecipeEntry);
+	});
+
+	it('offers Delete draft once the form holds a saved draft, and leaves for the drafts left', async () => {
+		const user = userEvent.setup();
+		const remove = vi.fn(succeed);
+		const save = vi.fn<FormAction<SavedDraftResult>>(async () => ({
+			status: 'success',
+			draftId,
+			savedAt: new Date(),
+		}));
+		render(<AutosavedForm drafts={{ save, delete: remove, inUrl: false }} />);
+		expect(screen.queryByRole('region', { name: 'Delete draft' })).toBeNull();
+		await user.type(title(), 'Lemon bars');
+		await user.click(screen.getByRole('button', { name: 'Save as draft' }));
+		await user.type(title(), ' squares');
+
+		await confirmDelete('Delete draft');
+
+		await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/contribute?tab=drafts'));
+		expect(remove.mock.calls[0]?.[1].get('draftId')).toBe(draftId);
+		expect(localStorage.getItem(draftKey)).toBeNull();
 	});
 });
 

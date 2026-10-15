@@ -1,5 +1,6 @@
 import 'server-only';
 import { requireMember } from '@/application/authorization';
+import { savedDraftCutoff } from '@/application/drafts/saved-draft';
 import {
 	ImportFailedError,
 	ImportNoRecipeError,
@@ -14,7 +15,6 @@ import {
 	toImportDraftDto,
 	type ImportReviewDto,
 	type RecipeImportRef,
-	type UnsavedImportDto,
 } from '@/application/ingestion/recipe-import-dtos';
 import type { ActorProvider, MemberActor } from '@/application/ports/actor-provider';
 import type { ImageStore } from '@/application/ports/image-store';
@@ -30,6 +30,7 @@ import type {
 	RecipeImportRepository,
 } from '@/application/ports/recipe-import-repository';
 import type { RecipeRepository } from '@/application/ports/recipe-repository';
+import type { SavedDraftRepository } from '@/application/ports/saved-draft-repository';
 import type { WebPage, WebPageFetcher } from '@/application/ports/web-page-fetcher';
 import type { ImageFolders } from '@/application/recipes/image-folders';
 import { imagesInUse } from '@/application/recipes/images-in-use';
@@ -178,6 +179,7 @@ function scanContentProblem(scan: ScanImage | null): string | undefined {
 export class RecipeImportService {
 	private readonly recipes: RecipeRepository;
 	private readonly imports: RecipeImportRepository;
+	private readonly drafts: SavedDraftRepository;
 	private readonly pages: WebPageFetcher;
 	private readonly structuredData: PageRecipeExtractor;
 	private readonly pageReader: PageRecipeExtractor;
@@ -190,6 +192,7 @@ export class RecipeImportService {
 	constructor(
 		recipes: RecipeRepository,
 		imports: RecipeImportRepository,
+		drafts: SavedDraftRepository,
 		pages: WebPageFetcher,
 		structuredData: PageRecipeExtractor,
 		pageReader: PageRecipeExtractor,
@@ -200,6 +203,7 @@ export class RecipeImportService {
 	) {
 		this.recipes = recipes;
 		this.imports = imports;
+		this.drafts = drafts;
 		this.pages = pages;
 		this.structuredData = structuredData;
 		this.pageReader = pageReader;
@@ -260,16 +264,6 @@ export class RecipeImportService {
 		}
 
 		return { status: 'reviewable', draft: toImportDraftDto(recipeImport, draft) };
-	}
-
-	// The member's drafts that have not expired, newest first.
-	async listUnsavedImports(): Promise<UnsavedImportDto[]> {
-		const actor = requireMember(await this.actors.currentActor());
-		return this.imports.listUnsaved(
-			actor.memberId,
-			importDraftCutoff(new Date()),
-			settings.imports.maxUnsavedImports
-		);
 	}
 
 	// Every outcome of a started import is recorded, with what the model calls cost. Recording a failure
@@ -337,11 +331,17 @@ export class RecipeImportService {
 		return recipeImport;
 	}
 
-	// Drafts are cleared lazily, before each import, so no scheduled job is needed.
+	// Drafts are cleared lazily, before each import, so no scheduled job is needed: imports' drafts, and
+	// the drafts members saved from the recipe form.
 	private async clearExpiredDrafts(): Promise<void> {
-		const cleared = await this.imports.clearDraftsCreatedBefore(importDraftCutoff(new Date()));
+		const now = new Date();
+		const cleared = await this.imports.clearDraftsCreatedBefore(importDraftCutoff(now));
 		if (cleared > 0) {
 			logger.info('Expired import drafts cleared', { importCount: cleared });
+		}
+		const deleted = await this.drafts.deleteSavedBefore(savedDraftCutoff(now));
+		if (deleted > 0) {
+			logger.info('Expired saved drafts deleted', { draftCount: deleted });
 		}
 	}
 
@@ -475,6 +475,7 @@ export class RecipeImportService {
 			pathnames,
 			this.recipes,
 			this.imports,
+			this.drafts,
 			new Date(),
 			memberId
 		);

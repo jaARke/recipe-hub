@@ -14,6 +14,7 @@ import { InMemoryFavoriteRepository } from '@/application/testing/in-memory-favo
 import { InMemoryInviteRepository } from '@/application/testing/in-memory-invite-repository';
 import { InMemoryMemberRepository } from '@/application/testing/in-memory-member-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
+import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
 
 const missingId = '0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e';
 const malformedId = 'not-a-member-id';
@@ -29,7 +30,8 @@ const refusedActors = [
 function newMemberRepository(): InMemoryMemberRepository {
 	return new InMemoryMemberRepository(
 		new InMemoryInviteRepository(),
-		new InMemoryFavoriteRepository(new InMemoryRecipeRepository())
+		new InMemoryFavoriteRepository(new InMemoryRecipeRepository()),
+		new InMemorySavedDraftRepository()
 	);
 }
 

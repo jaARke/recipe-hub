@@ -15,6 +15,7 @@ import { DrizzleFavoriteRepository } from '@/infrastructure/db/drizzle-favorite-
 import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
+import { DrizzleSavedDraftRepository } from '@/infrastructure/db/drizzle-saved-draft-repository';
 import {
 	invites,
 	passkeys,
@@ -118,6 +119,7 @@ describeMemberRepositoryContract(() => ({
 	invites: new DrizzleInviteRepository(db),
 	favorites: new DrizzleFavoriteRepository(db),
 	recipes: new DrizzleRecipeRepository(db),
+	drafts: new DrizzleSavedDraftRepository(db),
 }));
 
 describe('create', () => {

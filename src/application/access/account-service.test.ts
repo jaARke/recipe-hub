@@ -6,6 +6,7 @@ import { InMemoryFavoriteRepository } from '@/application/testing/in-memory-favo
 import { InMemoryInviteRepository } from '@/application/testing/in-memory-invite-repository';
 import { InMemoryMemberRepository } from '@/application/testing/in-memory-member-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
+import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
 import { inviteExpiry, type Invite } from '@/domain/member/invite';
 import { removedMemberEmail } from '@/domain/member/member';
 import { settings } from '@/lib/settings';
@@ -18,7 +19,8 @@ function createAccounts() {
 	const invites = new InMemoryInviteRepository();
 	const members = new InMemoryMemberRepository(
 		invites,
-		new InMemoryFavoriteRepository(new InMemoryRecipeRepository())
+		new InMemoryFavoriteRepository(new InMemoryRecipeRepository()),
+		new InMemorySavedDraftRepository()
 	);
 	const emails = new InMemoryEmailSender();
 	const service = new AccountService(members, invites, emails);

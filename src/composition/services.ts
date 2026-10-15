@@ -7,6 +7,7 @@ import { cache } from 'react';
 import { AccessRequestService } from '@/application/access/access-request-service';
 import { AccountService } from '@/application/access/account-service';
 import { InviteService } from '@/application/access/invite-service';
+import { SavedDraftService } from '@/application/drafts/saved-draft-service';
 import { FavoriteService } from '@/application/favorites/favorite-service';
 import { RecipeImportService } from '@/application/ingestion/recipe-import-service';
 import { MemberService } from '@/application/members/member-service';
@@ -29,6 +30,7 @@ import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repo
 import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { DrizzleRecipeSearch } from '@/infrastructure/db/drizzle-recipe-search';
+import { DrizzleSavedDraftRepository } from '@/infrastructure/db/drizzle-saved-draft-repository';
 import { ResendEmailSender } from '@/infrastructure/email/resend-email-sender';
 import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
 import { BlobUploadHandler } from '@/infrastructure/storage/blob-upload-handler';
@@ -109,6 +111,7 @@ export function getRecipeService(): RecipeService {
 	return new RecipeService(
 		new DrizzleRecipeRepository(db),
 		new DrizzleRecipeImportRepository(db),
+		new DrizzleSavedDraftRepository(db),
 		new DrizzleMemberRepository(db),
 		images,
 		actors,
@@ -124,6 +127,7 @@ export function getRecipeImageService(): RecipeImageService {
 	return new RecipeImageService(
 		new DrizzleRecipeRepository(db),
 		new DrizzleRecipeImportRepository(db),
+		new DrizzleSavedDraftRepository(db),
 		images,
 		actors,
 		imageFolders,
@@ -136,10 +140,22 @@ export function getRecipeImportService(): RecipeImportService {
 	return new RecipeImportService(
 		new DrizzleRecipeRepository(db),
 		new DrizzleRecipeImportRepository(db),
+		new DrizzleSavedDraftRepository(db),
 		new GuardedWebPageFetcher({ siteUrl }),
 		new JsonLdPageRecipeExtractor(),
 		new AiPageRecipeExtractor(settings.ai.pageModelId),
 		new AiScanRecipeExtractor(settings.ai.scanModelId),
+		images,
+		actors,
+		imageFolders
+	);
+}
+
+export function getSavedDraftService(): SavedDraftService {
+	return new SavedDraftService(
+		new DrizzleSavedDraftRepository(db),
+		new DrizzleRecipeImportRepository(db),
+		new DrizzleRecipeRepository(db),
 		images,
 		actors,
 		imageFolders

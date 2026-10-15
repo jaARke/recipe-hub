@@ -27,14 +27,6 @@ export type ImportDraftDto = {
 export type ImportReviewDto =
 	{ status: 'reviewable'; draft: ImportDraftDto } | { status: 'saved'; recipeSlug: string };
 
-// A draft the member has not saved yet, as the Drafts tab lists it.
-export type UnsavedImportDto = {
-	id: RecipeImportId;
-	mode: RecipeImportMode;
-	title?: string;
-	createdAt: Date;
-};
-
 export function toImportDraftDto(recipeImport: RecipeImport, draft: ImportDraft): ImportDraftDto {
 	return {
 		id: recipeImport.id,
