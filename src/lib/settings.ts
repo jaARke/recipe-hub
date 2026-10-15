@@ -47,6 +47,11 @@ export const settings: z.output<typeof settingsSchema> = {
 		// cooks from the site now and then stays signed in.
 		sessionLifetimeDays: 180,
 	},
+	favorites: {
+		// The most favorites a signed-out reader's device keeps: as many as its one cookie holds. A
+		// member's account keeps any number.
+		maxPerDevice: 100,
+	},
 	retention: {
 		// How long a removed photo or scan is kept before it is deleted for good: past Neon's 35-day
 		// snapshots, so restoring a deleted recipe from one brings its images back.

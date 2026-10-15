@@ -30,10 +30,10 @@ export interface MemberRepository {
 	// Returns null when no member has this id. Throws MemberRoleConflictError when the member already
 	// has the role, as when another admin changed it first.
 	setRole(id: MemberId, role: MemberRole): Promise<Member | null>;
-	// Marks the member removed and, in the same write, ends their sessions and deletes their passkeys
-	// and any sign-in code they were sent. Their account takes removedMemberEmail's address, freeing
-	// theirs for a new invite, and the open invites bound to their address are revoked. Returns null
-	// when no member has this id.
+	// Marks the member removed and, in the same write, ends their sessions and deletes their passkeys,
+	// any sign-in code they were sent, and their favorites. Their account takes removedMemberEmail's
+	// address, freeing theirs for a new invite, and the open invites bound to their address are
+	// revoked. Returns null when no member has this id.
 	remove(id: MemberId): Promise<Member | null>;
 	// Returns null when no member has this id.
 	rename(id: MemberId, displayName: string): Promise<Member | null>;

@@ -10,8 +10,10 @@ import { MemberService } from '@/application/members/member-service';
 import type { Actor } from '@/application/ports/actor-provider';
 import { actorFor, anonymousActor, memberActor } from '@/application/testing/actors';
 import { FixedActorProvider } from '@/application/testing/fixed-actor-provider';
+import { InMemoryFavoriteRepository } from '@/application/testing/in-memory-favorite-repository';
 import { InMemoryInviteRepository } from '@/application/testing/in-memory-invite-repository';
 import { InMemoryMemberRepository } from '@/application/testing/in-memory-member-repository';
+import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
 
 const missingId = '0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e';
 const malformedId = 'not-a-member-id';
@@ -24,8 +26,15 @@ const refusedActors = [
 	{ who: 'a member who is not an admin', actor: memberActor(), error: ForbiddenError },
 ];
 
+function newMemberRepository(): InMemoryMemberRepository {
+	return new InMemoryMemberRepository(
+		new InMemoryInviteRepository(),
+		new InMemoryFavoriteRepository(new InMemoryRecipeRepository())
+	);
+}
+
 function createMembers() {
-	const members = new InMemoryMemberRepository(new InMemoryInviteRepository());
+	const members = newMemberRepository();
 	const serviceFor = (actor: Actor) =>
 		new MemberService(members, new FixedActorProvider(actor), ownerEmail);
 	return { members, serviceFor };
@@ -530,7 +539,7 @@ describe('ensureOwner', () => {
 	it('never asks who is calling', async () => {
 		const actors = new FixedActorProvider(memberActor());
 
-		const members = new InMemoryMemberRepository(new InMemoryInviteRepository());
+		const members = newMemberRepository();
 
 		await new MemberService(members, actors, ownerEmail).ensureOwner();
 

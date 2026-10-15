@@ -1,12 +1,13 @@
 import 'server-only';
 import { waitUntil } from '@vercel/functions';
 import { checkBotId } from 'botid/server';
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { after, connection } from 'next/server';
 import { cache } from 'react';
 import { AccessRequestService } from '@/application/access/access-request-service';
 import { AccountService } from '@/application/access/account-service';
 import { InviteService } from '@/application/access/invite-service';
+import { FavoriteService } from '@/application/favorites/favorite-service';
 import { RecipeImportService } from '@/application/ingestion/recipe-import-service';
 import { MemberService } from '@/application/members/member-service';
 import type { ActorProvider } from '@/application/ports/actor-provider';
@@ -18,8 +19,10 @@ import { AiPageRecipeExtractor } from '@/infrastructure/ai/ai-page-recipe-extrac
 import { AiScanRecipeExtractor } from '@/infrastructure/ai/ai-scan-recipe-extractor';
 import { createAuth, type Auth } from '@/infrastructure/auth/better-auth';
 import { BetterAuthActorProvider } from '@/infrastructure/auth/better-auth-actor-provider';
+import { CookieDeviceFavorites } from '@/infrastructure/cookies/cookie-device-favorites';
 import { db } from '@/infrastructure/db/client';
 import { DrizzleAccessRequestRepository } from '@/infrastructure/db/drizzle-access-request-repository';
+import { DrizzleFavoriteRepository } from '@/infrastructure/db/drizzle-favorite-repository';
 import { DrizzleImageMoveLock } from '@/infrastructure/db/drizzle-image-move-lock';
 import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
@@ -87,6 +90,12 @@ function getAuth(): Auth {
 async function requestHeaders(): Promise<Headers> {
 	await connection();
 	return headers();
+}
+
+// Reading the device's favorites is request work too, so it waits for the request in the same way.
+async function requestCookies() {
+	await connection();
+	return cookies();
 }
 
 const sessionActors = new BetterAuthActorProvider(getAuth, requestHeaders);
@@ -160,6 +169,17 @@ export function getInviteService(): InviteService {
 
 export function getMemberService(): MemberService {
 	return new MemberService(new DrizzleMemberRepository(db), actors, env.ADMIN_EMAIL);
+}
+
+// The favorites cookie is Secure where Better Auth's session cookie is: in production builds, which
+// every deployment serves over HTTPS.
+export function getFavoriteService(): FavoriteService {
+	return new FavoriteService(
+		new DrizzleFavoriteRepository(db),
+		new CookieDeviceFavorites({ cookies: requestCookies, secure: env.NODE_ENV === 'production' }),
+		new DrizzleRecipeRepository(db),
+		actors
+	);
 }
 
 // Better Auth's endpoint, which the Route Handler at /api/auth/[...all] mounts.

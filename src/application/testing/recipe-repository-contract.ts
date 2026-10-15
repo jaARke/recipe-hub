@@ -232,6 +232,24 @@ export function describeRecipeRepositoryContract(fixture: () => RecipeRepository
 		});
 	});
 
+	describe('findByIds', () => {
+		it('finds each recipe asked for once, leaving out ids no recipe has', async () => {
+			const soup = await create(sampleChickenSoup);
+			const pie = await create(sampleLemonIceboxPie);
+			await create(sampleTomatoSalad);
+
+			const found = await fixture().repository.findByIds([pie.id, missingId, soup.id, pie.id]);
+
+			expect(found.toSorted((a, b) => a.title.localeCompare(b.title))).toEqual([pie, soup]);
+		});
+
+		it('finds nothing for no ids', async () => {
+			await create(sampleChickenSoup);
+
+			expect(await fixture().repository.findByIds([])).toEqual([]);
+		});
+	});
+
 	describe('list', () => {
 		it('pages through recipes newest first', async () => {
 			const created = [];

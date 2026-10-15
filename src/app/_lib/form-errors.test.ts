@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { toFormError } from '@/app/_lib/form-errors';
+import { DeviceFavoritesFullError } from '@/application/favorites/errors';
 import {
 	ImportFailedError,
 	ImportNoRecipeError,
@@ -79,6 +80,10 @@ describe('toFormError', () => {
 		{
 			error: new InvalidImageUploadError(),
 			message: 'This photo didn’t upload. Remove it and add it again.',
+		},
+		{
+			error: new DeviceFavoritesFullError(),
+			message: `You’ve reached the limit of ${settings.favorites.maxPerDevice} favorites on this device. Remove one to add another.`,
 		},
 		{
 			error: new ImportUnavailableError(),

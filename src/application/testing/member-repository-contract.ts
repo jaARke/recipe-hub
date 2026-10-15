@@ -1,14 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { MemberRoleConflictError } from '@/application/members/errors';
+import type { FavoriteRepository } from '@/application/ports/favorite-repository';
 import type { InviteRepository } from '@/application/ports/invite-repository';
 import type { MemberRepository, NewMember } from '@/application/ports/member-repository';
+import type { RecipeRepository } from '@/application/ports/recipe-repository';
 import { inviteExpiry, type Invite } from '@/domain/member/invite';
 import { memberIdSchema, removedMemberEmail, type MemberId } from '@/domain/member/member';
+import { recipeContentSchema, type Recipe, type RecipeContentInput } from '@/domain/recipe/recipe';
+import { sampleChickenSoup, sampleTomatoSalad } from '@/domain/recipe/samples/sample-recipes';
+import { slugify } from '@/domain/recipe/slug';
 
 export type MemberRepositoryFixture = {
 	members: MemberRepository;
 	// Where the invites a removal revokes are stored.
 	invites: InviteRepository;
+	// Where the favorites a removal deletes are stored, and the recipes they name.
+	favorites: FavoriteRepository;
+	recipes: RecipeRepository;
 };
 
 const missingId = memberIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e');
@@ -34,6 +42,16 @@ export function describeMemberRepositoryContract(fixture: () => MemberRepository
 			throw new Error('The invite was not open');
 		}
 		return bound;
+	}
+
+	async function createRecipe(input: RecipeContentInput, contributorId: MemberId): Promise<Recipe> {
+		const content = recipeContentSchema.parse(input);
+		return fixture().recipes.create({
+			content,
+			provenance: { entryMode: 'manual' },
+			contributorId,
+			slugBase: slugify(content.title),
+		});
 	}
 
 	describe('create', () => {
@@ -226,6 +244,21 @@ export function describeMemberRepositoryContract(fixture: () => MemberRepository
 
 			expect(await invites.findOpenByEmail(ada.email, new Date())).toBeNull();
 			expect(await invites.listOpen(new Date())).toEqual([kept]);
+		});
+
+		it("deletes the member's favorites, and no others", async () => {
+			const { members, favorites } = fixture();
+			const member = await members.create(ada);
+			const other = await members.create(grace);
+			const soup = await createRecipe(sampleChickenSoup, other.id);
+			const salad = await createRecipe(sampleTomatoSalad, other.id);
+			await favorites.add(member.id, [soup.id, salad.id]);
+			await favorites.add(other.id, [soup.id]);
+
+			await members.remove(member.id);
+
+			expect(await favorites.count(member.id)).toBe(0);
+			expect(await favorites.list(other.id, { limit: 10, offset: 0 })).toEqual([soup]);
 		});
 
 		it('leaves the member out of the lists', async () => {

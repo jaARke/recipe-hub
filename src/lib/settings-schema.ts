@@ -52,6 +52,12 @@ export const settingsSchema = z
 			// for 400 days at most.
 			sessionLifetimeDays: z.int().min(2).max(400),
 		}),
+		favorites: z.object({
+			// One cookie holds the device's favorites, and browsers keep a cookie only up to 4,096 bytes
+			// with its name and attributes. An id takes 37 bytes, a uuid and its separator, so 100 take
+			// about 3,700 and leave room for the rest.
+			maxPerDevice: z.int().positive().max(100),
+		}),
 		retention: z.object({
 			removedImageLifetimeDays: z
 				.int()

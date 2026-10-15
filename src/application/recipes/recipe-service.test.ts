@@ -13,6 +13,7 @@ import { ImageFolders } from '@/application/recipes/image-folders';
 import { RecipeService, type CreateRecipeInput } from '@/application/recipes/recipe-service';
 import { actorFor, adminActor, anonymousActor, memberActor } from '@/application/testing/actors';
 import { FixedActorProvider } from '@/application/testing/fixed-actor-provider';
+import { InMemoryFavoriteRepository } from '@/application/testing/in-memory-favorite-repository';
 import { InMemoryImageStore } from '@/application/testing/in-memory-image-store';
 import { InMemoryInviteRepository } from '@/application/testing/in-memory-invite-repository';
 import { InMemoryMemberRepository } from '@/application/testing/in-memory-member-repository';
@@ -87,7 +88,10 @@ function manualEntry(content: RecipeContentInput): CreateRecipeInput {
 async function createCatalog() {
 	const recipes = new InMemoryRecipeRepository();
 	const imports = new InMemoryRecipeImportRepository(recipes);
-	const members = new InMemoryMemberRepository(new InMemoryInviteRepository());
+	const members = new InMemoryMemberRepository(
+		new InMemoryInviteRepository(),
+		new InMemoryFavoriteRepository(recipes)
+	);
 	const images = new InMemoryImageStore(folders);
 	const storedImages = [
 		...sampleRecipeContents.flatMap((content) => content.images),

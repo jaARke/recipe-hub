@@ -24,6 +24,7 @@ const errorMessages: Partial<Record<string, string>> = {
 	'recipe.edit-conflict':
 		'This recipe changed after you opened it. Copy anything you want to keep, then reload the page and make your changes again.',
 	'image.invalid-upload': unstoredImageMessage,
+	'favorite.device-full': `You’ve reached the limit of ${settings.favorites.maxPerDevice} favorites on this device. Remove one to add another.`,
 	'import.unavailable': 'This import can’t be saved anymore. Import the recipe again.',
 	'import.page-refused': 'This website doesn’t support importing recipes.',
 	'import.page-unavailable': 'We couldn’t open that page. Check the link and try again.',

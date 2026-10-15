@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import { AccountService } from '@/application/access/account-service';
 import { memberActor } from '@/application/testing/actors';
 import { InMemoryEmailSender } from '@/application/testing/in-memory-email-sender';
+import { InMemoryFavoriteRepository } from '@/application/testing/in-memory-favorite-repository';
 import { InMemoryInviteRepository } from '@/application/testing/in-memory-invite-repository';
 import { InMemoryMemberRepository } from '@/application/testing/in-memory-member-repository';
+import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
 import { inviteExpiry, type Invite } from '@/domain/member/invite';
 import { removedMemberEmail } from '@/domain/member/member';
 import { settings } from '@/lib/settings';
@@ -14,7 +16,10 @@ const code = '482915';
 
 function createAccounts() {
 	const invites = new InMemoryInviteRepository();
-	const members = new InMemoryMemberRepository(invites);
+	const members = new InMemoryMemberRepository(
+		invites,
+		new InMemoryFavoriteRepository(new InMemoryRecipeRepository())
+	);
 	const emails = new InMemoryEmailSender();
 	const service = new AccountService(members, invites, emails);
 

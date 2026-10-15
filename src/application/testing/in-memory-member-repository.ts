@@ -4,6 +4,7 @@ import type {
 	MemberRepository,
 	NewMember,
 } from '@/application/ports/member-repository';
+import type { InMemoryFavoriteRepository } from '@/application/testing/in-memory-favorite-repository';
 import type { InMemoryInviteRepository } from '@/application/testing/in-memory-invite-repository';
 import {
 	memberIdSchema,
@@ -19,10 +20,13 @@ export class InMemoryMemberRepository implements MemberRepository {
 	// Insertion order is creation order, so listing needs no sort.
 	private readonly members = new Map<MemberId, Member>();
 	private readonly invites: InMemoryInviteRepository;
+	private readonly favorites: InMemoryFavoriteRepository;
 
-	// The invites a removal revokes, as the database's removal does in its transaction.
-	constructor(invites: InMemoryInviteRepository) {
+	// The invites a removal revokes and the favorites it deletes, as the database's removal does in its
+	// transaction.
+	constructor(invites: InMemoryInviteRepository, favorites: InMemoryFavoriteRepository) {
 		this.invites = invites;
+		this.favorites = favorites;
 	}
 
 	async findById(id: MemberId): Promise<Member | null> {
@@ -70,7 +74,8 @@ export class InMemoryMemberRepository implements MemberRepository {
 		return this.replace(id, { role });
 	}
 
-	// Keeps no sessions, passkeys, or codes, so the removal frees the address and revokes its invites.
+	// Keeps no sessions, passkeys, or codes, so the removal frees the address, revokes its invites, and
+	// deletes the member's favorites.
 	async remove(id: MemberId): Promise<Member | null> {
 		const existing = this.findNotRemoved(id);
 		if (existing === undefined) {
@@ -79,6 +84,7 @@ export class InMemoryMemberRepository implements MemberRepository {
 
 		const now = new Date();
 		this.invites.revokeOpenByEmail(existing.email, now);
+		this.favorites.removeAllOf(id);
 		return this.replace(id, { email: removedMemberEmail(id), removedAt: now });
 	}
 

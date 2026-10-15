@@ -9,6 +9,7 @@ import {
 	jsonb,
 	numeric,
 	pgTable,
+	primaryKey,
 	text,
 	timestamp,
 	uuid,
@@ -137,6 +138,26 @@ export const recipeImports = pgTable(
 		),
 		// Serves the count of a member's recent imports and the list of their drafts.
 		index('recipe_imports_member_id_created_at_idx').on(table.memberId, table.createdAt),
+	]
+);
+
+// The recipes each member keeps as favorites. Users are never deleted, so a member's removal deletes
+// theirs itself.
+export const favorites = pgTable(
+	'favorites',
+	{
+		memberId: uuid('member_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		recipeId: uuid('recipe_id')
+			.notNull()
+			.references(() => recipes.id, { onDelete: 'cascade' }),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.memberId, table.recipeId] }),
+		// Serves the cascade when a recipe is deleted, which the key, led by the member, cannot.
+		index('favorites_recipe_id_idx').on(table.recipeId),
 	]
 );
 
