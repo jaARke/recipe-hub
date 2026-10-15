@@ -151,7 +151,7 @@ export class RecipeService {
 		}
 
 		const recipe = await this.findRecipeBySlug(slug);
-		return recipe === null ? null : toRecipeMemberViewDto(recipe, canModifyRecipe(actor, recipe));
+		return recipe === null ? null : toRecipeMemberViewDto(canModifyRecipe(actor, recipe));
 	}
 
 	// Writes resolve the actor first, so an anonymous caller learns nothing about which recipes exist.

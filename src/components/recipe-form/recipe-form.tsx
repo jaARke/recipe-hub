@@ -665,7 +665,7 @@ function RecipeForm({
 						idPrefix={ids.photos('scan')}
 						role="scan"
 						legend={photoFieldLegends.scan}
-						description="Photos of the recipe as it was written, such as a recipe card. Only members can see them."
+						description="Photos of the recipe as it was written, such as a recipe card, which anyone can see."
 						limit={settings.photos.maxScansPerRecipe}
 						photos={values.photos.scan}
 						nextId={values.nextId}

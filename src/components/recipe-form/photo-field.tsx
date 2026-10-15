@@ -189,11 +189,9 @@ function photoViewerImages(
 // that opens the viewer, which names it.
 function PhotoThumbnail({
 	photo,
-	role,
 	viewerImages,
 }: {
 	photo: RecipeFormPhoto;
-	role: RecipeImageRole;
 	viewerImages: readonly ShownImage[];
 }) {
 	const { upload } = photo;
@@ -228,7 +226,6 @@ function PhotoThumbnail({
 				<AttachmentMedia variant="image" className="overflow-visible">
 					<RecipeImageViewerTrigger index={index} className="size-full rounded-lg">
 						<ShownRecipeImage
-							role={role}
 							image={image}
 							alt=""
 							sizes="40px"
@@ -456,7 +453,7 @@ function PhotoField({
 		return (
 			<li key={photo.id} className="flex flex-col gap-3">
 				<Attachment state={attachmentState(photo)} className="w-full">
-					<PhotoThumbnail photo={photo} role={role} viewerImages={viewerImages} />
+					<PhotoThumbnail photo={photo} viewerImages={viewerImages} />
 					<AttachmentContent>
 						<AttachmentTitle>{name}</AttachmentTitle>
 						{status !== undefined && <AttachmentDescription>{status}</AttachmentDescription>}

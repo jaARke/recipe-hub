@@ -1,18 +1,18 @@
 'use client';
 
 import { cn } from 'cn';
-import { ChevronLeftIcon, ChevronRightIcon, ExternalLinkIcon, ZoomInIcon } from 'lucide-react';
+import { ChevronLeftIcon, ChevronRightIcon, ZoomInIcon } from 'lucide-react';
 import * as React from 'react';
 import {
 	imagePositionLabel,
 	imageViewerLabels,
 } from '@/components/recipe/recipe-image-viewer-labels';
 import {
-	ShownImageLink,
+	FullSizeImageLink,
 	ShownRecipeImage,
 	type ShownImage,
 } from '@/components/recipe/shown-recipe-image';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const labels = imageViewerLabels('scan');
@@ -98,14 +98,7 @@ function OriginalRecipePane({ images, title, className }: OriginalRecipePaneProp
 						<ZoomInIcon data-icon="inline-start" aria-hidden="true" />
 						Zoom
 					</Button>
-					<ShownImageLink
-						image={image}
-						className={buttonVariants({ variant: 'outline', size: 'sm' })}
-					>
-						Full size
-						<ExternalLinkIcon data-icon="inline-end" aria-hidden="true" />
-						<span className="sr-only">, opens in a new tab</span>
-					</ShownImageLink>
+					<FullSizeImageLink image={image} />
 				</div>
 			</div>
 			{/* Keyed by its page, so a new page starts at its top left. Zoomed, it scrolls, and takes focus
@@ -120,8 +113,9 @@ function OriginalRecipePane({ images, title, className }: OriginalRecipePaneProp
 					zoomed ? 'overflow-auto' : 'overflow-hidden'
 				)}
 			>
+				{/* At full size, so a zoomed page keeps every pixel. */}
 				<ShownRecipeImage
-					role="scan"
+					fullSize
 					image={image}
 					alt={pageName}
 					fit="contain"

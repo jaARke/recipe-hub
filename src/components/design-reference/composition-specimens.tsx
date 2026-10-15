@@ -144,7 +144,7 @@ const sampleDraft: { content: RecipeDraftContent; problems: Problem[] } = {
 };
 
 // The recipe form's starting values, as its pages build them. The review adds stand-in pages of the
-// original as the member's uploads, since a draft's own scans need sign-in.
+// original as the member's uploads, since no store holds a sample draft's scans.
 const recipeFormSamples: readonly {
 	label: string;
 	initial: RecipeFormValues;

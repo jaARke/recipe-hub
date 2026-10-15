@@ -1,14 +1,16 @@
 'use client';
 
 import { cn } from 'cn';
+import { ExternalLinkIcon } from 'lucide-react';
 import * as React from 'react';
 import { recipeImageSrc } from '@/components/recipe/recipe-paths';
 import {
 	photoFitClasses,
+	RecipeFullSizeImage,
 	RecipePhoto,
-	RecipeScanImage,
 	type RecipePhotoProps,
 } from '@/components/recipe/recipe-photo';
+import { buttonVariants } from '@/components/ui/button';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
 
 // A stored image, or one the member chose in the recipe form and uploaded but hasn't saved, which
@@ -52,16 +54,16 @@ function LocalPhoto({ file, alt, fit = 'cover', className }: LocalPhotoProps) {
 	);
 }
 
-// A scan is never optimized, so it needs no sizes.
+// The optimizer's copy for the rendered sizes, or the full-size image, which needs none.
 type ShownRecipeImageProps = Pick<RecipePhotoProps, 'alt' | 'fit' | 'loading' | 'className'> & {
 	image: ShownImage;
-} & ({ role: 'dish'; sizes: string } | { role: 'scan'; sizes?: string });
+} & ({ fullSize?: false; sizes: string } | { fullSize: true; sizes?: undefined });
 
-// The image as its role's component draws it, or from its file until the recipe is saved.
+// The stored image, or the one from its file until the recipe is saved.
 function ShownRecipeImage({
-	role,
 	image,
 	alt,
+	fullSize,
 	sizes,
 	fit,
 	loading,
@@ -70,7 +72,15 @@ function ShownRecipeImage({
 	if (image.file !== undefined) {
 		return <LocalPhoto file={image.file} alt={alt} fit={fit} className={className} />;
 	}
-	return role === 'dish' ? (
+	return fullSize ? (
+		<RecipeFullSizeImage
+			pathname={image.pathname}
+			alt={alt}
+			fit={fit}
+			loading={loading}
+			className={className}
+		/>
+	) : (
 		<RecipePhoto
 			pathname={image.pathname}
 			alt={alt}
@@ -79,27 +89,12 @@ function ShownRecipeImage({
 			loading={loading}
 			className={className}
 		/>
-	) : (
-		<RecipeScanImage
-			pathname={image.pathname}
-			alt={alt}
-			fit={fit}
-			loading={loading}
-			className={className}
-		/>
 	);
 }
 
-// Opens the image by itself in a new tab: the stored one, or the file until the recipe is saved.
-function ShownImageLink({
-	image,
-	className,
-	children,
-}: {
-	image: ShownImage;
-	className: string;
-	children: React.ReactNode;
-}) {
+// Full size, an outline button that opens the image by itself in a new tab: the stored one, or the
+// file until the recipe is saved.
+function FullSizeImageLink({ image, className }: { image: ShownImage; className?: string }) {
 	const linkRef = useFileUrl<HTMLAnchorElement>(image.file, 'href');
 
 	return (
@@ -108,11 +103,15 @@ function ShownImageLink({
 			// A file's URL is made in the effect, as a local photo's is.
 			href={image.file === undefined ? recipeImageSrc(image.pathname) : undefined}
 			target="_blank"
-			className={className}
+			// Named outright, since browsers read the name from a flex row's parts with a space before the
+			// comma; it opens with the visible text, so speech input still finds it.
+			aria-label="Full size, opens in a new tab"
+			className={buttonVariants({ variant: 'outline', size: 'sm', className })}
 		>
-			{children}
+			Full size
+			<ExternalLinkIcon data-icon="inline-end" aria-hidden="true" />
 		</a>
 	);
 }
 
-export { LocalPhoto, ShownImageLink, ShownRecipeImage };
+export { FullSizeImageLink, LocalPhoto, ShownRecipeImage };

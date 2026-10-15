@@ -61,7 +61,7 @@ const standInScanPages = [
 ] as const;
 
 // Reads the stand-in pages into files once, when asked to. The form shows a scan it has uploaded but
-// not saved from its file, so the pages need no sign-in and no stored scan.
+// not saved from its file, so the pages need no stored scan.
 function useStandInScanFiles(wanted: boolean): File[] | undefined {
 	const [files, setFiles] = React.useState<File[]>();
 

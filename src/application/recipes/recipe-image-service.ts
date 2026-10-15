@@ -20,12 +20,7 @@ import {
 	unusedImageCutoff,
 } from '@/domain/recipe/image-retention';
 import type { RecipeId } from '@/domain/recipe/recipe';
-import {
-	isPublicImagePathname,
-	isRecipeImageContentType,
-	isScanImagePathname,
-	type RecipeImageRole,
-} from '@/domain/recipe/recipe-image';
+import { isRecipeImageContentType, type RecipeImageRole } from '@/domain/recipe/recipe-image';
 import { getLogger } from '@/lib/logger';
 
 // The browser re-encodes every photo as a JPEG before uploading it.
@@ -100,19 +95,10 @@ export class RecipeImageService {
 		this.scheduleTask = scheduleTask;
 	}
 
-	// Never asks for the actor, so responses can be cached.
+	// A dish photo or a scan, which anyone may see, from a folder this environment reads. Never asks for
+	// the actor, so responses can be cached.
 	async getPublicImage(pathname: string): Promise<StoredImage | null> {
-		if (!isPublicImagePathname(pathname) || !this.folders.isReadable(pathname)) {
-			return null;
-		}
-
-		return this.findServedImage(pathname);
-	}
-
-	// Scans are for members, so a signed-out visitor learns nothing about which ones exist.
-	async getMemberImage(pathname: string): Promise<StoredImage | null> {
-		requireMember(await this.actors.currentActor());
-		if (!isScanImagePathname(pathname) || !this.folders.isReadable(pathname)) {
+		if (!this.folders.isReadable(pathname)) {
 			return null;
 		}
 

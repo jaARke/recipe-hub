@@ -1,20 +1,17 @@
 import type { Metadata } from 'next';
 import { notFound, permanentRedirect } from 'next/navigation';
-import { cache, Suspense } from 'react';
+import { Suspense } from 'react';
 import { getCachedRecipe, getCachedRecipePage } from '@/app/_lib/recipe-cache';
 import { PageContainer } from '@/components/layout/page-container';
 import { RecipeDetail, RecipeDetailSkeleton } from '@/components/recipe/recipe-detail';
 import { RecipeJsonLd } from '@/components/recipe/recipe-json-ld';
 import { defaultListSort } from '@/components/recipe/recipe-list-params';
-import { RecipeEditLink, RecipeScans } from '@/components/recipe/recipe-member-view';
+import { RecipeEditLink } from '@/components/recipe/recipe-member-view';
 import { recipeMetaDescription } from '@/components/recipe/recipe-meta-description';
 import { recipePath } from '@/components/recipe/recipe-paths';
 import { getRecipeService } from '@/composition/services';
 import { siteUrl } from '@/lib/env';
 import { siteName } from '@/lib/site';
-
-// Read once per request for both the edit link and the scans; null for a signed-out visitor.
-const getRecipeMemberView = cache((slug: string) => getRecipeService().getRecipeMemberView(slug));
 
 export async function generateStaticParams(): Promise<{ slug: string }[]> {
 	const { recipes } = await getCachedRecipePage(1, defaultListSort);
@@ -53,7 +50,7 @@ export async function generateMetadata({
 }
 
 async function RecipeEditAction({ slug }: { slug: string }) {
-	const view = await getRecipeMemberView(slug);
+	const view = await getRecipeService().getRecipeMemberView(slug);
 	if (view === null || !view.canEdit) {
 		return null;
 	}
@@ -61,17 +58,8 @@ async function RecipeEditAction({ slug }: { slug: string }) {
 	return <RecipeEditLink slug={slug} />;
 }
 
-async function RecipeOriginalScans({ slug }: { slug: string }) {
-	const view = await getRecipeMemberView(slug);
-	if (view === null || view.scans.length === 0) {
-		return null;
-	}
-
-	return <RecipeScans scans={view.scans} />;
-}
-
-// The members' parts read the session, so each streams in behind its own boundary and the recipe
-// stays in the prerendered shell.
+// A part for one reader, such as the edit link, reads the session, so it streams in behind its own
+// boundary and the recipe, scans included, stays in the prerendered shell.
 async function RecipeBySlug({ params }: Pick<PageProps<'/recipes/[slug]'>, 'params'>) {
 	const { slug } = await params;
 	const recipe = await getCachedRecipe(slug);
@@ -97,9 +85,6 @@ async function RecipeBySlug({ params }: Pick<PageProps<'/recipes/[slug]'>, 'para
 					</Suspense>
 				}
 			/>
-			<Suspense>
-				<RecipeOriginalScans slug={recipe.slug} />
-			</Suspense>
 		</>
 	);
 }

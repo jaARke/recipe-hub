@@ -19,7 +19,7 @@ type RecipePhotoProps = Pick<ImageProps, 'preload' | 'loading'> & {
 	className: string;
 };
 
-type RecipeScanImageProps = Pick<
+type RecipeFullSizeImageProps = Pick<
 	RecipePhotoProps,
 	'pathname' | 'alt' | 'loading' | 'fit' | 'className'
 >;
@@ -49,15 +49,16 @@ function RecipePhoto({
 	);
 }
 
-// A scan, shown whole unless a thumbnail crops it. The image optimizer would cache a members-only scan
-// publicly, so it gets the original.
-function RecipeScanImage({
+// The stored image itself, past the optimizer, for the editor's pane to zoom; shown whole unless its
+// box crops it. It sits in the flow rather than filling its box, so a zoomed page's box takes its
+// height.
+function RecipeFullSizeImage({
 	pathname,
 	alt,
 	loading,
 	fit = 'contain',
 	className,
-}: RecipeScanImageProps) {
+}: RecipeFullSizeImageProps) {
 	return (
 		<span className={cn('block overflow-hidden bg-muted', className)}>
 			{/* eslint-disable-next-line @next/next/no-img-element */}
@@ -72,4 +73,4 @@ function RecipeScanImage({
 	);
 }
 
-export { photoFitClasses, RecipePhoto, RecipeScanImage, type RecipePhotoProps };
+export { photoFitClasses, RecipeFullSizeImage, RecipePhoto, type RecipePhotoProps };

@@ -44,6 +44,11 @@ type RecipeMetaItem = {
 	value: string;
 };
 
+// Scans sit two to a row, each half the column less half the gap. The column is 624px from 672px, and
+// below it 100vw less the container's padding on each side: 1.5rem from sm, 1rem on phones.
+const scanThumbnailSizes =
+	'(min-width: 672px) 304px, (min-width: 640px) calc(50vw - 32px), calc(50vw - 24px)';
+
 // A reading-width container's column is 624px.
 const coverPhotoSizes = '(min-width: 672px) 624px, 100vw';
 
@@ -56,6 +61,11 @@ const paragraphBreak = /\n{2,}/;
 // Every recipe with the tag, newest first as search lists them without a query.
 function tagSearchHref(tag: string): string {
 	return recipeSearchHref({ tags: [tag], sort: 'newest', page: 1 });
+}
+
+// The recipe's scans, which the byline's link jumps to.
+function recipeScansId(slug: string): string {
+	return `${slug}-original`;
 }
 
 function recipeMetaItems({
@@ -105,30 +115,53 @@ function RecipeDate({ label, date }: { label: string; date: Date }) {
 	);
 }
 
-// The page a recipe was imported from, named by its host. Search engines don't follow the link, and
-// the page isn't told which recipe sent the reader.
+// A page the recipe came from, named by its host. Search engines don't follow the link, and the page
+// isn't told which recipe sent the reader.
+function RecipeSourceLink({ url }: { url: string }) {
+	return (
+		<a
+			href={url}
+			rel="nofollow noopener noreferrer"
+			className="text-primary underline underline-offset-4"
+		>
+			{new URL(url).hostname}
+		</a>
+	);
+}
+
 function RecipeImportedFrom({ sourceUrl }: { sourceUrl: string }) {
 	return (
 		<p className="text-sm text-muted-foreground">
-			Imported from{' '}
-			<a
-				href={sourceUrl}
-				rel="nofollow noopener noreferrer"
-				className="text-primary underline underline-offset-4"
-			>
-				{new URL(sourceUrl).hostname}
+			Imported from <RecipeSourceLink url={sourceUrl} />
+		</p>
+	);
+}
+
+// Left off the printout, as the scans it jumps to are.
+function RecipeScansLink({ slug }: { slug: string }) {
+	return (
+		<p className="text-sm print:hidden">
+			<a href={`#${recipeScansId(slug)}`} className="text-primary underline underline-offset-4">
+				See the original
 			</a>
 		</p>
 	);
 }
 
 function RecipeByline({ recipe }: { recipe: PublicRecipeDto }) {
+	// A source written as a web address is the page itself, so it links once rather than twice.
+	const sourceIsUrl = recipe.source !== undefined && recipe.source === recipe.sourceUrl;
 	return (
 		<div className="flex flex-col gap-1">
 			{recipe.source !== undefined && (
-				<p className={recipeTextStyles.supporting}>From {recipe.source}</p>
+				<p className={recipeTextStyles.supporting}>
+					From {sourceIsUrl ? <RecipeSourceLink url={recipe.source} /> : recipe.source}
+				</p>
 			)}
-			{recipe.sourceUrl !== undefined && <RecipeImportedFrom sourceUrl={recipe.sourceUrl} />}
+			{recipe.sourceUrl !== undefined && !sourceIsUrl && (
+				<RecipeImportedFrom sourceUrl={recipe.sourceUrl} />
+			)}
+			{recipe.scans.length > 0 && <RecipeScansLink slug={recipe.slug} />}
 			<div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
 				<RecipeDate
 					label={`Added by ${recipe.contributor.displayName} on`}
@@ -248,6 +281,46 @@ function RecipePhotos({ title, images }: { title: string; images: readonly Recip
 	);
 }
 
+// The pages of the recipe as first written, after the notes; each opens the viewer at its page, which
+// links to it at full size. Left off the printout like the dish photos.
+function RecipeScans({
+	recipe: { slug, scans },
+	headingLevel,
+}: {
+	recipe: Pick<PublicRecipeDto, 'slug' | 'scans'>;
+	headingLevel: RecipeHeadingLevel;
+}) {
+	if (scans.length === 0) {
+		return null;
+	}
+
+	const { section: Section } = recipeHeadingTags[headingLevel];
+	const title = 'Original recipe';
+	return (
+		<div id={recipeScansId(slug)} className="flex flex-col gap-6 print:hidden">
+			<Section className={recipeTextStyles.section}>{title}</Section>
+			<RecipeImageViewer role="scan" title={title} images={scans}>
+				<ul className="grid grid-cols-2 gap-4">
+					{scans.map((scan, index) => (
+						<li key={scan.pathname}>
+							{/* The button is named for its page, so the scan inside it is decorative. */}
+							<RecipeImageViewerTrigger index={index} className="w-full rounded-xl">
+								<RecipePhoto
+									pathname={scan.pathname}
+									alt=""
+									sizes={scanThumbnailSizes}
+									fit="contain"
+									className="aspect-3/4"
+								/>
+							</RecipeImageViewerTrigger>
+						</li>
+					))}
+				</ul>
+			</RecipeImageViewer>
+		</div>
+	);
+}
+
 function RecipeDetail({
 	recipe,
 	headingLevel,
@@ -309,6 +382,7 @@ function RecipeDetail({
 					<RecipeParagraphs text={recipe.notes} />
 				</div>
 			)}
+			<RecipeScans recipe={recipe} headingLevel={headingLevel} />
 		</article>
 	);
 }

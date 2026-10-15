@@ -14,7 +14,7 @@ const imagePathnameSchema = z
 // Types every browser displays; anything else is never served as a recipe image.
 const recipeImageContentTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
 
-// Each image is stored under its role, so a pathname alone shows who may see it.
+// Each image is stored under its role, so a pathname alone shows its role.
 function imagePathnamePrefix(role: RecipeImageRole): string {
 	return `${role}/`;
 }
@@ -23,7 +23,8 @@ function imagePathnamePrefix(role: RecipeImageRole): string {
 // happened.
 export const unstoredImageMessage = 'This photo didn’t upload. Remove it and add it again.';
 
-// Dish photos are public; scans, the original photos of a written recipe, are for members only.
+// Dish photos show the finished dish; scans are the original photos of a written recipe. Anyone may
+// see either.
 export const recipeImageRoleSchema = z.enum(['dish', 'scan']);
 export type RecipeImageRole = z.infer<typeof recipeImageRoleSchema>;
 
@@ -72,12 +73,12 @@ export function recipeImageListSchemaFor(limits: ContentLimits) {
 	});
 }
 
-// The images anyone may see; scans stay with members.
+// The photos of the finished dish, the only images a cover, share card, or search engine is given.
 export function dishImages(images: readonly RecipeImage[]): RecipeImage[] {
 	return images.filter((image) => image.role === 'dish');
 }
 
-// The images only members may see: the original photos of a written recipe.
+// The original photos of a written recipe, shown apart from the dish photos.
 export function scanImages(images: readonly RecipeImage[]): RecipeImage[] {
 	return images.filter((image) => image.role === 'scan');
 }
@@ -88,14 +89,4 @@ export function coverImage(images: readonly RecipeImage[]): RecipeImage | undefi
 
 export function isRecipeImageContentType(contentType: string): boolean {
 	return recipeImageContentTypes.includes(contentType);
-}
-
-// Whether a requested pathname names a dish photo, which anyone may see.
-export function isPublicImagePathname(pathname: string): boolean {
-	return recipeImageSchema.safeParse({ role: 'dish', pathname }).success;
-}
-
-// Whether a requested pathname names a scan, which only members may see.
-export function isScanImagePathname(pathname: string): boolean {
-	return recipeImageSchema.safeParse({ role: 'scan', pathname }).success;
 }

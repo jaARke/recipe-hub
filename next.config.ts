@@ -42,8 +42,12 @@ function nextConfig(phase: string): NextConfig {
 			turbopackFileSystemCacheForBuild: false,
 		},
 		images: {
-			// Dish photos through the delivery route; the optimizer refuses every other local path.
-			localPatterns: [{ pathname: '/api/images/dish/**', search: '' }],
+			// Dish photos and scans through the delivery route, one pattern for each role's folder
+			// (recipeImageRoleSchema); the optimizer refuses every other local path.
+			localPatterns: [
+				{ pathname: '/api/images/dish/**', search: '' },
+				{ pathname: '/api/images/scan/**', search: '' },
+			],
 		},
 		turbopack: {
 			rules: {

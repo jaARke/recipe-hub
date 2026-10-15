@@ -207,7 +207,7 @@ describe('public reads', () => {
 });
 
 describe('getRecipe', () => {
-	it("shows dish photos, the source URL, and the contributor's name, but no scans or entry details", async () => {
+	it("shows dish photos and scans apart, the source URL, and the contributor's name, but no entry details", async () => {
 		const { serviceFor, addMember, importDraft } = await createCatalog();
 		const author = await addMember('Ada');
 		const ref = await serviceFor(author).createRecipe(
@@ -221,6 +221,7 @@ describe('getRecipe', () => {
 			slug: 'weeknight-chicken-soup',
 			title: 'Weeknight chicken soup',
 			images: [dishPhoto],
+			scans: [scan],
 			sourceUrl: 'https://example.com/soup',
 		});
 		expect(recipe?.contributor).toEqual({ id: author.memberId, displayName: 'Ada' });
@@ -228,6 +229,57 @@ describe('getRecipe', () => {
 		expect(recipe).not.toHaveProperty('provenance');
 		expect(recipe).not.toHaveProperty('entryMode');
 		expect(recipe).not.toHaveProperty('aiModel');
+	});
+
+	it.each(['manual', 'photo'] as const)(
+		'links a source entered as a web address on a recipe entered by %s, as an import’s page links',
+		async (mode) => {
+			const { serviceFor, addMember, importDraft } = await createCatalog();
+			const author = await addMember('Ada');
+			const content = { ...sampleChickenSoup, source: 'http://example.com/soup' };
+			const ref = await serviceFor(author).createRecipe(
+				mode === 'manual'
+					? manualEntry(content)
+					: fromImport(await importDraft(author, mode), content)
+			);
+
+			expect(await serviceFor(anonymousActor()).getRecipe(ref.slug)).toMatchObject({
+				source: 'http://example.com/soup',
+				sourceUrl: 'http://example.com/soup',
+			});
+		}
+	);
+
+	it.each([
+		'Grandma Rose',
+		'example.com/soup',
+		'ftp://example.com/soup',
+		'From https://example.com/soup',
+	])('links no source that is not a web address alone: %s', async (source) => {
+		const { serviceFor, addMember } = await createCatalog();
+		const ref = await serviceFor(await addMember('Ada')).createRecipe(
+			manualEntry({ ...sampleChickenSoup, source })
+		);
+
+		const recipe = await serviceFor(anonymousActor()).getRecipe(ref.slug);
+
+		expect(recipe?.source).toBe(source);
+		expect(recipe?.sourceUrl).toBeUndefined();
+	});
+
+	it('links the page an import read, whatever web address its source names', async () => {
+		const { serviceFor, addMember, importDraft } = await createCatalog();
+		const author = await addMember('Ada');
+		const ref = await serviceFor(author).createRecipe(
+			fromImport(await importDraft(author), {
+				...sampleChickenSoup,
+				source: 'https://example.com/grandma',
+			})
+		);
+
+		expect((await serviceFor(anonymousActor()).getRecipe(ref.slug))?.sourceUrl).toBe(
+			'https://example.com/soup'
+		);
 	});
 
 	it('returns null when no recipe has the slug', async () => {
@@ -336,7 +388,7 @@ describe('getRecipeMemberView', () => {
 		['the contributor', true],
 		['an admin', true],
 		['another member', false],
-	] as const)('lists the scans and lets %s edit: %s', async (viewer, canEdit) => {
+	] as const)('lets %s edit: %s', async (viewer, canEdit) => {
 		const { serviceFor, addMember } = await createCatalog();
 		const author = await addMember('Ada');
 		const ref = await serviceFor(author).createRecipe(
@@ -345,10 +397,7 @@ describe('getRecipeMemberView', () => {
 		const actor =
 			viewer === 'the contributor' ? author : viewer === 'an admin' ? adminActor() : memberActor();
 
-		expect(await serviceFor(actor).getRecipeMemberView(ref.slug)).toEqual({
-			canEdit,
-			scans: [scan],
-		});
+		expect(await serviceFor(actor).getRecipeMemberView(ref.slug)).toEqual({ canEdit });
 	});
 
 	it('returns null when no recipe has the slug', async () => {

@@ -3,8 +3,6 @@ import { storedContent, writtenContent } from '@/domain/recipe/content-limits';
 import {
 	coverImage,
 	dishImages,
-	isPublicImagePathname,
-	isScanImagePathname,
 	recipeImageListSchemaFor,
 	recipeImageSchema,
 	scanImages,
@@ -128,37 +126,5 @@ describe('coverImage', () => {
 	it('is undefined without a dish photo', () => {
 		expect(coverImage([{ role: 'scan', pathname: 'scan/card-front.jpg' }])).toBeUndefined();
 		expect(coverImage([])).toBeUndefined();
-	});
-});
-
-describe('isPublicImagePathname', () => {
-	it('accepts a dish photo', () => {
-		expect(isPublicImagePathname('dish/seed/soup.jpg')).toBe(true);
-	});
-
-	it.each([
-		'scan/card-front.jpg',
-		'plated.jpg',
-		'dishes/plated.jpg',
-		'dish/../scan/card-front.jpg',
-		'dish/%2e%2e/scan/card-front.jpg',
-	])('refuses %s', (pathname) => {
-		expect(isPublicImagePathname(pathname)).toBe(false);
-	});
-});
-
-describe('isScanImagePathname', () => {
-	it('accepts a scan', () => {
-		expect(isScanImagePathname('scan/seed/card-front.jpg')).toBe(true);
-	});
-
-	it.each([
-		'dish/seed/soup.jpg',
-		'card-front.jpg',
-		'scans/card-front.jpg',
-		'scan/../dish/soup.jpg',
-		'scan/%2e%2e/dish/soup.jpg',
-	])('refuses %s', (pathname) => {
-		expect(isScanImagePathname(pathname)).toBe(false);
 	});
 });

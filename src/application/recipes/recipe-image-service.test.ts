@@ -192,25 +192,31 @@ async function bytes(body: ReadableStream<Uint8Array> | undefined): Promise<Uint
 }
 
 describe('getPublicImage', () => {
-	it('returns a dish photo without asking who is calling, so responses can be cached', async () => {
-		const { actors, service } = serviceFor(await storeWithSoup(), memberActor());
+	it.each([dishPhoto, scan])(
+		'returns %s to anyone without asking who is calling, so responses can be cached',
+		async (pathname) => {
+			const { actors, service } = serviceFor(await storeWithSoup(), anonymousActor());
 
-		const image = await service.getPublicImage(dishPhoto);
+			const image = await service.getPublicImage(pathname);
 
-		expect(image).toMatchObject({
-			contentType: 'image/jpeg',
-			etag: expect.any(String),
-		});
-		expect(await bytes(image?.body)).toEqual(jpeg);
-		expect(actors.wasAsked).toBe(false);
-	});
+			expect(image).toMatchObject({
+				contentType: 'image/jpeg',
+				etag: expect.any(String),
+			});
+			expect(await bytes(image?.body)).toEqual(jpeg);
+			expect(actors.wasAsked).toBe(false);
+		}
+	);
 
 	it.each([
-		scan,
 		'menus/soup.jpg',
-		'dish/../scan/soup-card.jpg',
+		'trash/dish/seed/soup.jpg',
+		'dish/../trash/dish/seed/soup.jpg',
+		'scan/%2e%2e/dish',
 		'dish/preview/feature-x/soup.jpg',
+		'scan/preview/feature-x/soup-card.jpg',
 		'dish/soup.jpg',
+		'scan/soup-card.jpg',
 	])('refuses %s without reading the store', async (pathname) => {
 		const images = await storeWithSoup();
 		const { service } = serviceFor(images, anonymousActor());
@@ -219,96 +225,56 @@ describe('getPublicImage', () => {
 		expect(images.wasRead).toBe(false);
 	});
 
-	it("refuses another environment's photo, though stored, without reading the store", async () => {
+	it("refuses another environment's images, though stored, without reading the store", async () => {
 		const images = await storeWithSoup();
 		await images.put('dish/preview/feature-x/soup.jpg', jpeg, 'image/jpeg');
+		await images.put('scan/preview/feature-x/soup-card.jpg', jpeg, 'image/jpeg');
 		const productionImages = new InMemoryImageStore(new ImageFolders('production'));
 		await productionImages.put(dishPhoto, jpeg, 'image/jpeg');
+		await productionImages.put('scan/development/card.jpg', jpeg, 'image/jpeg');
 		const { service } = serviceFor(images, anonymousActor());
 		const production = productionServiceFor(productionImages, anonymousActor());
 
 		expect(await service.getPublicImage('dish/preview/feature-x/soup.jpg')).toBeNull();
+		expect(await service.getPublicImage('scan/preview/feature-x/soup-card.jpg')).toBeNull();
 		expect(await production.getPublicImage(dishPhoto)).toBeNull();
+		expect(await production.getPublicImage('scan/development/card.jpg')).toBeNull();
 		expect(images.wasRead).toBe(false);
 		expect(productionImages.wasRead).toBe(false);
 	});
 
-	it('refuses a stored file that is not an image type', async () => {
-		const images = await storeWithSoup();
-		await images.put('dish/seed/page.html', jpeg, 'text/html');
-		const { service } = serviceFor(images, anonymousActor());
+	it('serves production its own images of either role', async () => {
+		const images = new InMemoryImageStore(new ImageFolders('production'));
+		await images.put('dish/production/soup.jpg', jpeg, 'image/jpeg');
+		await images.put(scan, jpeg, 'image/jpeg');
+		const production = productionServiceFor(images, anonymousActor());
 
-		expect(await service.getPublicImage('dish/seed/page.html')).toBeNull();
-		expect(consoleWarn).toHaveBeenCalledOnce();
-	});
-
-	it('returns null for a dish photo the store does not have', async () => {
-		const { service } = serviceFor(await storeWithSoup(), anonymousActor());
-
-		expect(await service.getPublicImage('dish/seed/biscuits.jpg')).toBeNull();
-	});
-});
-
-describe('getMemberImage', () => {
-	it.each([scan, 'scan/missing.jpg', dishPhoto])(
-		'refuses an anonymous visitor asking for %s without reading the store',
-		async (pathname) => {
-			const images = await storeWithSoup();
-			const { service } = serviceFor(images, anonymousActor());
-
-			await expect(service.getMemberImage(pathname)).rejects.toThrow(SignInRequiredError);
-			expect(images.wasRead).toBe(false);
-		}
-	);
-
-	it('returns a scan to a member', async () => {
-		const { service } = serviceFor(await storeWithSoup(), memberActor());
-
-		const image = await service.getMemberImage(scan);
-
-		expect(image).toMatchObject({ contentType: 'image/jpeg' });
-		expect(await bytes(image?.body)).toEqual(jpeg);
+		expect(
+			await bytes((await production.getPublicImage('dish/production/soup.jpg'))?.body)
+		).toEqual(jpeg);
+		expect(await bytes((await production.getPublicImage(scan))?.body)).toEqual(jpeg);
 	});
 
 	it.each([
-		dishPhoto,
-		'menus/soup-card.jpg',
-		'scan/../dish/seed/soup.jpg',
-		'scan/%2e%2e/dish',
-		'scan/preview/feature-x/soup-card.jpg',
-		'scan/soup-card.jpg',
-	])('refuses %s to a member without reading the store', async (pathname) => {
+		['dish/seed/page.html', 'text/html'],
+		['scan/development/card.pdf', 'application/pdf'],
+	])('refuses %s, a stored file that is not an image type', async (pathname, contentType) => {
 		const images = await storeWithSoup();
-		const { service } = serviceFor(images, memberActor());
+		await images.put(pathname, jpeg, contentType);
+		const { service } = serviceFor(images, anonymousActor());
 
-		expect(await service.getMemberImage(pathname)).toBeNull();
-		expect(images.wasRead).toBe(false);
-	});
-
-	it('refuses a stored scan that is not an image type', async () => {
-		const images = await storeWithSoup();
-		await images.put('scan/development/card.pdf', jpeg, 'application/pdf');
-		const { service } = serviceFor(images, memberActor());
-
-		expect(await service.getMemberImage('scan/development/card.pdf')).toBeNull();
+		expect(await service.getPublicImage(pathname)).toBeNull();
 		expect(consoleWarn).toHaveBeenCalledOnce();
 	});
 
-	it('returns null for a scan the store does not have', async () => {
-		const { service } = serviceFor(await storeWithSoup(), memberActor());
+	it.each(['dish/seed/biscuits.jpg', 'scan/development/biscuit-card.jpg'])(
+		'returns null for %s, which the store does not have',
+		async (pathname) => {
+			const { service } = serviceFor(await storeWithSoup(), anonymousActor());
 
-		expect(await service.getMemberImage('scan/development/biscuit-card.jpg')).toBeNull();
-	});
-
-	it('serves production only its own scans', async () => {
-		const images = new InMemoryImageStore(new ImageFolders('production'));
-		await images.put(scan, jpeg, 'image/jpeg');
-		await images.put('scan/development/card.jpg', jpeg, 'image/jpeg');
-		const production = productionServiceFor(images, memberActor());
-
-		expect(await bytes((await production.getMemberImage(scan))?.body)).toEqual(jpeg);
-		expect(await production.getMemberImage('scan/development/card.jpg')).toBeNull();
-	});
+			expect(await service.getPublicImage(pathname)).toBeNull();
+		}
+	);
 });
 
 describe('uploadFolders', () => {

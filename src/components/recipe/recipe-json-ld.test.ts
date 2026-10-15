@@ -1,14 +1,8 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { PublicRecipeDto } from '@/application/recipes/recipe-dtos';
+import { publicRecipe } from '@/application/testing/public-recipes';
 import { RecipeJsonLd, toRecipeJsonLd } from '@/components/recipe/recipe-json-ld';
-import { memberIdSchema } from '@/domain/member/member';
-import {
-	parseRecipeContent,
-	recipeIdSchema,
-	type RecipeContentInput,
-} from '@/domain/recipe/recipe';
 import {
 	sampleButtermilkBiscuits,
 	sampleChickenSoup,
@@ -17,20 +11,6 @@ import {
 } from '@/domain/recipe/samples/sample-recipes';
 
 const siteUrl = new URL('https://recipes.example.com');
-
-function publicRecipe(slug: string, content: RecipeContentInput): PublicRecipeDto {
-	return {
-		...parseRecipeContent(content),
-		id: recipeIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e'),
-		slug,
-		contributor: {
-			id: memberIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-3b8d2f5c6e7f'),
-			displayName: 'Ada',
-		},
-		createdAt: new Date('2026-10-01T12:00:00.000Z'),
-		updatedAt: new Date('2026-10-05T08:30:00.000Z'),
-	};
-}
 
 describe('toRecipeJsonLd', () => {
 	it('describes a recipe with absolute URLs for the page and every dish photo', () => {
@@ -68,6 +48,30 @@ describe('toRecipeJsonLd', () => {
 		const salad = publicRecipe('garden-tomato-salad', { ...sampleTomatoSalad, images: [] });
 
 		expect(toRecipeJsonLd(salad, siteUrl).image).toBeUndefined();
+	});
+
+	it('names only the dish photos, never a scan of the original', () => {
+		const soup = publicRecipe('weeknight-chicken-soup', {
+			...sampleChickenSoup,
+			images: [
+				{ role: 'scan', pathname: 'scan/seed/soup-card.jpg', alt: 'The recipe card' },
+				{ role: 'dish', pathname: 'dish/seed/soup.jpg' },
+				{ role: 'scan', pathname: 'scan/seed/soup-card-back.jpg' },
+			],
+		});
+
+		expect(toRecipeJsonLd(soup, siteUrl).image).toEqual([
+			'https://recipes.example.com/api/images/dish/seed/soup.jpg',
+		]);
+	});
+
+	it('leaves out the image when the recipe has scans but no dish photo', () => {
+		const soup = publicRecipe('weeknight-chicken-soup', {
+			...sampleChickenSoup,
+			images: [{ role: 'scan', pathname: 'scan/seed/soup-card.jpg' }],
+		});
+
+		expect(toRecipeJsonLd(soup, siteUrl).image).toBeUndefined();
 	});
 
 	it('lists each ingredient line as written', () => {
