@@ -8,7 +8,11 @@ import { flushSync } from 'react-dom';
 import { Mascot } from '@/components/brand/mascot';
 import { countCheckedLines } from '@/components/cooking/cooking-checks';
 import { IngredientsDialog, StepsDialog } from '@/components/cooking/cooking-dialogs';
-import { CookingNotes, IngredientChecklist } from '@/components/cooking/cooking-ingredients';
+import {
+	CookingNotes,
+	CookingScaleText,
+	IngredientChecklist,
+} from '@/components/cooking/cooking-ingredients';
 import { CookingPrintout } from '@/components/cooking/cooking-printout';
 import {
 	cookingGatherHeading,
@@ -217,8 +221,7 @@ function IngredientsColumn({
 				<h2 id={headingId} className="font-heading text-xl font-semibold">
 					Ingredients
 				</h2>
-				{/* The servings stay at hand from lg, where the Ingredients dialog that holds them hides. */}
-				<RecipeScaleStepper scale={scale} />
+				<CookingScaleText scale={scale} />
 				<IngredientChecklist
 					sections={recipe.ingredientSections}
 					factor={scale.factor}

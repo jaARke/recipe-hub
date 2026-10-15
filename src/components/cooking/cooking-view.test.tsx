@@ -348,17 +348,18 @@ describe('CookingView', () => {
 		expect(checkboxNames(true)).toEqual([]);
 	});
 
-	it('opens the ingredients with the stepper and the notes in a dialog from a step', async () => {
-		visit('?step=1');
+	it('opens the ingredients at the servings Gather set, with the notes, in a dialog from a step', async () => {
+		visit('?servings=12&step=1');
 		const user = userEvent.setup();
 		render(<CookingView recipe={potRoast} />);
 
 		await user.click(screen.getByRole('button', { name: 'Ingredients' }));
 		const dialog = await screen.findByRole('dialog', { name: 'Ingredients' });
 
-		await user.click(ingredientRow('1 tablespoon flour', within(dialog)));
+		await user.click(ingredientRow('2 tablespoons flour', within(dialog)));
 
-		expect(within(dialog).getByRole('textbox', { name: 'Servings' })).toBeDefined();
+		expect(within(dialog).getByText('Serves 12')).toBeDefined();
+		expect(within(dialog).queryByRole('textbox', { name: 'Servings' })).toBeNull();
 		expect(within(dialog).getByRole('heading', { level: 3, name: 'Notes' })).toBeDefined();
 		expect(sessionStorage.getItem(cookingChecksKey(potRoast))).toBe('["1:0"]');
 	});

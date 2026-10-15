@@ -3,14 +3,17 @@
 import { cn } from 'cn';
 import { ListChecksIcon, ListOrderedIcon, XIcon } from 'lucide-react';
 import * as React from 'react';
-import { CookingNotes, IngredientChecklist } from '@/components/cooking/cooking-ingredients';
+import {
+	CookingNotes,
+	CookingScaleText,
+	IngredientChecklist,
+} from '@/components/cooking/cooking-ingredients';
 import {
 	gatherTitle,
 	startsCookingGroup,
 	type CookingRecipe,
 	type CookingScreen,
 } from '@/components/cooking/cooking-screens';
-import { RecipeScaleStepper } from '@/components/cooking/recipe-scale-stepper';
 import type { CookingChecks } from '@/components/cooking/use-cooking-checks';
 import type { RecipeScale } from '@/components/cooking/use-cooking-url';
 import { Button } from '@/components/ui/button';
@@ -46,7 +49,7 @@ function CookingDialogHeader({ title }: { title: string }) {
 	);
 }
 
-// The ingredients a tap away: the stepper, the checklist, and the notes.
+// The ingredients a tap away, at the servings Gather set: the checklist and the notes.
 function IngredientsDialog({
 	recipe,
 	scale,
@@ -69,7 +72,7 @@ function IngredientsDialog({
 			</DialogTrigger>
 			<DialogContent showCloseButton={false} className={contentClassName}>
 				<CookingDialogHeader title="Ingredients" />
-				<RecipeScaleStepper scale={scale} />
+				<CookingScaleText scale={scale} />
 				<IngredientChecklist
 					sections={recipe.ingredientSections}
 					factor={scale.factor}

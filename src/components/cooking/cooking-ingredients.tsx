@@ -4,10 +4,12 @@ import { cn } from 'cn';
 import { ingredientCheckKey } from '@/components/cooking/cooking-checks';
 import type { CookingRecipe } from '@/components/cooking/cooking-screens';
 import type { CookingChecks } from '@/components/cooking/use-cooking-checks';
+import type { RecipeScale } from '@/components/cooking/use-cooking-url';
 import { ScaledIngredientLineText } from '@/components/recipe/recipe-ingredients-and-steps';
 import { RecipeParagraphs } from '@/components/recipe/recipe-paragraphs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { scaleIngredientLine } from '@/domain/recipe/ingredient-scaling';
+import { formatScaledYield } from '@/domain/recipe/recipe-yield';
 
 type CookingHeadingTag = 'h2' | 'h3';
 
@@ -112,4 +114,11 @@ function CookingNotes({
 	);
 }
 
-export { CookingNotes, IngredientChecklist };
+// The servings the checklist is scaled to, as text: Gather sets them, so they hold through the cook.
+function CookingScaleText({ scale }: { scale: RecipeScale }) {
+	return (
+		<p className="text-muted-foreground">{formatScaledYield(scale.recipeYield, scale.factor)}</p>
+	);
+}
+
+export { CookingNotes, CookingScaleText, IngredientChecklist };
