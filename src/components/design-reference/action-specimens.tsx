@@ -1,6 +1,6 @@
 import { ArrowRightIcon, ClockIcon, PlusIcon } from 'lucide-react';
 import { Specimen, SpecimenLabel } from '@/components/design-reference/reference-section';
-import { FavoriteHeartIcon } from '@/components/design-reference/stand-in-favorite-toggle';
+import { FavoriteHeartIcon } from '@/components/favorites/favorite-toggle';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {

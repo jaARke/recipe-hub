@@ -3,6 +3,7 @@ import type { DeviceFavorites } from '@/application/ports/device-favorites';
 import { recipeIdSchema, type RecipeId } from '@/domain/recipe/recipe';
 import { settings } from '@/lib/settings';
 
+// The privacy page states the name and the lifetime.
 const cookieName = 'favorites';
 
 // Browsers keep a cookie for 400 days at most, so each change renews it for that long.

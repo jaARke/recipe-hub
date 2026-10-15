@@ -1,6 +1,7 @@
 import { adminPath } from '@/components/auth/auth-paths';
 import {
 	contributePath,
+	favoritesPath,
 	recipeListPath,
 	recipePagesPath,
 	recipeSearchPath,
@@ -17,6 +18,7 @@ export type NavItem = {
 // sign-in, which the proxy sends it to and which says why.
 export const navItems: readonly NavItem[] = [
 	{ href: recipeListPath, label: 'Browse', otherPaths: [recipePagesPath, recipeSearchPath] },
+	{ href: favoritesPath, label: 'Favorites' },
 	{ href: contributePath, label: 'Add recipe' },
 ];
 

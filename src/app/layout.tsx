@@ -3,8 +3,11 @@ import type { Metadata, Viewport } from 'next';
 import { Fraunces, Hanken_Grotesk, JetBrains_Mono } from 'next/font/google';
 import { Suspense } from 'react';
 import { readHeaderMember } from '@/app/_lib/read-header-member';
+import { mergeDeviceFavorites } from '@/app/(browse)/favorites/actions';
 import { SessionRenewal } from '@/components/auth/session-renewal';
+import { DeviceFavoritesMerge } from '@/components/favorites/device-favorites-merge';
 import type { HeaderMember } from '@/components/layout/header-member';
+import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
 import { ThemeProvider } from '@/components/layout/theme-provider';
 import { Toaster } from '@/components/ui/toast';
@@ -87,9 +90,13 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
 							<Suspense>
 								<MemberSessionRenewal member={member} />
 							</Suspense>
+							<Suspense>
+								<DeviceFavoritesMerge member={member} mergeAction={mergeDeviceFavorites} />
+							</Suspense>
 							<main id="main" className="flex-1">
 								{children}
 							</main>
+							<SiteFooter />
 						</Toaster>
 					</TooltipProvider>
 				</ThemeProvider>

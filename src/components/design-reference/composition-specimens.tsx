@@ -4,6 +4,7 @@ import {
 	ReferenceSubsectionNav,
 	Specimen,
 } from '@/components/design-reference/reference-section';
+import { SampleFavoriteToggle } from '@/components/design-reference/sample-favorite-toggle';
 import {
 	sampleCatalogFacets,
 	sampleContributor,
@@ -18,7 +19,6 @@ import {
 	SampleScanImportForm,
 	SampleUrlImportForm,
 } from '@/components/design-reference/sample-recipe-import';
-import { StandInFavoriteToggle } from '@/components/design-reference/stand-in-favorite-toggle';
 import { PageContainer } from '@/components/layout/page-container';
 import type { EditedRecipe } from '@/components/recipe-form/recipe-form-fields';
 import {
@@ -288,7 +288,7 @@ function RecipeDetailSpecimen() {
 					recipe={sampleRecipeDetail}
 					headingLevel={4}
 					titleAction={<RecipeEditLink slug={sampleRecipeDetail.slug} />}
-					favoriteToggle={<StandInFavoriteToggle />}
+					favoriteToggle={<SampleFavoriteToggle recipeId={sampleRecipeDetail.id} />}
 				/>
 			</PageContainer>
 		</Specimen>
@@ -301,7 +301,7 @@ function RecipeActionsSpecimen() {
 			<RecipeActions
 				slug={sampleRecipeDetail.slug}
 				title={sampleRecipeDetail.title}
-				favoriteToggle={<StandInFavoriteToggle />}
+				favoriteToggle={<SampleFavoriteToggle recipeId={sampleRecipeDetail.id} />}
 			/>
 		</Specimen>
 	);

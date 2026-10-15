@@ -39,6 +39,7 @@ describe('SiteMenu', () => {
 		expect(itemNames(account)).toEqual(['Sign in', 'Request access']);
 		expect(itemNames(within(menu).getByRole('group', { name: 'Navigation' }))).toEqual([
 			'Browse',
+			'Favorites',
 			'Add recipe',
 		]);
 		const theme = within(menu).getByRole('group', { name: 'Theme' });
@@ -52,6 +53,7 @@ describe('SiteMenu', () => {
 		expect(itemNames(account)).toEqual(['Account', 'Sign out']);
 		expect(itemNames(within(menu).getByRole('group', { name: 'Navigation' }))).toEqual([
 			'Browse',
+			'Favorites',
 			'Add recipe',
 		]);
 	});
@@ -63,6 +65,7 @@ describe('SiteMenu', () => {
 		expect(itemNames(account)).toEqual(['Account', 'Sign out']);
 		expect(itemNames(within(menu).getByRole('group', { name: 'Navigation' }))).toEqual([
 			'Browse',
+			'Favorites',
 			'Add recipe',
 			'Admin',
 		]);
@@ -73,6 +76,7 @@ describe('SiteMenu', () => {
 
 		expect(itemNames(within(menu).getByRole('group', { name: 'Navigation' }))).toEqual([
 			'Browse',
+			'Favorites',
 			'Add recipe',
 		]);
 		expect(within(menu).queryByRole('menuitem', { name: 'Sign in' })).toBeNull();

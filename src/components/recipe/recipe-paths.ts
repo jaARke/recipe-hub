@@ -6,6 +6,8 @@ export const recipeSearchPath = '/search';
 
 export const contributePath = '/contribute';
 
+export const favoritesPath = '/favorites';
+
 // Each recipe's page sits below it.
 export const recipePagesPath = '/recipes';
 

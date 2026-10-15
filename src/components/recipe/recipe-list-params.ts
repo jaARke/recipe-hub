@@ -1,5 +1,9 @@
 import { recipeSorts, type RecipeSort } from '@/application/ports/recipe-repository';
-import { recipeListParamNames, recipeListPath } from '@/components/recipe/recipe-paths';
+import {
+	favoritesPath,
+	recipeListParamNames,
+	recipeListPath,
+} from '@/components/recipe/recipe-paths';
 
 // A page's searchParams as Next.js passes them: a repeated parameter arrives as an array.
 export type RouteSearchParams = Record<string, string | string[] | undefined>;
@@ -69,4 +73,14 @@ export function recipeListHref({ page, sort }: RecipeListState): string {
 	}
 
 	return hrefWithParams(recipeListPath, params);
+}
+
+// Favorites list newest first in one order, so only the page reaches the URL, and the first is bare.
+export function favoriteListHref(page: number): string {
+	const params = new URLSearchParams();
+	if (page > 1) {
+		params.set(recipeListParamNames.page, String(page));
+	}
+
+	return hrefWithParams(favoritesPath, params);
 }

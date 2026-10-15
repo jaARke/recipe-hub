@@ -10,14 +10,20 @@ export const metadata: Metadata = {
 
 const listClassName = 'flex list-disc flex-col gap-2 pl-5';
 
+// A count of days as a sentence says it: "a day" or "7 days".
+function dayCount(days: number): string {
+	return days === 1 ? 'a day' : `${days} days`;
+}
+
 export default function PrivacyPage() {
 	return (
 		<PageContainer width="reading" className="flex flex-col gap-8 py-12 sm:py-16">
 			<div className="flex flex-col gap-3">
 				<h1 className="font-heading text-4xl font-semibold">Privacy</h1>
 				<p className="text-lg text-muted-foreground">
-					What {siteName} stores about the people who use it, and why. Recipes and dish photos are
-					public. Everything else on this page stays private unless it says otherwise.
+					What {siteName} stores about the people who use it, and why. Recipes and their photos,
+					dish photos and scans of the original, are public. Everything else on this page stays
+					private unless it says otherwise.
 				</p>
 			</div>
 			<PageSection id="privacy-requests" title="Access requests">
@@ -57,6 +63,25 @@ export default function PrivacyPage() {
 					<li>
 						To slow down guessing, the site briefly counts sign-in attempts from each IP address.
 					</li>
+					<li>Recipes you favorite are kept in your account, and only you see them.</li>
+				</ul>
+			</PageSection>
+			<PageSection id="privacy-recipes" title="Recipes and photos">
+				<ul className={listClassName}>
+					<li>
+						A recipe, its dish photos, and its scans of the original are public once the recipe is
+						saved, so anyone can see them, signed in or not.
+					</li>
+					<li>
+						A photo or scan you upload isn’t listed anywhere until the recipe it’s for is saved.
+						Until then it opens only for someone who has its address, and it’s removed{' '}
+						{dayCount(settings.retention.unusedImageLifetimeDays)} after no recipe or import draft
+						names it.
+					</li>
+					<li>
+						A photo or scan that’s removed, or that belongs to a deleted recipe, is deleted for good
+						after {settings.retention.removedImageLifetimeDays} days.
+					</li>
 				</ul>
 			</PageSection>
 			<PageSection id="privacy-imports" title="Importing recipes">
@@ -94,6 +119,13 @@ export default function PrivacyPage() {
 					<li>
 						Your choice of light or dark theme is saved in your browser and never sent to the site.
 					</li>
+					{/* The cookie's name and lifetime are the adapter's, in cookie-device-favorites.ts. */}
+					<li>
+						Favoriting a recipe while signed out sets a cookie named “favorites”, which holds only
+						the ids of the recipes you favorite, up to {settings.favorites.maxPerDevice} on a
+						device. The site’s server sets it, and it’s kept for 400 days from your last change.
+						When you sign in, your favorites move to your account and the cookie is cleared.
+					</li>
 					<li>
 						Changes you haven’t saved to a recipe you’re adding, editing, or reviewing are kept in
 						your browser, so they come back if the page reloads. They’re cleared when you save the
@@ -106,17 +138,13 @@ export default function PrivacyPage() {
 				<ul className={listClassName}>
 					<li>Email is sent through Resend.</li>
 					<li>
-						The site is hosted by Vercel. Its database is hosted by Neon, and photos are stored in
-						Vercel Blob.
+						The site is hosted by Vercel. Its database is hosted by Neon, and photos and scans are
+						stored in Vercel Blob.
 					</li>
 					<li>
-						A photo or scan that’s removed, or that belongs to a deleted recipe, is deleted for good
-						after {settings.retention.removedImageLifetimeDays} days.
-					</li>
-					<li>Imports are read by AI models through Vercel’s AI Gateway.</li>
-					<li>
-						Changes are tried on test versions of the site before they go live. Test versions use a
-						copy of the database, so they may hold copies of this data too. They aren’t public.
+						Changes are tried on test versions of the site on Vercel before they go live. Each uses
+						its own copy of the database on Neon, so it may hold copies of this data too. Test
+						versions aren’t public.
 					</li>
 				</ul>
 			</PageSection>

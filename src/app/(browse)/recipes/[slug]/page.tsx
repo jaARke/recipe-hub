@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { notFound, permanentRedirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { getCachedRecipe, getCachedRecipePage } from '@/app/_lib/recipe-cache';
+import { setFavorite } from '@/app/(browse)/favorites/actions';
+import { FavoriteToggle } from '@/components/favorites/favorite-toggle';
 import { PageContainer } from '@/components/layout/page-container';
 import { RecipeDetail, RecipeDetailSkeleton } from '@/components/recipe/recipe-detail';
 import { RecipeJsonLd } from '@/components/recipe/recipe-json-ld';
@@ -9,7 +11,8 @@ import { defaultListSort } from '@/components/recipe/recipe-list-params';
 import { RecipeEditLink } from '@/components/recipe/recipe-member-view';
 import { recipeMetaDescription } from '@/components/recipe/recipe-meta-description';
 import { recipePath } from '@/components/recipe/recipe-paths';
-import { getRecipeService } from '@/composition/services';
+import { Skeleton } from '@/components/ui/skeleton';
+import { getFavoriteService, getRecipeService } from '@/composition/services';
 import { siteUrl } from '@/lib/env';
 import { siteName } from '@/lib/site';
 
@@ -58,8 +61,14 @@ async function RecipeEditAction({ slug }: { slug: string }) {
 	return <RecipeEditLink slug={slug} />;
 }
 
-// A part for one reader, such as the edit link, reads the session, so it streams in behind its own
-// boundary and the recipe, scans included, stays in the prerendered shell.
+async function RecipeFavoriteToggle({ recipeId }: { recipeId: string }) {
+	const favorite = await getFavoriteService().isFavorite(recipeId);
+	return <FavoriteToggle recipeId={recipeId} favorite={favorite} setFavoriteAction={setFavorite} />;
+}
+
+// A part for one reader, such as the edit link or the favorite toggle, reads the session, so it
+// streams in behind its own boundary and the recipe, scans included, stays in the prerendered shell.
+// The toggle's placeholder fills the box the actions reserve for it.
 async function RecipeBySlug({ params }: Pick<PageProps<'/recipes/[slug]'>, 'params'>) {
 	const { slug } = await params;
 	const recipe = await getCachedRecipe(slug);
@@ -82,6 +91,11 @@ async function RecipeBySlug({ params }: Pick<PageProps<'/recipes/[slug]'>, 'para
 				titleAction={
 					<Suspense>
 						<RecipeEditAction slug={recipe.slug} />
+					</Suspense>
+				}
+				favoriteToggle={
+					<Suspense fallback={<Skeleton />}>
+						<RecipeFavoriteToggle recipeId={recipe.id} />
 					</Suspense>
 				}
 			/>
