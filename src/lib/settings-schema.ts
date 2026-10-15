@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
 // The safe range of each value in src/lib/settings.ts and the rules between them. next.config.ts
-// parses the settings against it when the dev server or a build starts; client code never imports it,
-// so zod stays out of the browser.
+// parses the settings against it when the dev server or a build starts, and the tests do too; only
+// they need the ranges, so dependency-cruiser keeps the schema out of every page's code.
 
 // Neon keeps a daily snapshot for 35 days.
 const neonSnapshotLifetimeDays = 35;

@@ -102,7 +102,7 @@ const config: IConfiguration = {
 		{
 			name: 'settings-schema-only-in-settings',
 			comment:
-				'The schema brings zod, so only the settings, by type, and their test import it; next.config.ts parses with it.',
+				'Only startup and the tests check the ranges, so only the settings, by type, and their test import the schema, keeping it out of every page; next.config.ts parses with it.',
 			severity: 'error',
 			from: { pathNot: '^src/lib/settings(\\.test)?\\.ts$' },
 			to: { path: '^src/lib/settings-schema\\.ts$' },
