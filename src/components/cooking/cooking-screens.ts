@@ -79,6 +79,14 @@ export function startsCookingGroup(screens: readonly CookingScreen[], index: num
 	);
 }
 
+// The first screen's title; it shows as step 0, the one before the recipe's first.
+export const gatherTitle = 'Gather your ingredients';
+
+// The Gather screen's heading as a screen reader reads it: "Gather your ingredients, step 0 of 10".
+export function cookingGatherHeading(stepCount: number): string {
+	return `${gatherTitle}, step 0 of ${stepCount}`;
+}
+
 // A step screen's heading as a screen reader reads it, its section first as the screen shows it.
 export function cookingStepHeading(step: CookingStepScreen, stepCount: number): string {
 	const position = `${step.number} of ${stepCount}`;

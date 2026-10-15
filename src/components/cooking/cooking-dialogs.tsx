@@ -5,6 +5,7 @@ import { ListChecksIcon, ListOrderedIcon, XIcon } from 'lucide-react';
 import * as React from 'react';
 import { CookingNotes, IngredientChecklist } from '@/components/cooking/cooking-ingredients';
 import {
+	gatherTitle,
 	startsCookingGroup,
 	type CookingRecipe,
 	type CookingScreen,
@@ -85,7 +86,7 @@ function IngredientsDialog({
 }
 
 function screenName(screen: CookingScreen): string {
-	return screen.kind === 'step' ? screen.text : 'Gather your ingredients';
+	return screen.kind === 'step' ? screen.text : gatherTitle;
 }
 
 // Every screen but the finish, the steps under their sections, to jump to any; and Start over. A
@@ -159,7 +160,7 @@ function StepsDialog({
 									)}
 								>
 									<span className="min-w-6 shrink-0 font-heading font-semibold tabular-nums">
-										{screen.kind === 'step' ? screen.number : ''}
+										{screen.kind === 'step' ? screen.number : 0}
 									</span>
 									<span className="line-clamp-2">{screenName(screen)}</span>
 								</button>

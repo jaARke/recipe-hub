@@ -11,10 +11,12 @@ import { IngredientsDialog, StepsDialog } from '@/components/cooking/cooking-dia
 import { CookingNotes, IngredientChecklist } from '@/components/cooking/cooking-ingredients';
 import { CookingPrintout } from '@/components/cooking/cooking-printout';
 import {
+	cookingGatherHeading,
 	cookingNextLabel,
 	cookingResumedText,
 	cookingScreens,
 	cookingStepHeading,
+	gatherTitle,
 	startsCookingGroup,
 	type CookingRecipe,
 	type CookingScreen,
@@ -35,12 +37,15 @@ import { recipePath } from '@/components/recipe/recipe-paths';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { givesAmount } from '@/domain/recipe/ingredient-scaling';
-import { formatScaledYield } from '@/domain/recipe/recipe-yield';
 
 type HeadingRef = React.RefObject<HTMLHeadingElement | null>;
 
 // On phones a step longer than this takes a smaller numeral, leaving its text more of the screen.
 const longStepLength = 220;
+
+// A step's text, and Gather's, read from across the counter.
+const stepTextClassName =
+	'max-w-[36ch] text-[1.625rem] leading-[1.4] text-pretty sm:text-3xl sm:leading-[1.35]';
 
 // A swipe moves when it travels this far across, and more across than down by this ratio.
 const swipeDistance = 60;
@@ -66,13 +71,47 @@ function ScreenHeading({ heading, children }: { heading: HeadingRef; children: R
 	);
 }
 
+// A step's number large in the heading face over a highlighter's swash, then how many steps there
+// are; Gather shows 0, the step before the recipe's first.
+function StepNumeral({
+	number,
+	stepCount,
+	small,
+}: {
+	number: number;
+	stepCount: number;
+	small: boolean;
+}) {
+	return (
+		<span className="flex items-end gap-3">
+			<span
+				// Each size carries the tight leading, which cn would otherwise drop for the size after it.
+				className={cn(
+					'relative isolate font-heading font-semibold sm:text-[8.5rem]/[0.78]',
+					small ? 'text-[4.5rem]/[0.78]' : 'text-[6.5rem]/[0.78]'
+				)}
+			>
+				<span
+					aria-hidden="true"
+					className="absolute -inset-x-2 bottom-[0.06em] -z-10 h-[0.36em] -rotate-2 rounded-[3px] bg-highlight"
+				/>
+				{number}
+			</span>
+			<span className="pb-0.5 text-xl text-muted-foreground">of {stepCount}</span>
+		</span>
+	);
+}
+
+// Step 0, laid out as a step is: the numeral, then what to do, then the checklist to do it with.
 function GatherScreen({
 	recipe,
+	stepCount,
 	scale,
 	checks,
 	heading,
 }: {
 	recipe: CookingRecipe;
+	stepCount: number;
 	scale: RecipeScale;
 	checks: CookingChecks;
 	heading: HeadingRef;
@@ -80,8 +119,16 @@ function GatherScreen({
 	const gathered = countCheckedLines(recipe.ingredientSections, checks.checked);
 	return (
 		<div className="flex flex-col gap-6">
-			<div className="flex flex-col gap-2">
-				<ScreenHeading heading={heading}>Gather your ingredients</ScreenHeading>
+			<div className="flex flex-col gap-3">
+				<h1
+					ref={heading}
+					tabIndex={-1}
+					aria-label={cookingGatherHeading(stepCount)}
+					className="flex flex-col gap-7 outline-none"
+				>
+					<StepNumeral number={0} stepCount={stepCount} small={false} />
+					<span className={stepTextClassName}>{gatherTitle}</span>
+				</h1>
 				<p className="text-lg text-muted-foreground">
 					{gathered.checked} of {gathered.total} gathered
 				</p>
@@ -127,26 +174,13 @@ function StepScreen({
 				{step.sectionHeading !== undefined && (
 					<span className="text-lg font-semibold text-muted-foreground">{step.sectionHeading}</span>
 				)}
-				<span className="flex items-end gap-3">
-					<span
-						// Each size carries the tight leading, which cn would otherwise drop for the size after it.
-						className={cn(
-							'relative isolate font-heading font-semibold sm:text-[8.5rem]/[0.78]',
-							step.text.length > longStepLength ? 'text-[4.5rem]/[0.78]' : 'text-[6.5rem]/[0.78]'
-						)}
-					>
-						<span
-							aria-hidden="true"
-							className="absolute -inset-x-2 bottom-[0.06em] -z-10 h-[0.36em] -rotate-2 rounded-[3px] bg-highlight"
-						/>
-						{step.number}
-					</span>
-					<span className="pb-0.5 text-xl text-muted-foreground">of {stepCount}</span>
-				</span>
+				<StepNumeral
+					number={step.number}
+					stepCount={stepCount}
+					small={step.text.length > longStepLength}
+				/>
 			</h1>
-			<p className="max-w-[36ch] text-[1.625rem] leading-[1.4] text-pretty whitespace-pre-line sm:text-3xl sm:leading-[1.35]">
-				{step.text}
-			</p>
+			<p className={cn(stepTextClassName, 'whitespace-pre-line')}>{step.text}</p>
 			{/* Only where the step's text gives an amount, which the recipe's scale leaves as written. */}
 			{scale.factor !== 1 && givesAmount(step.text) && (
 				<StepsNote recipeYield={scale.recipeYield} className="text-base text-muted-foreground" />
@@ -180,14 +214,11 @@ function IngredientsColumn({
 	return (
 		<aside aria-labelledby={headingId} className="max-lg:hidden lg:col-start-1 lg:row-start-1">
 			<div className="sticky top-0 flex flex-col gap-4">
-				<div className="flex flex-col gap-1">
-					<h2 id={headingId} className="font-heading text-xl font-semibold">
-						Ingredients
-					</h2>
-					<p className="text-muted-foreground">
-						{formatScaledYield(scale.recipeYield, scale.factor)}
-					</p>
-				</div>
+				<h2 id={headingId} className="font-heading text-xl font-semibold">
+					Ingredients
+				</h2>
+				{/* The servings stay at hand from lg, where the Ingredients dialog that holds them hides. */}
+				<RecipeScaleStepper scale={scale} />
 				<IngredientChecklist
 					sections={recipe.ingredientSections}
 					factor={scale.factor}
@@ -335,14 +366,18 @@ function CookingSession({ recipe }: { recipe: CookingRecipe }) {
 						<p className="min-w-0 flex-1 truncate pl-1 font-heading text-lg font-semibold">
 							{recipe.title}
 						</p>
-						<IngredientsDialog
-							open={ingredientsOpen}
-							onOpenChange={setIngredientsOpen}
-							recipe={recipe}
-							scale={scale}
-							checks={checks}
-							triggerClassName={showsColumn ? 'lg:hidden' : undefined}
-						/>
+						{/* Wherever the ingredients aren't already on screen: Gather is their checklist, and from lg
+						a step shows them in a column. */}
+						{screen.kind !== 'gather' && (
+							<IngredientsDialog
+								open={ingredientsOpen}
+								onOpenChange={setIngredientsOpen}
+								recipe={recipe}
+								scale={scale}
+								checks={checks}
+								triggerClassName={showsColumn ? 'lg:hidden' : undefined}
+							/>
+						)}
 						<StepsDialog
 							open={stepsOpen}
 							onOpenChange={setStepsOpen}
@@ -378,7 +413,13 @@ function CookingSession({ recipe }: { recipe: CookingRecipe }) {
 						>
 							<div className={cn(showsColumn && 'lg:col-start-2 lg:row-start-1')}>
 								{screen.kind === 'gather' && (
-									<GatherScreen recipe={recipe} scale={scale} checks={checks} heading={heading} />
+									<GatherScreen
+										recipe={recipe}
+										stepCount={stepCount}
+										scale={scale}
+										checks={checks}
+										heading={heading}
+									/>
 								)}
 								{screen.kind === 'step' && (
 									<StepScreen step={screen} stepCount={stepCount} scale={scale} heading={heading} />

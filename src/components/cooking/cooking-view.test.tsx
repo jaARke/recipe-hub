@@ -109,7 +109,7 @@ describe('CookingView', () => {
 	it('opens on Gather with the stepper, the checklist by section, the count, and the notes', () => {
 		render(<CookingView recipe={potRoast} />);
 
-		expect(screenHeading().textContent).toBe('Gather your ingredients');
+		expect(screenHeading().getAttribute('aria-label')).toBe('Gather your ingredients, step 0 of 3');
 		expect(shown().getByText('0 of 3 gathered')).toBeDefined();
 		expect(screen.getByRole('textbox', { name: 'Servings' })).toBeDefined();
 		expect(shown().getByRole('heading', { level: 2, name: 'For the gravy' })).toBeDefined();
@@ -183,7 +183,7 @@ describe('CookingView', () => {
 
 		await user.click(screen.getByRole('button', { name: 'Back' }));
 		expect(location.search).toBe('');
-		expect(screenHeading().textContent).toBe('Gather your ingredients');
+		expect(screenHeading().getAttribute('aria-label')).toBe('Gather your ingredients, step 0 of 3');
 	});
 
 	it('notes on a step that gives an amount that its amounts are the recipe’s own while scaled', () => {
@@ -193,6 +193,15 @@ describe('CookingView', () => {
 		const note = shown().getByText(/^Amounts in the steps are for the original/);
 		expect(note.textContent).toBe('Amounts in the steps are for the original 6 servings.');
 		expect(within(note).getByText('6 servings').tagName).toBe('STRONG');
+	});
+
+	it('offers the Ingredients dialog on a step but not on Gather, whose checklist it would repeat', async () => {
+		const user = userEvent.setup();
+		render(<CookingView recipe={potRoast} />);
+
+		expect(screen.queryByRole('button', { name: 'Ingredients' })).toBeNull();
+		await user.click(screen.getByRole('button', { name: /^Start cooking/ }));
+		expect(screen.getByRole('button', { name: 'Ingredients' })).toBeDefined();
 	});
 
 	it('notes nothing on a step that gives no amount', () => {
@@ -316,7 +325,7 @@ describe('CookingView', () => {
 		await user.click(screen.getByRole('button', { name: 'Start over' }));
 
 		expect(location.search).toBe('?servings=12');
-		expect(screenHeading().textContent).toBe('Gather your ingredients');
+		expect(screenHeading().getAttribute('aria-label')).toBe('Gather your ingredients, step 0 of 3');
 		expect(document.activeElement).toBe(screenHeading());
 		expect(checkboxNames(true)).toEqual([]);
 		expect(sessionStorage.getItem(cookingChecksKey(potRoast))).toBeNull();
