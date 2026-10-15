@@ -369,9 +369,9 @@ function CookingSession({ recipe }: { recipe: CookingRecipe }) {
 						<p className="min-w-0 flex-1 truncate pl-1 font-heading text-lg font-semibold">
 							{recipe.title}
 						</p>
-						{/* Wherever the ingredients aren't already on screen: Gather is their checklist, and from lg
-						a step shows them in a column. */}
-						{screen.kind !== 'gather' && (
+						{/* On a step, where the ingredients aren't already on screen: Gather is their checklist,
+						from lg a step shows them in a column, and the finish needs neither dialog. */}
+						{screen.kind === 'step' && (
 							<IngredientsDialog
 								open={ingredientsOpen}
 								onOpenChange={setIngredientsOpen}
@@ -381,15 +381,17 @@ function CookingSession({ recipe }: { recipe: CookingRecipe }) {
 								triggerClassName={showsColumn ? 'lg:hidden' : undefined}
 							/>
 						)}
-						<StepsDialog
-							open={stepsOpen}
-							onOpenChange={setStepsOpen}
-							screens={screens}
-							index={index}
-							heading={heading}
-							onPick={(position) => moveTo(position, { focus: false })}
-							onStartOver={() => startOver({ focus: false })}
-						/>
+						{screen.kind !== 'finish' && (
+							<StepsDialog
+								open={stepsOpen}
+								onOpenChange={setStepsOpen}
+								screens={screens}
+								index={index}
+								heading={heading}
+								onPick={(position) => moveTo(position, { focus: false })}
+								onStartOver={() => startOver({ focus: false })}
+							/>
+						)}
 					</div>
 					<ProgressRail screens={screens} index={index} />
 					{resumedText !== undefined && (
@@ -437,7 +439,8 @@ function CookingSession({ recipe }: { recipe: CookingRecipe }) {
 				</div>
 				<div className="border-t bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
 					<div className="mx-auto flex w-full max-w-2xl gap-3">
-						{index > 0 && nextLabel !== undefined && (
+						{/* The finish keeps Back too, so a cook can look at the last step again. */}
+						{index > 0 && (
 							<Button
 								variant="outline"
 								className="h-14 flex-1 text-base"
@@ -447,7 +450,7 @@ function CookingSession({ recipe }: { recipe: CookingRecipe }) {
 							</Button>
 						)}
 						{nextLabel === undefined ? (
-							<Link href={recipeHref} className={cn(buttonVariants(), 'h-14 flex-1 text-base')}>
+							<Link href={recipeHref} className={cn(buttonVariants(), 'h-14 flex-[2] text-base')}>
 								Back to the recipe
 							</Link>
 						) : (

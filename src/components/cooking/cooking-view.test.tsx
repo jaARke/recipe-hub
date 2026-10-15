@@ -170,7 +170,12 @@ describe('CookingView', () => {
 		expect(screen.getByRole('link', { name: 'Back to the recipe' }).getAttribute('href')).toBe(
 			'/recipes/sunday-pot-roast'
 		);
-		expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
+
+		// The finish offers neither Ingredients nor Steps, and Back returns to the last step.
+		expect(screen.queryByRole('button', { name: 'Ingredients' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Steps' })).toBeNull();
+		await user.click(screen.getByRole('button', { name: 'Back' }));
+		expect(screenHeading().getAttribute('aria-label')).toBe('For the gravy, step 3 of 3');
 	});
 
 	it('goes back a screen with Back, and to Gather from the first step', async () => {
