@@ -7,7 +7,6 @@ import * as React from 'react';
 import { flushSync } from 'react-dom';
 import { FieldNote, type FieldNoteContent } from '@/components/forms/field-note';
 import { focusCentered } from '@/components/forms/focus-centered';
-import { FormActions } from '@/components/forms/form-actions';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction, FormState } from '@/components/forms/form-state';
 import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
@@ -21,6 +20,7 @@ import { TextareaField } from '@/components/forms/textarea-field';
 import { useFormAction } from '@/components/forms/use-form-action';
 import { useHydrated } from '@/components/forms/use-hydrated';
 import { wideContentProps } from '@/components/layout/page-container';
+import { ActionBar } from '@/components/recipe-form/action-bar';
 import { FieldRow, RowTextField } from '@/components/recipe-form/field-row';
 import {
 	OriginalRecipePane,
@@ -286,8 +286,8 @@ function RecipeForm({
 	const [warningOpen, setWarningOpen] = React.useState(false);
 	// Set by "Save anyway", so the save it starts skips the warning.
 	const savingAnyway = React.useRef(false);
-	const actionBar = React.useRef<HTMLDivElement>(null);
-	// The last place focused in the form outside the action bar, which Next goes on from.
+	// The last place focused among the fields, not the original or the action bar, which Next goes on
+	// from.
 	const lastFocused = React.useRef<Element>(null);
 
 	// Reviewing an import starts on its intro, once, not again when a hidden page shows.
@@ -409,10 +409,10 @@ function RecipeForm({
 		focusCheckAt(checks, index === -1 ? checks.length : index);
 	}
 
-	function rememberFocus(event: React.FocusEvent<HTMLFormElement>) {
+	function rememberFocus(event: React.FocusEvent<HTMLDivElement>) {
 		const { target } = event;
-		// Focus bubbles in from the warning's portal too, which is no place in the form.
-		if (event.currentTarget.contains(target) && !actionBar.current?.contains(target)) {
+		// Focus bubbles in from popups' portals too, such as a row's menu, which are no place in the form.
+		if (event.currentTarget.contains(target)) {
 			lastFocused.current = target;
 		}
 	}
@@ -499,8 +499,8 @@ function RecipeForm({
 				)
 			: undefined;
 
-	const form = (
-		<form {...formProps} onFocus={rememberFocus} className="flex flex-col gap-4">
+	const fields = (
+		<div onFocus={rememberFocus} className="flex flex-col gap-4">
 			{autosaved.restored && <RestoredChangesNotice onDiscard={discardChanges} />}
 			{/* About the whole form, such as an edit conflict; the summary lists a save's problems. */}
 			<FormErrorAlert message={state.status === 'error' ? state.message : undefined} />
@@ -676,41 +676,52 @@ function RecipeForm({
 					/>
 				</FieldGroup>
 			</SummarizedProblems>
-			{/* Held at the screen's bottom while the form runs past it, so Save, and Next while anything is
-			left to check, stay at hand; the page's bottom scroll padding keeps focus clear of it. Next
-			wraps below Save where one row can't hold both. */}
-			<div
-				ref={actionBar}
-				data-action-bar=""
-				className="sticky bottom-0 z-30 flex flex-wrap items-center gap-3 border-t bg-background py-3"
+		</div>
+	);
+
+	// The action bar follows the original and the fields, so it spans the page, and stays in the form,
+	// which Save submits.
+	return (
+		<form {...formProps}>
+			<BesideOriginal
+				original={
+					hasOriginal && (
+						<OriginalRecipePane
+							images={originalImages}
+							title={photoFieldLegends.scan}
+							className="max-lg:hidden"
+						/>
+					)
+				}
 			>
-				<div className="flex-1">
-					<FormActions
-						status={
-							photosInProgress && (
-								<p id={ids.saveNote} className="text-sm text-muted-foreground">
-									Wait for the photos to finish uploading.
-								</p>
-							)
-						}
-					>
-						<Button
-							id={ids.save}
-							type="submit"
-							// Natively disabled until hydrated, since a click before then would still submit.
-							disabled={!hydrated || photosInProgress || pending}
-							focusableWhenDisabled={hydrated}
-							aria-describedby={photosInProgress ? ids.saveNote : undefined}
-						>
-							{pending && <Spinner data-icon="inline-start" />}
-							{pending ? 'Saving recipe' : submitLabel}
-						</Button>
-					</FormActions>
-				</div>
-				{firstCheck !== undefined && (
-					<ReviewNotesNext id={ids.checksLeft} count={checks.length} onNext={goToNextCheck} />
-				)}
-			</div>
+				{fields}
+			</BesideOriginal>
+			<ActionBar
+				status={
+					<>
+						{photosInProgress && (
+							<p id={ids.saveNote} className="text-sm text-muted-foreground">
+								Wait for the photos to finish uploading.
+							</p>
+						)}
+						{firstCheck !== undefined && (
+							<ReviewNotesNext id={ids.checksLeft} count={checks.length} onNext={goToNextCheck} />
+						)}
+					</>
+				}
+			>
+				<Button
+					id={ids.save}
+					type="submit"
+					// Natively disabled until hydrated, since a click before then would still submit.
+					disabled={!hydrated || photosInProgress || pending}
+					focusableWhenDisabled={hydrated}
+					aria-describedby={photosInProgress ? ids.saveNote : undefined}
+				>
+					{pending && <Spinner data-icon="inline-start" />}
+					{pending ? 'Saving recipe' : submitLabel}
+				</Button>
+			</ActionBar>
 			<UncheckedSaveDialog
 				open={warningOpen}
 				onOpenChange={setWarningOpen}
@@ -723,22 +734,6 @@ function RecipeForm({
 				onSaveAnyway={saveAnyway}
 			/>
 		</form>
-	);
-
-	return (
-		<BesideOriginal
-			original={
-				hasOriginal && (
-					<OriginalRecipePane
-						images={originalImages}
-						title={photoFieldLegends.scan}
-						className="max-lg:hidden"
-					/>
-				)
-			}
-		>
-			{form}
-		</BesideOriginal>
 	);
 }
 
@@ -763,8 +758,9 @@ function RestoredChangesNotice({ onDiscard }: { onDiscard: () => void }) {
 	);
 }
 
-// The form, with the original recipe beside it from lg when there is one, which widens the page. The
-// wrapper stays as the original comes and goes, so the form, and the uploads in it, never remount.
+// The form's fields, with the original recipe beside them from lg when there is one, which widens the
+// page. The wrapper stays as the original comes and goes, so the fields, and the uploads in them,
+// never remount.
 function BesideOriginal({
 	original,
 	children,

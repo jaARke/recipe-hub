@@ -18,8 +18,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 const labels = imageViewerLabels('scan');
 
 // In view as the form scrolls: the pane clears the sticky header (h-14 and its border) by 1.5rem and
-// ends 2rem above the screen's bottom.
-const paneClassName = 'sticky top-20 flex h-[calc(100dvh-7rem)] flex-col gap-3';
+// ends 2rem above the form's action bar held at the screen's bottom, whose height ActionBar keeps on
+// the form. Until it does, as while the form loads, the pane leaves the bar's height on one row.
+const paneClassName =
+	'sticky top-20 flex h-[calc(100dvh-7rem-var(--action-bar-height,3.75rem))] flex-col gap-3';
 
 type OriginalRecipePaneProps = {
 	// The form's scans, in its order.

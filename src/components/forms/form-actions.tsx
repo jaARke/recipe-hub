@@ -9,7 +9,8 @@ type FormActionsProps = {
 
 // The one row for a page's actions, a form's buttons or a section's lone button: at the fields' left
 // edge, with its status to the buttons' right, wrapping below them when the row is full. On phones
-// the buttons stack full width and the status follows them. Dialogs keep DialogFooter.
+// the buttons stack full width and the status follows them. Dialogs keep DialogFooter, and the recipe
+// form its ActionBar, held at the screen's bottom.
 function FormActions({ children, status }: FormActionsProps) {
 	return (
 		<div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">

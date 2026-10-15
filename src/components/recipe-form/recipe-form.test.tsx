@@ -109,9 +109,8 @@ describe('RecipeForm’s review notes', () => {
 	it('moves Next to the open note after where focus last was in the form, wrapping past the last', async () => {
 		const user = userEvent.setup();
 		renderForm(lemonBars, threeNotes);
-		const next = screen.getByRole('button', { name: 'Next' });
-		const count = () => document.getElementById(next.getAttribute('aria-describedby') ?? '');
-		expect(count()?.textContent).toBe('3 to check');
+		// The count describes Next, as "3 to check" even where phones show "3 left".
+		const next = screen.getByRole('button', { name: 'Next', description: '3 to check' });
 
 		await user.click(next);
 		expect(document.activeElement).toBe(noteWith('Check the title.'));
@@ -128,7 +127,7 @@ describe('RecipeForm’s review notes', () => {
 
 		await user.click(lookRight('Ingredient 2'));
 		expect(document.activeElement).toBe(noteWith('Check this step.'));
-		expect(count()?.textContent).toBe('2 to check');
+		expect(screen.getByRole('button', { name: 'Next', description: '2 to check' })).toBe(next);
 		await user.click(next);
 		expect(document.activeElement).toBe(noteWith('Check the title.'));
 	});
@@ -340,6 +339,45 @@ describe('RecipeForm’s original recipe', () => {
 			{ name: 'Page 2', opens: 'View page 2 of 2' },
 		]);
 		expect(screen.getByRole('button', { name: 'View original' })).toBeDefined();
+	});
+});
+
+describe('RecipeForm’s action bar', () => {
+	const scanPathname = 'scan/development/card.jpg';
+	const withOriginal = {
+		...lemonBars,
+		images: [{ role: 'scan' as const, pathname: scanPathname }],
+	};
+
+	it('saves what the fields beside the original hold, from Save after them', async () => {
+		const action = vi.fn(refuse);
+		const user = userEvent.setup();
+		renderForm(withOriginal, [], action);
+		expect(screen.getByRole('complementary', { name: 'Original recipe' })).toBeDefined();
+
+		const title = screen.getByRole('textbox', { name: 'Title' });
+		await user.clear(title);
+		await user.type(title, 'Lemon squares');
+		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+
+		await waitFor(() => expect(action).toHaveBeenCalledOnce());
+		const sent = action.mock.calls[0]?.[1].get('recipe');
+		expect(JSON.parse(typeof sent === 'string' ? sent : '{}')).toMatchObject({
+			title: 'Lemon squares',
+			images: [{ role: 'scan', pathname: scanPathname }],
+		});
+	});
+
+	it('moves Next on from the last field focused, not from the original beside the fields', async () => {
+		const user = userEvent.setup();
+		renderForm(withOriginal, threeNotes);
+		const pane = screen.getByRole('complementary', { name: 'Original recipe' });
+
+		await user.click(screen.getByRole('textbox', { name: 'Ingredient 1' }));
+		await user.click(within(pane).getByRole('button', { name: 'Zoom' }));
+		await user.click(screen.getByRole('button', { name: 'Next' }));
+
+		expect(document.activeElement).toBe(noteWith('Check this line.'));
 	});
 });
 
