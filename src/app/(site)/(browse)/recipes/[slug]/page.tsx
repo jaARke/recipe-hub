@@ -2,19 +2,16 @@ import type { Metadata } from 'next';
 import { notFound, permanentRedirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { readForReader } from '@/app/_lib/read-for-reader';
-import { getCachedRecipe, getCachedRecipePage } from '@/app/_lib/recipe-cache';
+import { getCachedRecipe, recipeStaticParams } from '@/app/_lib/recipe-cache';
 import { setFavorite } from '@/app/(site)/(browse)/favorites/actions';
-import { CookingModeProvider } from '@/components/cooking/cooking-mode-provider';
 import { FavoriteToggle } from '@/components/favorites/favorite-toggle';
 import { PageContainer } from '@/components/layout/page-container';
 import { RecipeBackLink } from '@/components/recipe/recipe-back-link';
 import { RecipeDetail, RecipeDetailSkeleton } from '@/components/recipe/recipe-detail';
 import { RecipeJsonLd } from '@/components/recipe/recipe-json-ld';
-import { defaultListSort } from '@/components/recipe/recipe-list-params';
 import { RecipeEditLink } from '@/components/recipe/recipe-member-view';
 import { recipeMetaDescription } from '@/components/recipe/recipe-meta-description';
 import { recipePath } from '@/components/recipe/recipe-paths';
-import { RecipeScaleProvider } from '@/components/recipe/recipe-scale-provider';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getFavoriteService, getRecipeService } from '@/composition/services';
 import { siteUrl } from '@/lib/env';
@@ -23,10 +20,8 @@ import { siteName } from '@/lib/site';
 
 const logger = getLogger('auth');
 
-export async function generateStaticParams(): Promise<{ slug: string }[]> {
-	const { recipes } = await getCachedRecipePage(1, defaultListSort);
-	// A param is required but production starts empty; this one fails the slug schema and prerenders a 404.
-	return recipes.length > 0 ? recipes.map(({ slug }) => ({ slug })) : [{ slug: '__placeholder__' }];
+export function generateStaticParams(): Promise<{ slug: string }[]> {
+	return recipeStaticParams();
 }
 
 // Under an old slug too, this names the recipe's current URL, so previews of old links stay right.
@@ -106,24 +101,20 @@ async function RecipeBySlug({ params }: Pick<PageProps<'/recipes/[slug]'>, 'para
 		<>
 			<RecipeJsonLd recipe={recipe} siteUrl={siteUrl} />
 			<RecipeBackLink recipePathname={recipePath(recipe.slug)} className="mb-6" />
-			<CookingModeProvider recipe={{ id: recipe.id, version: recipe.updatedAt.toISOString() }}>
-				<RecipeScaleProvider recipeYield={recipe.yield}>
-					<RecipeDetail
-						recipe={recipe}
-						headingLevel={1}
-						titleAction={
-							<Suspense>
-								<RecipeEditAction slug={recipe.slug} />
-							</Suspense>
-						}
-						favoriteToggle={
-							<Suspense fallback={<Skeleton />}>
-								<RecipeFavoriteToggle recipeId={recipe.id} />
-							</Suspense>
-						}
-					/>
-				</RecipeScaleProvider>
-			</CookingModeProvider>
+			<RecipeDetail
+				recipe={recipe}
+				headingLevel={1}
+				titleAction={
+					<Suspense>
+						<RecipeEditAction slug={recipe.slug} />
+					</Suspense>
+				}
+				favoriteToggle={
+					<Suspense fallback={<Skeleton />}>
+						<RecipeFavoriteToggle recipeId={recipe.id} />
+					</Suspense>
+				}
+			/>
 		</>
 	);
 }

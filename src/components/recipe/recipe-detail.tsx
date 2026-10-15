@@ -1,14 +1,14 @@
 import { cn } from 'cn';
 import type { ReactNode } from 'react';
 import type { PublicRecipeDto } from '@/application/recipes/recipe-dtos';
-import { RecipeActions } from '@/components/recipe/recipe-actions';
+import { RecipeActions, RecipeActionsSkeleton } from '@/components/recipe/recipe-actions';
 import {
 	RecipeImageViewer,
 	RecipeImageViewerTrigger,
 } from '@/components/recipe/recipe-image-viewer';
 import { RecipeIngredientsAndSteps } from '@/components/recipe/recipe-ingredients-and-steps';
+import { RecipeParagraphs } from '@/components/recipe/recipe-paragraphs';
 import { RecipePhoto } from '@/components/recipe/recipe-photo';
-import { RecipeScaledYield } from '@/components/recipe/recipe-scaled-yield';
 import { RecipeTags } from '@/components/recipe/recipe-summary';
 import {
 	recipeHeadingTags,
@@ -19,81 +19,129 @@ import { recipeSearchHref } from '@/components/search/search-params';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDuration, totalMinutes } from '@/domain/recipe/duration';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
+import { formatYieldCount, yieldVerbs, type RecipeYield } from '@/domain/recipe/recipe-yield';
 import { formatDate } from '@/lib/dates';
 
-type RecipeMetaItem = {
+// A labelled cell in the header's ruled block.
+type RecipeCell = {
 	label: string;
 	value: ReactNode;
+	// Sets the cell's span, where it takes more than one column.
+	className?: string;
 };
 
-// Scans sit two to a row, each half the column less half the gap. The column is 624px from 672px, and
-// below it 100vw less the container's padding on each side: 1.5rem from sm, 1rem on phones.
-const scanThumbnailSizes =
-	'(min-width: 672px) 304px, (min-width: 640px) calc(50vw - 32px), calc(50vw - 24px)';
+// A ruled row of cells, two across on phones and four from sm, so the rows' columns line up.
+const cellRowClassName = 'grid grid-cols-2 gap-x-4 gap-y-3 py-3 sm:grid-cols-4';
+
+// Who added the recipe takes the two columns the dates leave it from sm.
+const contributorCellClassName = 'sm:col-span-2';
 
 // A reading-width container's column is 624px.
 const coverPhotoSizes = '(min-width: 672px) 624px, 100vw';
 
-// The other photos' thumbnails are w-24.
+// Thumbnails are w-24, the dish's other photos and the original's pages alike.
 const thumbnailPhotoSizes = '96px';
 
-// One or more blank lines, as stored text keeps its line breaks.
-const paragraphBreak = /\n{2,}/;
+// The description and the notes read as body text.
+const recipeParagraphsClassName = cn(recipeTextStyles.body, 'gap-4');
 
 // Every recipe with the tag, newest first as search lists them without a query.
 function tagSearchHref(tag: string): string {
 	return recipeSearchHref({ tags: [tag], sort: 'newest', page: 1 });
 }
 
-// The recipe's scans, which the byline's link jumps to.
-function recipeScansId(slug: string): string {
-	return `${slug}-original`;
+// The yield's verb labels what it counts: "Serves" 8, "Makes" 10 biscuits.
+function yieldCell(recipeYield: RecipeYield): RecipeCell {
+	return { label: yieldVerbs[recipeYield.kind], value: formatYieldCount(recipeYield) };
 }
 
-function recipeMetaItems({
+function recipeFactCells({
 	times,
 	yield: recipeYield,
-}: Pick<PublicRecipeDto, 'times' | 'yield'>): RecipeMetaItem[] {
-	const items: RecipeMetaItem[] = [];
+}: Pick<PublicRecipeDto, 'times' | 'yield'>): RecipeCell[] {
+	const cells: RecipeCell[] = [];
 	if (times.prepMinutes !== undefined) {
-		items.push({ label: 'Prep', value: formatDuration(times.prepMinutes) });
+		cells.push({ label: 'Prep', value: formatDuration(times.prepMinutes) });
 	}
 	if (times.cookMinutes !== undefined) {
-		items.push({ label: 'Cook', value: formatDuration(times.cookMinutes) });
+		cells.push({ label: 'Cook', value: formatDuration(times.cookMinutes) });
 	}
 	const total = totalMinutes(times);
 	if (total !== undefined) {
-		items.push({ label: 'Total', value: formatDuration(total) });
+		cells.push({ label: 'Total', value: formatDuration(total) });
 	}
 	if (recipeYield !== undefined) {
-		items.push({ label: 'Yield', value: <RecipeScaledYield recipeYield={recipeYield} /> });
+		cells.push(yieldCell(recipeYield));
 	}
-	return items;
+	return cells;
 }
 
-function RecipeMetaRow({ recipe }: { recipe: Pick<PublicRecipeDto, 'times' | 'yield'> }) {
-	const items = recipeMetaItems(recipe);
-	if (items.length === 0) {
-		return null;
-	}
+function RecipeDate({ date }: { date: Date }) {
+	return <time dateTime={date.toISOString()}>{formatDate(date)}</time>;
+}
 
+// Who added the recipe and when, and when it was edited if on a later day, as the site's time zone
+// counts them, so a fix made the day a recipe went up shows no edit.
+function recipeProvenanceCells({
+	contributor,
+	createdAt,
+	updatedAt,
+}: Pick<PublicRecipeDto, 'contributor' | 'createdAt' | 'updatedAt'>): RecipeCell[] {
+	const cells: RecipeCell[] = [
+		{
+			label: 'Added by',
+			value: contributor.displayName,
+			className: contributorCellClassName,
+		},
+		{ label: 'Added', value: <RecipeDate date={createdAt} /> },
+	];
+	if (formatDate(updatedAt) !== formatDate(createdAt)) {
+		cells.push({ label: 'Edited', value: <RecipeDate date={updatedAt} /> });
+	}
+	return cells;
+}
+
+function RecipeCellRow({
+	cells,
+	valueClassName,
+}: {
+	cells: readonly RecipeCell[];
+	valueClassName: string;
+}) {
 	return (
-		<dl className={cn(recipeTextStyles.meta, 'flex flex-wrap gap-x-6 gap-y-2')}>
-			{items.map((item) => (
-				<div key={item.label} className="flex gap-2">
-					<dt className="text-muted-foreground">{item.label}</dt>
-					<dd>{item.value}</dd>
+		<dl className={cellRowClassName}>
+			{cells.map(({ label, value, className }) => (
+				<div key={label} className={cn('flex min-w-0 flex-col gap-0.5', className)}>
+					<dt className={recipeTextStyles.cellLabel}>{label}</dt>
+					<dd className={cn(valueClassName, 'wrap-break-word')}>{value}</dd>
 				</div>
 			))}
 		</dl>
 	);
 }
 
-function RecipeDate({ label, date }: { label: string; date: Date }) {
+// Ruled like an index card: a row for the times and yield, one for who added the recipe and when,
+// and one for its tags. A row with nothing to show is left out; who added the recipe always shows.
+function RecipeRuledBlock({ recipe }: { recipe: PublicRecipeDto }) {
+	const facts = recipeFactCells(recipe);
 	return (
-		<p>
-			{label} <time dateTime={date.toISOString()}>{formatDate(date)}</time>
-		</p>
+		<div className="flex flex-col divide-y border-y">
+			{facts.length > 0 && (
+				<RecipeCellRow cells={facts} valueClassName={recipeTextStyles.factValue} />
+			)}
+			<RecipeCellRow
+				cells={recipeProvenanceCells(recipe)}
+				valueClassName={recipeTextStyles.cellValue}
+			/>
+			{recipe.tags.length > 0 && (
+				<dl className="flex flex-col gap-1.5 py-3">
+					<dt className={recipeTextStyles.cellLabel}>Tags</dt>
+					<dd>
+						<RecipeTags tags={recipe.tags} tagHref={tagSearchHref} />
+					</dd>
+				</dl>
+			)}
+		</div>
 	);
 }
 
@@ -119,76 +167,50 @@ function RecipeImportedFrom({ sourceUrl }: { sourceUrl: string }) {
 	);
 }
 
-// Left off the printout, as the scans it jumps to are.
-function RecipeScansLink({ slug }: { slug: string }) {
+// Where the recipe came from: "From Uncle Ray", with the page an import read after a named source,
+// "From Grandma’s cookbook (example.com)". A source written as a web address is the page itself, so
+// it links once, as an import with no source does.
+function RecipeCredit({ source, sourceUrl }: Pick<PublicRecipeDto, 'source' | 'sourceUrl'>) {
+	const name = source === sourceUrl ? undefined : source;
+	const link = sourceUrl === undefined ? undefined : <RecipeSourceLink url={sourceUrl} />;
+	if (name === undefined && link === undefined) {
+		return null;
+	}
+
 	return (
-		<p className="text-sm print:hidden">
-			<a href={`#${recipeScansId(slug)}`} className="text-primary underline underline-offset-4">
-				See the original
-			</a>
+		<p className={recipeTextStyles.supporting}>
+			From {name ?? link}
+			{name !== undefined && link !== undefined && <> ({link})</>}
 		</p>
 	);
 }
 
-function RecipeByline({ recipe }: { recipe: PublicRecipeDto }) {
-	// A source written as a web address is the page itself, so it links once rather than twice.
-	const sourceIsUrl = recipe.source !== undefined && recipe.source === recipe.sourceUrl;
-	return (
-		<div className="flex flex-col gap-1">
-			{recipe.source !== undefined && (
-				<p className={recipeTextStyles.supporting}>
-					From {sourceIsUrl ? <RecipeSourceLink url={recipe.source} /> : recipe.source}
-				</p>
-			)}
-			{recipe.sourceUrl !== undefined && !sourceIsUrl && (
-				<RecipeImportedFrom sourceUrl={recipe.sourceUrl} />
-			)}
-			{recipe.scans.length > 0 && <RecipeScansLink slug={recipe.slug} />}
-			<div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-				<RecipeDate
-					label={`Added by ${recipe.contributor.displayName} on`}
-					date={recipe.createdAt}
-				/>
-				{recipe.updatedAt.getTime() > recipe.createdAt.getTime() && (
-					<RecipeDate label="Edited" date={recipe.updatedAt} />
-				)}
-			</div>
-		</div>
-	);
-}
-
-// Paragraphs parted by blank lines, each kept whole in print, since notes can run for pages.
-function RecipeParagraphs({ text }: { text: string }) {
-	return (
-		<div className={cn(recipeTextStyles.body, 'flex flex-col gap-4')}>
-			{text.split(paragraphBreak).map((paragraph, index) => (
-				<p key={index} className="whitespace-pre-line print:break-inside-avoid">
-					{paragraph}
-				</p>
-			))}
-		</div>
-	);
-}
-
-// A thumbnail that opens the viewer at its image, a dish photo or a scan alike: a 4:3 box the image
-// fills, cropped to it whatever its shape, since the viewer shows it whole. The caller sets its width
-// and rounding.
-function RecipeThumbnail({
-	index,
-	image,
-	sizes,
-	className,
+// A row of thumbnails, dish photos or the original's pages alike, each opening its viewer at its
+// image: a 4:3 box the image fills, cropped to it whatever its shape, since the viewer shows it whole.
+// The first is the viewer's image at firstIndex.
+function RecipeThumbnails({
+	images,
+	firstIndex,
 }: {
-	index: number;
-	image: RecipeImage;
-	sizes: string;
-	className: string;
+	images: readonly RecipeImage[];
+	firstIndex: number;
 }) {
 	return (
-		<RecipeImageViewerTrigger index={index} className={className}>
-			{/* The button is named for its image, so the image inside it is decorative. */}
-			<RecipePhoto pathname={image.pathname} alt="" sizes={sizes} className="aspect-4/3" />
-		</RecipeImageViewerTrigger>
+		<ul className="flex flex-wrap gap-3">
+			{images.map((image, index) => (
+				<li key={image.pathname}>
+					<RecipeImageViewerTrigger index={firstIndex + index} className="w-24 rounded-md">
+						{/* The button is named for its image, so the image inside it is decorative. */}
+						<RecipePhoto
+							pathname={image.pathname}
+							alt=""
+							sizes={thumbnailPhotoSizes}
+							className="aspect-4/3"
+						/>
+					</RecipeImageViewerTrigger>
+				</li>
+			))}
+		</ul>
 	);
 }
 
@@ -213,32 +235,24 @@ function RecipePhotos({ title, images }: { title: string; images: readonly Recip
 						className="aspect-3/2"
 					/>
 				</RecipeImageViewerTrigger>
-				{others.length > 0 && (
-					<ul className="flex flex-wrap gap-3">
-						{others.map((image, index) => (
-							<li key={image.pathname}>
-								<RecipeThumbnail
-									index={index + 1}
-									image={image}
-									sizes={thumbnailPhotoSizes}
-									className="w-24 rounded-md"
-								/>
-							</li>
-						))}
-					</ul>
-				)}
+				{others.length > 0 && <RecipeThumbnails images={others} firstIndex={1} />}
 			</div>
 		</RecipeImageViewer>
 	);
 }
 
-// The pages of the recipe as first written, after the notes; each opens the viewer at its page, which
-// links to it at full size. Left off the printout like the dish photos.
+// "1 page", "2 pages".
+function pageCount(count: number): string {
+	return count === 1 ? '1 page' : `${count} pages`;
+}
+
+// The pages of the recipe as first written, before its ingredients; each opens the viewer at its
+// page, which links to it at full size. Left off the printout like the dish photos.
 function RecipeScans({
-	recipe: { slug, scans },
+	scans,
 	headingLevel,
 }: {
-	recipe: Pick<PublicRecipeDto, 'slug' | 'scans'>;
+	scans: readonly RecipeImage[];
 	headingLevel: RecipeHeadingLevel;
 }) {
 	if (scans.length === 0) {
@@ -248,21 +262,13 @@ function RecipeScans({
 	const { section: Section } = recipeHeadingTags[headingLevel];
 	const title = 'Original recipe';
 	return (
-		<div id={recipeScansId(slug)} className="flex flex-col gap-6 print:hidden">
-			<Section className={recipeTextStyles.section}>{title}</Section>
+		<div className="flex flex-col gap-4 print:hidden">
+			<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+				<Section className={recipeTextStyles.section}>{title}</Section>
+				<p className="text-muted-foreground">{pageCount(scans.length)}</p>
+			</div>
 			<RecipeImageViewer role="scan" title={title} images={scans}>
-				<ul className="grid grid-cols-2 gap-4">
-					{scans.map((scan, index) => (
-						<li key={scan.pathname}>
-							<RecipeThumbnail
-								index={index}
-								image={scan}
-								sizes={scanThumbnailSizes}
-								className="w-full rounded-xl"
-							/>
-						</li>
-					))}
-				</ul>
+				<RecipeThumbnails images={scans} firstIndex={0} />
 			</RecipeImageViewer>
 		</div>
 	);
@@ -279,7 +285,7 @@ function RecipeDetail({
 	// A control beside the title, such as the edit link. Its box is reserved whenever it is passed, so
 	// a link that streams in later moves nothing.
 	titleAction?: ReactNode;
-	// The first of the recipe's actions, as RecipeActions takes it.
+	// The favorite toggle among the recipe's actions, as RecipeActions takes it.
 	favoriteToggle?: ReactNode;
 }) {
 	const { title: Title, section: Section } = recipeHeadingTags[headingLevel];
@@ -292,25 +298,29 @@ function RecipeDetail({
 
 	return (
 		<article aria-labelledby={titleId} className="flex flex-col gap-10">
-			<header className="flex flex-col gap-4">
-				{titleAction === undefined ? (
-					title
-				) : (
-					<div className="flex items-start justify-between gap-4">
-						{title}
-						{/* As tall as the title's first line, so an icon button centers on it. */}
-						<div className="flex h-10 w-9 shrink-0 items-center md:h-13 print:hidden">
-							{titleAction}
+			<header className="flex flex-col gap-5">
+				<div className="flex flex-col gap-3">
+					{titleAction === undefined ? (
+						title
+					) : (
+						<div className="flex items-start justify-between gap-4">
+							{title}
+							{/* As tall as the title's first line, so an icon button centers on it. */}
+							<div className="flex h-10 w-9 shrink-0 items-center md:h-13 print:hidden">
+								{titleAction}
+							</div>
 						</div>
-					</div>
-				)}
-				<RecipeByline recipe={recipe} />
-				<RecipeMetaRow recipe={recipe} />
-				{recipe.tags.length > 0 && <RecipeTags tags={recipe.tags} tagHref={tagSearchHref} />}
+					)}
+					<RecipeCredit source={recipe.source} sourceUrl={recipe.sourceUrl} />
+				</div>
+				<RecipeRuledBlock recipe={recipe} />
 				<RecipeActions slug={recipe.slug} title={recipe.title} favoriteToggle={favoriteToggle} />
 			</header>
 			<RecipePhotos title={recipe.title} images={recipe.images} />
-			{recipe.description !== undefined && <RecipeParagraphs text={recipe.description} />}
+			{recipe.description !== undefined && (
+				<RecipeParagraphs text={recipe.description} className={recipeParagraphsClassName} />
+			)}
+			<RecipeScans scans={recipe.scans} headingLevel={headingLevel} />
 			<RecipeIngredientsAndSteps
 				ingredientSections={recipe.ingredientSections}
 				instructionSections={recipe.instructionSections}
@@ -319,30 +329,64 @@ function RecipeDetail({
 			{recipe.notes !== undefined && (
 				<div className="flex flex-col gap-6">
 					<Section className={recipeTextStyles.section}>Notes</Section>
-					<RecipeParagraphs text={recipe.notes} />
+					<RecipeParagraphs text={recipe.notes} className={recipeParagraphsClassName} />
 				</div>
 			)}
-			<RecipeScans recipe={recipe} headingLevel={headingLevel} />
 		</article>
 	);
 }
 
+// A ruled row's cells while the recipe loads, each a label's line over a value's.
+function RecipeCellRowSkeleton({
+	cellCount,
+	firstCellClassName,
+	valueClassName,
+}: {
+	cellCount: number;
+	firstCellClassName?: string;
+	// The value's line height.
+	valueClassName: string;
+}) {
+	return (
+		<div className={cellRowClassName}>
+			{Array.from({ length: cellCount }, (_, index) => (
+				<div key={index} className={cn('flex flex-col gap-0.5', index === 0 && firstCellClassName)}>
+					<Skeleton className="h-5 w-14" />
+					<Skeleton className={cn('w-24', valueClassName)} />
+				</div>
+			))}
+		</div>
+	);
+}
+
+// The header as most recipes fill it, with every row of the ruled block, so the recipe moves nothing
+// when it streams in.
 function RecipeDetailSkeleton() {
 	return (
 		<div role="status" aria-live="polite">
 			<span className="sr-only">Loading recipe</span>
 			<div aria-hidden="true" className="flex flex-col gap-10">
-				<div className="flex flex-col gap-4">
-					<Skeleton className="h-10 w-3/4 md:h-13" />
-					<div className="flex flex-col gap-1">
+				<div className="flex flex-col gap-5">
+					<div className="flex flex-col gap-3">
+						<Skeleton className="h-10 w-3/4 md:h-13" />
 						<Skeleton className="h-7 w-1/3" />
-						<Skeleton className="h-5 w-1/2" />
 					</div>
-					<Skeleton className="h-4 w-2/3" />
-					<div className="flex gap-1.5">
-						<Skeleton className="h-5 w-16 rounded-4xl" />
-						<Skeleton className="h-5 w-20 rounded-4xl" />
+					<div className="flex flex-col divide-y border-y">
+						<RecipeCellRowSkeleton cellCount={4} valueClassName="h-7" />
+						<RecipeCellRowSkeleton
+							cellCount={3}
+							firstCellClassName={contributorCellClassName}
+							valueClassName="h-6"
+						/>
+						<div className="flex flex-col gap-1.5 py-3">
+							<Skeleton className="h-5 w-10" />
+							<div className="flex gap-1.5">
+								<Skeleton className="h-6 w-16 rounded-4xl" />
+								<Skeleton className="h-6 w-20 rounded-4xl" />
+							</div>
+						</div>
 					</div>
+					<RecipeActionsSkeleton />
 				</div>
 				<Skeleton className="aspect-3/2 rounded-xl" />
 				<div className="flex flex-col gap-6">
@@ -359,4 +403,4 @@ function RecipeDetailSkeleton() {
 	);
 }
 
-export { RecipeDetail, RecipeDetailSkeleton, RecipeImportedFrom, RecipeMetaRow };
+export { RecipeDetail, RecipeDetailSkeleton, RecipeImportedFrom };

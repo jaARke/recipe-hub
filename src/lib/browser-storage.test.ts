@@ -6,6 +6,7 @@ import {
 	removeBrowserStorage,
 	removeBrowserStorageWhere,
 	removeMemberBrowserStorage,
+	removeTabStorage,
 	writeBrowserStorage,
 	writeTabStorage,
 } from '@/lib/browser-storage';
@@ -90,14 +91,14 @@ describe('browser storage', () => {
 
 	it('removes the entries under a prefix that the check finds stale, and nothing else', () => {
 		vi.stubGlobal('localStorage', memoryStorage());
-		writeBrowserStorage('cooking:soup', 'old');
-		writeBrowserStorage('cooking:pie', 'new');
+		writeBrowserStorage('recipe-form:soup', 'old');
+		writeBrowserStorage('recipe-form:pie', 'new');
 		writeBrowserStorage('theme', 'old');
 
-		removeBrowserStorageWhere('cooking:', (value) => value === 'old');
+		removeBrowserStorageWhere('recipe-form:', (value) => value === 'old');
 
-		expect(readBrowserStorage('cooking:soup')).toBeUndefined();
-		expect(readBrowserStorage('cooking:pie')).toBe('new');
+		expect(readBrowserStorage('recipe-form:soup')).toBeUndefined();
+		expect(readBrowserStorage('recipe-form:pie')).toBe('new');
 		expect(readBrowserStorage('theme')).toBe('old');
 	});
 
@@ -110,7 +111,7 @@ describe('browser storage', () => {
 });
 
 describe('tab storage', () => {
-	it('reads what the tab wrote, kept apart from local storage', () => {
+	it('reads what the tab wrote, kept apart from local storage, and nothing once it is removed', () => {
 		vi.stubGlobal('localStorage', memoryStorage());
 		vi.stubGlobal('sessionStorage', memoryStorage());
 
@@ -121,13 +122,18 @@ describe('tab storage', () => {
 			'https://barbtable.com/favorites?page=2'
 		);
 		expect(readBrowserStorage('opened-from:/recipes/lemon-bars')).toBeUndefined();
+
+		removeTabStorage('opened-from:/recipes/lemon-bars');
+
+		expect(readTabStorage('opened-from:/recipes/lemon-bars')).toBeUndefined();
 	});
 
-	it('reads nothing, and writes nothing, where a browser setting blocks storage', () => {
+	it('reads nothing, and writes and removes nothing, where a browser setting blocks storage', () => {
 		blockStorage('sessionStorage');
 
 		expect(readTabStorage('opened-from:/recipes/lemon-bars')).toBeUndefined();
 		expect(() => writeTabStorage('opened-from:/recipes/lemon-bars', '/')).not.toThrow();
+		expect(() => removeTabStorage('opened-from:/recipes/lemon-bars')).not.toThrow();
 	});
 
 	it('writes nothing, without throwing, once storage is full', () => {

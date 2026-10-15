@@ -5,10 +5,12 @@ export const recipeTextStyles = {
 	section: 'font-heading text-2xl font-semibold',
 	subsection: 'text-lg font-semibold',
 	body: 'text-lg',
-	// Ingredients and steps in cooking mode, read from further away.
-	cookingBody: 'text-xl',
 	supporting: 'text-lg text-muted-foreground',
-	meta: 'font-mono text-xs tracking-wide uppercase',
+	// The header's ruled cells: a label over its value. Times and the yield, read at a glance, are a
+	// step larger than who added the recipe and when.
+	cellLabel: 'text-sm text-muted-foreground',
+	factValue: 'text-lg font-medium',
+	cellValue: 'text-base font-medium',
 } as const;
 
 // Keyed by the title's level; level 4 nests the recipe under the design reference's own headings.

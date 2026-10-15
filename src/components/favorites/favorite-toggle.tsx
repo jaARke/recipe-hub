@@ -7,9 +7,9 @@ import * as React from 'react';
 import type { FormState } from '@/components/forms/form-state';
 import { toast } from '@/components/ui/toast';
 import { Toggle } from '@/components/ui/toggle';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
-// The toggle's name and its tooltip; aria-pressed says whether the recipe is a favorite.
+// The toggle's label and so its name, whatever its state: aria-pressed says whether the recipe is a
+// favorite, as WAI-ARIA's toggle button pattern has it.
 const favoriteLabel = 'Favorite';
 
 // What a change that failed in transport, such as over a lost connection, says.
@@ -25,12 +25,15 @@ type FavoriteToggleProps = {
 	setFavoriteAction: SetFavoriteAction;
 };
 
-// The heart a favorite toggle holds, filled while the toggle is pressed.
+// The heart a favorite toggle holds, filled red while the toggle is pressed.
 function FavoriteHeartIcon({ className, ...props }: React.ComponentProps<typeof HeartIcon>) {
 	return (
 		<HeartIcon
 			aria-hidden="true"
-			className={cn('group-aria-pressed/toggle:fill-current', className)}
+			className={cn(
+				'group-aria-pressed/toggle:fill-favorite group-aria-pressed/toggle:text-favorite',
+				className
+			)}
 			{...props}
 		/>
 	);
@@ -62,21 +65,17 @@ function FavoriteToggle({ recipeId, favorite, setFavoriteAction }: FavoriteToggl
 	}
 
 	return (
-		<Tooltip>
-			<TooltipTrigger
-				render={
-					<Toggle
-						variant="outline"
-						aria-label={favoriteLabel}
-						pressed={pressed}
-						onPressedChange={changePressed}
-					/>
-				}
-			>
-				<FavoriteHeartIcon />
-			</TooltipTrigger>
-			<TooltipContent>{favoriteLabel}</TooltipContent>
-		</Tooltip>
+		<Toggle
+			variant="outline"
+			pressed={pressed}
+			onPressedChange={changePressed}
+			// Its icon spaced as a button's is. The dark theme's edge is dimmer than its text, so a pressed
+			// toggle's edge brightens to the text's color.
+			className="gap-1.5 aria-pressed:border-foreground"
+		>
+			<FavoriteHeartIcon data-icon="inline-start" />
+			{favoriteLabel}
+		</Toggle>
 	);
 }
 

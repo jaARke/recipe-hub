@@ -29,7 +29,7 @@ import { RecipeEntryTabs } from '@/components/recipe-import/recipe-entry-tabs';
 import { RecipeImportSubmit } from '@/components/recipe-import/recipe-import-submit';
 import { RecipeActions } from '@/components/recipe/recipe-actions';
 import { RecipeCard } from '@/components/recipe/recipe-card';
-import { RecipeDetail } from '@/components/recipe/recipe-detail';
+import { RecipeDetail, RecipeDetailSkeleton } from '@/components/recipe/recipe-detail';
 import { RecipeGrid, RecipeGridSkeleton } from '@/components/recipe/recipe-grid';
 import { RecipeEditLink } from '@/components/recipe/recipe-member-view';
 import { RecipePagination } from '@/components/recipe/recipe-pagination';
@@ -196,14 +196,21 @@ const subsections = [
 		id: 'recipe-detail',
 		title: 'Recipe detail',
 		description:
-			'Reading width, with ingredients and steps in text-lg. The cover and the row of other photos each open a viewer of every photo, the pencil beside the title, for the contributor and admins, opens the edit page, and the recipe’s actions sit under its details. Its headings start at h4 here, under this page’s own.',
+			'Reading width, with ingredients and steps in text-lg. Under the title and its credit, a ruled block holds a row of labelled cells for the times and yield, one for who added the recipe, when, and when it was edited if on a later day, and one for the tags; a row or cell with nothing to show is left out. The recipe’s actions follow, then the cover and the row of other photos, each opening a viewer of every photo, the description, and the original recipe’s pages, cropped thumbnails that open the viewer at their page. The pencil beside the title, for the contributor and admins, opens the edit page. Its headings start at h4 here, under this page’s own.',
 		Content: RecipeDetailSpecimen,
+	},
+	{
+		id: 'recipe-detail-loading',
+		title: 'Recipe detail, loading',
+		description:
+			'Skeletons hold the header’s place as most recipes fill it, every row of the ruled block included, while a recipe that was not prerendered loads.',
+		Content: RecipeDetailSkeletonSpecimen,
 	},
 	{
 		id: 'recipe-actions',
 		title: 'Recipe actions',
 		description:
-			'Icon-only buttons in one group under a recipe’s details, each named in a tooltip on desktop and 44 px under a finger. The favorite toggle comes first, its box held while it loads; here a stand-in heart that saves nothing. Share opens the device’s share sheet, and shows only where the browser has one, which desktop Firefox lacks; Copy link copies the link and says so. Links name the host the page is on, so a preview shares its own pages; here they name the sample recipe, which has no page. Print prints the recipe with its link in place of these buttons, without the header or the photos.',
+			'One group under a recipe’s details, 44 px tall under a finger. Start cooking opens the cooking view. The favorite toggle keeps its label and name while its heart fills red and its surface shows pressed, and its box is held while it loads; here a stand-in that saves nothing. More actions opens a menu: Share opens the device’s share sheet, and shows only where the browser has one, which desktop Firefox lacks; Copy link copies the link and says so; Print prints the recipe with its link in place of these actions, without the header or the photos. Links name the host the page is on, so a preview shares its own pages; here they name the sample recipe, which has no page.',
 		Content: RecipeActionsSpecimen,
 	},
 	{
@@ -290,6 +297,16 @@ function RecipeDetailSpecimen() {
 					titleAction={<RecipeEditLink slug={sampleRecipeDetail.slug} />}
 					favoriteToggle={<SampleFavoriteToggle recipeId={sampleRecipeDetail.id} />}
 				/>
+			</PageContainer>
+		</Specimen>
+	);
+}
+
+function RecipeDetailSkeletonSpecimen() {
+	return (
+		<Specimen className="px-0 py-10 sm:py-14">
+			<PageContainer width="reading">
+				<RecipeDetailSkeleton />
 			</PageContainer>
 		</Specimen>
 	);

@@ -5,7 +5,7 @@ import {
 	type ScaleStepperKind,
 } from '@/domain/recipe/recipe-yield';
 
-// The recipe page's URL parameter holding its scale, named by what the stepper counts.
+// The cooking view's URL parameter holding the recipe's scale, named by what the stepper counts.
 export const recipeScaleParamNames = {
 	servings: 'servings',
 	makes: 'makes',
@@ -30,7 +30,7 @@ export function parseRecipeScaleParam(
 	return parsed?.success === true ? scaleStepperValue(stepper, parsed.data) : stepper.original;
 }
 
-// The page's parameters with the scale's set, or left out at the recipe's own scale so the unscaled
+// The view's parameters with the scale's set, or left out at the recipe's own scale so the unscaled
 // recipe has one URL.
 export function withRecipeScaleParam(
 	searchParams: URLSearchParams,

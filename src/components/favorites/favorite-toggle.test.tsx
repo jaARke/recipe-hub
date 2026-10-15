@@ -29,6 +29,21 @@ afterEach(() => {
 });
 
 describe('FavoriteToggle', () => {
+	it('keeps its label as its name whether pressed or not, which aria-pressed tells apart', async () => {
+		const { action, answer } = heldAction();
+		const user = userEvent.setup();
+		render(<FavoriteToggle recipeId={recipeId} favorite={false} setFavoriteAction={action} />);
+
+		expect(favoriteButton().getAttribute('aria-pressed')).toBe('false');
+		expect(favoriteButton().textContent).toBe('Favorite');
+
+		await user.click(favoriteButton());
+
+		expect(favoriteButton().getAttribute('aria-pressed')).toBe('true');
+		expect(favoriteButton().textContent).toBe('Favorite');
+		await answer({ status: 'success' });
+	});
+
 	it('shows a favorite at once and keeps it once the page renders it saved', async () => {
 		const { action, answer } = heldAction();
 		const user = userEvent.setup();

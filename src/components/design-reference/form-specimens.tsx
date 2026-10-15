@@ -446,10 +446,10 @@ function SwitchSpecimen() {
 					))}
 				</div>
 			</Specimen>
-			<Specimen label="Inside its label, as a recipe’s cooking mode is: the label’s text is the target too">
+			<Specimen label="Inside its label: the label’s text is the target too">
 				<Label className="text-base">
 					<Switch />
-					Cooking mode
+					Show photos
 				</Label>
 			</Specimen>
 		</div>

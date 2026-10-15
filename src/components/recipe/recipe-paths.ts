@@ -31,6 +31,11 @@ export function recipeEditPath(slug: string): string {
 	return `${recipePath(slug)}/edit`;
 }
 
+// The recipe's full-screen cooking view.
+export function recipeCookPath(slug: string): string {
+	return `${recipePath(slug)}/cook`;
+}
+
 // The Blob store is private, so images reach the browser through the delivery route.
 export function recipeImageSrc(pathname: string): string {
 	return imageRouteSrc(pathname);

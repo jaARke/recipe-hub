@@ -129,8 +129,8 @@ export function formatScaleStepperLabel(recipeYield: RecipeYield | undefined): s
 		: stepperLabels[kind];
 }
 
-// How a yield's text opens, by its kind.
-const yieldVerbs = {
+// How a yield's text opens, by its kind, which also labels its count: "Serves" 8.
+export const yieldVerbs = {
 	servings: 'Serves',
 	makes: 'Makes',
 } as const satisfies Record<RecipeYield['kind'], string>;
@@ -144,7 +144,7 @@ function counted(amount: Amount, singular: string): string {
 }
 
 // What a yield counts, after its verb: "6" servings, "24 cookies".
-function yieldCount(recipeYield: RecipeYield): string {
+export function formatYieldCount(recipeYield: RecipeYield): string {
 	const amount = formatAmount(recipeYield.amount);
 	return recipeYield.kind === 'makes' && recipeYield.unit !== undefined
 		? `${amount} ${recipeYield.unit}`
@@ -157,7 +157,7 @@ function namedYieldCount(recipeYield: RecipeYield): string | undefined {
 		case 'servings':
 			return counted(recipeYield.amount, 'serving');
 		case 'makes':
-			return recipeYield.unit === undefined ? undefined : yieldCount(recipeYield);
+			return recipeYield.unit === undefined ? undefined : formatYieldCount(recipeYield);
 	}
 }
 
@@ -167,7 +167,7 @@ function batchCount(factor: number): string {
 }
 
 export function formatYield(recipeYield: RecipeYield): string {
-	return `${yieldVerbs[recipeYield.kind]} ${yieldCount(recipeYield)}`;
+	return `${yieldVerbs[recipeYield.kind]} ${formatYieldCount(recipeYield)}`;
 }
 
 // The yield at a scale, as the recipe's header and the stepper's announcement give it: "Serves 12",
@@ -188,7 +188,7 @@ export function formatScaledToLine(recipeYield: RecipeYield | undefined, factor:
 
 	const scaled = namedYieldCount(scaleYield(recipeYield, factor)) ?? batchCount(factor);
 	const verb = yieldVerbs[recipeYield.kind].toLowerCase();
-	return `Scaled to ${scaled} (recipe ${verb} ${yieldCount(recipeYield)})`;
+	return `Scaled to ${scaled} (recipe ${verb} ${formatYieldCount(recipeYield)})`;
 }
 
 // The note under a scaled recipe's steps, which keep the recipe's own amounts: "Amounts in the steps
