@@ -79,7 +79,10 @@ function RecipeSearchActiveFilters({
 			<ul aria-label="Active filters" className="flex flex-wrap gap-2">
 				{filters.map((filter) => (
 					<li key={filter.key}>
-						<Link href={filter.href} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+						<Link
+							href={filter.href}
+							className={buttonVariants({ variant: 'outline', size: 'sm', wrap: true })}
+						>
 							<span className="sr-only">Remove </span>
 							{filter.label}
 							<XIcon data-icon="inline-end" aria-hidden="true" />

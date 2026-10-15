@@ -106,7 +106,8 @@ async function RecipeBySlug({ params }: Pick<PageProps<'/recipes/[slug]'>, 'para
 
 export default function RecipePage({ params }: PageProps<'/recipes/[slug]'>) {
 	return (
-		<PageContainer width="reading" className="py-12 sm:py-16">
+		// Less above the title on phones, so more of the recipe shows on the first screen.
+		<PageContainer width="reading" className="pt-6 pb-12 sm:py-16">
 			<Suspense fallback={<RecipeDetailSkeleton />}>
 				<RecipeBySlug params={params} />
 			</Suspense>

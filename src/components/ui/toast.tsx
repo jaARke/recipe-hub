@@ -28,7 +28,8 @@ function ToastViewport({ className, ...props }: ToastPrimitive.Viewport.Props) {
 		<ToastPrimitive.Viewport
 			data-slot="toast-viewport"
 			className={cn(
-				'pointer-events-none fixed inset-x-4 bottom-4 z-50 mx-auto w-auto max-w-sm outline-none sm:right-4 sm:left-auto sm:mx-0 sm:w-full',
+				// A toast is about the screen in front of the reader, never part of a printout.
+				'pointer-events-none fixed inset-x-4 bottom-4 z-50 mx-auto w-auto max-w-sm outline-none sm:right-4 sm:left-auto sm:mx-0 sm:w-full print:hidden',
 				className
 			)}
 			{...props}

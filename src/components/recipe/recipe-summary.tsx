@@ -27,8 +27,6 @@ function recipeFacts({
 	return facts;
 }
 
-// The ids of the parts that rendered, for a link's aria-describedby.
-
 function RecipeCover({
 	image,
 	sizes,
@@ -95,6 +93,7 @@ function RecipeTags({
 				<li key={tag}>
 					<Badge
 						variant="secondary"
+						wrap
 						render={tagHref === undefined ? undefined : <Link href={tagHref(tag)} />}
 					>
 						{tag}

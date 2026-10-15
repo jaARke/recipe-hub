@@ -72,13 +72,9 @@ function RecipeImageViewer({ role, images, title, children }: RecipeImageViewerP
 				{({ payload }) => (
 					<>
 						{children}
-						{/* At most the screen's height less a margin, like its width; the slide shrinks to fit, so
-						only a caption longer than a line makes it scroll. */}
-						<DialogContent
-							ref={popupRef}
-							initialFocus={initialFocusRef}
-							className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
-						>
+						{/* The slide shrinks to fit the dialog's height, the screen's less a margin, so only a
+						caption longer than a line makes it scroll. */}
+						<DialogContent ref={popupRef} initialFocus={initialFocusRef} className="sm:max-w-2xl">
 							{/* Clears the close button in the corner. */}
 							<DialogHeader className="pr-8">
 								<DialogTitle>{title}</DialogTitle>

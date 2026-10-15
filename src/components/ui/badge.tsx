@@ -17,6 +17,10 @@ const badgeVariants = cva(
 				ghost: 'hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50',
 				link: 'text-primary underline-offset-4 hover:underline',
 			},
+			// User text, such as a tag, wraps within a narrow screen, curved at the corners as one line is.
+			wrap: {
+				true: 'h-auto min-h-5 rounded-[10px] py-px whitespace-normal wrap-anywhere [a]:h-auto [a]:min-h-6 [a]:rounded-[12px]',
+			},
 		},
 		defaultVariants: {
 			variant: 'default',
@@ -27,6 +31,7 @@ const badgeVariants = cva(
 function Badge({
 	className,
 	variant = 'default',
+	wrap,
 	render,
 	...props
 }: useRender.ComponentProps<'span'> & VariantProps<typeof badgeVariants>) {
@@ -34,7 +39,7 @@ function Badge({
 		defaultTagName: 'span',
 		props: mergeProps<'span'>(
 			{
-				className: cn(badgeVariants({ variant }), className),
+				className: cn(badgeVariants({ variant, wrap }), className),
 			},
 			props
 		),

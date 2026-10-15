@@ -49,6 +49,9 @@ const coverPhotoSizes = '(min-width: 672px) 624px, 100vw';
 // The other photos' thumbnails are w-24.
 const thumbnailPhotoSizes = '96px';
 
+// One or more blank lines, as stored text keeps its line breaks.
+const paragraphBreak = /\n{2,}/;
+
 // Every recipe with the tag, newest first as search lists them without a query.
 function tagSearchHref(tag: string): string {
 	return recipeSearchHref({ tags: [tag], sort: 'newest', page: 1 });
@@ -189,6 +192,19 @@ function InstructionSectionList({
 	);
 }
 
+// Paragraphs parted by blank lines, each kept whole in print, since notes can run for pages.
+function RecipeParagraphs({ text }: { text: string }) {
+	return (
+		<div className={cn(recipeTextStyles.body, 'flex flex-col gap-4')}>
+			{text.split(paragraphBreak).map((paragraph, index) => (
+				<p key={index} className="whitespace-pre-line print:break-inside-avoid">
+					{paragraph}
+				</p>
+			))}
+		</div>
+	);
+}
+
 // The cover, then a row of the other photos; each opens the viewer at itself. Left off the printout,
 // which is for cooking from.
 function RecipePhotos({ title, images }: { title: string; images: readonly RecipeImage[] }) {
@@ -269,9 +285,7 @@ function RecipeDetail({
 				{recipe.tags.length > 0 && <RecipeTags tags={recipe.tags} tagHref={tagSearchHref} />}
 			</header>
 			<RecipePhotos title={recipe.title} images={recipe.images} />
-			{recipe.description !== undefined && (
-				<p className={recipeTextStyles.body}>{recipe.description}</p>
-			)}
+			{recipe.description !== undefined && <RecipeParagraphs text={recipe.description} />}
 			<div className="flex flex-col gap-6">
 				<Section className={recipeTextStyles.section}>Ingredients</Section>
 				{recipe.ingredientSections.map((section, index) => (
@@ -285,10 +299,10 @@ function RecipeDetail({
 				))}
 			</div>
 			{recipe.notes !== undefined && (
-				<aside className="flex flex-col gap-2 rounded-xl bg-muted p-6 print:break-inside-avoid">
-					<p className={cn(recipeTextStyles.meta, 'text-muted-foreground')}>Notes</p>
-					<p className={recipeTextStyles.body}>{recipe.notes}</p>
-				</aside>
+				<div className="flex flex-col gap-6">
+					<Section className={recipeTextStyles.section}>Notes</Section>
+					<RecipeParagraphs text={recipe.notes} />
+				</div>
 			)}
 		</article>
 	);

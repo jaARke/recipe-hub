@@ -76,7 +76,6 @@ function CourseChips({
 	);
 }
 
-// Without the trigger button, which upstream leaves unnamed: the list opens as the input is used.
 function ComboboxSpecimen() {
 	return (
 		<Specimen label="The recipe form’s tags field builds on the chips, suggesting the labels in use">
@@ -84,7 +83,13 @@ function ComboboxSpecimen() {
 				<Field>
 					<FieldLabel htmlFor="combobox-single">One value, typed or chosen</FieldLabel>
 					<Combobox items={sampleCourses}>
-						<ComboboxInput id="combobox-single" placeholder="Choose a course" showTrigger={false} />
+						<ComboboxInput
+							id="combobox-single"
+							placeholder="Choose a course"
+							triggerLabel="Show courses"
+							showClear
+							clearLabel="Clear course"
+						/>
 						<CourseList />
 					</Combobox>
 				</Field>
@@ -95,7 +100,13 @@ function ComboboxSpecimen() {
 				<Field data-disabled="true">
 					<FieldLabel htmlFor="combobox-disabled">Disabled</FieldLabel>
 					<Combobox items={sampleCourses} defaultValue={chosenCourses[0]} disabled>
-						<ComboboxInput id="combobox-disabled" showTrigger={false} disabled />
+						<ComboboxInput
+							id="combobox-disabled"
+							triggerLabel="Show courses"
+							showClear
+							clearLabel="Clear course"
+							disabled
+						/>
 						<CourseList />
 					</Combobox>
 				</Field>
