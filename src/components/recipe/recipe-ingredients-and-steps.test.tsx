@@ -197,6 +197,25 @@ describe('RecipeIngredientsAndSteps', () => {
 		expect(request).toHaveBeenCalledTimes(2);
 	});
 
+	it('lets go of other recipes’ expired progress, and keeps what still lasts', () => {
+		const other = { id: '0199c7a4-2c3e-7b1a-9f00-000000000001', version: recipe.version };
+		const recent = { id: '0199c7a4-2c3e-7b1a-9f00-000000000002', version: recipe.version };
+		const progress = { on: true, checked: new Set<CookingRowKey>(['step:0:0']) };
+		localStorage.setItem(
+			cookingProgressKey(other.id),
+			cookingProgressEntry(progress, other, new Date(Date.now() - 49 * 60 * 60 * 1000)) ?? ''
+		);
+		localStorage.setItem(
+			cookingProgressKey(recent.id),
+			cookingProgressEntry(progress, recent, new Date()) ?? ''
+		);
+
+		render(recipePage);
+
+		expect(localStorage.getItem(cookingProgressKey(other.id))).toBeNull();
+		expect(localStorage.getItem(cookingProgressKey(recent.id))).not.toBeNull();
+	});
+
 	it('renders the plain lists without a switch outside a recipe page', () => {
 		keep(true, ['step:0:0']);
 		render(lists);

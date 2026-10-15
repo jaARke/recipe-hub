@@ -4,6 +4,7 @@ import {
 	readBrowserStorage,
 	readTabStorage,
 	removeBrowserStorage,
+	removeBrowserStorageWhere,
 	removeMemberBrowserStorage,
 	writeBrowserStorage,
 	writeTabStorage,
@@ -85,6 +86,19 @@ describe('browser storage', () => {
 		expect(readBrowserStorage('member:recipe-form:new')).toBeUndefined();
 		expect(readBrowserStorage('member:recipe-form:import:1')).toBeUndefined();
 		expect(readBrowserStorage('theme')).toBe('dark');
+	});
+
+	it('removes the entries under a prefix that the check finds stale, and nothing else', () => {
+		vi.stubGlobal('localStorage', memoryStorage());
+		writeBrowserStorage('cooking:soup', 'old');
+		writeBrowserStorage('cooking:pie', 'new');
+		writeBrowserStorage('theme', 'old');
+
+		removeBrowserStorageWhere('cooking:', (value) => value === 'old');
+
+		expect(readBrowserStorage('cooking:soup')).toBeUndefined();
+		expect(readBrowserStorage('cooking:pie')).toBe('new');
+		expect(readBrowserStorage('theme')).toBe('old');
 	});
 
 	it('reads nothing where there is no storage at all, as on the server', () => {

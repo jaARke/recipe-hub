@@ -5,6 +5,8 @@ import {
 	cookingOff,
 	cookingProgressEntry,
 	cookingProgressKey,
+	cookingProgressKeyPrefix,
+	isStaleCookingProgress,
 	readCookingProgress,
 	type CookingProgress,
 	type CookingRecipe,
@@ -14,6 +16,7 @@ import { useScreenWakeLock } from '@/components/cooking/use-screen-wake-lock';
 import {
 	readBrowserStorage,
 	removeBrowserStorage,
+	removeBrowserStorageWhere,
 	writeBrowserStorage,
 } from '@/lib/browser-storage';
 
@@ -92,6 +95,13 @@ function CookingModeProvider({
 	const store = React.useMemo(() => createCookingProgressStore({ id, version }), [id, version]);
 	const progress = React.useSyncExternalStore(store.subscribe, store.getSnapshot, serverSnapshot);
 	useScreenWakeLock(progress.on);
+
+	// Expired progress for recipes this device never opens again is let go whenever any recipe is.
+	React.useEffect(() => {
+		removeBrowserStorageWhere(cookingProgressKeyPrefix, (entry) =>
+			isStaleCookingProgress(entry, new Date())
+		);
+	}, []);
 
 	const cookingMode = React.useMemo<CookingMode>(
 		() => ({

@@ -27,7 +27,8 @@ export type CookingRecipe = {
 // Cooking mode off with nothing checked, as every page renders on the server.
 export const cookingOff: CookingProgress = { on: false, checked: new Set() };
 
-const keyPrefix = 'cooking';
+// Every recipe's entry sits under it.
+export const cookingProgressKeyPrefix = 'cooking:';
 
 const indexSchema = z.int().nonnegative();
 
@@ -43,7 +44,7 @@ const entrySchema = z.object({
 type CookingProgressEntry = z.infer<typeof entrySchema>;
 
 export function cookingProgressKey(recipeId: string): string {
-	return `${keyPrefix}:${recipeId}`;
+	return `${cookingProgressKeyPrefix}${recipeId}`;
 }
 
 export function ingredientRowKey(sectionIndex: number, lineIndex: number): CookingRowKey {
@@ -59,16 +60,8 @@ export function cookingProgressCutoff(now: Date): Date {
 	return new Date(now.getTime() - hoursInMilliseconds(settings.cooking.progressLifetimeHours));
 }
 
-// The stored progress, or undefined where there is none, where it can't be read, where it has
-// expired, or where it was kept for another version of the recipe.
-export function readCookingProgress(
-	entry: string | undefined,
-	recipe: CookingRecipe,
-	now: Date
-): CookingProgress | undefined {
-	if (entry === undefined) {
-		return undefined;
-	}
+// The stored entry while it lasts, or undefined where it can't be read or has expired.
+function lastingEntry(entry: string, now: Date): CookingProgressEntry | undefined {
 	let data: unknown;
 	try {
 		data = JSON.parse(entry);
@@ -76,14 +69,30 @@ export function readCookingProgress(
 		return undefined;
 	}
 	const result = entrySchema.safeParse(data);
-	if (
-		!result.success ||
-		result.data.version !== recipe.version ||
-		new Date(result.data.savedAt) < cookingProgressCutoff(now)
-	) {
+	if (!result.success || new Date(result.data.savedAt) < cookingProgressCutoff(now)) {
 		return undefined;
 	}
-	return { on: result.data.on, checked: new Set(result.data.checked) };
+	return result.data;
+}
+
+// The stored progress, or undefined where there is none, where it can't be read, where it has
+// expired, or where it was kept for another version of the recipe.
+export function readCookingProgress(
+	entry: string | undefined,
+	recipe: CookingRecipe,
+	now: Date
+): CookingProgress | undefined {
+	const lasting = entry === undefined ? undefined : lastingEntry(entry, now);
+	if (lasting === undefined || lasting.version !== recipe.version) {
+		return undefined;
+	}
+	return { on: lasting.on, checked: new Set(lasting.checked) };
+}
+
+// Whether any recipe's entry is of no further use: unreadable or expired. Its recipe's version is
+// checked only when that recipe's page reads it.
+export function isStaleCookingProgress(entry: string, now: Date): boolean {
+	return lastingEntry(entry, now) === undefined;
 }
 
 // The entry to keep for the progress, or undefined where there is nothing to keep: cooking mode off

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	cookingProgressEntry,
 	cookingProgressKey,
+	isStaleCookingProgress,
 	readCookingProgress,
 	type CookingProgress,
 	type CookingRecipe,
@@ -34,6 +35,14 @@ describe('cooking progress', () => {
 			cooking
 		);
 		expect(readCookingProgress(kept(), soup, new Date('2026-10-17T18:00:00.001Z'))).toBeUndefined();
+	});
+
+	it('finds an entry stale once it expires or when it cannot be read, whatever its version', () => {
+		const entry = kept() ?? '';
+		expect(isStaleCookingProgress(entry, new Date('2026-10-17T18:00:00.000Z'))).toBe(false);
+		expect(isStaleCookingProgress(entry, new Date('2026-10-17T18:00:00.001Z'))).toBe(true);
+		expect(isStaleCookingProgress('not json', savedAt)).toBe(true);
+		expect(isStaleCookingProgress('{"on":true}', savedAt)).toBe(true);
 	});
 
 	it('reads nothing once the recipe has been edited since', () => {

@@ -35,17 +35,27 @@ export function memberBrowserStorageKey(name: string): string {
 	return `${memberKeyPrefix}${name}`;
 }
 
-// Removes everything kept for the member, as signing out does, so the next person on a shared device
-// finds none of it.
-export function removeMemberBrowserStorage(): void {
+// Removes each entry under the prefix whose value the check finds stale, such as progress past its
+// lifetime for a page this device never opens again.
+export function removeBrowserStorageWhere(
+	prefix: string,
+	isStale: (value: string) => boolean
+): void {
 	attempt('localStorage', (storage) => {
 		const keys = Array.from({ length: storage.length }, (_, index) => storage.key(index));
 		for (const key of keys) {
-			if (key?.startsWith(memberKeyPrefix) === true) {
+			const value = key?.startsWith(prefix) === true ? storage.getItem(key) : null;
+			if (key !== null && value !== null && isStale(value)) {
 				storage.removeItem(key);
 			}
 		}
 	});
+}
+
+// Removes everything kept for the member, as signing out does, so the next person on a shared device
+// finds none of it.
+export function removeMemberBrowserStorage(): void {
+	removeBrowserStorageWhere(memberKeyPrefix, () => true);
 }
 
 // What this tab keeps until it closes, such as where each recipe was opened from. A browser may
