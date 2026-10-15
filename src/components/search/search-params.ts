@@ -10,13 +10,16 @@ import {
 	type RecipeTotalTimeChoice,
 } from '@/application/search/recipe-search-dtos';
 import {
-	hrefWithParams,
 	parseOptionParam,
 	parsePageParam,
 	singleParam,
 	type RouteSearchParams,
 } from '@/components/recipe/recipe-list-params';
-import { recipeListParamNames, recipeSearchPath } from '@/components/recipe/recipe-paths';
+import {
+	hrefWithParams,
+	recipeListParamNames,
+	recipeSearchPath,
+} from '@/components/recipe/recipe-paths';
 import { storedTagListSchema } from '@/domain/recipe/tag';
 import { normalizeTagLabel } from '@/domain/recipe/tag-normalization';
 

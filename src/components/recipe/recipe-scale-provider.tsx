@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { hrefWithParams } from '@/components/recipe/recipe-paths';
 import {
 	parseRecipeScaleParam,
 	withRecipeScaleParam,
@@ -57,9 +58,12 @@ function createRecipeScaleStore(stepper: ScaleStepper): RecipeScaleStore {
 				return;
 			}
 
-			const url = new URL(location.href);
-			url.search = withRecipeScaleParam(url.searchParams, stepper, value).toString();
-			window.history.replaceState(null, '', url);
+			const params = withRecipeScaleParam(new URLSearchParams(location.search), stepper, value);
+			window.history.replaceState(
+				null,
+				'',
+				`${hrefWithParams(location.pathname, params)}${location.hash}`
+			);
 			for (const listener of listeners) {
 				listener();
 			}

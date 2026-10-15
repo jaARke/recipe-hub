@@ -1,6 +1,7 @@
 import { recipeSorts, type RecipeSort } from '@/application/ports/recipe-repository';
 import {
 	favoritesPath,
+	hrefWithParams,
 	recipeListParamNames,
 	recipeListPath,
 } from '@/components/recipe/recipe-paths';
@@ -45,11 +46,6 @@ export function parseOptionParam<Option extends string | number>(
 	}
 
 	return options.find((option) => String(option) === param) ?? null;
-}
-
-export function hrefWithParams(path: string, params: URLSearchParams): string {
-	const query = params.toString();
-	return query === '' ? path : `${path}?${query}`;
 }
 
 export function parseRecipeListParams(params: RouteSearchParams): RecipeListState | null {
