@@ -7,6 +7,7 @@ import { setFavorite } from '@/app/(browse)/favorites/actions';
 import { CookingModeProvider } from '@/components/cooking/cooking-mode-provider';
 import { FavoriteToggle } from '@/components/favorites/favorite-toggle';
 import { PageContainer } from '@/components/layout/page-container';
+import { RecipeBackLink } from '@/components/recipe/recipe-back-link';
 import { RecipeDetail, RecipeDetailSkeleton } from '@/components/recipe/recipe-detail';
 import { RecipeJsonLd } from '@/components/recipe/recipe-json-ld';
 import { defaultListSort } from '@/components/recipe/recipe-list-params';
@@ -103,6 +104,7 @@ async function RecipeBySlug({ params }: Pick<PageProps<'/recipes/[slug]'>, 'para
 	return (
 		<>
 			<RecipeJsonLd recipe={recipe} siteUrl={siteUrl} />
+			<RecipeBackLink recipePathname={recipePath(recipe.slug)} className="mb-6" />
 			<CookingModeProvider recipe={{ id: recipe.id, version: recipe.updatedAt.toISOString() }}>
 				<RecipeDetail
 					recipe={recipe}

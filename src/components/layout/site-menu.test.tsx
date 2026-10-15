@@ -1,8 +1,10 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HeaderMember } from '@/components/layout/header-member';
 import { SiteMenu } from '@/components/layout/site-menu';
+import { stubTabNavigation } from '@/components/recipe/testing/tab-navigation';
+import { writeTabStorage } from '@/lib/browser-storage';
 
 const location = vi.hoisted(() => ({ pathname: '/' }));
 
@@ -14,6 +16,11 @@ vi.mock('next/navigation', () => ({
 
 beforeEach(() => {
 	location.pathname = '/';
+});
+
+afterEach(() => {
+	vi.unstubAllGlobals();
+	sessionStorage.clear();
 });
 
 const member: HeaderMember = { displayName: 'Sam', role: 'member' };
@@ -106,6 +113,21 @@ describe('SiteMenu', () => {
 		).toBeNull();
 		expect(
 			(await within(menu).findByRole('menuitem', { name: 'Admin' })).getAttribute('aria-current')
+		).toBeNull();
+	});
+
+	it('marks Favorites as the section of a recipe opened from Favorites', async () => {
+		location.pathname = '/recipes/lemon-bars';
+		const favoritesUrl = `${window.location.origin}/favorites?page=2`;
+		stubTabNavigation([favoritesUrl, `${window.location.origin}/recipes/lemon-bars`]);
+		writeTabStorage('opened-from:/recipes/lemon-bars', favoritesUrl);
+		const menu = await openMenu(Promise.resolve(null));
+
+		expect(
+			within(menu).getByRole('menuitem', { name: 'Favorites' }).getAttribute('aria-current')
+		).toBe('true');
+		expect(
+			within(menu).getByRole('menuitem', { name: 'Browse' }).getAttribute('aria-current')
 		).toBeNull();
 	});
 });

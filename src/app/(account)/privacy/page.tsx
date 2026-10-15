@@ -139,6 +139,11 @@ export default function PrivacyPage() {
 						{settings.cooking.progressLifetimeHours} hours after your last change or once the recipe
 						is edited, and Start over clears your checks.
 					</li>
+					<li>
+						Each browser tab remembers which list you opened a recipe from, such as a search or your
+						favorites, so the recipe can link back to it. It stays in your browser, is never sent to
+						the site, and is forgotten when the tab closes.
+					</li>
 				</ul>
 			</PageSection>
 			<PageSection id="privacy-services" title="Services the site uses">

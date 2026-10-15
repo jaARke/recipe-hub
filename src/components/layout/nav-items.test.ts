@@ -27,6 +27,26 @@ describe('navItemCurrent', () => {
 		expect(navItemCurrent(browse, '/search')).toBe('true');
 	});
 
+	it('marks Favorites, not Browse, as the section on a recipe opened from Favorites', () => {
+		expect(navItemCurrent(navItem('Favorites'), '/recipes/sunday-pot-roast', '/favorites')).toBe(
+			'true'
+		);
+		expect(
+			navItemCurrent(navItem('Browse'), '/recipes/sunday-pot-roast', '/favorites')
+		).toBeUndefined();
+	});
+
+	it('marks Browse as the section on a recipe opened from Browse or from search', () => {
+		for (const listPathname of ['/', '/search']) {
+			expect(navItemCurrent(navItem('Browse'), '/recipes/sunday-pot-roast', listPathname)).toBe(
+				'true'
+			);
+			expect(
+				navItemCurrent(navItem('Favorites'), '/recipes/sunday-pot-roast', listPathname)
+			).toBeUndefined();
+		}
+	});
+
 	it('marks Favorites as the page on /favorites', () => {
 		expect(navItemCurrent(navItem('Favorites'), '/favorites')).toBe('page');
 	});

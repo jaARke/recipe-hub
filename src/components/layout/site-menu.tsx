@@ -13,6 +13,7 @@ import {
 	type NavItem,
 } from '@/components/layout/nav-items';
 import { ThemeRadioGroup } from '@/components/layout/theme-toggle';
+import { useRecipeOpenedFrom } from '@/components/recipe/use-recipe-opened-from';
 import { Button } from '@/components/ui/button';
 import {
 	DropdownMenu,
@@ -29,12 +30,14 @@ type SiteMenuProps = {
 
 // The current section's item is underlined, so it is marked by more than color.
 function SiteMenuNavItem({ item }: { item: NavItem }) {
+	const pathname = usePathname();
+	const openedFrom = useRecipeOpenedFrom(pathname);
 	return (
 		<DropdownMenuItem
 			render={
 				<Link
 					href={item.href}
-					aria-current={navItemCurrent(item, usePathname())}
+					aria-current={navItemCurrent(item, pathname, openedFrom?.list.pathname)}
 					className="decoration-2 underline-offset-4 aria-[current]:underline"
 				/>
 			}
