@@ -17,14 +17,15 @@ export async function copyLink(url: string, copyByHand: string): Promise<void> {
 	}
 }
 
-// Opens the device's share sheet, or copies the link where the browser has none, as desktop Firefox
-// doesn't, or refuses to share it. A share the reader cancels ends there.
-export async function shareLink(link: SharedLink, copyByHand: string): Promise<void> {
-	if (!('share' in navigator)) {
-		await copyLink(link.url, copyByHand);
-		return;
-	}
+// Whether the browser has a share sheet for shareLink to open, through the Web Share API, which
+// desktop Firefox lacks.
+export function hasShareSheet(): boolean {
+	return 'share' in navigator;
+}
 
+// Opens the device's share sheet, or copies the link where the browser refuses to share it, since the
+// reader asked for the link. A share the reader cancels ends there.
+export async function shareLink(link: SharedLink, copyByHand: string): Promise<void> {
 	try {
 		await navigator.share(link);
 	} catch (error) {

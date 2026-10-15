@@ -5,7 +5,7 @@ import { LinkIcon, PrinterIcon, ShareIcon, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react';
 import { useHydrated } from '@/components/forms/use-hydrated';
 import { recipePath } from '@/components/recipe/recipe-paths';
-import { copyLink, shareLink } from '@/components/sharing/link-sharing';
+import { copyLink, hasShareSheet, shareLink } from '@/components/sharing/link-sharing';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -50,7 +50,8 @@ function RecipeActionButton({
 	);
 }
 
-// Share, Copy link, and Print, after the favorite toggle when one is passed. A printout shows the
+// Share, Copy link, and Print, after the favorite toggle when one is passed; Share only where the
+// browser has a share sheet, since elsewhere it would only copy the link. A printout shows the
 // recipe's link in their place.
 function RecipeActions({
 	slug,
@@ -63,8 +64,10 @@ function RecipeActions({
 	// buttons after it never move; the toggle fills the box.
 	favoriteToggle?: ReactNode;
 }) {
-	// The host is known only in the browser.
+	// The host is known only in the browser, and so is its share sheet. Share renders until hydration,
+	// so phones and Safari, which have one, never shift, and other browsers drop it once hydrated.
 	const hydrated = useHydrated();
+	const showsShare = !hydrated || hasShareSheet();
 
 	return (
 		<>
@@ -74,11 +77,13 @@ function RecipeActions({
 						{favoriteToggle}
 					</div>
 				)}
-				<RecipeActionButton
-					label="Share"
-					icon={ShareIcon}
-					onClick={() => shareLink({ title, url: recipeLink(slug) }, copyByHand)}
-				/>
+				{showsShare && (
+					<RecipeActionButton
+						label="Share"
+						icon={ShareIcon}
+						onClick={() => shareLink({ title, url: recipeLink(slug) }, copyByHand)}
+					/>
+				)}
 				<RecipeActionButton
 					label="Copy link"
 					icon={LinkIcon}

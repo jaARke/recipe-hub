@@ -203,7 +203,7 @@ const subsections = [
 		id: 'recipe-actions',
 		title: 'Recipe actions',
 		description:
-			'Icon-only buttons in one group under a recipe’s details, each named in a tooltip on desktop and 44 px under a finger. The favorite toggle comes first, its box held while it loads; here a stand-in heart that saves nothing. Share opens the device’s share sheet, and copies the link where the browser has none; Copy link copies it and says so. Links name the host the page is on, so a preview shares its own pages; here they name the sample recipe, which has no page. Print prints the recipe with its link in place of these buttons, without the header or the photos.',
+			'Icon-only buttons in one group under a recipe’s details, each named in a tooltip on desktop and 44 px under a finger. The favorite toggle comes first, its box held while it loads; here a stand-in heart that saves nothing. Share opens the device’s share sheet, and shows only where the browser has one, which desktop Firefox lacks; Copy link copies the link and says so. Links name the host the page is on, so a preview shares its own pages; here they name the sample recipe, which has no page. Print prints the recipe with its link in place of these buttons, without the header or the photos.',
 		Content: RecipeActionsSpecimen,
 	},
 	{
