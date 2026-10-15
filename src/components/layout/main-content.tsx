@@ -14,14 +14,9 @@ function SkipToMainContent() {
 	);
 }
 
-// Every page's main landmark, the skip link's target. It fills the body's height, so the footer
-// sits at the bottom of a short page.
+// Every page's main landmark, the skip link's target.
 function MainContent({ children }: { children: React.ReactNode }) {
-	return (
-		<main id={mainContentId} className="flex-1">
-			{children}
-		</main>
-	);
+	return <main id={mainContentId}>{children}</main>;
 }
 
 export { MainContent, SkipToMainContent };

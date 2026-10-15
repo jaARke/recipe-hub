@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 import { nextParamName, requestAccessPath, safeNextPath } from '@/components/auth/auth-paths';
 import { SignInForm, SignInFormSkeleton } from '@/components/auth/sign-in-form';
 import { PageContainer } from '@/components/layout/page-container';
+import { PrivacyNote } from '@/components/layout/privacy-note';
 import { TextLink } from '@/components/layout/text-link';
 import { contributePath } from '@/components/recipe/recipe-paths';
 import { settings } from '@/lib/settings';
@@ -48,6 +49,7 @@ export default function SignInPage({ searchParams }: PageProps<'/sign-in'>) {
 			<p className="text-muted-foreground">
 				Don’t have an account? <TextLink href={requestAccessPath}>Request access</TextLink>.
 			</p>
+			<PrivacyNote />
 		</PageContainer>
 	);
 }

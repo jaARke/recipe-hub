@@ -37,6 +37,9 @@ export const settingsSchema = z
 			maxUnsavedImports: z.int().positive(),
 			importDraftLifetimeDays: z.int().positive(),
 		}),
+		drafts: z.object({
+			savedDraftLifetimeDays: z.int().positive(),
+		}),
 		ai: z.object({
 			pageModelId: modelIdSchema,
 			scanModelId: modelIdSchema,

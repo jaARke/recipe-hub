@@ -27,6 +27,11 @@ export const settings: z.output<typeof settingsSchema> = {
 		// its source URL are cleared.
 		importDraftLifetimeDays: 7,
 	},
+	drafts: {
+		// How long a draft a member saves from the recipe form is kept after its last save: time to
+		// finish a recipe over a few weekends.
+		savedDraftLifetimeDays: 30,
+	},
 	ai: {
 		// The AI Gateway models that read a page's text and photos of a written recipe, chosen by
 		// `pnpm evaluate` and tuned independently. Composition passes them to the extractors, since the

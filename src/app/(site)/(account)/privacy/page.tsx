@@ -73,10 +73,15 @@ export default function PrivacyPage() {
 						saved, so anyone can see them, signed in or not.
 					</li>
 					<li>
+						A draft you save from the recipe form is kept until you save the recipe or delete the
+						draft. A draft you leave is deleted {dayCount(settings.drafts.savedDraftLifetimeDays)}{' '}
+						after your last save.
+					</li>
+					<li>
 						A photo or scan you upload isn’t listed anywhere until the recipe it’s for is saved.
 						Until then it opens only for someone who has its address, and it’s removed{' '}
-						{dayCount(settings.retention.unusedImageLifetimeDays)} after no recipe or import draft
-						names it.
+						{dayCount(settings.retention.unusedImageLifetimeDays)} after no recipe or draft names
+						it.
 					</li>
 					<li>
 						A photo or scan that’s removed, or that belongs to a deleted recipe, is deleted for good
@@ -112,6 +117,12 @@ export default function PrivacyPage() {
 						Signing in sets a cookie that keeps you signed in. Adding or using a passkey sets a
 						short-lived cookie for that step.
 					</li>
+					{/* Better Auth's client names and writes the entry, in its broadcast channel. */}
+					<li>
+						Signing out leaves a note named “better-auth.message” in your browser, which the site’s
+						other open tabs read to notice you’ve signed out. It holds no account details and is
+						never sent to the site.
+					</li>
 					<li>
 						The request form and requests for a sign-in code use Vercel BotID, which runs a check in
 						your browser to tell people from automated programs.
@@ -133,11 +144,10 @@ export default function PrivacyPage() {
 						them.
 					</li>
 					<li>
-						Cooking mode keeps, in your browser, whether it’s on for a recipe and which of its
-						ingredients and steps you’ve checked, so they’re still there if the page reloads. None
-						of it is sent to the site, and signing out leaves it. It’s cleared{' '}
-						{settings.cooking.progressLifetimeHours} hours after your last change or once the recipe
-						is edited, and Start over clears your checks.
+						In the cooking view, each browser tab remembers which ingredients you’ve checked off as
+						gathered, so they’re still there if the page reloads. They stay in your browser, are
+						never sent to the site, and are forgotten when the tab closes. The step you’re on and
+						how much you’re making are part of the page’s address.
 					</li>
 					<li>
 						Each browser tab remembers which list you opened a recipe from, such as a search or your

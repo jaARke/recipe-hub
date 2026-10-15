@@ -1,9 +1,8 @@
 import type { Metadata } from 'next';
 import { requestAccess } from '@/app/(site)/(account)/request-access/actions';
 import { RequestAccessForm } from '@/components/account/request-access-form';
-import { privacyPath } from '@/components/auth/auth-paths';
 import { PageContainer } from '@/components/layout/page-container';
-import { TextLink } from '@/components/layout/text-link';
+import { PrivacyNote } from '@/components/layout/privacy-note';
 import { settings } from '@/lib/settings';
 
 export const metadata: Metadata = {
@@ -24,9 +23,7 @@ export default function RequestAccessPage() {
 				action={requestAccess}
 				nextSteps={`An admin will review it. If it’s approved, you’ll get an invite link to create your account, by email if you gave an address. The link works for ${settings.accounts.inviteLifetimeDays} days.`}
 			/>
-			<p className="text-sm text-muted-foreground">
-				Read <TextLink href={privacyPath}>what we store and why</TextLink>.
-			</p>
+			<PrivacyNote />
 		</PageContainer>
 	);
 }

@@ -10,6 +10,7 @@ import { inviteAccountParamName } from '@/components/auth/auth-paths';
 import { InviteFlow } from '@/components/auth/invite-flow';
 import { InviteFlowSkeleton } from '@/components/auth/invite-steps';
 import { PageContainer } from '@/components/layout/page-container';
+import { PrivacyNote } from '@/components/layout/privacy-note';
 import { parseOptionParam } from '@/components/recipe/recipe-list-params';
 import { getMemberService } from '@/composition/services';
 import { settings } from '@/lib/settings';
@@ -47,6 +48,7 @@ export default function InvitePage({ searchParams }: PageProps<'/invite'>) {
 			<Suspense fallback={<InviteFlowSkeleton />}>
 				<InviteForVisitor searchParams={searchParams} />
 			</Suspense>
+			<PrivacyNote />
 		</PageContainer>
 	);
 }

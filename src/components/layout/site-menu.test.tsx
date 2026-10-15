@@ -39,11 +39,14 @@ function itemNames(group: HTMLElement, role: 'menuitem' | 'menuitemradio' = 'men
 }
 
 describe('SiteMenu', () => {
-	it('offers a signed-out visitor the site, sign-in, and the theme', async () => {
+	it('offers a signed-out visitor the site, sign-in, privacy, and the theme', async () => {
 		const menu = await openMenu(Promise.resolve(null));
 
 		const account = await within(menu).findByRole('group', { name: 'Account' });
-		expect(itemNames(account)).toEqual(['Sign in', 'Request access']);
+		expect(itemNames(account)).toEqual(['Sign in', 'Request access', 'Privacy']);
+		expect(within(account).getByRole('menuitem', { name: 'Privacy' }).getAttribute('href')).toBe(
+			'/privacy'
+		);
 		expect(itemNames(within(menu).getByRole('group', { name: 'Navigation' }))).toEqual([
 			'Browse',
 			'Favorites',
@@ -53,11 +56,11 @@ describe('SiteMenu', () => {
 		expect(itemNames(theme, 'menuitemradio')).toEqual(['Light', 'Dark', 'System']);
 	});
 
-	it("keeps a member's account group to the account itself", async () => {
+	it("keeps a member's account group to the account and privacy, with Sign out last", async () => {
 		const menu = await openMenu(Promise.resolve(member));
 
 		const account = await within(menu).findByRole('group', { name: 'Signed in as Sam' });
-		expect(itemNames(account)).toEqual(['Account', 'Sign out']);
+		expect(itemNames(account)).toEqual(['Account', 'Privacy', 'Sign out']);
 		expect(itemNames(within(menu).getByRole('group', { name: 'Navigation' }))).toEqual([
 			'Browse',
 			'Favorites',
@@ -69,7 +72,7 @@ describe('SiteMenu', () => {
 		const menu = await openMenu(Promise.resolve(admin));
 
 		const account = await within(menu).findByRole('group', { name: 'Signed in as Avery' });
-		expect(itemNames(account)).toEqual(['Account', 'Sign out']);
+		expect(itemNames(account)).toEqual(['Account', 'Privacy', 'Sign out']);
 		expect(itemNames(within(menu).getByRole('group', { name: 'Navigation' }))).toEqual([
 			'Browse',
 			'Favorites',
