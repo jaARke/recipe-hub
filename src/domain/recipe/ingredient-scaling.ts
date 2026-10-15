@@ -14,7 +14,7 @@ import {
 import pluralize from 'pluralize';
 import type { Amount } from '@/domain/recipe/amount';
 import { formatAmount } from '@/domain/recipe/amount-format';
-import { amountArticles, numberWords } from '@/domain/recipe/amount-words';
+import { numberWords, readAmountWords, wholeNumberWords } from '@/domain/recipe/amount-words';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
 import { amountOfQuantities } from '@/domain/recipe/ingredient-parser';
 import {
@@ -26,12 +26,17 @@ import {
 	type MetricUnit,
 } from '@/domain/recipe/ingredient-units';
 
+// What the scale left unscaled that a cook would scale: the whole line, when nothing in it was read
+// though it gives an amount ("a few sprigs thyme", "Juice of 1 lemon"), which the page marks "Not
+// scaled"; or part of it, when text the scale could not read still holds a number ("1 egg plus 1
+// yolk"), which the page shows with the original, the line's text, beneath.
+export type UnscaledPart = 'whole' | 'part';
+
 export type ScaledIngredientLine = {
 	// The line at the scale, in the shape the recipe page renders; its text stays the original.
 	line: IngredientLine;
-	// The original, shown beneath the line when text the scale could not read still holds a number, or
-	// opens with an article it could not read as one: "a few sprigs thyme".
-	asWritten?: string;
+	// Absent when the scale read everything a cook would scale, as in "Salt to taste".
+	unscaled?: UnscaledPart;
 };
 
 type Rounding = (value: number) => number;
@@ -364,17 +369,31 @@ function openingMeasurement(item: string, afterMeasure: boolean): OpeningMeasure
 	return { ...first, prefix, rest: rest.slice(first.measurement.endIndex) };
 }
 
-const numberWordSource = `(?:${[...numberWords, 'dozen'].join('|')})`;
+function wordsSource(words: readonly string[]): string {
+	return `(?:${words.join('|')})`;
+}
 
-// Number words a line may spell out, as in "7 eggs plus one egg yolk", alone or joined by hyphens, as
-// in "one-half". "half-and-half" holds none.
-const numberWord = new RegExp(
-	String.raw`(?<![\p{L}-])${numberWordSource}(?:-${numberWordSource})*(?![\p{L}-])`,
+// A whole number in words, alone or joined by hyphens to more number words, as in "7 eggs plus one egg
+// yolk", "twelve to fifteen", or "one-half". "five-spice" holds none.
+const wholeNumberWord = new RegExp(
+	String.raw`(?<![\p{L}-])${wordsSource(wholeNumberWords)}(?:-${wordsSource(numberWords)})*(?![\p{L}-])`,
 	'iu'
 );
 
-// A line that opens with "a" or "an" gives an amount, read or not: "a few sprigs thyme".
-const leadingArticle = new RegExp(String.raw`^(?:${amountArticles.join('|')})\s`, 'iu');
+// Where a word starts, as an amount in words does.
+const wordStart = /(?<![\p{L}-])\p{L}/gu;
+
+// An article or a fraction in words counts as an amount only before a unit, as the parser reads one:
+// "plus a quarter cup" holds one, while "half and half", "cut in half", and "artichoke quarters" do not.
+function holdsAmountWordsBeforeUnit(text: string): boolean {
+	return Array.from(text.matchAll(wordStart), (match) => text.slice(match.index)).some((rest) => {
+		const words = readAmountWords(rest);
+		return (
+			words?.needsUnit === true &&
+			readUnit(rest.slice(words.written.length).trimStart()) !== undefined
+		);
+	});
+}
 
 // Whether text the scale left as written still holds a number other than a length: the "2" in
 // "cut into 2-inch pieces" stays true at any scale.
@@ -386,7 +405,13 @@ function holdsNumber(text: string): boolean {
 		}
 	}
 
-	return /\p{N}/u.test(rest) || numberWord.test(rest);
+	return /\p{N}/u.test(rest) || wholeNumberWord.test(rest) || holdsAmountWordsBeforeUnit(rest);
+}
+
+// A line the parser read nothing in gives an amount when it holds a number or opens with an amount in
+// words, read or not: "a few sprigs thyme", "half a lemon".
+function givesAmount(text: string): boolean {
+	return holdsNumber(text) || readAmountWords(text) !== undefined;
 }
 
 // pluralize alone pluralizes mass nouns and whole phrases ("flours", "clove garlics"), so an item
@@ -437,9 +462,7 @@ export function scaleIngredientLine(line: IngredientLine, factor: number): Scale
 	}
 
 	if (line.amount === undefined) {
-		return holdsNumber(line.text) || leadingArticle.test(line.text)
-			? { line, asWritten: line.text }
-			: { line };
+		return givesAmount(line.text) ? { line, unscaled: 'whole' } : { line };
 	}
 
 	const written = line.unit === undefined ? undefined : splitUnit(line.unit);
@@ -499,5 +522,5 @@ export function scaleIngredientLine(line: IngredientLine, factor: number): Scale
 		...(scaledUnit === undefined ? {} : { unit: scaledUnit }),
 		item,
 	};
-	return unread.some(holdsNumber) ? { line: scaled, asWritten: line.text } : { line: scaled };
+	return unread.some(holdsNumber) ? { line: scaled, unscaled: 'part' } : { line: scaled };
 }

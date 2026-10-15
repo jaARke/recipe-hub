@@ -323,6 +323,28 @@ describe('parseIngredientLine', () => {
 		expect(parseIngredientLine(text)).toStrictEqual({ text, item: text });
 	});
 
+	it.each([
+		'12 to fifteen apples',
+		'2 or more eggs',
+		'2 or so eggs',
+		'12 - fifteen apples',
+		'12 – fifteen apples',
+		'1 cup or more broth',
+		'1 cup to 1 1/2 cups milk',
+		'a cup or more broth',
+	])('reads no amount in "%s", a range whose end it cannot read, and keeps the line', (text) => {
+		expect(parseIngredientLine(text)).toStrictEqual({ text, item: text });
+	});
+
+	it.each<[string, ParsedParts]>([
+		['1 or two eggs', { amount: { min: 1, max: 2 }, item: 'eggs' }],
+		['1 orange', { amount: { min: 1 }, item: 'orange' }],
+		['2 tomatoes or 1 can', { amount: { min: 2 }, item: 'tomatoes or 1 can' }],
+		['1 cup tomato sauce', { amount: { min: 1 }, unit: 'cup', item: 'tomato sauce' }],
+	])('reads the amount in "%s", which no unread range end follows', (text, parts) => {
+		expect(parseIngredientLine(text)).toStrictEqual({ text, ...parts });
+	});
+
 	it('tidies the spacing and keeps the words and their case as written', () => {
 		expect(parseIngredientLine(' 2\u00a0Cups \t Flour ')).toStrictEqual({
 			text: '2 Cups Flour',
