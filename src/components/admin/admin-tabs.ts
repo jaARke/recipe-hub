@@ -11,7 +11,6 @@ export const defaultAdminTab: AdminTab = 'requests';
 // The admin page's URL parameter naming the open tab.
 export const adminTabParamName = 'tab';
 
-// A plain check rather than a zod schema, since the admin page's client bundle reads the tab.
 function isAdminTab(value: string): value is AdminTab {
 	return (adminTabs as readonly string[]).includes(value);
 }
