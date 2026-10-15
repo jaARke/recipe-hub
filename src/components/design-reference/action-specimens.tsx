@@ -1,5 +1,6 @@
 import { ArrowRightIcon, ClockIcon, PlusIcon } from 'lucide-react';
 import { Specimen, SpecimenLabel } from '@/components/design-reference/reference-section';
+import { FavoriteHeartIcon } from '@/components/design-reference/stand-in-favorite-toggle';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,6 +13,7 @@ import {
 	PaginationPrevious,
 } from '@/components/ui/pagination';
 import { Spinner } from '@/components/ui/spinner';
+import { Toggle } from '@/components/ui/toggle';
 
 const buttonVariantNames = [
 	'default',
@@ -23,6 +25,8 @@ const buttonVariantNames = [
 ] as const;
 const buttonTextSizes = ['xs', 'sm', 'default', 'lg'] as const;
 const buttonIconSizes = ['icon-xs', 'icon-sm', 'icon', 'icon-lg'] as const;
+const toggleVariantNames = ['default', 'outline'] as const;
+const toggleSizes = ['sm', 'default', 'lg'] as const;
 const badgeVariantNames = [
 	'default',
 	'secondary',
@@ -81,6 +85,43 @@ function ButtonSpecimen() {
 					</div>
 				</Specimen>
 			</div>
+		</div>
+	);
+}
+
+function ToggleSpecimen() {
+	return (
+		<div className="flex flex-col gap-6">
+			<Specimen label="Variants by size: sm, default, lg, then disabled. Press one to fill its heart">
+				<ul className="flex flex-col gap-6">
+					{toggleVariantNames.map((variant) => (
+						<li key={variant} className="flex flex-col gap-2">
+							<SpecimenLabel>variant=&quot;{variant}&quot;</SpecimenLabel>
+							<div className="flex flex-wrap items-center gap-3">
+								{toggleSizes.map((size) => (
+									<Toggle key={size} variant={variant} size={size} aria-label="Favorite">
+										<FavoriteHeartIcon />
+									</Toggle>
+								))}
+								<Toggle variant={variant} disabled aria-label="Favorite">
+									<FavoriteHeartIcon />
+								</Toggle>
+							</div>
+						</li>
+					))}
+				</ul>
+			</Specimen>
+			<Specimen label="Pressed, with an icon and with text">
+				<div className="flex flex-wrap items-center gap-3">
+					<Toggle variant="outline" defaultPressed aria-label="Favorite">
+						<FavoriteHeartIcon />
+					</Toggle>
+					<Toggle variant="outline" defaultPressed>
+						<FavoriteHeartIcon data-icon="inline-start" />
+						Favorite
+					</Toggle>
+				</div>
+			</Specimen>
 		</div>
 	);
 }
@@ -174,4 +215,4 @@ function PaginationSpecimen() {
 	);
 }
 
-export { BadgeSpecimen, ButtonSpecimen, PaginationSpecimen };
+export { BadgeSpecimen, ButtonSpecimen, PaginationSpecimen, ToggleSpecimen };

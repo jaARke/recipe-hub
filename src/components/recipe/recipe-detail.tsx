@@ -2,6 +2,7 @@ import { cn } from 'cn';
 import type { ReactNode } from 'react';
 import type { PublicRecipeDto } from '@/application/recipes/recipe-dtos';
 import { IngredientLineText } from '@/components/recipe/ingredient-line-text';
+import { RecipeActions } from '@/components/recipe/recipe-actions';
 import {
 	RecipeImageViewer,
 	RecipeImageViewerTrigger,
@@ -251,12 +252,15 @@ function RecipeDetail({
 	recipe,
 	headingLevel,
 	titleAction,
+	favoriteToggle,
 }: {
 	recipe: PublicRecipeDto;
 	headingLevel: RecipeHeadingLevel;
 	// A control beside the title, such as the edit link. Its box is reserved whenever it is passed, so
 	// a link that streams in later moves nothing.
 	titleAction?: ReactNode;
+	// The first of the recipe's actions, as RecipeActions takes it.
+	favoriteToggle?: ReactNode;
 }) {
 	const { title: Title, section: Section, subsection } = recipeHeadingTags[headingLevel];
 	const titleId = `${recipe.slug}-title`;
@@ -283,6 +287,7 @@ function RecipeDetail({
 				<RecipeByline recipe={recipe} />
 				<RecipeMetaRow recipe={recipe} />
 				{recipe.tags.length > 0 && <RecipeTags tags={recipe.tags} tagHref={tagSearchHref} />}
+				<RecipeActions slug={recipe.slug} title={recipe.title} favoriteToggle={favoriteToggle} />
 			</header>
 			<RecipePhotos title={recipe.title} images={recipe.images} />
 			{recipe.description !== undefined && <RecipeParagraphs text={recipe.description} />}

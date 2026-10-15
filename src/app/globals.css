@@ -156,6 +156,12 @@
 		@apply rounded-sm bg-highlight box-decoration-clone text-highlight-foreground;
 		font-weight: bolder;
 	}
+	/* A heading stays with what follows it rather than ending a printed page. */
+	@media print {
+		:is(h1, h2, h3, h4, h5, h6) {
+			break-after: avoid;
+		}
+	}
 	/* Disclosures draw their own chevron. */
 	summary {
 		list-style: none;
@@ -173,4 +179,10 @@
 			scroll-behavior: auto !important;
 		}
 	}
+}
+
+/* Printouts keep a margin of their own. Whatever only the screen needs, such as the header, photos,
+   and controls, takes the print:hidden utility. */
+@page {
+	margin: 0.75in;
 }

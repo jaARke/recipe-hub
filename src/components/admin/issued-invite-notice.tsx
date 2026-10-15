@@ -3,11 +3,11 @@
 import { CopyIcon } from 'lucide-react';
 import * as React from 'react';
 import type { IssuedInvite } from '@/components/admin/admin-forms';
+import { copyLink } from '@/components/sharing/link-sharing';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { toast } from '@/components/ui/toast';
 
 function deliveryMessage({ delivery }: IssuedInvite): string {
 	switch (delivery.status) {
@@ -20,18 +20,8 @@ function deliveryMessage({ delivery }: IssuedInvite): string {
 	}
 }
 
-async function copyLink(link: string) {
-	try {
-		await navigator.clipboard.writeText(link);
-		toast.add({ title: 'Link copied' });
-	} catch {
-		toast.add({
-			type: 'error',
-			title: 'Couldn’t copy the link',
-			description: 'Select the link and copy it yourself.',
-		});
-	}
-}
+// A refused copy can be made from the link's field, which selects the link when focused.
+const copyByHand = 'Select the link and copy it yourself.';
 
 // The only time the link is shown: only its hash is stored.
 function IssuedInviteNotice({ invite, className }: { invite: IssuedInvite; className?: string }) {
@@ -55,7 +45,11 @@ function IssuedInviteNotice({ invite, className }: { invite: IssuedInvite; class
 							aria-describedby={noteId}
 							onFocus={(event) => event.currentTarget.select()}
 						/>
-						<Button type="button" variant="outline" onClick={() => copyLink(invite.link)}>
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => copyLink(invite.link, copyByHand)}
+						>
 							<CopyIcon data-icon="inline-start" aria-hidden="true" />
 							Copy link
 						</Button>

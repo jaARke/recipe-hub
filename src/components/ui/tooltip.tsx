@@ -32,7 +32,8 @@ function TooltipContent({
 				alignOffset={alignOffset}
 				side={side}
 				sideOffset={sideOffset}
-				className="isolate z-50"
+				// Never part of a printout, though a print button is pressed with its tooltip open.
+				className="isolate z-50 print:hidden"
 			>
 				<TooltipPrimitive.Popup
 					data-slot="tooltip-content"

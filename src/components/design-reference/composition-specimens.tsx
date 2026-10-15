@@ -18,6 +18,7 @@ import {
 	SampleScanImportForm,
 	SampleUrlImportForm,
 } from '@/components/design-reference/sample-recipe-import';
+import { StandInFavoriteToggle } from '@/components/design-reference/stand-in-favorite-toggle';
 import { PageContainer } from '@/components/layout/page-container';
 import type { EditedRecipe } from '@/components/recipe-form/recipe-form-fields';
 import {
@@ -26,6 +27,7 @@ import {
 } from '@/components/recipe-form/recipe-form-values';
 import { RecipeEntryTabs } from '@/components/recipe-import/recipe-entry-tabs';
 import { RecipeImportSubmit } from '@/components/recipe-import/recipe-import-submit';
+import { RecipeActions } from '@/components/recipe/recipe-actions';
 import { RecipeCard } from '@/components/recipe/recipe-card';
 import { RecipeDetail } from '@/components/recipe/recipe-detail';
 import { RecipeGrid, RecipeGridSkeleton } from '@/components/recipe/recipe-grid';
@@ -194,8 +196,15 @@ const subsections = [
 		id: 'recipe-detail',
 		title: 'Recipe detail',
 		description:
-			'Reading width, with ingredients and steps in text-lg. The cover and the row of other photos each open a viewer of every photo, and the pencil beside the title, for the contributor and admins, opens the edit page. Its headings start at h4 here, under this page’s own.',
+			'Reading width, with ingredients and steps in text-lg. The cover and the row of other photos each open a viewer of every photo, the pencil beside the title, for the contributor and admins, opens the edit page, and the recipe’s actions sit under its details. Its headings start at h4 here, under this page’s own.',
 		Content: RecipeDetailSpecimen,
+	},
+	{
+		id: 'recipe-actions',
+		title: 'Recipe actions',
+		description:
+			'Icon-only buttons in one group under a recipe’s details, each named in a tooltip on desktop and 44 px under a finger. The favorite toggle comes first, its box held while it loads; here a stand-in heart that saves nothing. Share opens the device’s share sheet, and copies the link where the browser has none; Copy link copies it and says so. Links name the host the page is on, so a preview shares its own pages; here they name the sample recipe, which has no page. Print prints the recipe with its link in place of these buttons, without the header or the photos.',
+		Content: RecipeActionsSpecimen,
 	},
 	{
 		id: 'empty-state',
@@ -279,8 +288,21 @@ function RecipeDetailSpecimen() {
 					recipe={sampleRecipeDetail}
 					headingLevel={4}
 					titleAction={<RecipeEditLink slug={sampleRecipeDetail.slug} />}
+					favoriteToggle={<StandInFavoriteToggle />}
 				/>
 			</PageContainer>
+		</Specimen>
+	);
+}
+
+function RecipeActionsSpecimen() {
+	return (
+		<Specimen>
+			<RecipeActions
+				slug={sampleRecipeDetail.slug}
+				title={sampleRecipeDetail.title}
+				favoriteToggle={<StandInFavoriteToggle />}
+			/>
 		</Specimen>
 	);
 }

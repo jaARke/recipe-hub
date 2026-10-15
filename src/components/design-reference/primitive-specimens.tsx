@@ -2,6 +2,7 @@ import {
 	BadgeSpecimen,
 	ButtonSpecimen,
 	PaginationSpecimen,
+	ToggleSpecimen,
 } from '@/components/design-reference/action-specimens';
 import { AlertDialogSpecimen } from '@/components/design-reference/alert-dialog-specimen';
 import { ComboboxSpecimen } from '@/components/design-reference/combobox-specimen';
@@ -42,6 +43,7 @@ import { ToastSpecimen } from '@/components/design-reference/toast-specimen';
 // One entry per file in src/components/ui.
 const primitives = [
 	{ id: 'button', title: 'Button', Content: ButtonSpecimen },
+	{ id: 'toggle', title: 'Toggle', Content: ToggleSpecimen },
 	{ id: 'badge', title: 'Badge', Content: BadgeSpecimen },
 	{ id: 'avatar', title: 'Avatar', Content: AvatarSpecimen },
 	{ id: 'pagination', title: 'Pagination', Content: PaginationSpecimen },
