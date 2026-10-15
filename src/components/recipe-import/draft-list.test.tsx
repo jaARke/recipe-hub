@@ -86,31 +86,30 @@ describe('DraftList', () => {
 	it('lists each draft with its title, when it was saved, and when it goes, opening where it continues', () => {
 		render(<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={vi.fn()} />);
 
-		expect(rows().map((row) => row.querySelector('p')?.textContent)).toEqual([
-			'Untitled recipe',
-			'Lemon bars',
-			'Sheet-pan gnocchi',
-		]);
 		const [untitled, continuing, imported] = rows() as [HTMLElement, HTMLElement, HTMLElement];
-		expect(within(untitled).getByText('Saved draft')).toBeDefined();
-		expect(within(untitled).getByText('3 hours ago').closest('p')?.textContent).toBe(
-			'Saved 3 hours ago'
-		);
-		expect(within(untitled).getByText(/^Kept until/).textContent).toBe(
-			'Kept until November 14, 2026'
-		);
-		expect(within(imported).getByText('From a link')).toBeDefined();
-		expect(within(imported).getByText(/^Imported/).textContent).toBe('Imported 2 days ago');
+		// Each row's link is named by the draft's title and described by its details.
+		expect(
+			screen.getByRole('link', {
+				name: 'Untitled recipe',
+				description: 'Saved draft Saved 3 hours ago Kept until November 14, 2026',
+			})
+		).toBe(within(untitled).getByRole('link'));
+		expect(
+			screen.getByRole('link', {
+				name: 'Sheet-pan gnocchi',
+				description: 'From a link Imported 2 days ago Kept until October 20, 2026',
+			})
+		).toBe(within(imported).getByRole('link'));
 		expect(
 			[untitled, continuing, imported].map((row) =>
-				within(row).getByRole('link', { name: /^Open/ }).getAttribute('href')
+				within(row).getByRole('link').getAttribute('href')
 			)
 		).toEqual([
 			`/contribute?draft=${savedId}`,
 			`/contribute/imports/${continuedImportId}`,
 			`/contribute/imports/${importId}`,
 		]);
-		expect(within(continuing).getByRole('link', { name: 'Open Lemon bars' })).toBeDefined();
+		expect(within(continuing).getByRole('link', { name: 'Lemon bars' })).toBeDefined();
 	});
 
 	it('deletes a draft from its row’s menu once asked, with the changes this browser kept for it', async () => {
@@ -131,6 +130,24 @@ describe('DraftList', () => {
 		expect(localStorage.getItem(keptKey)).toBe('{}');
 		// The list stays, and the page renders again without the draft.
 		expect(router.replace).not.toHaveBeenCalled();
+	});
+
+	it('returns focus to the row’s menu button when the member keeps the draft', async () => {
+		const user = userEvent.setup();
+		const deleteDraft = vi.fn<FormAction>();
+		render(<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={deleteDraft} />);
+
+		const dialog = await deleteFromMenu(user, 'Untitled recipe');
+		expect(within(dialog).getByText('Delete this draft?')).toBeDefined();
+		await user.click(within(dialog).getByRole('button', { name: 'Keep draft' }));
+
+		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+		await waitFor(() =>
+			expect(document.activeElement).toBe(
+				screen.getByRole('button', { name: 'Actions for Untitled recipe' })
+			)
+		);
+		expect(deleteDraft).not.toHaveBeenCalled();
 	});
 
 	it('deletes an import’s draft by its import', async () => {

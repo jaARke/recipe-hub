@@ -9,7 +9,6 @@ import { DraftMenu } from '@/components/recipe-form/subject-menus';
 import { savedDraftPath } from '@/components/recipe-import/recipe-entry-paths';
 import { recipeImportPath } from '@/components/recipe-import/recipe-import-paths';
 import { formatTimeAgo } from '@/components/recipe-import/time-ago';
-import { buttonVariants } from '@/components/ui/button';
 import {
 	Empty,
 	EmptyDescription,
@@ -77,9 +76,10 @@ type DraftListProps = {
 	deleteDraft: FormAction;
 };
 
-// The member's drafts, as the service lists them, each opening where it continues, with when it was
-// saved and when it goes, and a menu holding Delete draft. The Drafts tab names the list, so it has
-// no heading of its own. Deleting one refreshes the page, which drops its row.
+// The member's drafts, as the service lists them, each a link to where it continues, named by its
+// title and described by when it was saved and when it goes, with a menu holding Delete draft
+// beside it. The Drafts tab names the list, so it has no heading of its own. Deleting one refreshes
+// the page, which drops its row.
 function DraftList({ drafts, now, memberId, deleteDraft }: DraftListProps) {
 	if (drafts.length === 0) {
 		return <DraftsEmptyState />;
@@ -90,40 +90,51 @@ function DraftList({ drafts, now, memberId, deleteDraft }: DraftListProps) {
 			{drafts.map((draft) => {
 				const name = draft.title ?? untitled;
 				const savedAt = draft.kind === 'saved' ? draft.savedAt : draft.importedAt;
+				// The title names the link, and each detail describes it, read apart as shown apart.
+				const ids = {
+					title: `${draft.id}-draft-title`,
+					kind: `${draft.id}-draft-kind`,
+					saved: `${draft.id}-draft-saved`,
+					kept: `${draft.id}-draft-kept`,
+				};
 				return (
-					<li
-						key={draft.id}
-						className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between"
-					>
-						<div className="flex min-w-0 flex-col gap-1">
-							<p className="font-medium wrap-anywhere">{name}</p>
-							<div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-								<p>{draft.kind === 'import' ? importModeLabels[draft.mode] : 'Saved draft'}</p>
-								<p>
+					<li key={draft.id} className="flex items-center gap-4">
+						<Link
+							href={draftPath(draft)}
+							aria-labelledby={ids.title}
+							aria-describedby={`${ids.kind} ${ids.saved} ${ids.kept}`}
+							className="group flex min-w-0 flex-1 flex-col gap-1 py-4"
+						>
+							<span
+								id={ids.title}
+								className="font-medium wrap-anywhere underline-offset-4 group-hover:underline"
+							>
+								{name}
+							</span>
+							<span className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+								<span id={ids.kind}>
+									{draft.kind === 'import' ? importModeLabels[draft.mode] : 'Saved draft'}
+								</span>
+								<span id={ids.saved}>
 									{draft.kind === 'import' ? 'Imported' : 'Saved'}{' '}
 									<time dateTime={savedAt.toISOString()}>{formatTimeAgo(savedAt, now)}</time>
-								</p>
-								<p>
+								</span>
+								<span id={ids.kept}>
 									Kept until{' '}
 									<time dateTime={draft.expiresAt.toISOString()}>
 										{formatDate(draft.expiresAt)}
 									</time>
-								</p>
-							</div>
-						</div>
-						<div className="flex flex-wrap items-center gap-2 sm:shrink-0">
-							<Link href={draftPath(draft)} className={buttonVariants({ variant: 'outline' })}>
-								Open<span className="sr-only"> {name}</span>
-							</Link>
-							<DraftMenu
-								label={`Actions for ${name}`}
-								draft={{ kind: draft.kind, id: draft.id }}
-								title={draft.title}
-								formSubject={draftFormSubject(draft)}
-								memberId={memberId}
-								action={deleteDraft}
-							/>
-						</div>
+								</span>
+							</span>
+						</Link>
+						<DraftMenu
+							label={`Actions for ${name}`}
+							draft={{ kind: draft.kind, id: draft.id }}
+							title={draft.title}
+							formSubject={draftFormSubject(draft)}
+							memberId={memberId}
+							action={deleteDraft}
+						/>
 					</li>
 				);
 			})}

@@ -288,7 +288,7 @@ const subsections = [
 		id: 'recipe-entry',
 		title: 'Adding a recipe',
 		description:
-			'Three ways in, one tab each, and a fourth for the member’s drafts, counted in its label: the drafts they saved and the imports they haven’t, newest first, each with when it was saved, when it goes, Open, and a menu holding Delete draft; hidden tabs keep what was entered. A link or photos of the pages, which upload as they’re chosen, are read into a draft that opens in the recipe form for review. Reading takes up to a minute or two, so the form shows what it’s reading and for how long, announcing the stage once and not each second. Here each import waits four seconds and then shows its error, since nothing is imported.',
+			'Three ways in, one tab each, and a fourth for the member’s drafts, counted in its label: the drafts they saved and the imports they haven’t, newest first, each a link to where it continues with when it was saved and when it goes, and a menu holding Delete draft; hidden tabs keep what was entered. A link or photos of the pages, which upload as they’re chosen, are read into a draft that opens in the recipe form for review. Reading takes up to a minute or two, so the form shows what it’s reading and for how long, announcing the stage once and not each second. Here each import waits four seconds and then shows its error, since nothing is imported.',
 		Content: RecipeEntrySpecimen,
 	},
 ] as const;
