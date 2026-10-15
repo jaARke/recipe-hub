@@ -1,4 +1,5 @@
 import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
+import { sentenceCase } from '@/domain/text';
 
 type ImageViewerLabels = {
 	// Names the carousel region.
@@ -12,10 +13,6 @@ const imageViewerWording = {
 	dish: { item: 'photo', items: 'photos' },
 	scan: { item: 'page', items: 'pages' },
 } as const satisfies Record<RecipeImageRole, { item: string; items: string }>;
-
-function sentenceCase(text: string): string {
-	return text.charAt(0).toUpperCase() + text.slice(1);
-}
 
 export function imageViewerLabels(role: RecipeImageRole): ImageViewerLabels {
 	const { item, items } = imageViewerWording[role];
