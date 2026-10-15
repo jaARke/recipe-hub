@@ -239,6 +239,28 @@ function RecipeParagraphs({ text }: { text: string }) {
 	);
 }
 
+// A thumbnail that opens the viewer at its image, a dish photo or a scan alike: a 4:3 box the image
+// fills, cropped to it whatever its shape, since the viewer shows it whole. The caller sets its width
+// and rounding.
+function RecipeThumbnail({
+	index,
+	image,
+	sizes,
+	className,
+}: {
+	index: number;
+	image: RecipeImage;
+	sizes: string;
+	className: string;
+}) {
+	return (
+		<RecipeImageViewerTrigger index={index} className={className}>
+			{/* The button is named for its image, so the image inside it is decorative. */}
+			<RecipePhoto pathname={image.pathname} alt="" sizes={sizes} className="aspect-4/3" />
+		</RecipeImageViewerTrigger>
+	);
+}
+
 // The cover, then a row of the other photos; each opens the viewer at itself. Left off the printout,
 // which is for cooking from.
 function RecipePhotos({ title, images }: { title: string; images: readonly RecipeImage[] }) {
@@ -264,14 +286,12 @@ function RecipePhotos({ title, images }: { title: string; images: readonly Recip
 					<ul className="flex flex-wrap gap-3">
 						{others.map((image, index) => (
 							<li key={image.pathname}>
-								<RecipeImageViewerTrigger index={index + 1} className="rounded-md">
-									<RecipePhoto
-										pathname={image.pathname}
-										alt=""
-										sizes={thumbnailPhotoSizes}
-										className="aspect-4/3 w-24"
-									/>
-								</RecipeImageViewerTrigger>
+								<RecipeThumbnail
+									index={index + 1}
+									image={image}
+									sizes={thumbnailPhotoSizes}
+									className="w-24 rounded-md"
+								/>
 							</li>
 						))}
 					</ul>
@@ -303,16 +323,12 @@ function RecipeScans({
 				<ul className="grid grid-cols-2 gap-4">
 					{scans.map((scan, index) => (
 						<li key={scan.pathname}>
-							{/* The button is named for its page, so the scan inside it is decorative. */}
-							<RecipeImageViewerTrigger index={index} className="w-full rounded-xl">
-								<RecipePhoto
-									pathname={scan.pathname}
-									alt=""
-									sizes={scanThumbnailSizes}
-									fit="contain"
-									className="aspect-3/4"
-								/>
-							</RecipeImageViewerTrigger>
+							<RecipeThumbnail
+								index={index}
+								image={scan}
+								sizes={scanThumbnailSizes}
+								className="w-full rounded-xl"
+							/>
 						</li>
 					))}
 				</ul>
