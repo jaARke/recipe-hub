@@ -1,5 +1,6 @@
 import 'server-only';
 import { unstable_rethrow } from 'next/navigation';
+import { connection } from 'next/server';
 import type { CurrentMemberDto } from '@/application/members/member-dtos';
 import type { HeaderMember } from '@/components/layout/header-member';
 import { getLogger } from '@/lib/logger';
@@ -11,6 +12,9 @@ const logger = getLogger('auth');
 export async function readHeaderMember(
 	read: () => Promise<CurrentMemberDto | null>
 ): Promise<HeaderMember | null> {
+	// The session read is request work. Waiting for the request outside the catch leaves a render Next
+	// ends first, such as a prerender or the dev server's validation render, to Next.
+	await connection();
 	try {
 		const member = await read();
 		return member === null ? null : { displayName: member.displayName, role: member.role };
