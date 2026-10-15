@@ -18,7 +18,7 @@ import {
 import { recipeSearchHref } from '@/components/search/search-params';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDuration, totalMinutes } from '@/domain/recipe/duration';
-import type { RecipeImage } from '@/domain/recipe/recipe-image';
+import type { RecipeImage, RecipeImageRole } from '@/domain/recipe/recipe-image';
 import { formatYieldCount, yieldVerbs, type RecipeYield } from '@/domain/recipe/recipe-yield';
 import { formatDate } from '@/lib/dates';
 
@@ -39,7 +39,7 @@ const contributorCellClassName = 'sm:col-span-2';
 // A reading-width container's column is 624px.
 const coverPhotoSizes = '(min-width: 672px) 624px, 100vw';
 
-// Thumbnails are w-24, the dish's other photos and the original's pages alike.
+// The thumbnails after a gallery's first image are w-24.
 const thumbnailPhotoSizes = '96px';
 
 // The description and the notes read as body text.
@@ -185,57 +185,56 @@ function RecipeCredit({ source, sourceUrl }: Pick<PublicRecipeDto, 'source' | 's
 	);
 }
 
-// A row of thumbnails, dish photos or the original's pages alike, each opening its viewer at its
-// image: a 4:3 box the image fills, cropped to it whatever its shape, since the viewer shows it whole.
-// The first is the viewer's image at firstIndex.
-function RecipeThumbnails({
+// The first image large, then a row of thumbnails of the rest, the dish's photos and the original's
+// pages alike; each opens the viewer at itself. Each box is cropped to its shape, since the viewer
+// shows the image whole. Left off the printout, which is for cooking from.
+function RecipeGallery({
+	role,
+	title,
 	images,
-	firstIndex,
+	preload = false,
 }: {
+	role: RecipeImageRole;
+	// Names the viewer.
+	title: string;
 	images: readonly RecipeImage[];
-	firstIndex: number;
+	// For the first image the page shows, which loads with the page.
+	preload?: boolean;
 }) {
-	return (
-		<ul className="flex flex-wrap gap-3">
-			{images.map((image, index) => (
-				<li key={image.pathname}>
-					<RecipeImageViewerTrigger index={firstIndex + index} className="w-24 rounded-md">
-						{/* The button is named for its image, so the image inside it is decorative. */}
-						<RecipePhoto
-							pathname={image.pathname}
-							alt=""
-							sizes={thumbnailPhotoSizes}
-							className="aspect-4/3"
-						/>
-					</RecipeImageViewerTrigger>
-				</li>
-			))}
-		</ul>
-	);
-}
-
-// The cover, then a row of the other photos; each opens the viewer at itself. Left off the printout,
-// which is for cooking from.
-function RecipePhotos({ title, images }: { title: string; images: readonly RecipeImage[] }) {
-	const [cover, ...others] = images;
-	if (cover === undefined) {
+	const [first, ...others] = images;
+	if (first === undefined) {
 		return null;
 	}
 
 	return (
-		<RecipeImageViewer role="dish" title={title} images={images}>
+		<RecipeImageViewer role={role} title={title} images={images}>
 			<div className="flex flex-col gap-3 print:hidden">
-				{/* Each button is named for its photo, so the photo inside it is decorative. */}
+				{/* Each button is named for its image, so the image inside it is decorative. */}
 				<RecipeImageViewerTrigger index={0} className="w-full rounded-xl">
 					<RecipePhoto
-						pathname={cover.pathname}
+						pathname={first.pathname}
 						alt=""
 						sizes={coverPhotoSizes}
-						preload
+						preload={preload}
 						className="aspect-3/2"
 					/>
 				</RecipeImageViewerTrigger>
-				{others.length > 0 && <RecipeThumbnails images={others} firstIndex={1} />}
+				{others.length > 0 && (
+					<ul className="flex flex-wrap gap-3">
+						{others.map((image, index) => (
+							<li key={image.pathname}>
+								<RecipeImageViewerTrigger index={index + 1} className="w-24 rounded-md">
+									<RecipePhoto
+										pathname={image.pathname}
+										alt=""
+										sizes={thumbnailPhotoSizes}
+										className="aspect-4/3"
+									/>
+								</RecipeImageViewerTrigger>
+							</li>
+						))}
+					</ul>
+				)}
 			</div>
 		</RecipeImageViewer>
 	);
@@ -246,8 +245,8 @@ function pageCount(count: number): string {
 	return count === 1 ? '1 page' : `${count} pages`;
 }
 
-// The pages of the recipe as first written, before its ingredients; each opens the viewer at its
-// page, which links to it at full size. Left off the printout like the dish photos.
+// The pages of the recipe as first written, before its ingredients, shown as the dish photos are;
+// the viewer links each page at full size.
 function RecipeScans({
 	scans,
 	headingLevel,
@@ -267,9 +266,7 @@ function RecipeScans({
 				<Section className={recipeTextStyles.section}>{title}</Section>
 				<p className="text-muted-foreground">{pageCount(scans.length)}</p>
 			</div>
-			<RecipeImageViewer role="scan" title={title} images={scans}>
-				<RecipeThumbnails images={scans} firstIndex={0} />
-			</RecipeImageViewer>
+			<RecipeGallery role="scan" title={title} images={scans} />
 		</div>
 	);
 }
@@ -316,7 +313,7 @@ function RecipeDetail({
 				<RecipeRuledBlock recipe={recipe} />
 				<RecipeActions slug={recipe.slug} title={recipe.title} favoriteToggle={favoriteToggle} />
 			</header>
-			<RecipePhotos title={recipe.title} images={recipe.images} />
+			<RecipeGallery role="dish" title={recipe.title} images={recipe.images} preload />
 			{recipe.description !== undefined && (
 				<RecipeParagraphs text={recipe.description} className={recipeParagraphsClassName} />
 			)}
