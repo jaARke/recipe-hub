@@ -4,7 +4,7 @@ import {
 	formatScaledToLine,
 	formatScaledYield,
 	formatScaleStepperLabel,
-	formatStepsNote,
+	formatStepsNoteCount,
 	formatYield,
 	readYieldAmount,
 	recipeYieldSchemaFor,
@@ -176,19 +176,16 @@ describe('formatScaledToLine', () => {
 	});
 });
 
-describe('formatStepsNote', () => {
+describe('formatStepsNoteCount', () => {
 	it.each<[RecipeYield | undefined, string]>([
-		[serves6, 'Amounts in the steps are for the original 6 servings.'],
-		[
-			{ kind: 'servings', amount: { min: 1 } },
-			'Amounts in the steps are for the original 1 serving.',
-		],
-		[serves4To6, 'Amounts in the steps are for the original 4 to 6 servings.'],
-		[makes24Cookies, 'Amounts in the steps are for the original 24 cookies.'],
-		[{ kind: 'makes', amount: { min: 24 } }, 'Amounts in the steps are for the original batch.'],
-		[undefined, 'Amounts in the steps are for the original batch.'],
-	])('notes the steps of %j as "%s"', (recipeYield, expected) => {
-		expect(formatStepsNote(recipeYield)).toBe(expected);
+		[serves6, '6 servings'],
+		[{ kind: 'servings', amount: { min: 1 } }, '1 serving'],
+		[serves4To6, '4 to 6 servings'],
+		[makes24Cookies, '24 cookies'],
+		[{ kind: 'makes', amount: { min: 24 } }, '24'],
+		[undefined, '1 batch'],
+	])('counts the steps of %j as "%s"', (recipeYield, expected) => {
+		expect(formatStepsNoteCount(recipeYield)).toBe(expected);
 	});
 });
 

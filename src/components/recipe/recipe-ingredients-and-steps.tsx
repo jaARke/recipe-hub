@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import type { IngredientSection } from '@/domain/recipe/ingredient';
 import { scaleIngredientLine, type ScaledIngredientLine } from '@/domain/recipe/ingredient-scaling';
 import type { InstructionSection } from '@/domain/recipe/instruction';
-import { formatStepsNote, type RecipeYield } from '@/domain/recipe/recipe-yield';
+import { formatStepsNoteCount, type RecipeYield } from '@/domain/recipe/recipe-yield';
 
 // A scale other than the recipe's own, as the cooking view prints the recipe at.
 export type RecipeListsScale = {
@@ -72,6 +72,24 @@ function IngredientSectionList({
 	);
 }
 
+// The note a scaled recipe's steps carry, since they keep the recipe's own amounts, with what they are
+// for in bold: "Amounts in the steps are for the original 6 servings."
+function StepsNote({
+	recipeYield,
+	className,
+}: {
+	recipeYield: RecipeYield | undefined;
+	className: string;
+}) {
+	return (
+		<p className={className}>
+			Amounts in the steps are for the original{' '}
+			<strong className="font-semibold text-foreground">{formatStepsNoteCount(recipeYield)}</strong>
+			.
+		</p>
+	);
+}
+
 function InstructionSectionList({
 	section,
 	headingTag,
@@ -127,7 +145,7 @@ function RecipeIngredientsAndSteps({
 				<div className="flex flex-col gap-3">
 					<Section className={recipeTextStyles.section}>Steps</Section>
 					{scale !== undefined && factor !== 1 && (
-						<p className={recipeTextStyles.supporting}>{formatStepsNote(scale.recipeYield)}</p>
+						<StepsNote recipeYield={scale.recipeYield} className={recipeTextStyles.supporting} />
 					)}
 				</div>
 				{instructionSections.map((section, index) => (
@@ -138,4 +156,4 @@ function RecipeIngredientsAndSteps({
 	);
 }
 
-export { RecipeIngredientsAndSteps, ScaledIngredientLineText };
+export { RecipeIngredientsAndSteps, ScaledIngredientLineText, StepsNote };

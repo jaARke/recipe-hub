@@ -30,10 +30,12 @@ import {
 import { useScreenWakeLock } from '@/components/cooking/use-screen-wake-lock';
 import { useHydrated } from '@/components/forms/use-hydrated';
 import { MainContent } from '@/components/layout/main-content';
+import { StepsNote } from '@/components/recipe/recipe-ingredients-and-steps';
 import { recipePath } from '@/components/recipe/recipe-paths';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatScaledYield, formatStepsNote } from '@/domain/recipe/recipe-yield';
+import { givesAmount } from '@/domain/recipe/ingredient-scaling';
+import { formatScaledYield } from '@/domain/recipe/recipe-yield';
 
 type HeadingRef = React.RefObject<HTMLHeadingElement | null>;
 
@@ -145,8 +147,9 @@ function StepScreen({
 			<p className="max-w-[36ch] text-[1.625rem] leading-[1.4] text-pretty whitespace-pre-line sm:text-3xl sm:leading-[1.35]">
 				{step.text}
 			</p>
-			{scale.factor !== 1 && (
-				<p className="text-base text-muted-foreground">{formatStepsNote(scale.recipeYield)}</p>
+			{/* Only where the step's text gives an amount, which the recipe's scale leaves as written. */}
+			{scale.factor !== 1 && givesAmount(step.text) && (
+				<StepsNote recipeYield={scale.recipeYield} className="text-base text-muted-foreground" />
 			)}
 		</div>
 	);

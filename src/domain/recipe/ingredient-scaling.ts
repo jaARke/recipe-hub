@@ -410,9 +410,10 @@ function holdsNumber(text: string): boolean {
 	return /\p{N}/u.test(rest) || wholeNumberWord.test(rest) || holdsAmountWords(rest);
 }
 
-// A line the parser read nothing in gives an amount when it holds a number or opens with an amount in
-// words, read or not: "a few sprigs thyme", "half a lemon".
-function givesAmount(text: string): boolean {
+// Text gives an amount when it holds a number or opens with an amount in words, read or not: "a few
+// sprigs thyme", "half a lemon". It marks a line the parser read nothing in, and a step whose own
+// amounts a scaled recipe's note speaks for.
+export function givesAmount(text: string): boolean {
 	return holdsNumber(text) || readAmountWords(text) !== undefined;
 }
 

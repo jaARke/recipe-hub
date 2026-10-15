@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { RecipeIngredientsAndSteps } from '@/components/recipe/recipe-ingredients-and-steps';
 import type { IngredientSection } from '@/domain/recipe/ingredient';
@@ -113,6 +113,8 @@ describe('RecipeIngredientsAndSteps at a scale', () => {
 	it('notes under Steps that their amounts are the recipe’s own', () => {
 		render(doubled);
 
-		expect(screen.getByText('Amounts in the steps are for the original 6 servings.')).toBeDefined();
+		const note = screen.getByText(/^Amounts in the steps/);
+		expect(note.textContent).toBe('Amounts in the steps are for the original 6 servings.');
+		expect(within(note).getByText('6 servings').tagName).toBe('STRONG');
 	});
 });

@@ -186,13 +186,21 @@ describe('CookingView', () => {
 		expect(screenHeading().textContent).toBe('Gather your ingredients');
 	});
 
-	it('notes on a step that its amounts are the recipe’s own while scaled', () => {
+	it('notes on a step that gives an amount that its amounts are the recipe’s own while scaled', () => {
 		visit('?servings=12&step=1');
 		render(<CookingView recipe={potRoast} />);
 
-		expect(
-			shown().getByText('Amounts in the steps are for the original 6 servings.')
-		).toBeDefined();
+		const note = shown().getByText(/^Amounts in the steps are for the original/);
+		expect(note.textContent).toBe('Amounts in the steps are for the original 6 servings.');
+		expect(within(note).getByText('6 servings').tagName).toBe('STRONG');
+	});
+
+	it('notes nothing on a step that gives no amount', () => {
+		visit('?servings=12&step=3');
+		render(<CookingView recipe={potRoast} />);
+
+		expect(shown().getByRole('heading', { level: 1, name: /step 3 of 3/i })).toBeDefined();
+		expect(shown().queryByText(/^Amounts in the steps/)).toBeNull();
 	});
 
 	it('moves with the arrow keys, but not from a control or while a dialog is open', async () => {
@@ -393,9 +401,9 @@ describe('CookingView', () => {
 			'Sear the roast.\nTurn it every few minutes.',
 			'Whisk in the flour.',
 		]);
-		expect(
-			printed.getByText('Amounts in the steps are for the original 6 servings.')
-		).toBeDefined();
+		expect(printed.getByText(/^Amounts in the steps/).textContent).toBe(
+			'Amounts in the steps are for the original 6 servings.'
+		);
 		expect(printed.getByText('Save the gravy.')).toBeDefined();
 		expect(printout().className).toMatch(/(^| )hidden( |$)/);
 		expect(document.querySelector('.fixed.print\\:hidden')).not.toBeNull();

@@ -191,9 +191,11 @@ export function formatScaledToLine(recipeYield: RecipeYield | undefined, factor:
 	return `Scaled to ${scaled} (recipe ${verb} ${formatYieldCount(recipeYield)})`;
 }
 
-// The note under a scaled recipe's steps, which keep the recipe's own amounts: "Amounts in the steps
-// are for the original 6 servings."
-export function formatStepsNote(recipeYield: RecipeYield | undefined): string {
-	const original = recipeYield === undefined ? undefined : namedYieldCount(recipeYield);
-	return `Amounts in the steps are for the original ${original ?? 'batch'}.`;
+// What a recipe's steps, which keep its own amounts, are written for, as the note under a scaled
+// recipe's steps names it: "6 servings", "24 cookies", "24" for a count of nothing named, as its
+// stepper counts, and "1 batch" for a recipe that gives no yield.
+export function formatStepsNoteCount(recipeYield: RecipeYield | undefined): string {
+	return recipeYield === undefined
+		? batchCount(1)
+		: (namedYieldCount(recipeYield) ?? formatYieldCount(recipeYield));
 }
