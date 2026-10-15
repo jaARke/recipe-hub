@@ -14,12 +14,19 @@ import { SignInRequiredError } from '@/application/authorization';
 import type { DraftSummaryDto, SavedDraftDto } from '@/application/drafts/saved-draft-dtos';
 import { signInHref } from '@/components/auth/auth-paths';
 import { PageContainer } from '@/components/layout/page-container';
+import {
+	EditingPageHeading,
+	editingPageTitles,
+} from '@/components/recipe-form/editing-page-heading';
+import { HeldDraftProvider } from '@/components/recipe-form/held-draft';
 import { RecipeForm } from '@/components/recipe-form/recipe-form';
 import {
 	readRecipeFormSnapshot,
+	recipeFormSnapshotTitle,
 	restoredRecipeForm,
 } from '@/components/recipe-form/recipe-form-snapshot';
 import { recipeFormValues } from '@/components/recipe-form/recipe-form-values';
+import { HeldDraftMenu } from '@/components/recipe-form/subject-menus';
 import {
 	parseRecipeEntryTab,
 	parseSavedDraftParam,
@@ -36,7 +43,7 @@ import { contributePath } from '@/components/recipe/recipe-paths';
 import { getRecipeImageService, getSavedDraftService } from '@/composition/services';
 
 export const metadata: Metadata = {
-	title: 'Add a recipe',
+	title: editingPageTitles.add,
 };
 
 // The import actions read a page or photos with an AI model, which can take a minute or more. A
@@ -85,48 +92,66 @@ async function ContributeForMember({
 		opened === undefined ? parseRecipeEntryTab(params[recipeEntryParamNames.tab]) : 'manual';
 
 	return (
-		<RecipeEntryTabs
+		<HeldDraftProvider
 			// Another draft or tab opens the tabs and the form afresh, as Next keeps this page's state.
 			key={`${opened?.id ?? 'new'}:${tab}`}
-			defaultTab={tab}
-			forms={{
-				manual: (
-					<RecipeForm
-						initial={
-							snapshot === undefined
-								? recipeFormValues()
-								: restoredRecipeForm(snapshot, recipeFormValues())
-						}
-						action={createRecipe}
-						uploadFolders={uploadFolders}
-						tagLabels={tagLabels}
-						autosave={{ memberId: member.id }}
-						drafts={{
-							save: saveDraft,
-							delete: deleteDraft,
-							opened: opened === undefined ? undefined : { id: opened.id, savedAt: opened.savedAt },
-							inUrl: true,
-						}}
-						submitLabel="Save recipe"
-					/>
-				),
-				url: <UrlImportForm action={importFromUrl} />,
-				photo: <ScanImportForm action={importFromScans} uploadFolder={uploadFolders.scan} />,
-			}}
-			drafts={drafts}
-			// Reading the session waited for the request, so this is the request's time, not a prerender's.
-			now={new Date()}
-			memberId={member.id}
-			deleteDraft={deleteDraft}
-		/>
+			opened={
+				opened === undefined || snapshot === undefined
+					? undefined
+					: { id: opened.id, title: recipeFormSnapshotTitle(snapshot) }
+			}
+		>
+			<EditingPageHeading
+				page="add"
+				menu={<HeldDraftMenu memberId={member.id} action={deleteDraft} />}
+			/>
+			<RecipeEntryTabs
+				defaultTab={tab}
+				forms={{
+					manual: (
+						<RecipeForm
+							initial={
+								snapshot === undefined
+									? recipeFormValues()
+									: restoredRecipeForm(snapshot, recipeFormValues())
+							}
+							action={createRecipe}
+							uploadFolders={uploadFolders}
+							tagLabels={tagLabels}
+							autosave={{ memberId: member.id }}
+							drafts={{
+								save: saveDraft,
+								opened:
+									opened === undefined ? undefined : { id: opened.id, savedAt: opened.savedAt },
+								inUrl: true,
+							}}
+							submitLabel="Save recipe"
+						/>
+					),
+					url: <UrlImportForm action={importFromUrl} />,
+					photo: <ScanImportForm action={importFromScans} uploadFolder={uploadFolders.scan} />,
+				}}
+				drafts={drafts}
+				// Reading the session waited for the request, so this is the request's time, not a prerender's.
+				now={new Date()}
+				memberId={member.id}
+				deleteDraft={deleteDraft}
+			/>
+		</HeldDraftProvider>
 	);
 }
 
 export default function ContributePage({ searchParams }: PageProps<'/contribute'>) {
 	return (
 		<PageContainer width="readingOrWide" className="flex flex-col gap-8 py-12 sm:py-16">
-			<h1 className="font-heading text-4xl font-semibold">Add a recipe</h1>
-			<Suspense fallback={<RecipeEntryTabsSkeleton />}>
+			<Suspense
+				fallback={
+					<>
+						<EditingPageHeading page="add" />
+						<RecipeEntryTabsSkeleton />
+					</>
+				}
+			>
 				<ContributeForMember searchParams={searchParams} />
 			</Suspense>
 		</PageContainer>

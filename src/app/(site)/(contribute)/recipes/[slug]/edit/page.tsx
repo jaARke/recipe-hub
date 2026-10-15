@@ -10,8 +10,13 @@ import { ForbiddenError, SignInRequiredError } from '@/application/authorization
 import type { EditableRecipeDto } from '@/application/recipes/recipe-dtos';
 import { signInHref } from '@/components/auth/auth-paths';
 import { PageContainer } from '@/components/layout/page-container';
+import {
+	EditingPageHeading,
+	editingPageTitles,
+} from '@/components/recipe-form/editing-page-heading';
 import { RecipeForm, RecipeFormSkeleton } from '@/components/recipe-form/recipe-form';
 import { recipeFormValues } from '@/components/recipe-form/recipe-form-values';
+import { EditedRecipeMenu } from '@/components/recipe-form/subject-menus';
 import { recipeEditPath, recipePath } from '@/components/recipe/recipe-paths';
 import { buttonVariants } from '@/components/ui/button';
 import {
@@ -33,7 +38,7 @@ export async function generateMetadata({
 	if ((await getCachedRecipe(slug)) === null) {
 		notFound();
 	}
-	return { title: 'Edit recipe' };
+	return { title: editingPageTitles.edit };
 }
 
 // The authoritative check: the service authorizes the actor, and the proxy only looks for a cookie.
@@ -84,7 +89,12 @@ async function RecipeEditor({ params }: Pick<PageProps<'/recipes/[slug]/edit'>, 
 	const { slug } = await params;
 	const recipe = await loadEditableRecipe(slug);
 	if (recipe === null) {
-		return <EditNotAllowedEmptyState slug={slug} />;
+		return (
+			<>
+				<EditingPageHeading page="edit" />
+				<EditNotAllowedEmptyState slug={slug} />
+			</>
+		);
 	}
 
 	// Slugs follow titles, so an old one still finds the recipe. Inside Suspense the redirect happens
@@ -98,30 +108,47 @@ async function RecipeEditor({ params }: Pick<PageProps<'/recipes/[slug]/edit'>, 
 		getCachedTagLabels(),
 	]);
 	return (
-		<RecipeForm
-			// A recipe changed elsewhere starts the form again; Next keeps recent pages, and their state, alive.
-			key={recipe.updatedAt.toISOString()}
-			initial={recipeFormValues(recipe)}
-			action={updateRecipe}
-			uploadFolders={getRecipeImageService().uploadFolders()}
-			tagLabels={tagLabels}
-			editing={{
-				id: recipe.id,
-				version: recipe.updatedAt.toISOString(),
-				respellableTags: recipe.respellableTags,
-			}}
-			autosave={{ memberId: member.id }}
-			deleteRecipe={{ title: recipe.title, action: deleteRecipe }}
-			submitLabel="Save changes"
-		/>
+		<>
+			<EditingPageHeading
+				page="edit"
+				menu={
+					<EditedRecipeMenu
+						recipe={{ id: recipe.id, slug: recipe.slug, title: recipe.title }}
+						memberId={member.id}
+						action={deleteRecipe}
+					/>
+				}
+			/>
+			<RecipeForm
+				// A recipe changed elsewhere starts the form again; Next keeps recent pages, and their state, alive.
+				key={recipe.updatedAt.toISOString()}
+				initial={recipeFormValues(recipe)}
+				action={updateRecipe}
+				uploadFolders={getRecipeImageService().uploadFolders()}
+				tagLabels={tagLabels}
+				editing={{
+					id: recipe.id,
+					version: recipe.updatedAt.toISOString(),
+					respellableTags: recipe.respellableTags,
+				}}
+				autosave={{ memberId: member.id }}
+				submitLabel="Save changes"
+			/>
+		</>
 	);
 }
 
 export default function EditRecipePage({ params }: PageProps<'/recipes/[slug]/edit'>) {
 	return (
 		<PageContainer width="readingOrWide" className="flex flex-col gap-8 py-12 sm:py-16">
-			<h1 className="font-heading text-4xl font-semibold">Edit recipe</h1>
-			<Suspense fallback={<RecipeFormSkeleton besideOriginal />}>
+			<Suspense
+				fallback={
+					<>
+						<EditingPageHeading page="edit" />
+						<RecipeFormSkeleton besideOriginal />
+					</>
+				}
+			>
 				<RecipeEditor params={params} />
 			</Suspense>
 		</PageContainer>

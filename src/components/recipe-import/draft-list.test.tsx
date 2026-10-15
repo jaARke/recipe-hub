@@ -7,6 +7,13 @@ import type { FormAction } from '@/components/forms/form-state';
 import { DraftList } from '@/components/recipe-import/draft-list';
 import type { RecipeImportId } from '@/domain/recipe/recipe-import';
 
+const router = vi.hoisted(() => ({ replace: vi.fn() }));
+
+vi.mock('next/navigation', async (importOriginal) => ({
+	...(await importOriginal<typeof import('next/navigation')>()),
+	useRouter: () => router,
+}));
+
 const memberId = '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b';
 const savedId = '0199d2a0-1b2c-7d3e-8f40-000000000004' as SavedDraftId;
 const continuingId = '0199d2a0-1b2c-7d3e-8f40-000000000005' as SavedDraftId;
@@ -43,6 +50,20 @@ const drafts: DraftSummaryDto[] = [
 
 function rows(): HTMLElement[] {
 	return screen.getAllByRole('listitem');
+}
+
+// Chooses Delete draft from the row's menu, which its button names by the draft, and returns the
+// dialog that asks first.
+async function deleteFromMenu(user: ReturnType<typeof userEvent.setup>, name: string) {
+	await user.click(screen.getByRole('button', { name: `Actions for ${name}` }));
+	const menu = await screen.findByRole('menu');
+	expect(
+		within(menu)
+			.getAllByRole('menuitem')
+			.map((item) => item.textContent)
+	).toEqual(['Delete draft']);
+	await user.click(within(menu).getByRole('menuitem', { name: 'Delete draft' }));
+	return screen.findByRole('alertdialog');
 }
 
 afterEach(() => {
@@ -92,7 +113,7 @@ describe('DraftList', () => {
 		expect(within(continuing).getByRole('link', { name: 'Open Lemon bars' })).toBeDefined();
 	});
 
-	it('deletes a draft once asked, with the changes this browser kept for it', async () => {
+	it('deletes a draft from its row’s menu once asked, with the changes this browser kept for it', async () => {
 		const user = userEvent.setup();
 		const deleteDraft = vi.fn<FormAction>(async () => ({ status: 'success' }));
 		const continuingKey = `member:recipe-form:${memberId}:import:${continuedImportId}`;
@@ -101,14 +122,15 @@ describe('DraftList', () => {
 		localStorage.setItem(keptKey, '{}');
 		render(<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={deleteDraft} />);
 
-		await user.click(screen.getByRole('button', { name: 'Delete Lemon bars' }));
-		const dialog = await screen.findByRole('alertdialog');
+		const dialog = await deleteFromMenu(user, 'Lemon bars');
 		expect(within(dialog).getByText('Delete the draft of “Lemon bars”?')).toBeDefined();
 		await user.click(within(dialog).getByRole('button', { name: 'Delete draft' }));
 
 		await waitFor(() => expect(localStorage.getItem(continuingKey)).toBeNull());
 		expect(deleteDraft.mock.calls[0]?.[1].get('draftId')).toBe(continuingId);
 		expect(localStorage.getItem(keptKey)).toBe('{}');
+		// The list stays, and the page renders again without the draft.
+		expect(router.replace).not.toHaveBeenCalled();
 	});
 
 	it('deletes an import’s draft by its import', async () => {
@@ -116,10 +138,8 @@ describe('DraftList', () => {
 		const deleteDraft = vi.fn<FormAction>(async () => ({ status: 'success' }));
 		render(<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={deleteDraft} />);
 
-		await user.click(screen.getByRole('button', { name: 'Delete Sheet-pan gnocchi' }));
-		await user.click(
-			within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete draft' })
-		);
+		const dialog = await deleteFromMenu(user, 'Sheet-pan gnocchi');
+		await user.click(within(dialog).getByRole('button', { name: 'Delete draft' }));
 
 		await waitFor(() => expect(deleteDraft).toHaveBeenCalledOnce());
 		expect(deleteDraft.mock.calls[0]?.[1].get('importId')).toBe(importId);

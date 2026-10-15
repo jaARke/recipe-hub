@@ -1,7 +1,9 @@
 'use client';
 
-import type * as React from 'react';
-import { ConfirmActionDialog } from '@/components/forms/confirm-action-dialog';
+import {
+	ConfirmActionDialog,
+	type ConfirmActionDialogOpener,
+} from '@/components/forms/confirm-action-dialog';
 import type { FormAction } from '@/components/forms/form-state';
 import { recipeFormFieldNames } from '@/components/recipe-form/recipe-form-fields';
 
@@ -12,25 +14,19 @@ type DeleteDraftDialogProps = {
 	draft: DeletedDraft;
 	// The recipe's title, if it has one yet.
 	title: string | undefined;
-	// The trigger's content, "Delete draft" unless a list names which.
-	trigger?: React.ReactNode;
+	// Opens the dialog from a menu's Delete draft.
+	opener: ConfirmActionDialogOpener;
 	action: FormAction;
 	// Runs once the draft is deleted, such as to leave the page it was open on.
 	onDeleted: () => void;
 };
 
 // Asks before deleting a draft, as DeleteRecipeDialog does a recipe.
-function DeleteDraftDialog({
-	draft,
-	title,
-	trigger = 'Delete draft',
-	action,
-	onDeleted,
-}: DeleteDraftDialogProps) {
+function DeleteDraftDialog({ draft, title, opener, action, onDeleted }: DeleteDraftDialogProps) {
 	return (
 		<ConfirmActionDialog
 			variant="destructive"
-			trigger={trigger}
+			opener={opener}
 			title={title === undefined ? 'Delete this draft?' : `Delete the draft of “${title}”?`}
 			description="The draft and the photos only it uses are deleted. This can’t be undone."
 			cancelLabel="Keep draft"

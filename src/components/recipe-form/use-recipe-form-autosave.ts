@@ -10,6 +10,7 @@ import {
 	recipeFormAutosavePrefix,
 	recipeFormAutosaveVersion,
 	unsavedUploads,
+	type RecipeFormEntrySubject,
 	type RecipeFormSubject,
 	type UnsavedUpload,
 } from '@/components/recipe-form/recipe-form-autosave';
@@ -166,4 +167,10 @@ export function useRecipeFormAutosave({
 	}
 
 	return { restoredAt, discard, leave };
+}
+
+// Removes the member's unsaved changes to what a form edits, as deleting it from outside the form
+// does, from a page's menu or the list of drafts.
+export function removeRecipeFormChanges(memberId: string, subject: RecipeFormEntrySubject): void {
+	removeBrowserStorage(recipeFormAutosaveKey(memberId, subject));
 }

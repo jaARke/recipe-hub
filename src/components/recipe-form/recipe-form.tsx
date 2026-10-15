@@ -2,7 +2,7 @@
 
 import { cn } from 'cn';
 import { HistoryIcon, ScanTextIcon } from 'lucide-react';
-import { unstable_rethrow, useRouter } from 'next/navigation';
+import { unstable_rethrow } from 'next/navigation';
 import * as React from 'react';
 import { flushSync } from 'react-dom';
 import { hasFieldErrors } from '@/components/forms/field-errors';
@@ -24,10 +24,8 @@ import { useHydrated } from '@/components/forms/use-hydrated';
 import { useTransientState } from '@/components/forms/use-transient-state';
 import { wideContentProps } from '@/components/layout/page-container';
 import { ActionBar } from '@/components/recipe-form/action-bar';
-import { DeleteDraftDialog } from '@/components/recipe-form/delete-draft-dialog';
-import { DeleteRecipeDialog } from '@/components/recipe-form/delete-recipe-dialog';
-import { DeleteSection } from '@/components/recipe-form/delete-section';
 import { FieldRow, RowTextField } from '@/components/recipe-form/field-row';
+import { useHoldDraft } from '@/components/recipe-form/held-draft';
 import {
 	OriginalRecipePane,
 	OriginalRecipePaneSkeleton,
@@ -50,6 +48,7 @@ import {
 } from '@/components/recipe-form/recipe-form-fields';
 import {
 	recipeFormSnapshot,
+	recipeFormSnapshotTitle,
 	restoredRecipeForm,
 	savedDraftSnapshot,
 	showSameRecipeForm,
@@ -84,13 +83,12 @@ import {
 } from '@/components/recipe-form/sectioned-list-field';
 import { TagsField, tagsFieldIds, tagsFieldLabel } from '@/components/recipe-form/tags-field';
 import { useRecipeFormAutosave } from '@/components/recipe-form/use-recipe-form-autosave';
-import { draftsTabPath, savedDraftPath } from '@/components/recipe-import/recipe-entry-paths';
+import { savedDraftPath } from '@/components/recipe-import/recipe-entry-paths';
 import { IngredientLineText } from '@/components/recipe/ingredient-line-text';
 import {
 	RecipeImageViewer,
 	RecipeImageViewerButton,
 } from '@/components/recipe/recipe-image-viewer';
-import { recipeListPath } from '@/components/recipe/recipe-paths';
 import { HighlightedSegments } from '@/components/search/highlighted-segments';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -183,10 +181,9 @@ export type OpenedDraft = {
 	savedAt: Date;
 };
 
-// Saving the form as a draft and deleting the draft, on a new recipe and an import's review.
+// Saving the form as a draft, on a new recipe and an import's review. The page's menu deletes it.
 export type RecipeFormDrafts = {
 	save: FormAction<SavedDraftResult>;
-	delete: FormAction;
 	// The draft the form opened, if any.
 	opened?: OpenedDraft;
 	// Whether the page's URL names the draft once it is first saved, so a reload opens it: the add
@@ -215,8 +212,6 @@ type RecipeFormProps = {
 	autosave?: { memberId: string };
 	// Absent when editing a published recipe, which has no draft.
 	drafts?: RecipeFormDrafts;
-	// Deletes the recipe being edited, offered after the form.
-	deleteRecipe?: { title: string; action: FormAction };
 	submitLabel: string;
 };
 
@@ -260,8 +255,8 @@ function checkMessage({ note, markers }: RecipeFormCheck): string {
 
 // The recipe form for adding, editing, and reviewing an import. Its whole value is sent as JSON in
 // one field; the action maps it with recipeContentFromForm. Saving waits for hydration, since a
-// submit before then would send what the server rendered rather than what was typed. After the form
-// comes what deletes what it edits: the recipe, or a draft it holds.
+// submit before then would send what the server rendered rather than what was typed. What deletes
+// what it edits, the recipe or a draft it holds, is in the page's menu beside its heading.
 function RecipeForm({
 	initial,
 	action,
@@ -272,16 +267,16 @@ function RecipeForm({
 	importId,
 	autosave,
 	drafts,
-	deleteRecipe,
 	submitLabel,
 }: RecipeFormProps) {
 	const baseId = React.useId();
-	const router = useRouter();
 	const [values, dispatch] = React.useReducer(editRecipeForm, initial);
 	const hydrated = useHydrated();
 	// The saved draft the form holds, and what the server holds for the form: the form as it loaded,
 	// or its draft as last saved.
 	const [savedDraft, setSavedDraft] = React.useState(drafts?.opened);
+	// Tells the page which draft the form holds once it saves one.
+	const holdDraft = useHoldDraft();
 	const [baseline, setBaseline] = React.useState(initial);
 	const unchanged = React.useMemo(
 		() => showSameRecipeForm(recipeFormSnapshot(values), recipeFormSnapshot(baseline)),
@@ -574,6 +569,7 @@ function RecipeForm({
 			if (result.status === 'success') {
 				const saved = { id: result.draftId, savedAt: result.savedAt };
 				setSavedDraft(saved);
+				holdDraft?.({ id: saved.id, title: recipeFormSnapshotTitle(snapshot) });
 				setBaseline(restoredRecipeForm(snapshot, initial));
 				setDraftStatus({ kind: 'saved', savedAt: saved.savedAt });
 				if (drafts.inUrl && saved.id !== savedDraft?.id) {
@@ -586,12 +582,6 @@ function RecipeForm({
 				setDraftStatus({ kind: 'failed', message: result.message ?? 'The draft wasn’t saved.' });
 			}
 		});
-	}
-
-	// Leaves for the destination once what the form edits is deleted, letting its changes go first.
-	function leaveFor(destination: string) {
-		autosaved.leave();
-		router.replace(destination);
 	}
 
 	const [firstCheck] = checks;
@@ -811,118 +801,89 @@ function RecipeForm({
 		</div>
 	);
 
-	const deletion =
-		editing !== undefined && deleteRecipe !== undefined ? (
-			<DeleteSection subject="recipe">
-				<DeleteRecipeDialog
-					recipeId={editing.id}
-					title={deleteRecipe.title}
-					action={deleteRecipe.action}
-					// The edit page is gone, so the list takes its place in the history.
-					onDeleted={() => leaveFor(recipeListPath)}
-				/>
-			</DeleteSection>
-		) : (
-			drafts !== undefined &&
-			savedDraft !== undefined && (
-				<DeleteSection subject="draft">
-					<DeleteDraftDialog
-						draft={{ kind: 'saved', id: savedDraft.id }}
-						title={values.text.title.trim() || undefined}
-						action={drafts.delete}
-						// The draft is gone, so the drafts left take its place in the history.
-						onDeleted={() => leaveFor(draftsTabPath)}
-					/>
-				</DeleteSection>
-			)
-		);
-
-	// The action bar follows the original and the fields, so it spans the page, and stays in the form,
+	// The action bar follows the fields and the original, so it spans the page, and stays in the form,
 	// which Save submits.
 	return (
-		<div className="flex flex-col gap-12">
-			<form {...formProps}>
-				<BesideOriginal
-					original={
-						hasOriginal && (
-							<OriginalRecipePane
-								images={originalImages}
-								title={photoFieldLegends.scan}
-								className="max-lg:hidden"
+		<form {...formProps}>
+			<BesideOriginal
+				original={
+					hasOriginal && (
+						<OriginalRecipePane
+							images={originalImages}
+							title={photoFieldLegends.scan}
+							className="max-lg:hidden"
+						/>
+					)
+				}
+			>
+				{fields}
+			</BesideOriginal>
+			<ActionBar
+				status={
+					<>
+						{drafts !== undefined && (
+							<FormStatusMessage
+								kind={draftStatus?.kind === 'saved' ? 'confirmation' : 'progress'}
+								message={draftStatusMessage(draftStatus, savedDraft !== undefined)}
 							/>
-						)
-					}
+						)}
+						{photosInProgress && (
+							<p id={ids.saveNote} className="text-sm text-muted-foreground">
+								Wait for the photos to finish uploading.
+							</p>
+						)}
+						{firstCheck !== undefined && (
+							<ReviewNotesNext id={ids.checksLeft} count={checks.length} onNext={goToNextCheck} />
+						)}
+					</>
+				}
+			>
+				<Button
+					id={ids.save}
+					type="submit"
+					// Natively disabled until hydrated, since a click before then would still submit, and while
+					// a draft saves, which saving the recipe deletes.
+					disabled={!hydrated || photosInProgress || pending || draftPending}
+					focusableWhenDisabled={hydrated}
+					aria-describedby={photosInProgress ? ids.saveNote : undefined}
 				>
-					{fields}
-				</BesideOriginal>
-				<ActionBar
-					status={
-						<>
-							{drafts !== undefined && (
-								<FormStatusMessage
-									kind={draftStatus?.kind === 'saved' ? 'confirmation' : 'progress'}
-									message={draftStatusMessage(draftStatus, savedDraft !== undefined)}
-								/>
-							)}
-							{photosInProgress && (
-								<p id={ids.saveNote} className="text-sm text-muted-foreground">
-									Wait for the photos to finish uploading.
-								</p>
-							)}
-							{firstCheck !== undefined && (
-								<ReviewNotesNext id={ids.checksLeft} count={checks.length} onNext={goToNextCheck} />
-							)}
-						</>
-					}
-				>
+					{pending && <Spinner data-icon="inline-start" />}
+					{pending ? 'Saving recipe' : submitLabel}
+				</Button>
+				{drafts !== undefined && (
 					<Button
-						id={ids.save}
-						type="submit"
-						// Natively disabled until hydrated, since a click before then would still submit, and while
-						// a draft saves, which saving the recipe deletes.
+						type="button"
+						variant="outline"
 						disabled={!hydrated || photosInProgress || pending || draftPending}
 						focusableWhenDisabled={hydrated}
 						aria-describedby={photosInProgress ? ids.saveNote : undefined}
+						onClick={saveDraft}
 					>
-						{pending && <Spinner data-icon="inline-start" />}
-						{pending ? 'Saving recipe' : submitLabel}
+						{draftPending && <Spinner data-icon="inline-start" />}
+						{draftPending ? (
+							'Saving draft'
+						) : (
+							// One run of text, which the button's gap would split, reading "Save draft" on phones so
+							// the row fits beside Save.
+							<span>
+								Save <span className="max-sm:hidden">as </span>draft
+							</span>
+						)}
 					</Button>
-					{drafts !== undefined && (
-						<Button
-							type="button"
-							variant="outline"
-							disabled={!hydrated || photosInProgress || pending || draftPending}
-							focusableWhenDisabled={hydrated}
-							aria-describedby={photosInProgress ? ids.saveNote : undefined}
-							onClick={saveDraft}
-						>
-							{draftPending && <Spinner data-icon="inline-start" />}
-							{draftPending ? (
-								'Saving draft'
-							) : (
-								// One run of text, which the button's gap would split, reading "Save draft" on phones so
-								// the row fits beside Save.
-								<span>
-									Save <span className="max-sm:hidden">as </span>draft
-								</span>
-							)}
-						</Button>
-					)}
-				</ActionBar>
-				<UncheckedSaveDialog
-					open={warningOpen}
-					onOpenChange={setWarningOpen}
-					count={checks.length}
-					onShow={() => {
-						if (firstCheck !== undefined) {
-							focusCheck(firstCheck);
-						}
-					}}
-					onSaveAnyway={saveAnyway}
-				/>
-			</form>
-			{deletion}
-		</div>
+				)}
+			</ActionBar>
+			<UncheckedSaveDialog
+				open={warningOpen}
+				onOpenChange={setWarningOpen}
+				count={checks.length}
+				onShow={() => {
+					if (firstCheck !== undefined) {
+						focusCheck(firstCheck);
+					}
+				}}
+				onSaveAnyway={saveAnyway}
+			/>
+		</form>
 	);
 }
 
@@ -980,8 +941,9 @@ function RestoredChangesNotice({
 }
 
 // The form's fields, with the original recipe beside them from lg when there is one, which widens the
-// page. The wrapper stays as the original comes and goes, so the fields, and the uploads in them,
-// never remount.
+// page. The fields come first, in the left column, so the action bar's Save after them sits at their
+// edge; the original is on the right. The wrapper stays as the original comes and goes, so the
+// fields, and the uploads in them, never remount.
 function BesideOriginal({
 	original,
 	children,
@@ -995,8 +957,8 @@ function BesideOriginal({
 			{...wideContentProps(hasOriginal)}
 			className={cn(hasOriginal && 'lg:grid lg:grid-cols-2 lg:items-start lg:gap-12')}
 		>
-			{original}
 			{children}
+			{original}
 		</div>
 	);
 }

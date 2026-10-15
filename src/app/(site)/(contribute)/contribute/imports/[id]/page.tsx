@@ -10,12 +10,19 @@ import { SignInRequiredError } from '@/application/authorization';
 import type { ImportReviewDto } from '@/application/ingestion/recipe-import-dtos';
 import { signInHref } from '@/components/auth/auth-paths';
 import { PageContainer } from '@/components/layout/page-container';
+import {
+	EditingPageHeading,
+	editingPageTitles,
+} from '@/components/recipe-form/editing-page-heading';
 import { RecipeForm, RecipeFormSkeleton } from '@/components/recipe-form/recipe-form';
 import {
 	readRecipeFormSnapshot,
+	recipeFormSnapshotTitle,
 	restoredRecipeForm,
 } from '@/components/recipe-form/recipe-form-snapshot';
 import { recipeFormValues } from '@/components/recipe-form/recipe-form-values';
+import { DraftMenu } from '@/components/recipe-form/subject-menus';
+import { draftsTabPath } from '@/components/recipe-import/recipe-entry-paths';
 import { recipeImportPath } from '@/components/recipe-import/recipe-import-paths';
 import { RecipeImportedFrom } from '@/components/recipe/recipe-detail';
 import { contributePath, recipePath } from '@/components/recipe/recipe-paths';
@@ -37,7 +44,7 @@ import {
 import { settings } from '@/lib/settings';
 
 export const metadata: Metadata = {
-	title: 'Review the import',
+	title: editingPageTitles.review,
 };
 
 // The authoritative check: the service refuses a visitor who isn't signed in, and the proxy only
@@ -81,7 +88,12 @@ async function ImportReview({ params }: Pick<PageProps<'/contribute/imports/[id]
 	const { id } = await params;
 	const review = await loadImportReview(id);
 	if (review === null) {
-		return <ImportUnavailableEmptyState />;
+		return (
+			<>
+				<EditingPageHeading page="review" />
+				<ImportUnavailableEmptyState />
+			</>
+		);
 	}
 
 	// A saved draft leads to its recipe for good. Inside Suspense the redirect happens in the browser,
@@ -102,7 +114,22 @@ async function ImportReview({ params }: Pick<PageProps<'/contribute/imports/[id]
 	const snapshot = savedDraft === null ? undefined : readRecipeFormSnapshot(savedDraft.values);
 	const opened = savedDraft === null || snapshot === undefined ? undefined : savedDraft;
 	return (
-		<div className="flex flex-col gap-8">
+		<>
+			<EditingPageHeading
+				page="review"
+				menu={
+					// Deletes the import's draft, with the member's draft that continues it.
+					<DraftMenu
+						label="Draft actions"
+						draft={{ kind: 'import', id: draft.id }}
+						title={snapshot === undefined ? draft.content.title : recipeFormSnapshotTitle(snapshot)}
+						formSubject={{ kind: 'import', importId: draft.id }}
+						memberId={member.id}
+						action={deleteDraft}
+						leavesFor={draftsTabPath}
+					/>
+				}
+			/>
 			{draft.sourceUrl === undefined ? (
 				<p className="text-sm text-muted-foreground">Read from your photos</p>
 			) : (
@@ -119,30 +146,30 @@ async function ImportReview({ params }: Pick<PageProps<'/contribute/imports/[id]
 				autosave={{ memberId: member.id }}
 				drafts={{
 					save: saveDraft,
-					delete: deleteDraft,
 					opened: opened === undefined ? undefined : { id: opened.id, savedAt: opened.savedAt },
 					inUrl: false,
 				}}
 				submitLabel="Save recipe"
 			/>
-		</div>
+		</>
 	);
 }
 
-// Mirrors the line naming where the draft came from, over the recipe form beside the original.
+// Mirrors the heading, the line naming where the draft came from, and the recipe form beside the
+// original.
 function ImportReviewSkeleton() {
 	return (
-		<div className="flex flex-col gap-8">
+		<>
+			<EditingPageHeading page="review" />
 			<Skeleton className="h-5 w-48" />
 			<RecipeFormSkeleton besideOriginal />
-		</div>
+		</>
 	);
 }
 
 export default function ImportReviewPage({ params }: PageProps<'/contribute/imports/[id]'>) {
 	return (
 		<PageContainer width="readingOrWide" className="flex flex-col gap-8 py-12 sm:py-16">
-			<h1 className="font-heading text-4xl font-semibold">Review the import</h1>
 			<Suspense fallback={<ImportReviewSkeleton />}>
 				<ImportReview params={params} />
 			</Suspense>

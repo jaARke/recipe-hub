@@ -8,8 +8,14 @@ import standInScanPage1 from '@/components/design-reference/stand-in-scans/anise
 import standInScanPage2 from '@/components/design-reference/stand-in-scans/anise-cakes-page-2.jpg';
 import { formText } from '@/components/forms/form-data';
 import type { FormAction, FormState } from '@/components/forms/form-state';
+import { EditingPageHeading } from '@/components/recipe-form/editing-page-heading';
+import { HeldDraftProvider, type HeldDraft } from '@/components/recipe-form/held-draft';
 import type { PhotoUploader } from '@/components/recipe-form/photo-upload';
-import { RecipeForm, type RecipeFormDrafts } from '@/components/recipe-form/recipe-form';
+import {
+	RecipeForm,
+	type OpenedDraft,
+	type RecipeFormDrafts,
+} from '@/components/recipe-form/recipe-form';
 import { recipeContentFromForm } from '@/components/recipe-form/recipe-form-content';
 import {
 	recipeFormFieldNames,
@@ -21,6 +27,7 @@ import {
 	type RecipeFormEdit,
 	type RecipeFormValues,
 } from '@/components/recipe-form/recipe-form-values';
+import { DraftMenu, EditedRecipeMenu, HeldDraftMenu } from '@/components/recipe-form/subject-menus';
 import { parseRecipeContent } from '@/domain/recipe/recipe';
 import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
 
@@ -129,6 +136,10 @@ const saveSampleDraft: FormAction<SavedDraftResult> = () =>
 		savedAt: new Date(),
 	});
 
+// Stands in for the member signed in, whose unsaved changes a menu's delete removes; deleting a
+// sample is refused, so none are.
+const sampleMemberId = 'sample-member';
+
 // Refuses, so the sample stays here rather than leaving for the list or the drafts.
 const deleteSample: FormAction = () =>
 	standIn<FormState>({
@@ -140,7 +151,6 @@ const deleteSample: FormAction = () =>
 // The page's URL stays the design reference's.
 const sampleDrafts: RecipeFormDrafts = {
 	save: saveSampleDraft,
-	delete: deleteSample,
 	inUrl: false,
 };
 
@@ -148,11 +158,14 @@ function SampleRecipeForm({
 	initial,
 	tagLabels,
 	editing,
+	openedDraft,
 	standInScans = false,
 }: {
 	initial: RecipeFormValues;
 	tagLabels: readonly string[];
 	editing?: EditedRecipe;
+	// The saved draft the form opens, when adding a recipe.
+	openedDraft?: OpenedDraft;
 	// Adds the stand-in pages of an original recipe, as just uploaded.
 	standInScans?: boolean;
 }) {
@@ -172,13 +185,79 @@ function SampleRecipeForm({
 			tagLabels={tagLabels}
 			uploader={sampleUpload}
 			editing={editing}
-			drafts={editing === undefined ? sampleDrafts : undefined}
-			deleteRecipe={
-				editing === undefined ? undefined : { title: initial.text.title, action: deleteSample }
-			}
+			drafts={editing === undefined ? { ...sampleDrafts, opened: openedDraft } : undefined}
 			submitLabel={editing === undefined ? 'Save recipe' : 'Save changes'}
 		/>
 	);
 }
 
-export { deleteSample, SampleRecipeForm, sampleUpload, sampleUploadFolders };
+// What a sample page edits, which its heading's menu acts on: a new recipe, from a saved draft if
+// one is given; an import's draft; or a recipe.
+export type SampleEditingSubject =
+	| { page: 'add'; draft?: HeldDraft & OpenedDraft }
+	| { page: 'review'; importId: string; title: string | undefined }
+	| { page: 'edit'; recipe: EditedRecipe; slug: string; title: string };
+
+// The heading's menu on each sample page, as the site's pages give it.
+function sampleMenu(subject: SampleEditingSubject): React.ReactNode {
+	switch (subject.page) {
+		case 'add':
+			return <HeldDraftMenu memberId={sampleMemberId} action={deleteSample} />;
+		case 'review':
+			return (
+				<DraftMenu
+					label="Draft actions"
+					draft={{ kind: 'import', id: subject.importId }}
+					title={subject.title}
+					formSubject={{ kind: 'import', importId: subject.importId }}
+					memberId={sampleMemberId}
+					action={deleteSample}
+				/>
+			);
+		case 'edit':
+			return (
+				<EditedRecipeMenu
+					recipe={{ id: subject.recipe.id, slug: subject.slug, title: subject.title }}
+					memberId={sampleMemberId}
+					action={deleteSample}
+				/>
+			);
+	}
+}
+
+// An editing page as the site composes it: its heading, under the design reference's own, with the
+// page's menu, over the sample form.
+function SampleEditingPage({
+	subject,
+	initial,
+	tagLabels,
+	standInScans,
+}: {
+	subject: SampleEditingSubject;
+	initial: RecipeFormValues;
+	tagLabels: readonly string[];
+	standInScans?: boolean;
+}) {
+	const draft = subject.page === 'add' ? subject.draft : undefined;
+	return (
+		<HeldDraftProvider opened={draft}>
+			<EditingPageHeading page={subject.page} headingTag="h4" menu={sampleMenu(subject)} />
+			<SampleRecipeForm
+				initial={initial}
+				tagLabels={tagLabels}
+				editing={subject.page === 'edit' ? subject.recipe : undefined}
+				openedDraft={draft}
+				standInScans={standInScans}
+			/>
+		</HeldDraftProvider>
+	);
+}
+
+export {
+	deleteSample,
+	SampleEditingPage,
+	sampleMemberId,
+	SampleRecipeForm,
+	sampleUpload,
+	sampleUploadFolders,
+};

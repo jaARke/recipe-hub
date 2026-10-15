@@ -4,11 +4,8 @@ import { FilePenLineIcon } from 'lucide-react';
 import Link from 'next/link';
 import type { DraftSummaryDto } from '@/application/drafts/saved-draft-dtos';
 import type { FormAction } from '@/components/forms/form-state';
-import { DeleteDraftDialog } from '@/components/recipe-form/delete-draft-dialog';
-import {
-	recipeFormAutosaveKey,
-	type RecipeFormEntrySubject,
-} from '@/components/recipe-form/recipe-form-autosave';
+import type { RecipeFormEntrySubject } from '@/components/recipe-form/recipe-form-autosave';
+import { DraftMenu } from '@/components/recipe-form/subject-menus';
 import { savedDraftPath } from '@/components/recipe-import/recipe-entry-paths';
 import { recipeImportPath } from '@/components/recipe-import/recipe-import-paths';
 import { formatTimeAgo } from '@/components/recipe-import/time-ago';
@@ -21,7 +18,6 @@ import {
 	EmptyTitle,
 } from '@/components/ui/empty';
 import type { RecipeImportMode } from '@/domain/recipe/recipe-import';
-import { removeBrowserStorage } from '@/lib/browser-storage';
 import { formatDate } from '@/lib/dates';
 import { settings } from '@/lib/settings';
 
@@ -82,8 +78,8 @@ type DraftListProps = {
 };
 
 // The member's drafts, as the service lists them, each opening where it continues, with when it was
-// saved and when it goes. The Drafts tab names the list, so it has no heading of its own. Deleting
-// one refreshes the page, which drops its row.
+// saved and when it goes, and a menu holding Delete draft. The Drafts tab names the list, so it has
+// no heading of its own. Deleting one refreshes the page, which drops its row.
 function DraftList({ drafts, now, memberId, deleteDraft }: DraftListProps) {
 	if (drafts.length === 0) {
 		return <DraftsEmptyState />;
@@ -115,22 +111,17 @@ function DraftList({ drafts, now, memberId, deleteDraft }: DraftListProps) {
 								</p>
 							</div>
 						</div>
-						<div className="flex flex-wrap gap-2 sm:shrink-0">
+						<div className="flex flex-wrap items-center gap-2 sm:shrink-0">
 							<Link href={draftPath(draft)} className={buttonVariants({ variant: 'outline' })}>
 								Open<span className="sr-only"> {name}</span>
 							</Link>
-							<DeleteDraftDialog
+							<DraftMenu
+								label={`Actions for ${name}`}
 								draft={{ kind: draft.kind, id: draft.id }}
 								title={draft.title}
-								trigger={
-									<>
-										Delete<span className="sr-only"> {name}</span>
-									</>
-								}
+								formSubject={draftFormSubject(draft)}
+								memberId={memberId}
 								action={deleteDraft}
-								onDeleted={() =>
-									removeBrowserStorage(recipeFormAutosaveKey(memberId, draftFormSubject(draft)))
-								}
 							/>
 						</div>
 					</li>

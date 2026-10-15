@@ -147,6 +147,10 @@ function AlertDialogCancel({
 	);
 }
 
+// Lets a control outside the dialog, such as a menu's item, open it.
+const createAlertDialogHandle = AlertDialogPrimitive.createHandle;
+type AlertDialogHandle<Payload = unknown> = AlertDialogPrimitive.Handle<Payload>;
+
 export {
 	AlertDialog,
 	AlertDialogAction,
@@ -160,4 +164,6 @@ export {
 	AlertDialogPortal,
 	AlertDialogTitle,
 	AlertDialogTrigger,
+	createAlertDialogHandle,
+	type AlertDialogHandle,
 };

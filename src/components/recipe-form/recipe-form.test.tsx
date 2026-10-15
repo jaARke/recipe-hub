@@ -5,6 +5,7 @@ import * as React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FormAction, FormState } from '@/components/forms/form-state';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
+import { HeldDraftProvider } from '@/components/recipe-form/held-draft';
 import { RecipeForm, type RecipeFormDrafts } from '@/components/recipe-form/recipe-form';
 import type { AutosavedRecipeForm } from '@/components/recipe-form/recipe-form-autosave';
 import type { EditedRecipe, SavedDraftResult } from '@/components/recipe-form/recipe-form-fields';
@@ -18,6 +19,7 @@ import {
 	type RecipeFormEdit,
 	type RecipeFormValues,
 } from '@/components/recipe-form/recipe-form-values';
+import { EditedRecipeMenu, HeldDraftMenu } from '@/components/recipe-form/subject-menus';
 import type { Problem } from '@/domain/problem';
 import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
 import { daysInMilliseconds, formatDayAndTime, formatTime } from '@/lib/dates';
@@ -381,6 +383,18 @@ describe('RecipeForm’s action bar', () => {
 		});
 	});
 
+	it('puts the fields before the original, so Save comes after the fields and Tab reaches them first', () => {
+		renderForm(withOriginal);
+
+		const title = screen.getByRole('textbox', { name: 'Title' });
+		const pane = screen.getByRole('complementary', { name: 'Original recipe' });
+		expect(title.compareDocumentPosition(pane) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+		expect(
+			pane.compareDocumentPosition(screen.getByRole('button', { name: 'Save recipe' })) &
+				Node.DOCUMENT_POSITION_FOLLOWING
+		).not.toBe(0);
+	});
+
 	it('moves Next on from the last field focused, not from the original beside the fields', async () => {
 		const user = userEvent.setup();
 		renderForm(withOriginal, threeNotes);
@@ -631,7 +645,6 @@ type AutosavedFormProps = {
 	editing?: EditedRecipe;
 	importId?: string;
 	drafts?: RecipeFormDrafts;
-	deleteRecipe?: { title: string; action: FormAction };
 	member?: string;
 };
 
@@ -641,7 +654,6 @@ function AutosavedForm({
 	editing,
 	importId: reviewed,
 	drafts,
-	deleteRecipe,
 	member = memberId,
 }: AutosavedFormProps) {
 	return (
@@ -655,7 +667,6 @@ function AutosavedForm({
 			importId={reviewed}
 			autosave={{ memberId: member }}
 			drafts={drafts}
-			deleteRecipe={deleteRecipe}
 			submitLabel="Save recipe"
 		/>
 	);
@@ -1105,7 +1116,7 @@ describe('RecipeForm’s drafts', () => {
 		save: FormAction<SavedDraftResult>,
 		changes: Partial<RecipeFormDrafts> = {}
 	): RecipeFormDrafts {
-		return { save, delete: vi.fn(), inUrl: true, ...changes };
+		return { save, inUrl: true, ...changes };
 	}
 
 	function saveAsDraft() {
@@ -1277,22 +1288,23 @@ describe('RecipeForm’s drafts', () => {
 	});
 });
 
-describe('RecipeForm’s delete section', () => {
+describe('RecipeForm with its page’s menu', () => {
 	const succeed: FormAction = async () => ({ status: 'success' });
 
 	afterEach(() => {
 		vi.clearAllMocks();
 		localStorage.clear();
+		window.history.replaceState(null, '', '/');
 	});
 
-	async function confirmDelete(name: string) {
+	async function confirmDelete(menu: string, name: string) {
 		const user = userEvent.setup();
-		const section = screen.getByRole('region', { name });
-		await user.click(within(section).getByRole('button', { name }));
+		await user.click(screen.getByRole('button', { name: menu }));
+		await user.click(await screen.findByRole('menuitem', { name }));
 		await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name }));
 	}
 
-	it('deletes the recipe being edited, its unsaved changes and no others first, and leaves for the list', async () => {
+	it('deletes the recipe being edited, the form’s unsaved changes and no others first, and leaves for the list', async () => {
 		const user = userEvent.setup();
 		const recipeKey = `member:recipe-form:${memberId}:recipe:${recipeId}`;
 		const newRecipeEntry = JSON.stringify({
@@ -1305,16 +1317,22 @@ describe('RecipeForm’s delete section', () => {
 			entryAsItLeft = localStorage.getItem(recipeKey);
 		});
 		render(
-			<AutosavedForm
-				initial={recipeFormValues(lemonBars)}
-				editing={{ id: recipeId, version: 'a', respellableTags: [] }}
-				deleteRecipe={{ title: 'Lemon bars', action: succeed }}
-			/>
+			<>
+				<EditedRecipeMenu
+					recipe={{ id: recipeId, slug: 'lemon-bars', title: 'Lemon bars' }}
+					memberId={memberId}
+					action={succeed}
+				/>
+				<AutosavedForm
+					initial={recipeFormValues(lemonBars)}
+					editing={{ id: recipeId, version: 'a', respellableTags: [] }}
+				/>
+			</>
 		);
 		await user.type(title(), ' squares');
 		expect(localStorage.getItem(recipeKey)).not.toBeNull();
 
-		await confirmDelete('Delete recipe');
+		await confirmDelete('Recipe actions', 'Delete recipe');
 
 		await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/'));
 		expect(entryAsItLeft).toBeNull();
@@ -1322,7 +1340,7 @@ describe('RecipeForm’s delete section', () => {
 		expect(localStorage.getItem(newRecipeKey)).toBe(newRecipeEntry);
 	});
 
-	it('offers Delete draft once the form holds a saved draft, and leaves for the drafts left', async () => {
+	it('offers Delete draft once the form saves a draft, and leaves for the drafts left', async () => {
 		const user = userEvent.setup();
 		const remove = vi.fn(succeed);
 		const save = vi.fn<FormAction<SavedDraftResult>>(async () => ({
@@ -1330,13 +1348,24 @@ describe('RecipeForm’s delete section', () => {
 			draftId,
 			savedAt: new Date(),
 		}));
-		render(<AutosavedForm drafts={{ save, delete: remove, inUrl: false }} />);
-		expect(screen.queryByRole('region', { name: 'Delete draft' })).toBeNull();
+		render(
+			<HeldDraftProvider opened={undefined}>
+				<HeldDraftMenu memberId={memberId} action={remove} />
+				<AutosavedForm drafts={{ save, inUrl: true }} />
+			</HeldDraftProvider>
+		);
+		expect(screen.queryByRole('button', { name: 'Draft actions' })).toBeNull();
 		await user.type(title(), 'Lemon bars');
 		await user.click(screen.getByRole('button', { name: 'Save as draft' }));
 		await user.type(title(), ' squares');
+		expect(localStorage.getItem(draftKey)).not.toBeNull();
 
-		await confirmDelete('Delete draft');
+		await user.click(await screen.findByRole('button', { name: 'Draft actions' }));
+		await user.click(await screen.findByRole('menuitem', { name: 'Delete draft' }));
+		const dialog = await screen.findByRole('alertdialog');
+		// Named as it was saved, which is what the delete takes away.
+		expect(within(dialog).getByText('Delete the draft of “Lemon bars”?')).toBeDefined();
+		await user.click(within(dialog).getByRole('button', { name: 'Delete draft' }));
 
 		await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/contribute?tab=drafts'));
 		expect(remove.mock.calls[0]?.[1].get('draftId')).toBe(draftId);

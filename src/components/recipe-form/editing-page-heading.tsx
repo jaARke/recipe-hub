@@ -1,0 +1,41 @@
+import type * as React from 'react';
+
+// The pages that hold the recipe form: adding a recipe, reviewing an import, and editing a recipe.
+export type EditingPage = 'add' | 'review' | 'edit';
+
+// Each page's heading, which is its title too.
+export const editingPageTitles = {
+	add: 'Add a recipe',
+	review: 'Review the import',
+	edit: 'Edit recipe',
+} as const satisfies Record<EditingPage, string>;
+
+type EditingPageHeadingProps = {
+	page: EditingPage;
+	// h4 nests the heading under the design reference's own headings.
+	headingTag?: 'h1' | 'h4';
+	// The page's menu of what can be done to the recipe or draft it edits, if it has one.
+	menu?: React.ReactNode;
+};
+
+// The heading of a page that holds the recipe form, with the page's menu at its right, as the recipe
+// page's title holds its edit link.
+function EditingPageHeading({ page, headingTag: Heading = 'h1', menu }: EditingPageHeadingProps) {
+	const heading = (
+		<Heading className="min-w-0 font-heading text-4xl font-semibold">
+			{editingPageTitles[page]}
+		</Heading>
+	);
+	if (menu === undefined) {
+		return heading;
+	}
+	return (
+		<div className="flex items-start justify-between gap-4">
+			{heading}
+			{/* As tall as the heading's first line, so the icon button centers on it. */}
+			<div className="flex h-10 shrink-0 items-center">{menu}</div>
+		</div>
+	);
+}
+
+export { EditingPageHeading };

@@ -1,7 +1,11 @@
 'use client';
 
 import type { DraftSummaryDto } from '@/application/drafts/saved-draft-dtos';
-import { deleteSample, SampleRecipeForm } from '@/components/design-reference/sample-recipe-form';
+import {
+	deleteSample,
+	sampleMemberId,
+	SampleRecipeForm,
+} from '@/components/design-reference/sample-recipe-form';
 import {
 	SampleScanImportForm,
 	SampleUrlImportForm,
@@ -31,7 +35,7 @@ function SampleRecipeEntryTabs({
 			defaultTab="manual"
 			drafts={drafts}
 			now={now}
-			memberId="sample-member"
+			memberId={sampleMemberId}
 			deleteDraft={deleteSample}
 		/>
 	);
