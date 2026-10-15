@@ -10,7 +10,9 @@ import {
 	type CookingRowKey,
 } from '@/components/cooking/cooking-progress';
 import { RecipeIngredientsAndSteps } from '@/components/recipe/recipe-ingredients-and-steps';
+import { RecipeScaleProvider } from '@/components/recipe/recipe-scale-provider';
 import type { IngredientSection } from '@/domain/recipe/ingredient';
+import { parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import type { InstructionSection } from '@/domain/recipe/instruction';
 
 const recipe: CookingRecipe = {
@@ -209,5 +211,76 @@ describe('RecipeIngredientsAndSteps', () => {
 			'Bake for 20 minutes.',
 			'Whisk the sugar with lemon juice.',
 		]);
+	});
+});
+
+describe('RecipeIngredientsAndSteps at a scale', () => {
+	const markedSections: IngredientSection[] = [
+		{
+			lines: [
+				'12 to fifteen apples',
+				'Half and half',
+				'1 can artichoke quarters',
+				'1 egg plus 1 yolk',
+				'Salt to taste',
+			].map(parseIngredientLine),
+		},
+	];
+
+	// The recipe page at twice its 6 servings.
+	function doubled(sections: IngredientSection[]) {
+		history.replaceState(null, '', '/recipes/apple-pie?servings=12');
+		return (
+			<CookingModeProvider recipe={recipe}>
+				<RecipeScaleProvider recipeYield={{ kind: 'servings', amount: { min: 6 } }}>
+					<RecipeIngredientsAndSteps
+						ingredientSections={sections}
+						instructionSections={instructionSections}
+						headingLevel={1}
+					/>
+				</RecipeScaleProvider>
+			</CookingModeProvider>
+		);
+	}
+
+	afterEach(() => {
+		history.replaceState(null, '', '/');
+	});
+
+	it('marks a line it left whole "Not scaled", shows a line it scaled in part as written, and marks no other', () => {
+		render(doubled(markedSections));
+
+		expect(
+			screen
+				.getAllByRole('listitem')
+				.slice(0, 5)
+				.map((item) => item.textContent)
+		).toEqual([
+			'12 to fifteen applesNot scaled',
+			'Half and half',
+			'2 cans artichoke quarters',
+			'2 egg plus 1 yolkAs written: 1 egg plus 1 yolk',
+			'Salt to taste',
+		]);
+	});
+
+	it('notes under Steps that their amounts are the recipe’s own', () => {
+		render(doubled(markedSections));
+
+		expect(screen.getByText('Amounts in the steps are for the original 6 servings.')).toBeDefined();
+	});
+
+	it('prints the scaled lines from cooking mode’s plain copy', async () => {
+		const user = userEvent.setup();
+		const { container } = render(doubled(ingredientSections));
+
+		await user.click(cookingSwitch());
+
+		const printed = container.querySelector('.print\\:contents ul');
+		expect(Array.from(printed?.children ?? [], (item) => item.textContent)).toEqual([
+			'4 cups flour',
+			'Salt to taste',
+		]);
+		expect(checkboxNames()).toContain('4 cups flour');
 	});
 });

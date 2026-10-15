@@ -23,6 +23,13 @@ import {
 } from '@/components/ui/input-group';
 import { Label } from '@/components/ui/label';
 import {
+	NumberField,
+	NumberFieldDecrement,
+	NumberFieldGroup,
+	NumberFieldIncrement,
+	NumberFieldInput,
+} from '@/components/ui/number-field';
+import {
 	Select,
 	SelectContent,
 	SelectGroup,
@@ -125,6 +132,44 @@ function InputGroupSpecimen() {
 						</InputGroupAddon>
 					</InputGroup>
 					<FieldError id="input-group-invalid-error">Enter at least 1 minute.</FieldError>
+				</Field>
+			</FieldGroup>
+		</Specimen>
+	);
+}
+
+// A recipe's servings stepper steps by one, a count it makes by half the count, and batches by half.
+const numberFieldSamples = [
+	{ id: 'number-field-servings', label: 'Servings', value: 6, step: 1, min: 1, max: 48 },
+	{ id: 'number-field-makes', label: 'Cookies', value: 24, step: 12, min: 12, max: 192 },
+	{ id: 'number-field-batches', label: 'Batches', value: 1, step: 0.5, min: 0.5, max: 8 },
+] as const;
+
+function NumberFieldSpecimen() {
+	return (
+		<Specimen label="Servings by one, cookies by 12, batches by half, and disabled, as before hydration">
+			<FieldGroup className="grid gap-6 sm:grid-cols-2">
+				{numberFieldSamples.map(({ id, label, value, step, min, max }) => (
+					<Field key={id}>
+						<FieldLabel htmlFor={id}>{label}</FieldLabel>
+						<NumberField id={id} defaultValue={value} step={step} min={min} max={max}>
+							<NumberFieldGroup>
+								<NumberFieldDecrement />
+								<NumberFieldInput />
+								<NumberFieldIncrement />
+							</NumberFieldGroup>
+						</NumberField>
+					</Field>
+				))}
+				<Field data-disabled="true">
+					<FieldLabel htmlFor="number-field-disabled">Disabled</FieldLabel>
+					<NumberField id="number-field-disabled" defaultValue={6} disabled>
+						<NumberFieldGroup>
+							<NumberFieldDecrement />
+							<NumberFieldInput />
+							<NumberFieldIncrement />
+						</NumberFieldGroup>
+					</NumberField>
 				</Field>
 			</FieldGroup>
 		</Specimen>
@@ -417,6 +462,7 @@ export {
 	InputGroupSpecimen,
 	InputSpecimen,
 	LabelSpecimen,
+	NumberFieldSpecimen,
 	SelectSpecimen,
 	SwitchSpecimen,
 	TextareaSpecimen,

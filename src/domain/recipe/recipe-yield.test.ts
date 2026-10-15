@@ -3,6 +3,7 @@ import { writtenContent } from '@/domain/recipe/content-limits';
 import {
 	formatScaledToLine,
 	formatScaledYield,
+	formatScaleStepperLabel,
 	formatStepsNote,
 	formatYield,
 	readYieldAmount,
@@ -126,6 +127,21 @@ describe('scaleFactor', () => {
 		[undefined, 0.5, 0.5],
 	])('scales %j at %s by %s', (recipeYield, value, factor) => {
 		expect(scaleFactor(scaleStepperFor(recipeYield), value)).toBe(factor);
+	});
+});
+
+describe('formatScaleStepperLabel', () => {
+	it.each<[RecipeYield | undefined, string]>([
+		[serves6, 'Servings'],
+		[makes24Cookies, 'Cookies'],
+		[{ kind: 'makes', amount: { min: 1 }, unit: 'loaf' }, 'Loaves'],
+		[{ kind: 'makes', amount: { min: 2 }, unit: 'dozen rolls' }, 'Dozen rolls'],
+		[{ kind: 'makes', amount: { min: 24 } }, 'Makes'],
+		[serves4To6, 'Batches'],
+		[{ kind: 'makes', amount: { min: 1.5 }, unit: 'dozen' }, 'Batches'],
+		[undefined, 'Batches'],
+	])('labels the stepper of %j "%s"', (recipeYield, expected) => {
+		expect(formatScaleStepperLabel(recipeYield)).toBe(expected);
 	});
 });
 

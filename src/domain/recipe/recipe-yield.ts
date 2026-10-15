@@ -4,7 +4,7 @@ import { formatAmount } from '@/domain/recipe/amount-format';
 import type { ContentLimits } from '@/domain/recipe/content-limits';
 import { parseAmountText, withoutClosingPunctuation } from '@/domain/recipe/ingredient-parser';
 import { itemForAmount, scaleCount } from '@/domain/recipe/ingredient-scaling';
-import { plainTextSchema } from '@/domain/text';
+import { plainTextSchema, sentenceCase } from '@/domain/text';
 import { withoutTrailingPunctuation } from '@/domain/text-normalization';
 import { settings } from '@/lib/settings';
 
@@ -105,6 +105,25 @@ export function scaleStepperValue(stepper: ScaleStepper, value: number): number 
 // The factor the recipe's amounts scale by at the stepper's value.
 export function scaleFactor(stepper: ScaleStepper, value: number): number {
 	return value / stepper.original;
+}
+
+// The stepper's label for each kind; a count of something named takes that name instead.
+const stepperLabels = {
+	servings: 'Servings',
+	makes: 'Makes',
+	batches: 'Batches',
+} as const satisfies Record<ScaleStepperKind, string>;
+
+// More than one of what a yield counts, which a label names: "Servings", "Loaves".
+const several: Amount = { min: 2 };
+
+// The stepper is labelled by what it counts, in the plural: "Servings", "Cookies" for "Makes 24
+// cookies", or "Batches"; a count of nothing named, as in "Makes 24", by its verb, "Makes".
+export function formatScaleStepperLabel(recipeYield: RecipeYield | undefined): string {
+	const { kind } = scaleStepperFor(recipeYield);
+	return kind === 'makes' && recipeYield?.kind === 'makes' && recipeYield.unit !== undefined
+		? sentenceCase(itemForAmount(recipeYield.unit, recipeYield.amount, several))
+		: stepperLabels[kind];
 }
 
 // How a yield's text opens, by its kind.

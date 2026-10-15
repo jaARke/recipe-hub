@@ -24,6 +24,11 @@ export function nonEmptyTextSchema(name: string): z.ZodString {
 // Text no form asks for by name, such as a model's name or a parsed ingredient's item.
 export const plainTextSchema = nonEmptyTextSchema('some text');
 
+// The text opening with a capital, as a label does: "cookies" is "Cookies".
+export function sentenceCase(text: string): string {
+	return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+}
+
 // What every limit says when it is passed, such as "Use 12 photos or fewer."
 export function limitMessage(max: number, units: string): string {
 	return `Use ${max} ${units} or fewer.`;

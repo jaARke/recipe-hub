@@ -14,6 +14,7 @@ import { defaultListSort } from '@/components/recipe/recipe-list-params';
 import { RecipeEditLink } from '@/components/recipe/recipe-member-view';
 import { recipeMetaDescription } from '@/components/recipe/recipe-meta-description';
 import { recipePath } from '@/components/recipe/recipe-paths';
+import { RecipeScaleProvider } from '@/components/recipe/recipe-scale-provider';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getFavoriteService, getRecipeService } from '@/composition/services';
 import { siteUrl } from '@/lib/env';
@@ -106,20 +107,22 @@ async function RecipeBySlug({ params }: Pick<PageProps<'/recipes/[slug]'>, 'para
 			<RecipeJsonLd recipe={recipe} siteUrl={siteUrl} />
 			<RecipeBackLink recipePathname={recipePath(recipe.slug)} className="mb-6" />
 			<CookingModeProvider recipe={{ id: recipe.id, version: recipe.updatedAt.toISOString() }}>
-				<RecipeDetail
-					recipe={recipe}
-					headingLevel={1}
-					titleAction={
-						<Suspense>
-							<RecipeEditAction slug={recipe.slug} />
-						</Suspense>
-					}
-					favoriteToggle={
-						<Suspense fallback={<Skeleton />}>
-							<RecipeFavoriteToggle recipeId={recipe.id} />
-						</Suspense>
-					}
-				/>
+				<RecipeScaleProvider recipeYield={recipe.yield}>
+					<RecipeDetail
+						recipe={recipe}
+						headingLevel={1}
+						titleAction={
+							<Suspense>
+								<RecipeEditAction slug={recipe.slug} />
+							</Suspense>
+						}
+						favoriteToggle={
+							<Suspense fallback={<Skeleton />}>
+								<RecipeFavoriteToggle recipeId={recipe.id} />
+							</Suspense>
+						}
+					/>
+				</RecipeScaleProvider>
 			</CookingModeProvider>
 		</>
 	);

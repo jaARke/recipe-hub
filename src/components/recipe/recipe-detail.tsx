@@ -8,6 +8,7 @@ import {
 } from '@/components/recipe/recipe-image-viewer';
 import { RecipeIngredientsAndSteps } from '@/components/recipe/recipe-ingredients-and-steps';
 import { RecipePhoto } from '@/components/recipe/recipe-photo';
+import { RecipeScaledYield } from '@/components/recipe/recipe-scaled-yield';
 import { RecipeTags } from '@/components/recipe/recipe-summary';
 import {
 	recipeHeadingTags,
@@ -18,12 +19,11 @@ import { recipeSearchHref } from '@/components/search/search-params';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDuration, totalMinutes } from '@/domain/recipe/duration';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
-import { formatYield } from '@/domain/recipe/recipe-yield';
 import { formatDate } from '@/lib/dates';
 
 type RecipeMetaItem = {
 	label: string;
-	value: string;
+	value: ReactNode;
 };
 
 // Scans sit two to a row, each half the column less half the gap. The column is 624px from 672px, and
@@ -66,7 +66,7 @@ function recipeMetaItems({
 		items.push({ label: 'Total', value: formatDuration(total) });
 	}
 	if (recipeYield !== undefined) {
-		items.push({ label: 'Yield', value: formatYield(recipeYield) });
+		items.push({ label: 'Yield', value: <RecipeScaledYield recipeYield={recipeYield} /> });
 	}
 	return items;
 }
