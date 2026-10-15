@@ -6,6 +6,7 @@ import type { CompletedInviteDto, InvitePreviewDto } from '@/application/access/
 import { authClient } from '@/components/auth/auth-client';
 import { settleAuthCall } from '@/components/auth/auth-errors';
 import { authFieldNames } from '@/components/auth/auth-forms';
+import { inviteAccountParamName } from '@/components/auth/auth-paths';
 import { ConfirmCodeForm, RequestCodeForm } from '@/components/auth/email-code-forms';
 import { requestSignInCode, signInWithCode } from '@/components/auth/email-codes';
 import {
@@ -23,6 +24,7 @@ import {
 	type InviteHeadingLevel,
 	type InviteOutcome,
 } from '@/components/auth/invite-steps';
+import { loadPage } from '@/components/auth/load-page';
 import { SignOutButton } from '@/components/auth/sign-out-button';
 import { formText } from '@/components/forms/form-data';
 import type { FormAction, FormState } from '@/components/forms/form-state';
@@ -46,10 +48,19 @@ type InviteFlowStep =
 	| { kind: 'passkey' }
 	| { kind: 'done'; outcome: InviteOutcome };
 
+// The step the page shows when the flow loads it again once a code signed the invitee in.
+const joinedSteps = {
+	created: { kind: 'passkey' },
+	existing: { kind: 'done', outcome: 'existing' },
+} as const satisfies Record<CompletedInviteDto['account'], InviteFlowStep>;
+
 type InviteFlowProps = {
 	// The visitor's name if they were signed in when the page loaded. Only the first render reads
-	// it, so the page refreshing after the invitee signs in leaves the flow where it is.
+	// it, so the refresh after a failed completion leaves the flow where it is.
 	signedInAs: string | null;
+	// Whether the invite created the account, when the flow loaded the page again for the member
+	// it signed in; null otherwise.
+	joined: CompletedInviteDto['account'] | null;
 	codeLifetimeMinutes: number;
 	headingLevel: InviteHeadingLevel;
 	getPreview: (token: string) => Promise<InvitePreviewDto | null>;
@@ -76,6 +87,12 @@ function takeInviteToken(): string | null {
 	return token === '' ? null : token;
 }
 
+// This page loaded again for the member a code signed in, so the header and every page after it
+// render for the new session.
+function joinedPageHref(account: CompletedInviteDto['account']): string {
+	return `${window.location.pathname}?${new URLSearchParams({ [inviteAccountParamName]: account })}`;
+}
+
 // This page with the token back in its fragment, so loading it again shows the invite.
 function invitePageHref(token: string | null | undefined): string {
 	const page = `${window.location.pathname}${window.location.search}`;
@@ -86,6 +103,7 @@ function invitePageHref(token: string | null | undefined): string {
 // the invitee in, then offer a passkey. An address that already has an account signs in to it.
 function InviteFlow({
 	signedInAs,
+	joined,
 	codeLifetimeMinutes,
 	headingLevel,
 	getPreview,
@@ -95,9 +113,12 @@ function InviteFlow({
 	const router = useRouter();
 	// Undefined until read on mount; null when the link carried none.
 	const token = React.useRef<string | null>(undefined);
-	const [step, setStep] = React.useState<InviteFlowStep>(() =>
-		signedInAs === null ? { kind: 'loading' } : { kind: 'signed-in', displayName: signedInAs }
-	);
+	const [step, setStep] = React.useState<InviteFlowStep>(() => {
+		if (signedInAs === null) {
+			return { kind: 'loading' };
+		}
+		return joined === null ? { kind: 'signed-in', displayName: signedInAs } : joinedSteps[joined];
+	});
 	const [lastEmail, setLastEmail] = React.useState<string>();
 	const [creatingPasskey, startCreatingPasskey] = React.useTransition();
 	// Set when creating a passkey failed; the step stays, so the invitee can try again or skip it.
@@ -149,35 +170,32 @@ function InviteFlow({
 		return sent;
 	};
 
-	// Asks whether this invite created the account the code signed in to.
-	async function completionStep(): Promise<InviteFlowStep> {
-		try {
-			const completed = await complete(token.current ?? '');
-			if (completed.status !== 'success') {
-				return { kind: 'complete-failed' };
-			}
-			return completed.account === 'created'
-				? { kind: 'passkey' }
-				: { kind: 'done', outcome: 'existing' };
-		} catch {
-			return { kind: 'complete-failed' };
+	// Completes the invite for the account the code signed in to, then loads the page again with
+	// whether the invite created it. Should completing fail, the header renders signed in and the
+	// flow offers to try again.
+	async function finishInvite() {
+		const completed = await complete(token.current ?? '').catch(() => null);
+		if (completed?.status === 'success') {
+			loadPage(joinedPageHref(completed.account));
+			return;
 		}
+		router.refresh();
+		setStep({ kind: 'complete-failed' });
 	}
 
 	function retryCompletion() {
 		setStep({ kind: 'loading' });
-		void completionStep().then(setStep);
+		void finishInvite();
 	}
 
-	// Signing in with the first code creates the account, unless the address already had one; the
-	// header then renders signed in. The code is spent from here on, so failures leave the form.
+	// Signing in with the first code creates the account, unless the address already had one. The
+	// code is spent from here on, so failures leave the form.
 	async function confirmCode(email: string, formData: FormData): Promise<FormState> {
 		const signedIn = await signInWithCode(email, formText(formData, authFieldNames.code));
 		if (signedIn.status !== 'success') {
 			return signedIn;
 		}
-		router.refresh();
-		setStep(await completionStep());
+		await finishInvite();
 		return signedIn;
 	}
 

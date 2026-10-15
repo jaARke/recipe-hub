@@ -41,8 +41,10 @@ export type InvitePreviewDto = {
 };
 
 // What the invitee learns once signed in: the invite created their account, or they already had one.
+export const completedInviteAccounts = ['created', 'existing'] as const;
+
 export type CompletedInviteDto = {
-	account: 'created' | 'existing';
+	account: (typeof completedInviteAccounts)[number];
 };
 
 // For the auth adapter: what the account it is about to create receives from the invite.

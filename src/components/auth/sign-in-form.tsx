@@ -1,7 +1,6 @@
 'use client';
 
 import { KeyRoundIcon } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { authClient } from '@/components/auth/auth-client';
 import {
@@ -14,6 +13,7 @@ import {
 import { authFieldNames } from '@/components/auth/auth-forms';
 import { ConfirmCodeForm, RequestCodeForm } from '@/components/auth/email-code-forms';
 import { requestSignInCode, signInWithCode } from '@/components/auth/email-codes';
+import { loadPage } from '@/components/auth/load-page';
 import { signalUnknownPasskey } from '@/components/auth/signal-unknown-passkey';
 import { FormActions } from '@/components/forms/form-actions';
 import { formText } from '@/components/forms/form-data';
@@ -113,7 +113,6 @@ function SignInPasskeyOption({ noteId, error, pending, onSignIn }: SignInPasskey
 
 // An email code first, with a passkey offered below and in the email field's autofill.
 function SignInForm({ next, codeLifetimeMinutes }: SignInFormProps) {
-	const router = useRouter();
 	// Null while asking for the address; then the address the code went to.
 	const [email, setEmail] = React.useState<string | null>(null);
 	const [lastEmail, setLastEmail] = React.useState<string>();
@@ -124,10 +123,9 @@ function SignInForm({ next, codeLifetimeMinutes }: SignInFormProps) {
 		email === null ? fieldIds.email : fieldIds.code
 	);
 
-	// The header and the destination render for the new session.
+	// A new page, so the header and the destination render for the new session.
 	function finishSignIn() {
-		router.push(next);
-		router.refresh();
+		loadPage(next);
 	}
 
 	// A newer passkey request cancels the autofill's, which is expected and stays quiet.

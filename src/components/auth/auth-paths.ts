@@ -11,6 +11,10 @@ export const privacyPath = '/privacy';
 // The sign-in page's parameter naming the page to return to.
 export const nextParamName = 'next';
 
+// The invite page's parameter once a code has signed the invitee in: whether the invite created
+// their account, which the page shows when the flow loads it again.
+export const inviteAccountParamName = 'account';
+
 // Any origin parses the same; this one is reserved, so it can never be a real site.
 const placeholderOrigin = 'https://next.invalid';
 
