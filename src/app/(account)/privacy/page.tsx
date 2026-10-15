@@ -132,6 +132,13 @@ export default function PrivacyPage() {
 						recipe, discard them, or sign out, and until then anyone using this browser can see
 						them.
 					</li>
+					<li>
+						Cooking mode keeps, in your browser, whether it’s on for a recipe and which of its
+						ingredients and steps you’ve checked, so they’re still there if the page reloads. None
+						of it is sent to the site, and signing out leaves it. It’s cleared{' '}
+						{settings.cooking.progressLifetimeHours} hours after your last change or once the recipe
+						is edited, and Start over clears your checks.
+					</li>
 				</ul>
 			</PageSection>
 			<PageSection id="privacy-services" title="Services the site uses">

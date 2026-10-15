@@ -52,6 +52,11 @@ export const settings: z.output<typeof settingsSchema> = {
 		// member's account keeps any number.
 		maxPerDevice: 100,
 	},
+	cooking: {
+		// How long a recipe's checked rows in cooking mode last on a device after the last change: through
+		// a dish made over two days, but gone by the next time it is made.
+		progressLifetimeHours: 48,
+	},
 	retention: {
 		// How long a removed photo or scan is kept before it is deleted for good: past Neon's 35-day
 		// snapshots, so restoring a deleted recipe from one brings its images back.

@@ -32,6 +32,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { noStepsMessage } from '@/domain/recipe/instruction';
 
@@ -371,6 +372,45 @@ function CheckboxSpecimen() {
 	);
 }
 
+const switchSizes = ['default', 'sm'] as const;
+
+function SwitchSpecimen() {
+	return (
+		<div className="flex flex-col gap-6">
+			<Specimen label="Off, on, disabled, and disabled on, at each size: default, then sm">
+				<div className="flex flex-col gap-6">
+					{switchSizes.map((size) => (
+						<FieldGroup key={size} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+							<Field orientation="horizontal">
+								<Switch id={`switch-${size}-off`} size={size} />
+								<FieldLabel htmlFor={`switch-${size}-off`}>Off</FieldLabel>
+							</Field>
+							<Field orientation="horizontal">
+								<Switch id={`switch-${size}-on`} size={size} defaultChecked />
+								<FieldLabel htmlFor={`switch-${size}-on`}>On</FieldLabel>
+							</Field>
+							<Field orientation="horizontal" data-disabled="true">
+								<Switch id={`switch-${size}-disabled`} size={size} disabled />
+								<FieldLabel htmlFor={`switch-${size}-disabled`}>Disabled</FieldLabel>
+							</Field>
+							<Field orientation="horizontal" data-disabled="true">
+								<Switch id={`switch-${size}-disabled-on`} size={size} defaultChecked disabled />
+								<FieldLabel htmlFor={`switch-${size}-disabled-on`}>Disabled and on</FieldLabel>
+							</Field>
+						</FieldGroup>
+					))}
+				</div>
+			</Specimen>
+			<Specimen label="Inside its label, as a recipe’s cooking mode is: the label’s text is the target too">
+				<Label className="text-base">
+					<Switch />
+					Cooking mode
+				</Label>
+			</Specimen>
+		</div>
+	);
+}
+
 export {
 	CheckboxSpecimen,
 	FieldSpecimen,
@@ -378,5 +418,6 @@ export {
 	InputSpecimen,
 	LabelSpecimen,
 	SelectSpecimen,
+	SwitchSpecimen,
 	TextareaSpecimen,
 };

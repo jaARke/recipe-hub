@@ -2,7 +2,8 @@ import { cn } from 'cn';
 import { Specimen, SpecimenLabel } from '@/components/design-reference/reference-section';
 import { sampleRecipeDetail } from '@/components/design-reference/sample-recipe-dtos';
 import { TokenValue } from '@/components/design-reference/token-value';
-import { RecipeMetaRow, recipeTextStyles } from '@/components/recipe/recipe-detail';
+import { RecipeMetaRow } from '@/components/recipe/recipe-detail';
+import { recipeTextStyles } from '@/components/recipe/recipe-text-styles';
 
 type FontFamily = {
 	utility: string;
@@ -68,6 +69,11 @@ const hierarchy: readonly HierarchyRole[] = [
 	{
 		role: 'Ingredients and steps',
 		className: recipeTextStyles.body,
+		sample: '2 quarts chicken stock',
+	},
+	{
+		role: 'Ingredients and steps in cooking mode',
+		className: recipeTextStyles.cookingBody,
 		sample: '2 quarts chicken stock',
 	},
 	{

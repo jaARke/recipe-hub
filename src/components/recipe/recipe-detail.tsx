@@ -1,43 +1,25 @@
 import { cn } from 'cn';
 import type { ReactNode } from 'react';
 import type { PublicRecipeDto } from '@/application/recipes/recipe-dtos';
-import { IngredientLineText } from '@/components/recipe/ingredient-line-text';
 import { RecipeActions } from '@/components/recipe/recipe-actions';
 import {
 	RecipeImageViewer,
 	RecipeImageViewerTrigger,
 } from '@/components/recipe/recipe-image-viewer';
+import { RecipeIngredientsAndSteps } from '@/components/recipe/recipe-ingredients-and-steps';
 import { RecipePhoto } from '@/components/recipe/recipe-photo';
 import { RecipeTags } from '@/components/recipe/recipe-summary';
+import {
+	recipeHeadingTags,
+	recipeTextStyles,
+	type RecipeHeadingLevel,
+} from '@/components/recipe/recipe-text-styles';
 import { recipeSearchHref } from '@/components/search/search-params';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDuration, totalMinutes } from '@/domain/recipe/duration';
-import type { IngredientSection } from '@/domain/recipe/ingredient';
-import type { InstructionSection } from '@/domain/recipe/instruction';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import { formatYield } from '@/domain/recipe/recipe-yield';
 import { formatDate } from '@/lib/dates';
-
-// The recipe page's text hierarchy, shared with the typography specimen.
-const recipeTextStyles = {
-	// Long words wrap rather than push a control beside the title off a narrow screen.
-	title: 'min-w-0 font-heading text-4xl font-semibold wrap-anywhere md:text-5xl',
-	section: 'font-heading text-2xl font-semibold',
-	subsection: 'text-lg font-semibold',
-	body: 'text-lg',
-	supporting: 'text-lg text-muted-foreground',
-	meta: 'font-mono text-xs tracking-wide uppercase',
-} as const;
-
-// Keyed by the title's level; level 4 nests the recipe under the design reference's own headings.
-const recipeHeadingTags = {
-	1: { title: 'h1', section: 'h2', subsection: 'h3' },
-	4: { title: 'h4', section: 'h5', subsection: 'h6' },
-} as const;
-
-type RecipeHeadingLevel = keyof typeof recipeHeadingTags;
-
-type SubsectionTag = (typeof recipeHeadingTags)[RecipeHeadingLevel]['subsection'];
 
 type RecipeMetaItem = {
 	label: string;
@@ -175,57 +157,6 @@ function RecipeByline({ recipe }: { recipe: PublicRecipeDto }) {
 	);
 }
 
-function IngredientSectionList({
-	section,
-	headingTag: Heading,
-}: {
-	section: IngredientSection;
-	headingTag: SubsectionTag;
-}) {
-	return (
-		<div className="flex flex-col gap-3 print:break-inside-avoid">
-			{section.heading !== undefined && (
-				<Heading className={recipeTextStyles.subsection}>{section.heading}</Heading>
-			)}
-			<ul className={cn(recipeTextStyles.body, 'flex flex-col gap-2')}>
-				{section.lines.map((line, index) => (
-					<li key={index}>
-						<IngredientLineText line={line} />
-					</li>
-				))}
-			</ul>
-		</div>
-	);
-}
-
-function InstructionSectionList({
-	section,
-	headingTag: Heading,
-}: {
-	section: InstructionSection;
-	headingTag: SubsectionTag;
-}) {
-	return (
-		<div className="flex flex-col gap-3">
-			{section.heading !== undefined && (
-				<Heading className={recipeTextStyles.subsection}>{section.heading}</Heading>
-			)}
-			<ol
-				className={cn(
-					recipeTextStyles.body,
-					'list-decimal space-y-4 pl-6 marker:font-mono marker:text-sm marker:text-muted-foreground'
-				)}
-			>
-				{section.steps.map((step, index) => (
-					<li key={index} className="pl-2 print:break-inside-avoid">
-						{step.text}
-					</li>
-				))}
-			</ol>
-		</div>
-	);
-}
-
 // Paragraphs parted by blank lines, each kept whole in print, since notes can run for pages.
 function RecipeParagraphs({ text }: { text: string }) {
 	return (
@@ -351,7 +282,7 @@ function RecipeDetail({
 	// The first of the recipe's actions, as RecipeActions takes it.
 	favoriteToggle?: ReactNode;
 }) {
-	const { title: Title, section: Section, subsection } = recipeHeadingTags[headingLevel];
+	const { title: Title, section: Section } = recipeHeadingTags[headingLevel];
 	const titleId = `${recipe.slug}-title`;
 	const title = (
 		<Title id={titleId} className={recipeTextStyles.title}>
@@ -380,18 +311,11 @@ function RecipeDetail({
 			</header>
 			<RecipePhotos title={recipe.title} images={recipe.images} />
 			{recipe.description !== undefined && <RecipeParagraphs text={recipe.description} />}
-			<div className="flex flex-col gap-6">
-				<Section className={recipeTextStyles.section}>Ingredients</Section>
-				{recipe.ingredientSections.map((section, index) => (
-					<IngredientSectionList key={index} section={section} headingTag={subsection} />
-				))}
-			</div>
-			<div className="flex flex-col gap-6">
-				<Section className={recipeTextStyles.section}>Steps</Section>
-				{recipe.instructionSections.map((section, index) => (
-					<InstructionSectionList key={index} section={section} headingTag={subsection} />
-				))}
-			</div>
+			<RecipeIngredientsAndSteps
+				ingredientSections={recipe.ingredientSections}
+				instructionSections={recipe.instructionSections}
+				headingLevel={headingLevel}
+			/>
 			{recipe.notes !== undefined && (
 				<div className="flex flex-col gap-6">
 					<Section className={recipeTextStyles.section}>Notes</Section>
@@ -435,4 +359,4 @@ function RecipeDetailSkeleton() {
 	);
 }
 
-export { RecipeDetail, RecipeDetailSkeleton, RecipeImportedFrom, RecipeMetaRow, recipeTextStyles };
+export { RecipeDetail, RecipeDetailSkeleton, RecipeImportedFrom, RecipeMetaRow };

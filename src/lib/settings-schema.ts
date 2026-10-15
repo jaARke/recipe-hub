@@ -58,6 +58,9 @@ export const settingsSchema = z
 			// about 3,700 and leave room for the rest.
 			maxPerDevice: z.int().positive().max(100),
 		}),
+		cooking: z.object({
+			progressLifetimeHours: z.int().positive(),
+		}),
 		retention: z.object({
 			removedImageLifetimeDays: z
 				.int()

@@ -1,6 +1,8 @@
 import { settings } from '@/lib/settings';
 
-const millisecondsPerDay = 24 * 60 * 60 * 1000;
+const millisecondsPerHour = 60 * 60 * 1000;
+
+const millisecondsPerDay = 24 * millisecondsPerHour;
 
 const dateFormat = new Intl.DateTimeFormat('en-US', {
 	dateStyle: 'long',
@@ -12,7 +14,11 @@ export function formatDate(date: Date): string {
 	return dateFormat.format(date);
 }
 
-// Lifetimes are set in days, and dates count milliseconds.
+// Lifetimes are set in days or hours, and dates count milliseconds.
 export function daysInMilliseconds(days: number): number {
 	return days * millisecondsPerDay;
+}
+
+export function hoursInMilliseconds(hours: number): number {
+	return hours * millisecondsPerHour;
 }

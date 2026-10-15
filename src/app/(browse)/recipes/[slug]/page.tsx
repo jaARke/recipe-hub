@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { readForReader } from '@/app/_lib/read-for-reader';
 import { getCachedRecipe, getCachedRecipePage } from '@/app/_lib/recipe-cache';
 import { setFavorite } from '@/app/(browse)/favorites/actions';
+import { CookingModeProvider } from '@/components/cooking/cooking-mode-provider';
 import { FavoriteToggle } from '@/components/favorites/favorite-toggle';
 import { PageContainer } from '@/components/layout/page-container';
 import { RecipeDetail, RecipeDetailSkeleton } from '@/components/recipe/recipe-detail';
@@ -102,20 +103,22 @@ async function RecipeBySlug({ params }: Pick<PageProps<'/recipes/[slug]'>, 'para
 	return (
 		<>
 			<RecipeJsonLd recipe={recipe} siteUrl={siteUrl} />
-			<RecipeDetail
-				recipe={recipe}
-				headingLevel={1}
-				titleAction={
-					<Suspense>
-						<RecipeEditAction slug={recipe.slug} />
-					</Suspense>
-				}
-				favoriteToggle={
-					<Suspense fallback={<Skeleton />}>
-						<RecipeFavoriteToggle recipeId={recipe.id} />
-					</Suspense>
-				}
-			/>
+			<CookingModeProvider recipe={{ id: recipe.id, version: recipe.updatedAt.toISOString() }}>
+				<RecipeDetail
+					recipe={recipe}
+					headingLevel={1}
+					titleAction={
+						<Suspense>
+							<RecipeEditAction slug={recipe.slug} />
+						</Suspense>
+					}
+					favoriteToggle={
+						<Suspense fallback={<Skeleton />}>
+							<RecipeFavoriteToggle recipeId={recipe.id} />
+						</Suspense>
+					}
+				/>
+			</CookingModeProvider>
 		</>
 	);
 }

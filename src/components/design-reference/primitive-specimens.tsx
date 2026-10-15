@@ -24,6 +24,7 @@ import {
 	InputSpecimen,
 	LabelSpecimen,
 	SelectSpecimen,
+	SwitchSpecimen,
 	TextareaSpecimen,
 } from '@/components/design-reference/form-specimens';
 import {
@@ -56,6 +57,7 @@ const primitives = [
 	{ id: 'select', title: 'Select', Content: SelectSpecimen },
 	{ id: 'combobox', title: 'Combobox', Content: ComboboxSpecimen },
 	{ id: 'checkbox', title: 'Checkbox', Content: CheckboxSpecimen },
+	{ id: 'switch', title: 'Switch', Content: SwitchSpecimen },
 	{ id: 'attachment', title: 'Attachment', Content: AttachmentSpecimen },
 	{ id: 'tabs', title: 'Tabs', Content: TabsSpecimen },
 	{ id: 'collapsible', title: 'Collapsible', Content: CollapsibleSpecimen },
