@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { notFound, permanentRedirect, redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { getCachedRecipe, getCachedTagLabels } from '@/app/_lib/recipe-cache';
-import { deleteRecipe, updateRecipe } from '@/app/(contribute)/recipes/[slug]/edit/actions';
+import { deleteRecipe, updateRecipe } from '@/app/(site)/(contribute)/recipes/[slug]/edit/actions';
 import { ForbiddenError, SignInRequiredError } from '@/application/authorization';
 import type { EditableRecipeDto } from '@/application/recipes/recipe-dtos';
 import { signInHref } from '@/components/auth/auth-paths';

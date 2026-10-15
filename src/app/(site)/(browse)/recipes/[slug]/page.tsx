@@ -3,7 +3,7 @@ import { notFound, permanentRedirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { readForReader } from '@/app/_lib/read-for-reader';
 import { getCachedRecipe, getCachedRecipePage } from '@/app/_lib/recipe-cache';
-import { setFavorite } from '@/app/(browse)/favorites/actions';
+import { setFavorite } from '@/app/(site)/(browse)/favorites/actions';
 import { CookingModeProvider } from '@/components/cooking/cooking-mode-provider';
 import { FavoriteToggle } from '@/components/favorites/favorite-toggle';
 import { PageContainer } from '@/components/layout/page-container';

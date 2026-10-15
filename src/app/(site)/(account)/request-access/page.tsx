@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { requestAccess } from '@/app/(account)/request-access/actions';
+import { requestAccess } from '@/app/(site)/(account)/request-access/actions';
 import { RequestAccessForm } from '@/components/account/request-access-form';
 import { privacyPath } from '@/components/auth/auth-paths';
 import { PageContainer } from '@/components/layout/page-container';

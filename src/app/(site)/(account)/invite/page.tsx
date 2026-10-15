@@ -1,6 +1,10 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import { bindInviteEmail, completeInvite, getInvitePreview } from '@/app/(account)/invite/actions';
+import {
+	bindInviteEmail,
+	completeInvite,
+	getInvitePreview,
+} from '@/app/(site)/(account)/invite/actions';
 import { completedInviteAccounts } from '@/application/access/access-dtos';
 import { inviteAccountParamName } from '@/components/auth/auth-paths';
 import { InviteFlow } from '@/components/auth/invite-flow';

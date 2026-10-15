@@ -6,7 +6,7 @@ import {
 	createRecipe,
 	importFromScans,
 	importFromUrl,
-} from '@/app/(contribute)/contribute/actions';
+} from '@/app/(site)/(contribute)/contribute/actions';
 import { SignInRequiredError } from '@/application/authorization';
 import type { UnsavedImportDto } from '@/application/ingestion/recipe-import-dtos';
 import { signInHref } from '@/components/auth/auth-paths';

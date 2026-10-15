@@ -8,7 +8,7 @@ import {
 	removeAdmin,
 	removeMember,
 	revokeInvite,
-} from '@/app/admin/actions';
+} from '@/app/(site)/admin/actions';
 import type { AccessRequestDto, InviteDto } from '@/application/access/access-dtos';
 import { ForbiddenError, SignInRequiredError } from '@/application/authorization';
 import type { MemberDto } from '@/application/members/member-dtos';

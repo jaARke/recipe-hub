@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
-import { renameMember } from '@/app/(account)/account/actions';
+import { renameMember } from '@/app/(site)/(account)/account/actions';
 import { AccountDetails, AccountDetailsSkeleton } from '@/components/account/account-details';
 import { accountPath, signInHref } from '@/components/auth/auth-paths';
 import { PageContainer } from '@/components/layout/page-container';

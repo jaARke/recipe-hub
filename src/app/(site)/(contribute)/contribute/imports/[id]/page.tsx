@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { permanentRedirect, redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { getCachedTagLabels } from '@/app/_lib/recipe-cache';
-import { createRecipe } from '@/app/(contribute)/contribute/actions';
+import { createRecipe } from '@/app/(site)/(contribute)/contribute/actions';
 import { SignInRequiredError } from '@/application/authorization';
 import type { ImportReviewDto } from '@/application/ingestion/recipe-import-dtos';
 import { signInHref } from '@/components/auth/auth-paths';
