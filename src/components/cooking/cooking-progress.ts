@@ -69,7 +69,7 @@ function lastingEntry(entry: string, now: Date): CookingProgressEntry | undefine
 		return undefined;
 	}
 	const result = entrySchema.safeParse(data);
-	if (!result.success || new Date(result.data.savedAt) < cookingProgressCutoff(now)) {
+	if (!result.success || hasCookingProgressExpired(new Date(result.data.savedAt), now)) {
 		return undefined;
 	}
 	return result.data;
@@ -87,6 +87,17 @@ export function readCookingProgress(
 		return undefined;
 	}
 	return { on: lasting.on, checked: new Set(lasting.checked) };
+}
+
+// When the stored progress last changed, while it lasts, so progress held since can expire on time.
+export function cookingProgressSavedAt(entry: string | undefined, now: Date): Date | undefined {
+	const lasting = entry === undefined ? undefined : lastingEntry(entry, now);
+	return lasting === undefined ? undefined : new Date(lasting.savedAt);
+}
+
+// Whether progress last changed at this time has outlived settings.cooking.progressLifetimeHours.
+export function hasCookingProgressExpired(savedAt: Date, now: Date): boolean {
+	return savedAt < cookingProgressCutoff(now);
 }
 
 // Whether any recipe's entry is of no further use: unreadable or expired. Its recipe's version is

@@ -6,6 +6,8 @@ import {
 	cookingProgressEntry,
 	cookingProgressKey,
 	cookingProgressKeyPrefix,
+	cookingProgressSavedAt,
+	hasCookingProgressExpired,
 	isStaleCookingProgress,
 	readCookingProgress,
 	type CookingProgress,
@@ -41,42 +43,79 @@ function serverSnapshot(): CookingProgress {
 
 // The recipe's progress, read from this device's storage the first time the browser asks and written
 // back on every change. It is held here too, so where storage is blocked or full cooking mode still
-// works and only forgets its progress with the page.
+// works and only forgets its progress with the page; held progress still expires on time, checked
+// when the page shows again (as when Next shows a kept recipe or a phone wakes its tab) and before a
+// change.
 function createCookingProgressStore(recipe: CookingRecipe): CookingProgressStore {
 	const key = cookingProgressKey(recipe.id);
 	const listeners = new Set<() => void>();
 	let progress: CookingProgress | undefined;
+	// When the held progress last changed; undefined while nothing is kept.
+	let savedAt: Date | undefined;
+
+	function notify() {
+		for (const listener of listeners) {
+			listener();
+		}
+	}
 
 	function getSnapshot(): CookingProgress {
 		if (progress === undefined) {
 			const entry = readBrowserStorage(key);
-			const stored = readCookingProgress(entry, recipe, new Date());
+			const now = new Date();
+			const stored = readCookingProgress(entry, recipe, now);
 			// An entry that expired, or was kept for an earlier version of the recipe, is of no use.
 			if (stored === undefined && entry !== undefined) {
 				removeBrowserStorage(key);
 			}
 			progress = stored ?? cookingOff;
+			savedAt = stored === undefined ? undefined : cookingProgressSavedAt(entry, now);
 		}
 		return progress;
 	}
 
+	// Lets go of held progress that has outlived its lifetime; true when it did.
+	function expire(): boolean {
+		if (savedAt === undefined || !hasCookingProgressExpired(savedAt, new Date())) {
+			return false;
+		}
+		progress = cookingOff;
+		savedAt = undefined;
+		removeBrowserStorage(key);
+		return true;
+	}
+
+	function expireWhenShown() {
+		if (document.visibilityState === 'visible' && expire()) {
+			notify();
+		}
+	}
+
 	return {
 		subscribe(listener) {
+			// React reads the snapshot again once subscribed, so what expires here shows at once.
+			expire();
 			listeners.add(listener);
-			return () => listeners.delete(listener);
+			document.addEventListener('visibilitychange', expireWhenShown);
+			return () => {
+				listeners.delete(listener);
+				document.removeEventListener('visibilitychange', expireWhenShown);
+			};
 		},
 		getSnapshot,
 		update(change) {
+			expire();
 			progress = change(getSnapshot());
-			const entry = cookingProgressEntry(progress, recipe, new Date());
+			const now = new Date();
+			const entry = cookingProgressEntry(progress, recipe, now);
 			if (entry === undefined) {
 				removeBrowserStorage(key);
+				savedAt = undefined;
 			} else {
 				writeBrowserStorage(key, entry);
+				savedAt = now;
 			}
-			for (const listener of listeners) {
-				listener();
-			}
+			notify();
 		},
 	};
 }

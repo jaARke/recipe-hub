@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -195,6 +195,23 @@ describe('RecipeIngredientsAndSteps', () => {
 		unmount();
 		await vi.waitFor(() => expect(release).toHaveBeenCalledTimes(2));
 		expect(request).toHaveBeenCalledTimes(2);
+	});
+
+	it('lets go of held progress once it expires, when the page shows again', () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(new Date('2026-10-15T18:00:00.000Z'));
+		keep(true, ['step:0:0']);
+		render(recipePage);
+		expect(checkboxNames(true)).toEqual(['Mix the flour and salt.']);
+
+		vi.setSystemTime(new Date('2026-10-17T18:00:00.001Z'));
+		act(() => {
+			document.dispatchEvent(new Event('visibilitychange'));
+		});
+
+		expect(checkboxNames(true)).toEqual([]);
+		expect(cookingSwitch().getAttribute('aria-checked')).toBe('false');
+		vi.useRealTimers();
 	});
 
 	it('lets go of other recipes’ expired progress, and keeps what still lasts', () => {
