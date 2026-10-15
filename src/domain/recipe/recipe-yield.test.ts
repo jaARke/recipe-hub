@@ -62,14 +62,14 @@ describe('scaleStepperFor', () => {
 			{ kind: 'makes', original: 24, step: 12, min: 12, max: 192 },
 		],
 		[
-			'one loaf by half a loaf',
+			'one loaf by a whole loaf',
 			{ kind: 'makes', amount: { min: 1 }, unit: 'loaf' },
-			{ kind: 'makes', original: 1, step: 0.5, min: 0.5, max: 8 },
+			{ kind: 'makes', original: 1, step: 1, min: 1, max: 8 },
 		],
 		[
-			'an odd count by half of it',
+			'an odd count by the whole count, so no count shown is a half',
 			{ kind: 'makes', amount: { min: 15 } },
-			{ kind: 'makes', original: 15, step: 7.5, min: 7.5, max: 120 },
+			{ kind: 'makes', original: 15, step: 15, min: 15, max: 120 },
 		],
 		[
 			'a range in batches',

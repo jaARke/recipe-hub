@@ -55,9 +55,10 @@ export function scaleYield(recipeYield: RecipeYield, factor: number): RecipeYiel
 	return { ...recipeYield, amount };
 }
 
-// The servings stepper counts what the yield counts: servings by one, what a recipe makes by half its
-// count ("Makes 24 cookies" steps 12, 24, 36), and anything else (a range, a count that is not whole,
-// or no yield) in batches by half.
+// The servings stepper counts what the yield counts: servings by one, what a recipe makes by half an
+// even count ("Makes 24 cookies" steps 12, 24, 36) or by a whole odd one ("Makes 15" steps 15, 30), so
+// every count shown is whole, and anything else (a range, a count that is not whole, or no yield) in
+// batches by half.
 export type ScaleStepperKind = 'servings' | 'makes' | 'batches';
 
 export type ScaleStepper = {
@@ -73,7 +74,7 @@ export type ScaleStepper = {
 // The scale stops at 8 times the recipe.
 const maxScaleFactor = 8;
 
-// What a recipe makes, and a recipe in batches, steps by half the recipe.
+// A recipe in batches, and what a recipe makes when its count halves whole, steps by half the recipe.
 const halfRecipe = 1 / 2;
 
 function stepperOf(kind: ScaleStepperKind, original: number, step: number): ScaleStepper {
@@ -91,9 +92,11 @@ export function scaleStepperFor(recipeYield: RecipeYield | undefined): ScaleStep
 	}
 
 	const count = recipeYield.amount.min;
-	return recipeYield.kind === 'servings'
-		? stepperOf('servings', count, 1)
-		: stepperOf('makes', count, count * halfRecipe);
+	if (recipeYield.kind === 'servings') {
+		return stepperOf('servings', count, 1);
+	}
+
+	return stepperOf('makes', count, count % 2 === 0 ? count * halfRecipe : count);
 }
 
 // The value the stepper holds for one typed or read from the URL: the nearest step, within bounds.
