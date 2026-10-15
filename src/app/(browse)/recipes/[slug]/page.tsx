@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound, permanentRedirect } from 'next/navigation';
 import { Suspense } from 'react';
+import { readForReader } from '@/app/_lib/read-for-reader';
 import { getCachedRecipe, getCachedRecipePage } from '@/app/_lib/recipe-cache';
 import { setFavorite } from '@/app/(browse)/favorites/actions';
 import { FavoriteToggle } from '@/components/favorites/favorite-toggle';
@@ -14,7 +15,10 @@ import { recipePath } from '@/components/recipe/recipe-paths';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getFavoriteService, getRecipeService } from '@/composition/services';
 import { siteUrl } from '@/lib/env';
+import { getLogger } from '@/lib/logger';
 import { siteName } from '@/lib/site';
+
+const logger = getLogger('auth');
 
 export async function generateStaticParams(): Promise<{ slug: string }[]> {
 	const { recipes } = await getCachedRecipePage(1, defaultListSort);
@@ -53,7 +57,10 @@ export async function generateMetadata({
 }
 
 async function RecipeEditAction({ slug }: { slug: string }) {
-	const view = await getRecipeService().getRecipeMemberView(slug);
+	const view = await readForReader(() => getRecipeService().getRecipeMemberView(slug), {
+		log: (error) => logger.error('Edit link session read failed', { err: error }),
+		fallback: null,
+	});
 	if (view === null || !view.canEdit) {
 		return null;
 	}
@@ -61,14 +68,24 @@ async function RecipeEditAction({ slug }: { slug: string }) {
 	return <RecipeEditLink slug={slug} />;
 }
 
+// Where the read fails, the box the actions reserve stays empty: a heart would guess the reader's
+// favorite, and its change would fail on the same read.
 async function RecipeFavoriteToggle({ recipeId }: { recipeId: string }) {
-	const favorite = await getFavoriteService().isFavorite(recipeId);
+	const favorite = await readForReader(() => getFavoriteService().isFavorite(recipeId), {
+		log: (error) => logger.error('Favorite toggle session read failed', { err: error }),
+		fallback: null,
+	});
+	if (favorite === null) {
+		return null;
+	}
+
 	return <FavoriteToggle recipeId={recipeId} favorite={favorite} setFavoriteAction={setFavorite} />;
 }
 
 // A part for one reader, such as the edit link or the favorite toggle, reads the session, so it
-// streams in behind its own boundary and the recipe, scans included, stays in the prerendered shell.
-// The toggle's placeholder fills the box the actions reserve for it.
+// streams in behind its own boundary and the recipe, scans included, stays in the prerendered shell;
+// where the read fails, the part is left out and the recipe still shows. The toggle's placeholder
+// fills the box the actions reserve for it.
 async function RecipeBySlug({ params }: Pick<PageProps<'/recipes/[slug]'>, 'params'>) {
 	const { slug } = await params;
 	const recipe = await getCachedRecipe(slug);

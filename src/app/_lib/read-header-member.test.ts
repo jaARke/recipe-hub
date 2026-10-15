@@ -1,13 +1,10 @@
-import { notFound } from 'next/navigation';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { readHeaderMember } from '@/app/_lib/read-header-member';
 import type { CurrentMemberDto } from '@/application/members/member-dtos';
 import { memberIdSchema } from '@/domain/member/member';
 
-const request = vi.hoisted(() => ({ wait: (): Promise<void> => Promise.resolve() }));
-
-// Outside a request connection() throws, so each test says how the wait for the request settles.
-vi.mock('next/server', () => ({ connection: () => request.wait() }));
+// Outside a request connection() throws; readForReader's tests cover how its wait settles.
+vi.mock('next/server', () => ({ connection: () => Promise.resolve() }));
 
 const member: CurrentMemberDto = {
 	id: memberIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e'),
@@ -17,10 +14,9 @@ const member: CurrentMemberDto = {
 };
 
 describe('readHeaderMember', () => {
-	let consoleError: ReturnType<typeof vi.spyOn>;
+	let consoleError: MockInstance<typeof console.error>;
 
 	beforeEach(() => {
-		request.wait = () => Promise.resolve();
 		consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 	});
 
@@ -46,31 +42,11 @@ describe('readHeaderMember', () => {
 
 		await expect(readHeaderMember(read)).resolves.toBeNull();
 		expect(consoleError).toHaveBeenCalledOnce();
-	});
-
-	it('lets Next control-flow errors through', async () => {
-		const read = async () => notFound();
-
-		await expect(readHeaderMember(read)).rejects.toThrow();
-		expect(consoleError).not.toHaveBeenCalled();
-	});
-
-	it('leaves a render that ends before the request to Next', async () => {
-		const ended = new DOMException('This operation was aborted', 'AbortError');
-		request.wait = () => Promise.reject(ended);
-		const read = vi.fn(async () => member);
-
-		await expect(readHeaderMember(read)).rejects.toBe(ended);
-		expect(read).not.toHaveBeenCalled();
-		expect(consoleError).not.toHaveBeenCalled();
-	});
-
-	it('falls back to signed out and logs when the session read itself aborts', async () => {
-		const read = async () => {
-			throw new DOMException('This operation was aborted', 'AbortError');
-		};
-
-		await expect(readHeaderMember(read)).resolves.toBeNull();
-		expect(consoleError).toHaveBeenCalledOnce();
+		expect(JSON.parse(String(consoleError.mock.calls[0]?.[0]))).toMatchObject({
+			level: 'error',
+			logger: 'auth',
+			message: 'Header session read failed',
+			err: { message: 'Database unavailable' },
+		});
 	});
 });
