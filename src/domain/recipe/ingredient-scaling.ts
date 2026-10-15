@@ -383,14 +383,16 @@ const wholeNumberWord = new RegExp(
 // Where a word starts, as an amount in words does.
 const wordStart = /(?<![\p{L}-])\p{L}/gu;
 
-// An article or a fraction in words counts as an amount only before a unit, as the parser reads one:
-// "plus a quarter cup" holds one, while "half and half", "cut in half", and "artichoke quarters" do not.
-function holdsAmountWordsBeforeUnit(text: string): boolean {
+// An amount in words counts where a fraction comes with its article ("half a lemon", "a half lime") or
+// a unit follows it ("plus a quarter cup", "plus a tablespoon"); a bare article or fraction names rather
+// than counts: "half and half", "cut in half", "artichoke quarters".
+function holdsAmountWords(text: string): boolean {
 	return Array.from(text.matchAll(wordStart), (match) => text.slice(match.index)).some((rest) => {
 		const words = readAmountWords(rest);
 		return (
-			words?.needsUnit === true &&
-			readUnit(rest.slice(words.written.length).trimStart()) !== undefined
+			words !== undefined &&
+			(/\s/u.test(words.written) ||
+				readUnit(rest.slice(words.written.length).trimStart()) !== undefined)
 		);
 	});
 }
@@ -405,7 +407,7 @@ function holdsNumber(text: string): boolean {
 		}
 	}
 
-	return /\p{N}/u.test(rest) || wholeNumberWord.test(rest) || holdsAmountWordsBeforeUnit(rest);
+	return /\p{N}/u.test(rest) || wholeNumberWord.test(rest) || holdsAmountWords(rest);
 }
 
 // A line the parser read nothing in gives an amount when it holds a number or opens with an amount in

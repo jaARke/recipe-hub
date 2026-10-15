@@ -307,6 +307,12 @@ describe('scaleIngredientLine', () => {
 			2,
 			{ amount: { min: 4 }, item: 'eggs plus one', preparation: 'beaten' },
 		],
+		[
+			'1 cup flour plus half a lemon',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour plus half a lemon' },
+		],
+		['2 limes plus a half lime', 2, { amount: { min: 4 }, item: 'limes plus a half lime' }],
 	])('marks part of "%s", whose unread text holds a number, as unscaled', (text, factor, parts) => {
 		expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
 			line: { text, ...parts },
