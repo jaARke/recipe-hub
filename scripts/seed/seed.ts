@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import nextEnv from '@next/env';
-import { drizzle } from 'drizzle-orm/node-postgres';
+import { lt } from 'drizzle-orm';
+import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { z } from 'zod';
 import type { Actor, ActorProvider, MemberActor } from '@/application/ports/actor-provider';
@@ -12,11 +13,16 @@ import { RecipeService } from '@/application/recipes/recipe-service';
 import type { Member } from '@/domain/member/member';
 import { sampleRecipeContents } from '@/domain/recipe/samples/sample-recipes';
 import { slugify } from '@/domain/recipe/slug';
-import { pinFullSslVerification } from '@/infrastructure/db/connection-string';
+import {
+	guardProductionDatabase,
+	pinFullSslVerification,
+	productionDatabaseGuardEnvSchema,
+} from '@/infrastructure/db/connection-string';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { DrizzleSavedDraftRepository } from '@/infrastructure/db/drizzle-saved-draft-repository';
+import { rateLimits, sessions, verifications } from '@/infrastructure/db/schema';
 import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
 import { seedImageEnvironment } from '@/lib/image-paths';
 import { getLogger } from '@/lib/logger';
@@ -60,6 +66,23 @@ async function findOrCreateSampleContributor(members: MemberRepository): Promise
 	const created = await members.create(sampleContributor);
 	logger.info('Sample contributor created', { memberId: created.id });
 	return created;
+}
+
+// A preview's branch starts as a copy of production, live sessions included. The branch's first seed
+// created the sample contributor, so every sign-in row older than it came from production.
+async function deleteCopiedSignInRows(db: NodePgDatabase, firstSeedAt: Date): Promise<void> {
+	const sessionsDeleted = await db.delete(sessions).where(lt(sessions.createdAt, firstSeedAt));
+	const verificationsDeleted = await db
+		.delete(verifications)
+		.where(lt(verifications.createdAt, firstSeedAt));
+	const rateLimitsDeleted = await db
+		.delete(rateLimits)
+		.where(lt(rateLimits.lastRequest, firstSeedAt.getTime()));
+	logger.info('Copied sign-in rows deleted', {
+		sessions: sessionsDeleted.rowCount,
+		verifications: verificationsDeleted.rowCount,
+		rateLimits: rateLimitsDeleted.rowCount,
+	});
 }
 
 async function withSeedLock(pool: Pool, run: () => Promise<void>): Promise<void> {
@@ -116,8 +139,7 @@ const env = z
 		DATABASE_URL_UNPOOLED: z.url(),
 		// The image store; the Blob SDK reads and refreshes Vercel's OIDC token itself.
 		BLOB_STORE_ID: z.string().min(1),
-		// Set by Vercel on deployments; absent locally.
-		VERCEL_ENV: z.enum(['development', 'preview', 'production']).optional(),
+		...productionDatabaseGuardEnvSchema.shape,
 	})
 	.parse(process.env);
 
@@ -125,12 +147,19 @@ const env = z
 if (env.VERCEL_ENV === 'production') {
 	logger.info('Seeding skipped in production');
 } else {
-	const pool = new Pool({ connectionString: pinFullSslVerification(env.DATABASE_URL_UNPOOLED) });
+	const connectionString = pinFullSslVerification(env.DATABASE_URL_UNPOOLED);
+	guardProductionDatabase(connectionString, env);
+	logger.info('Seeding started', { databaseHost: new URL(connectionString).hostname });
+
+	const pool = new Pool({ connectionString });
 	try {
 		await withSeedLock(pool, async () => {
 			const db = drizzle({ client: pool });
 			const members = new DrizzleMemberRepository(db);
 			const contributor = await findOrCreateSampleContributor(members);
+			if (env.VERCEL_ENV === 'preview') {
+				await deleteCopiedSignInRows(db, contributor.createdAt);
+			}
 			const folders = new ImageFolders(seedImageEnvironment);
 			const images = new BlobImageStore({ storeId: env.BLOB_STORE_ID, folders });
 			await seed(
