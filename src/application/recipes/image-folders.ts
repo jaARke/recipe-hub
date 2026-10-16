@@ -5,6 +5,7 @@ import {
 	recipeImageRoleSchema,
 	type RecipeImageRole,
 } from '@/domain/recipe/recipe-image';
+import { roleFolder } from '@/lib/image-paths';
 
 // What the browser names an upload: crypto.randomUUID() and the extension of the JPEG it encoded.
 const uploadIdSchema = z.uuidv4();
@@ -14,10 +15,6 @@ const uploadExtension = '.jpg';
 // preview/feature-xy's.
 function environmentPrefix(environment: string): string {
 	return `${environment}/`;
-}
-
-function roleFolder(role: RecipeImageRole, prefix: string): string {
-	return `${role}/${prefix}`;
 }
 
 // Plain segments only, so a pathname cannot climb out of the folder it starts in.

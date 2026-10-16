@@ -1,6 +1,6 @@
 import 'server-only';
-import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { branchFolder } from '@/lib/branch-folder';
 import {
 	developmentImageEnvironment,
 	imageEnvironmentAccess,
@@ -77,18 +77,6 @@ export const appUrl =
 		: env.VERCEL_ENV === 'preview'
 			? new URL(`https://${env.VERCEL_BRANCH_URL ?? env.VERCEL_URL}`)
 			: new URL('http://localhost:3000');
-
-// A branch as one folder name: readable (lowercase letters and digits, every other run one hyphen),
-// then a hash of the exact name, so feature/x and feature-x differ and no name comes out empty.
-// .github/workflows/preview-cleanup.yml computes the same 8-character hash to delete its folders.
-function branchFolder(branch: string): string {
-	const readable = branch
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, '-')
-		.replace(/^-|-$/g, '');
-	const hash = createHash('sha256').update(branch).digest('hex').slice(0, 8);
-	return readable === '' ? hash : `${readable}-${hash}`;
-}
 
 // Where this deployment's images go under each role's folder: production, a preview's branch, or
 // development. Every preview shares the preview store, so each writes and deletes only in its own.

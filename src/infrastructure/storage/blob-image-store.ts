@@ -19,11 +19,12 @@ import {
 } from '@/application/ports/image-store';
 import type { ImageFolders } from '@/application/recipes/image-folders';
 import { deadlineAfter, requestWithin, settleWithin } from '@/lib/deadline';
-import { imageCacheMaxAgeSeconds, imageCacheTag, imageRouteSrc } from '@/lib/image-paths';
-
-// A removed image moves here under its pathname, so each environment's removed images sit in its own
-// folders under this one: trash/dish/production/<uuid>.jpg. The image route serves only dish/ and scan/.
-const trashFolder = 'trash/';
+import {
+	imageCacheMaxAgeSeconds,
+	imageCacheTag,
+	imageRouteSrc,
+	trashFolder,
+} from '@/lib/image-paths';
 
 // Vercel's example of deleting a store's blobs deletes 100 a request.
 const deleteBatchSize = 100;

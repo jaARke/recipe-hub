@@ -24,6 +24,17 @@ export const previewImageEnvironmentPrefix = 'preview/';
 // The seed's photos sit in their own environment, outside every deployment's folders.
 export const seedImageEnvironment = 'seed';
 
+// A removed image moves here under its own pathname, so each environment's removed images sit in
+// its own folders under this one, trash/dish/production/<uuid>.jpg, and a restore takes the
+// pathname back. The image route serves only the role folders, never this one.
+export const trashFolder = 'trash/';
+
+// Under a role's folder, an environment's folder, or with a shorter prefix such as preview/ the
+// folder of every environment it takes in: dish/production/, scan/preview/.
+export function roleFolder(role: string, environmentPrefix: string): string {
+	return `${role}/${environmentPrefix}`;
+}
+
 // By Vercel's environment, each with a store of its own. Production reads only its own images. A
 // preview's store holds its uploads and the seed's photos, and its database, a copy of
 // production's, names production's photos and scans, which it fetches from production.

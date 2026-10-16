@@ -1,8 +1,8 @@
 name: Preview cleanup
 
 # pull_request_target, delete, and schedule run this file as main has it, so a branch cannot change
-# what runs with VERCEL_TOKEN or PREVIEW_BLOB_TOKEN. Nothing here checks out code, and a branch name
-# reaches a shell only through the environment.
+# what runs with VERCEL_TOKEN or PREVIEW_BLOB_TOKEN. Only the images job checks out code, the
+# default branch's on those events, and a branch name reaches a shell only through the environment.
 on:
   pull_request_target:
     types: [closed]
@@ -24,7 +24,7 @@ env:
   BRANCH: ${{ (github.event_name == 'pull_request_target' && github.event.pull_request.head.ref) || (github.event_name == 'delete' && github.event.ref) || '' }}
 
 # A branch's previews and its image folders in the preview Blob store leave together, each job with
-# the one secret it needs, so the Blob SDK's packages from npm never run on a machine holding
+# the one secret it needs, so the packages the images job installs never run on a machine holding
 # VERCEL_TOKEN.
 jobs:
   # The Neon integration deletes a preview's Neon branch only with the branch's last preview, and
@@ -38,8 +38,9 @@ jobs:
     permissions:
       contents: read
     outputs:
-      # Each branch this run decided on, as JSON: [{branch, clears}].
-      decisions: ${{ steps.previews.outputs.decisions }}
+      # Each branch this run decided on and what became of its previews, as JSON:
+      # [{branch, previews}], previews being kept, deleted, or delete-failed.
+      preview-outcomes: ${{ steps.previews.outputs.preview-outcomes }}
       # When the previews were listed, in milliseconds since the epoch.
       listed-at: ${{ steps.previews.outputs.listed-at }}
     steps:
@@ -110,198 +111,68 @@ jobs:
               + if $reason then {message: "Clearing \($summary) (\($reason))", uids: map(.uid)}
                 else {message: "Keeping \($summary)", uids: []} end' "$previews")
 
-          # Set before any delete, so the images job runs even when one fails. An event decides on
-          # its branch even when it has no preview.
-          if [ -n "$BRANCH" ]; then
-            echo "decisions=$(jq -cn '[{branch: $ENV.BRANCH, clears: true}]')" >> "$GITHUB_OUTPUT"
-          else
-            echo "decisions=$(jq -cs 'map(select(.branch != null) | {branch, clears})' <<< "$decisions")" >> "$GITHUB_OUTPUT"
-          fi
-          echo "listed-at=$listed_at" >> "$GITHUB_OUTPUT"
-
-          plan=$(jq -r '[.message, (.uids | join(" "))] | @tsv' <<< "$decisions")
-          if [ -z "$plan" ]; then
+          # One line per branch for the images job, which clears a branch's folders only when every
+          # one of its previews is gone.
+          outcomes="$RUNNER_TEMP/outcomes.jsonl"
+          : > "$outcomes"
+          if [ -z "$decisions" ]; then
             echo "No previews${BRANCH:+ of $BRANCH}"
-            exit 0
           fi
           failed=0
-          while IFS=$'\t' read -r message uids; do
-            echo "$message"
-            for uid in $uids; do
+          while IFS= read -r decision; do
+            [ -n "$decision" ] || continue
+            jq -r .message <<< "$decision"
+            deleted=true
+            for uid in $(jq -r '.uids[]' <<< "$decision"); do
               status=$(vercel_api DELETE "/v13/deployments/$uid") || true
               # 404: another run, or Vercel's retention, deleted it first.
               if [ "$status" != 200 ] && [ "$status" != 404 ]; then
                 echo "::error::Deleting $uid answered $status: $(cat "$response")"
+                deleted=false
                 failed=1
               fi
             done
-          done <<< "$plan"
+            jq -c --argjson deleted "$deleted" '{branch, previews: (if .clears | not then "kept"
+              elif $deleted then "deleted" else "delete-failed" end)}' <<< "$decision" >> "$outcomes"
+          done <<< "$decisions"
+          # An event's branch with no preview has none left to delete.
+          if [ -n "$BRANCH" ] && [ ! -s "$outcomes" ]; then
+            jq -cn '{branch: $ENV.BRANCH, previews: "deleted"}' > "$outcomes"
+          fi
+
+          # Set even when a delete failed, so the images job still runs.
+          echo "preview-outcomes=$(jq -cs 'map(select(.branch != null))' "$outcomes")" >> "$GITHUB_OUTPUT"
+          echo "listed-at=$listed_at" >> "$GITHUB_OUTPUT"
           exit "$failed"
 
-  # Runs once the previews job has decided, even when one of its deletes failed, so a cleared
-  # branch's folders still go. The previews go first, so none is left to write into its folders.
+  # Runs once the previews job has decided, even when one of its deletes failed, after the previews,
+  # so no preview is left to write into the folders it clears.
   delete-images:
     needs: delete-previews
-    if: ${{ !cancelled() && needs.delete-previews.outputs.decisions != '' }}
+    if: ${{ !cancelled() && needs.delete-previews.outputs.preview-outcomes != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions: {}
+    permissions:
+      contents: read
     steps:
-      # The version pnpm-lock.yaml resolves for the app, installed with no secret in reach and none
-      # of the packages' install scripts run.
-      - name: Install the Blob SDK
-        run: npm install --prefix "$RUNNER_TEMP/blob" --no-save --no-package-lock --ignore-scripts --no-audit --no-fund @vercel/blob@2.8.1
+      # The event's commit: the default branch's on pull_request_target, never the pull request's
+      # head, and on delete and schedule; on workflow_dispatch, the chosen branch's, as for this
+      # file.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: package.json
+          cache: pnpm
+      # Every package as pnpm-lock.yaml pins it, integrity hash and all, with no secret in reach and
+      # none of their install scripts run.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Delete image folders
         env:
           # The read-write token of the preview store, recipe-hub-images-preview.
           PREVIEW_BLOB_TOKEN: ${{ secrets.PREVIEW_BLOB_TOKEN }}
-          DECISIONS: ${{ needs.delete-previews.outputs.decisions }}
+          PREVIEW_OUTCOMES: ${{ needs.delete-previews.outputs.preview-outcomes }}
           LISTED_AT: ${{ needs.delete-previews.outputs.listed-at }}
-        run: |
-          set -euo pipefail
-          if [ -z "$PREVIEW_BLOB_TOKEN" ]; then
-            echo "::error::Set the repository secret PREVIEW_BLOB_TOKEN to the read-write token of the Blob store recipe-hub-images-preview"
-            exit 1
-          fi
-
-          # Lists the preview store's folders, or for one folder prints when its newest image was
-          # uploaded, or deletes its images and prints how many. The script reads the token from the
-          # environment, so it never reaches a command line.
-          blob_client="$RUNNER_TEMP/blob/preview-folders.mjs"
-          cat > "$blob_client" <<'JS'
-          import { del, list } from '@vercel/blob';
-
-          // A preview's images sit in a folder under each of these, named for its branch, as
-          // ImageFolders and BlobImageStore's trash lay them out.
-          const previewPrefixes = [
-            'dish/preview/',
-            'scan/preview/',
-            'trash/dish/preview/',
-            'trash/scan/preview/',
-          ];
-          // Vercel's example of deleting a store's blobs deletes 100 a request.
-          const deleteBatchSize = 100;
-          // Passed on every call, so no other credential the SDK could find takes its place.
-          const token = process.env.PREVIEW_BLOB_TOKEN;
-
-          async function listAll(options) {
-            const blobs = [];
-            const folders = [];
-            let cursor;
-            do {
-              const page = await list({ ...options, cursor, token });
-              blobs.push(...page.blobs);
-              folders.push(...(page.folders ?? []));
-              cursor = page.hasMore ? page.cursor : undefined;
-            } while (cursor !== undefined);
-            return { blobs, folders };
-          }
-
-          // One folder directly under a preview prefix, so nothing else in the store, such as the
-          // seed's photos, is ever read or deleted.
-          function isPreviewFolder(folder) {
-            return previewPrefixes.some(
-              (prefix) => folder.startsWith(prefix) && /^[^/]+\/$/.test(folder.slice(prefix.length))
-            );
-          }
-
-          const [command, folder = ''] = process.argv.slice(2);
-          try {
-            if (command === 'list') {
-              for (const prefix of previewPrefixes) {
-                const { folders } = await listAll({ prefix, mode: 'folded' });
-                folders.forEach((each) => console.log(each));
-              }
-            } else if (command === 'newest' && isPreviewFolder(folder)) {
-              const { blobs } = await listAll({ prefix: folder });
-              console.log(Math.max(0, ...blobs.map((blob) => blob.uploadedAt.getTime())));
-            } else if (command === 'delete' && isPreviewFolder(folder)) {
-              const { blobs } = await listAll({ prefix: folder });
-              const pathnames = blobs.map((blob) => blob.pathname);
-              for (let start = 0; start < pathnames.length; start += deleteBatchSize) {
-                await del(pathnames.slice(start, start + deleteBatchSize), { token });
-              }
-              console.log(pathnames.length);
-            } else {
-              throw new Error(`Neither a listing nor a preview folder: ${command} ${folder}`);
-            }
-          } catch (error) {
-            console.error(String(error));
-            process.exitCode = 1;
-          }
-          JS
-          blob_error="$RUNNER_TEMP/blob-error.txt"
-          preview_folders() {
-            node "$blob_client" "$@" 2> "$blob_error"
-          }
-
-          if ! folders=$(preview_folders list); then
-            echo "::error::Listing the preview store's folders failed: $(cat "$blob_error")"
-            exit 1
-          fi
-
-          # A branch's folder name ends with the first 8 hex digits of the SHA-256 of the branch
-          # name's UTF-8 bytes, alone or after a hyphen: branchFolder in src/lib/env.ts is the other
-          # copy of this rule. Only the hash is matched, never the readable part before it.
-          branch_hash() {
-            printf '%s' "$1" | sha256sum | cut -c1-8
-          }
-          # Each branch the previews job decided on, as its hash, whether it is cleared, and its
-          # name, tab-separated.
-          decided=''
-          decided_branches=$(jq -r '.[] | [.branch, .clears] | @tsv' <<< "$DECISIONS")
-          while IFS=$'\t' read -r branch clears; do
-            if [ -n "$branch" ]; then
-              decided+="$(branch_hash "$branch")"$'\t'"$clears"$'\t'"$branch"$'\n'
-            fi
-          done <<< "$decided_branches"
-
-          # A folder of no listed preview's branch is kept while it holds an image uploaded since
-          # the previews were listed, which a new branch's first preview may have written. Blob
-          # stamps uploads by its own clock, so the grace covers a clock that differs from the
-          # runner's.
-          upload_grace_ms=$((5 * 60 * 1000))
-          new_since=$((LISTED_AT - upload_grace_ms))
-
-          failed=0
-          cleared_any=0
-          while IFS= read -r folder; do
-            [ -n "$folder" ] || continue
-            name=${folder%/}
-            name=${name##*/}
-            hash=${name##*-}
-            entry=$(awk -F '\t' -v hash="$hash" '$1 == hash { print $2 "\t" $3; exit }' <<< "$decided")
-            if [ -n "$entry" ]; then
-              IFS=$'\t' read -r clears branch <<< "$entry"
-              if [ "$clears" != true ]; then
-                echo "Keeping $folder ($branch has a preview)"
-                continue
-              fi
-              reason="branch $branch cleared"
-            elif [ -n "$BRANCH" ]; then
-              # An event clears only its own branch's folders.
-              continue
-            else
-              if ! newest=$(preview_folders newest "$folder"); then
-                echo "::error::Reading $folder failed: $(cat "$blob_error")"
-                failed=1
-                continue
-              fi
-              if [ "$newest" -ge "$new_since" ]; then
-                echo "Keeping $folder (written to since the previews were listed)"
-                continue
-              fi
-              reason='no preview'
-            fi
-            cleared_any=1
-            if count=$(preview_folders delete "$folder"); then
-              echo "Clearing $folder: $count image$([ "$count" = 1 ] || echo s) ($reason)"
-            else
-              echo "::error::Deleting the images in $folder failed: $(cat "$blob_error")"
-              failed=1
-            fi
-          done <<< "$folders"
-          if [ -n "$BRANCH" ] && [ "$cleared_any" = 0 ]; then
-            echo "No image folders of $BRANCH"
-          fi
-          exit "$failed"
+        run: pnpm exec tsx --tsconfig scripts/tsconfig.json scripts/preview-cleanup/preview-cleanup.ts
