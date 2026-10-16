@@ -6,7 +6,6 @@ import * as React from 'react';
 import { recipeImageSrc } from '@/components/recipe/recipe-paths';
 import {
 	photoFitClasses,
-	RecipeFullSizeImage,
 	RecipePhoto,
 	type RecipePhotoProps,
 } from '@/components/recipe/recipe-photo';
@@ -14,8 +13,9 @@ import { buttonVariants } from '@/components/ui/button';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
 
 // A stored image, or one the member chose in the recipe form and uploaded but hasn't saved, which
-// shows from its file, so the browser never downloads what it already holds.
-export type ShownImage = Pick<RecipeImage, 'pathname' | 'alt'> & { file?: File };
+// shows from its file, so the browser never downloads what it already holds. Its size, where it has
+// one, lays it out in its own shape.
+export type ShownImage = Pick<RecipeImage, 'pathname' | 'alt' | 'size'> & { file?: File };
 
 // Points the element's attribute at the file, when there is one. The URL is made here rather than on
 // choosing, so it is revoked whenever the element unmounts or its page is hidden, and made again when
@@ -54,33 +54,19 @@ function LocalPhoto({ file, alt, fit = 'cover', className }: LocalPhotoProps) {
 	);
 }
 
-// The optimizer's copy for the rendered sizes, or the full-size image, which needs none.
-type ShownRecipeImageProps = Pick<RecipePhotoProps, 'alt' | 'fit' | 'loading' | 'className'> & {
+type ShownRecipeImageProps = Pick<
+	RecipePhotoProps,
+	'alt' | 'sizes' | 'fit' | 'loading' | 'className'
+> & {
 	image: ShownImage;
-} & ({ fullSize?: false; sizes: string } | { fullSize: true; sizes?: undefined });
+};
 
-// The stored image, or the one from its file until the recipe is saved.
-function ShownRecipeImage({
-	image,
-	alt,
-	fullSize,
-	sizes,
-	fit,
-	loading,
-	className,
-}: ShownRecipeImageProps) {
+// The stored image through the optimizer, or the one from its file until the recipe is saved.
+function ShownRecipeImage({ image, alt, sizes, fit, loading, className }: ShownRecipeImageProps) {
 	if (image.file !== undefined) {
 		return <LocalPhoto file={image.file} alt={alt} fit={fit} className={className} />;
 	}
-	return fullSize ? (
-		<RecipeFullSizeImage
-			pathname={image.pathname}
-			alt={alt}
-			fit={fit}
-			loading={loading}
-			className={className}
-		/>
-	) : (
+	return (
 		<RecipePhoto
 			pathname={image.pathname}
 			alt={alt}

@@ -335,9 +335,12 @@ describe('RecipeForm’s original recipe', () => {
 		expect(within(pane).getByRole('status').textContent).toBe('Page 1 of 2');
 		expect(within(pane).getByRole('img').getAttribute('src')).toMatch(/^blob:/);
 
-		await user.click(within(pane).getByRole('button', { name: 'Next page' }));
+		await user.click(within(pane).getByRole('button', { name: 'Show page 2 of 2' }));
 		expect(within(pane).getByRole('status').textContent).toBe('Page 2 of 2');
-		expect(within(pane).getByRole('img').getAttribute('src')).toBe(`/api/images/${saved}`);
+		// Through the image optimizer, at the size the page shows at its zoom.
+		expect(within(pane).getByRole('img').getAttribute('src')).toMatch(
+			/^\/_next\/image\?url=%2Fapi%2Fimages%2Fscan%2Fdevelopment%2Ffront\.jpg/
+		);
 
 		// A row the viewer holds opens it at the place the row names; the others have no place in it.
 		const rows = within(screen.getByRole('list', { name: 'Original recipe' })).getAllByRole(
@@ -404,7 +407,7 @@ describe('RecipeForm’s action bar', () => {
 		const pane = screen.getByRole('complementary', { name: 'Original recipe' });
 
 		await user.click(screen.getByRole('textbox', { name: 'Ingredient 1' }));
-		await user.click(within(pane).getByRole('button', { name: 'Zoom' }));
+		await user.click(within(pane).getByRole('button', { name: 'Zoom in' }));
 		await user.click(screen.getByRole('button', { name: 'Next' }));
 
 		expect(document.activeElement).toBe(noteWith('Check this line.'));
@@ -1123,8 +1126,10 @@ describe('RecipeForm’s drafts', () => {
 		return { save, inUrl: true, ...changes };
 	}
 
+	// Found once a save in progress is done: its status shows before the button reads Save as draft
+	// again.
 	function saveAsDraft() {
-		return screen.getByRole('button', { name: 'Save as draft' });
+		return screen.findByRole('button', { name: 'Save as draft' });
 	}
 
 	// The snapshot the save sent.
@@ -1144,7 +1149,7 @@ describe('RecipeForm’s drafts', () => {
 		const user = userEvent.setup();
 		render(<AutosavedForm drafts={draftsWith(save)} />);
 
-		await user.click(saveAsDraft());
+		await user.click(await saveAsDraft());
 
 		expect(await screen.findByText('Nothing to save yet')).toBeDefined();
 		expect(save).not.toHaveBeenCalled();
@@ -1156,7 +1161,7 @@ describe('RecipeForm’s drafts', () => {
 		render(<AutosavedForm drafts={draftsWith(save)} />);
 		await user.type(title(), 'Lemon bars');
 
-		await user.click(saveAsDraft());
+		await user.click(await saveAsDraft());
 
 		expect(await screen.findByText(`Draft saved at ${formatTime(savedAt)}`)).toBeDefined();
 		expect(formatTime(savedAt)).toBe('3:12 PM');
@@ -1175,16 +1180,16 @@ describe('RecipeForm’s drafts', () => {
 		const user = userEvent.setup();
 		render(<AutosavedForm drafts={draftsWith(save)} />);
 		await user.type(title(), 'Lemon bars');
-		await user.click(saveAsDraft());
+		await user.click(await saveAsDraft());
 		await screen.findByText(`Draft saved at ${formatTime(savedAt)}`);
 
-		await user.click(saveAsDraft());
+		await user.click(await saveAsDraft());
 		expect(await screen.findByText('No changes since the draft was saved')).toBeDefined();
 		expect(save).toHaveBeenCalledOnce();
 
 		await user.type(title(), ' squares');
 		expect(stored(draftKey)?.text.title).toBe('Lemon bars squares');
-		await user.click(saveAsDraft());
+		await user.click(await saveAsDraft());
 		await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
 		expect(save.mock.calls[1]?.[1].get('draftId')).toBe(draftId);
 	});
@@ -1232,7 +1237,7 @@ describe('RecipeForm’s drafts', () => {
 		);
 
 		// Unlike a new recipe, an import's review is worth keeping as it was read.
-		await user.click(saveAsDraft());
+		await user.click(await saveAsDraft());
 
 		await screen.findByText(`Draft saved at ${formatTime(savedAt)}`);
 		expect(save.mock.calls[0]?.[1].get('importId')).toBe(importId);
@@ -1253,7 +1258,7 @@ describe('RecipeForm’s drafts', () => {
 		render(<AutosavedForm initial={withPhoto} drafts={draftsWith(save)} />);
 		await user.type(title(), ' squares');
 
-		await user.click(saveAsDraft());
+		await user.click(await saveAsDraft());
 
 		expect(await screen.findByText('The draft wasn’t saved.')).toBeDefined();
 		expect(screen.getByText('Fix 1 thing to save')).toBeDefined();
@@ -1272,7 +1277,7 @@ describe('RecipeForm’s drafts', () => {
 		render(<AutosavedForm drafts={draftsWith(save)} />);
 		await user.type(title(), 'Lemon bars');
 
-		await user.click(saveAsDraft());
+		await user.click(await saveAsDraft());
 
 		expect(
 			await screen.findByText('We couldn’t save the draft. Check your connection and try again.')

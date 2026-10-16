@@ -24,6 +24,11 @@ export function imagePositionLabel(role: RecipeImageRole, index: number, count: 
 	return `${sentenceCase(imageViewerWording[role].item)} ${index + 1} of ${count}`;
 }
 
+// Names a thumbnail that shows its image: "Show photo 2 of 4".
+export function showImageLabel(role: RecipeImageRole, index: number, count: number): string {
+	return `Show ${imageViewerWording[role].item} ${index + 1} of ${count}`;
+}
+
 // Names the control that opens the viewer at an image, with the image's description when it has one.
 export function viewImageLabel(
 	role: RecipeImageRole,

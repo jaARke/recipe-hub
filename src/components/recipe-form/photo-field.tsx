@@ -20,6 +20,7 @@ import { newPhotoPathname, type PhotoUploader } from '@/components/recipe-form/p
 import {
 	filledText,
 	storedPathname,
+	storedPhoto,
 	type PhotoEdit,
 	type PhotoFailure,
 	type ProblemTarget,
@@ -162,22 +163,22 @@ function photoStatus(photo: RecipeFormPhoto, isCover: boolean): string | undefin
 }
 
 // The photos the viewer shows, in the field's order: each stored one, saved or just uploaded, so the
-// member can see one larger or read the original while checking the form. A photo uploaded but not
-// saved shows from its file while the page holds it. A dish photo shows its description as it will be
-// saved, and a scan saves none.
+// member can see one larger or read the original while checking the form, in its own shape. A photo
+// uploaded but not saved shows from its file while the page holds it. A dish photo shows its
+// description as it will be saved, and a scan saves none.
 function photoViewerImages(
 	photos: readonly RecipeFormPhoto[],
 	role: RecipeImageRole
 ): ShownImage[] {
 	return photos.flatMap((photo) => {
-		const pathname = storedPathname(photo);
-		if (pathname === undefined) {
+		const stored = storedPhoto(photo);
+		if (stored === undefined) {
 			return [];
 		}
 		const { upload, alt } = photo;
 		return [
 			{
-				pathname,
+				...stored,
 				alt: role === 'dish' ? filledText(alt) : undefined,
 				file: upload.status === 'uploaded' ? upload.file : undefined,
 			},

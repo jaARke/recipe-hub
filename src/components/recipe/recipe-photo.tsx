@@ -15,14 +15,9 @@ type RecipePhotoProps = Pick<ImageProps, 'preload' | 'loading'> & {
 	// The rendered width at each breakpoint, so the browser picks the right size from the srcset.
 	sizes: string;
 	fit?: keyof typeof photoFitClasses;
-	// Sets the box's aspect ratio.
+	// Sizes the box, such as by its aspect ratio.
 	className: string;
 };
-
-type RecipeFullSizeImageProps = Pick<
-	RecipePhotoProps,
-	'pathname' | 'alt' | 'loading' | 'fit' | 'className'
->;
 
 // Each box is a span, so a photo can sit inside a button.
 function RecipePhoto({
@@ -49,28 +44,4 @@ function RecipePhoto({
 	);
 }
 
-// The stored image itself, past the optimizer, for the editor's pane to zoom; shown whole unless its
-// box crops it. It sits in the flow rather than filling its box, so a zoomed page's box takes its
-// height.
-function RecipeFullSizeImage({
-	pathname,
-	alt,
-	loading,
-	fit = 'contain',
-	className,
-}: RecipeFullSizeImageProps) {
-	return (
-		<span className={cn('block overflow-hidden bg-muted', className)}>
-			{/* eslint-disable-next-line @next/next/no-img-element */}
-			<img
-				src={recipeImageSrc(pathname)}
-				alt={alt}
-				loading={loading}
-				decoding="async"
-				className={cn('size-full', photoFitClasses[fit])}
-			/>
-		</span>
-	);
-}
-
-export { photoFitClasses, RecipeFullSizeImage, RecipePhoto, type RecipePhotoProps };
+export { photoFitClasses, RecipePhoto, type RecipePhotoProps };

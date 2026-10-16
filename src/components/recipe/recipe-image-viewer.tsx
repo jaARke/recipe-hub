@@ -1,17 +1,23 @@
 'use client';
 
 import { cn } from 'cn';
+import { XIcon } from 'lucide-react';
 import * as React from 'react';
+import { RecipeImageStrip } from '@/components/recipe/recipe-image-strip';
 import {
 	imagePositionLabel,
 	imageViewerLabels,
 	viewImageLabel,
 } from '@/components/recipe/recipe-image-viewer-labels';
+import { FullSizeImageLink, type ShownImage } from '@/components/recipe/shown-recipe-image';
 import {
-	FullSizeImageLink,
-	ShownRecipeImage,
-	type ShownImage,
-} from '@/components/recipe/shown-recipe-image';
+	handleZoomKey,
+	isZoomed,
+	RecipeImageZoomControls,
+	ZoomableRecipeImage,
+	type ImageZoom,
+	type ZoomFrameSize,
+} from '@/components/recipe/zoomable-recipe-image';
 import { Button } from '@/components/ui/button';
 import {
 	Carousel,
@@ -23,8 +29,8 @@ import {
 } from '@/components/ui/carousel';
 import {
 	Dialog,
+	DialogClose,
 	DialogContent,
-	DialogHeader,
 	DialogTitle,
 	DialogTrigger,
 } from '@/components/ui/dialog';
@@ -42,26 +48,25 @@ type RecipeImageViewerProps = RecipeImageViewerContextValue & {
 	children: React.ReactNode;
 };
 
-// Each role's slide width: the dialog's, at most 42rem less 1.5rem of padding on each side and within
-// a 1rem margin, or narrower on a short screen, as viewerSlideClasses says.
-const viewerSlideSizes = {
-	dish: 'min(624px, 100vw - 80px, (100dvh - 12rem) * 4 / 3)',
-	scan: 'min(624px, 100vw - 80px, (100dvh - 13rem) * 3 / 4)',
-} as const satisfies Record<RecipeImageRole, string>;
+// Full screen in the page's own paper or ink, rather than a card over the page.
+const viewerPopupClassName =
+	'top-0 left-0 flex h-dvh max-h-none w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none bg-background p-0 text-foreground ring-0 sm:max-w-none data-open:zoom-in-100 data-closed:zoom-out-100';
 
-// Each role's slide shape, narrowed on a short screen so the slide is at most the screen's height less
-// the dialog's margin and padding, its title, and a one-line caption beside Previous and Next: 12rem,
-// and 13rem for a scan, whose caption holds Full size under it.
-const viewerSlideClasses = {
-	dish: 'aspect-4/3 max-w-[calc((100dvh-12rem)*4/3)]',
-	scan: 'aspect-3/4 max-w-[calc((100dvh-13rem)*3/4)]',
-} as const satisfies Record<RecipeImageRole, string>;
+// A slide's frame: the screen's width, and its height less the title bar, the caption and strip,
+// and the padding around the image.
+const viewerFrameSize: ZoomFrameSize = { width: '100vw', height: '100dvh - 12rem' };
 
-// A scan is a page to read, so its caption links to the page at full size, past the optimizer.
+// A scan is a page to read, so the viewer links to the page at full size, past the optimizer.
 const viewerLinksFullSize = {
 	dish: false,
 	scan: true,
 } as const satisfies Record<RecipeImageRole, boolean>;
+
+// The arrows move between images while the image shown is whole, and pan it while it's zoomed.
+const imageMoveKeys: Partial<Record<string, 'previous' | 'next'>> = {
+	ArrowLeft: 'previous',
+	ArrowRight: 'next',
+};
 
 const RecipeImageViewerContext = React.createContext<RecipeImageViewerContextValue | null>(null);
 
@@ -73,12 +78,11 @@ function useRecipeImageViewer(): RecipeImageViewerContextValue {
 	return context;
 }
 
-// Every image whole, one at a time; a trigger's payload is the index the viewer opens at.
+// Every image whole, one at a time, full screen and zoomable; a trigger's payload is the index the
+// viewer opens at.
 function RecipeImageViewer({ role, images, title, children }: RecipeImageViewerProps) {
 	const context = React.useMemo(() => ({ role, images }), [role, images]);
-	const popupRef = React.useRef<HTMLDivElement>(null);
-	// The carousel button the viewer opens on; with one image there is none, and the first control
-	// takes focus: a scan's Full size, or Close.
+	// The button the viewer opens on: the one that moves on, or Close with one image.
 	const initialFocusRef = React.useRef<HTMLButtonElement>(null);
 
 	return (
@@ -87,18 +91,16 @@ function RecipeImageViewer({ role, images, title, children }: RecipeImageViewerP
 				{({ payload }) => (
 					<>
 						{children}
-						{/* The slide shrinks to fit the dialog's height, the screen's less a margin, so only a
-						caption longer than a line makes it scroll. */}
-						<DialogContent ref={popupRef} initialFocus={initialFocusRef} className="sm:max-w-2xl">
-							{/* Clears the close button in the corner. */}
-							<DialogHeader className="pr-8">
-								<DialogTitle>{title}</DialogTitle>
-							</DialogHeader>
-							<RecipeImageCarousel
+						<DialogContent
+							initialFocus={initialFocusRef}
+							showCloseButton={false}
+							className={viewerPopupClassName}
+						>
+							<RecipeImageViewerBody
 								role={role}
 								images={images}
+								title={title}
 								startIndex={typeof payload === 'number' ? payload : 0}
-								popupRef={popupRef}
 								initialFocusRef={initialFocusRef}
 							/>
 						</DialogContent>
@@ -125,7 +127,10 @@ function RecipeImageViewerTrigger({
 		<DialogTrigger
 			payload={index}
 			aria-label={viewImageLabel(role, index, images.length, images[index]?.alt)}
-			className={cn('block overflow-hidden transition-shadow hover:shadow-md', className)}
+			className={cn(
+				'block cursor-zoom-in overflow-hidden transition-shadow hover:shadow-md',
+				className
+			)}
 		>
 			{children}
 		</DialogTrigger>
@@ -147,27 +152,41 @@ function RecipeImageViewerButton({
 	);
 }
 
-type InitialFocusProps = {
+type RecipeImageViewerBodyProps = RecipeImageViewerContextValue & {
+	title: string;
 	startIndex: number;
 	initialFocusRef: React.RefObject<HTMLButtonElement | null>;
 };
 
-type RecipeImageCarouselProps = RecipeImageViewerContextValue &
-	InitialFocusProps & {
-		// The viewer's popup, which takes the arrow keys the carousel does not.
-		popupRef: React.RefObject<HTMLDivElement | null>;
-	};
-
-function RecipeImageCarousel({
+// The title bar with where you are, the zoom, a page's Full size, and Close; the image; and the
+// caption over a strip of every image.
+function RecipeImageViewerBody({
 	role,
 	images,
+	title,
 	startIndex,
-	popupRef,
 	initialFocusRef,
-}: RecipeImageCarouselProps) {
+}: RecipeImageViewerBodyProps) {
 	const labels = imageViewerLabels(role);
+	const several = images.length > 1;
 	const [api, setApi] = React.useState<CarouselApi>();
 	const [current, setCurrent] = React.useState(startIndex);
+	// The zoom of the image shown, and the same as a drag reads it between renders.
+	const [zoom, setZoom] = React.useState<ImageZoom | null>(null);
+	const zoomRef = React.useRef<ImageZoom | null>(null);
+	const shownZoomRef = React.useRef<ImageZoom | null>(null);
+
+	const attachZoom = React.useCallback((attached: ImageZoom | null) => {
+		zoomRef.current = attached;
+		setZoom(attached);
+	}, []);
+
+	// A swipe moves between images only while the image shown is whole; zoomed, a drag pans it.
+	const canSwipe = React.useCallback(() => !isZoomed(zoomRef.current), []);
+	const options = React.useMemo(
+		() => ({ startIndex, watchDrag: canSwipe }),
+		[startIndex, canSwipe]
+	);
 
 	React.useEffect(() => {
 		if (api === undefined) {
@@ -180,145 +199,174 @@ function RecipeImageCarousel({
 		};
 	}, [api]);
 
-	// The carousel takes arrow keys only while it holds focus, so the rest of the viewer, such as Close,
-	// takes them here. The popup stops arrow keys from bubbling past it, and those the carousel handled
-	// arrive default-prevented.
+	// The image moved away from turns inert and drops the focus it held, which the new image takes.
 	React.useEffect(() => {
-		const popup = popupRef.current;
-		if (api === undefined || popup === null) {
+		const previous = shownZoomRef.current;
+		shownZoomRef.current = zoom;
+		const frame = zoom?.instance.wrapperComponent;
+		if (previous === null || frame === null || frame === undefined) {
 			return;
 		}
-		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.defaultPrevented) {
-				return;
-			}
-			if (event.key === 'ArrowLeft') {
-				event.preventDefault();
-				api.scrollPrev();
-			} else if (event.key === 'ArrowRight') {
-				event.preventDefault();
-				api.scrollNext();
-			}
-		};
-		popup.addEventListener('keydown', onKeyDown);
-		return () => {
-			popup.removeEventListener('keydown', onKeyDown);
-		};
-	}, [api, popupRef]);
+		const focused = document.activeElement;
+		if (focused === null || focused === document.body || focused.closest('[inert]') !== null) {
+			frame.focus({ preventScroll: true });
+		}
+	}, [zoom]);
+
+	// Ahead of the carousel's own keys, from anywhere in the viewer: the zoom's keys first, and while
+	// the image is whole, Left and Right move between images.
+	const onKeyDownCapture = (event: React.KeyboardEvent) => {
+		if (handleZoomKey(zoomRef.current, event)) {
+			event.preventDefault();
+			event.stopPropagation();
+			return;
+		}
+		const move = imageMoveKeys[event.key];
+		if (move === undefined || event.altKey || event.ctrlKey || event.metaKey) {
+			return;
+		}
+		event.preventDefault();
+		event.stopPropagation();
+		if (move === 'previous') {
+			api?.scrollPrev();
+		} else {
+			api?.scrollNext();
+		}
+	};
+
+	const shownImage = images[current];
+	// The viewer opens on the button that moves on rather than a disabled one: Next, or Previous from
+	// the last image.
+	const opensOnNext = startIndex < images.length - 1;
+	// The row under the image has something to show from sm, where the zoom sits in the title bar.
+	const hasFooterFromSm = several || images.some((image) => image.alt !== undefined);
 
 	return (
-		<Carousel
-			opts={{ startIndex }}
-			setApi={setApi}
-			aria-label={labels.region}
-			className="flex flex-col gap-4"
-		>
-			<CarouselContent>
-				{images.map((image, index) => (
-					// Only the current image is read, as its caption says; the others are off to the sides.
-					<CarouselItem
-						key={image.pathname}
-						aria-label={imagePositionLabel(role, index, images.length)}
-						aria-hidden={index !== current}
-					>
-						<ShownRecipeImage
-							image={image}
-							alt={image.alt ?? ''}
-							sizes={viewerSlideSizes[role]}
-							fit="contain"
-							className={cn('mx-auto rounded-md', viewerSlideClasses[role])}
+		<div className="flex min-h-0 flex-1 flex-col" onKeyDownCapture={onKeyDownCapture}>
+			<div className="flex items-center gap-1 border-b px-2 py-1.5 sm:px-4">
+				<div className="flex min-w-0 flex-1 flex-col gap-1 py-1 pl-2">
+					<DialogTitle className="truncate text-base">{title}</DialogTitle>
+					{several && (
+						<p className="truncate text-sm text-muted-foreground">
+							{imagePositionLabel(role, current, images.length)}
+						</p>
+					)}
+				</div>
+				<RecipeImageZoomControls zoom={zoom} className="hidden sm:flex" />
+				{shownImage !== undefined && viewerLinksFullSize[role] && (
+					// 44 px for a finger, like the buttons beside it.
+					<FullSizeImageLink image={shownImage} className="mx-1 pointer-coarse:h-11" />
+				)}
+				<DialogClose
+					ref={several ? undefined : initialFocusRef}
+					render={<Button variant="ghost" size="icon" className="pointer-coarse:size-11" />}
+				>
+					<XIcon aria-hidden="true" />
+					<span className="sr-only">Close</span>
+				</DialogClose>
+			</div>
+			<Carousel
+				opts={options}
+				setApi={setApi}
+				aria-label={labels.region}
+				className="min-h-0 flex-1 *:data-[slot=carousel-content]:h-full"
+			>
+				<CarouselContent className="h-full">
+					{images.map((image, index) => {
+						const isCurrent = index === current;
+						const position = imagePositionLabel(role, index, images.length);
+						return (
+							// Only the current image can be reached; the others are off to the sides.
+							<CarouselItem
+								key={image.pathname}
+								aria-label={position}
+								inert={!isCurrent}
+								className="h-full"
+							>
+								{/* Clear of Previous and Next: beside the image from sm, under it on phones. */}
+								<div className={cn('size-full p-3 sm:px-16 sm:py-6', several && 'max-sm:pb-16')}>
+									<ZoomableRecipeImage
+										image={image}
+										alt={image.alt ?? ''}
+										label={position}
+										frame={viewerFrameSize}
+										active={isCurrent}
+										zoomRef={isCurrent ? attachZoom : undefined}
+										className="rounded-md"
+										imageClassName="rounded-sm"
+									/>
+								</div>
+							</CarouselItem>
+						);
+					})}
+				</CarouselContent>
+				{several && (
+					<>
+						{/* Focusable at either end, so focus stays put; 44 px for a finger. */}
+						<CarouselPrevious
+							ref={opensOnNext ? undefined : initialFocusRef}
+							aria-label={labels.previous}
+							focusableWhenDisabled
+							className="left-3 size-9 bg-background/85 max-sm:top-auto max-sm:bottom-3 pointer-coarse:size-11"
 						/>
-					</CarouselItem>
-				))}
-			</CarouselContent>
-			<RecipeImageCaption
-				role={role}
-				images={images}
-				index={current}
-				startIndex={startIndex}
-				initialFocusRef={initialFocusRef}
-			/>
-		</Carousel>
+						<CarouselNext
+							ref={opensOnNext ? initialFocusRef : undefined}
+							aria-label={labels.next}
+							focusableWhenDisabled
+							className="right-3 size-9 bg-background/85 max-sm:top-auto max-sm:bottom-3 pointer-coarse:size-11"
+						/>
+					</>
+				)}
+			</Carousel>
+			<div
+				className={cn(
+					'flex flex-col gap-2 border-t px-4 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]',
+					!hasFooterFromSm && 'sm:hidden'
+				)}
+			>
+				<div className="flex items-start justify-between gap-3">
+					<RecipeImageCaption role={role} images={images} index={current} />
+					<RecipeImageZoomControls zoom={zoom} className="-my-1 flex shrink-0 sm:hidden" />
+				</div>
+				{several && (
+					<RecipeImageStrip
+						role={role}
+						images={images}
+						current={current}
+						onSelect={(index) => api?.scrollTo(index)}
+						className="-mx-1 sm:justify-center"
+					/>
+				)}
+			</div>
+		</div>
 	);
 }
 
-function RecipeImageCaptionLines({ alt, position }: { alt?: string; position: string }) {
-	return (
-		<>
-			{alt !== undefined && <p>{alt}</p>}
-			<p className="font-mono text-xs tracking-wide text-muted-foreground uppercase">{position}</p>
-		</>
-	);
-}
-
-// The current image's description and place, announced as it changes, beside Previous and Next; a
-// scan's Full size sits under the description.
+// The current image's description, announced with its place as it changes. Every description takes
+// the same cell, hidden but the current one's, so the caption keeps the height of the longest and the
+// image above keeps its size from image to image. Without descriptions it takes no room.
 function RecipeImageCaption({
 	role,
 	images,
 	index,
-	startIndex,
-	initialFocusRef,
-}: RecipeImageViewerContextValue & InitialFocusProps & { index: number }) {
-	const shownImage = images[index];
-	const alt = shownImage?.alt;
-	// 44 px for a finger, like Previous and Next.
-	const fullSizeLink =
-		shownImage !== undefined && viewerLinksFullSize[role] ? (
-			<FullSizeImageLink image={shownImage} className="pointer-coarse:h-11" />
-		) : null;
-	if (images.length === 1) {
-		return alt === undefined && fullSizeLink === null ? null : (
-			<div className="flex flex-col items-start gap-2">
-				{alt !== undefined && <p>{alt}</p>}
-				{fullSizeLink}
-			</div>
-		);
-	}
-
-	const labels = imageViewerLabels(role);
-	// The viewer opens on the button that moves on rather than a disabled one: Next, or Previous from
-	// the last image.
-	const opensOnNext = startIndex < images.length - 1;
+}: RecipeImageViewerContextValue & { index: number }) {
+	const described = images.some((image) => image.alt !== undefined);
 	return (
-		<div className="flex items-start justify-between gap-4">
-			<div className="flex min-w-0 flex-col items-start gap-2">
-				{/* Every image's caption takes the same cell, hidden but the current one's, so the viewer
-				keeps the height of the longest and Previous and Next stay put from image to image. */}
-				<div className="grid min-w-0 *:col-start-1 *:row-start-1">
-					{images.map((image, imageIndex) => (
-						<div key={image.pathname} className="invisible flex flex-col gap-1">
-							<RecipeImageCaptionLines
-								alt={image.alt}
-								position={imagePositionLabel(role, imageIndex, images.length)}
-							/>
-						</div>
-					))}
-					<div role="status" aria-live="polite" className="flex flex-col gap-1">
-						<RecipeImageCaptionLines
-							alt={alt}
-							position={imagePositionLabel(role, index, images.length)}
-						/>
-					</div>
-				</div>
-				{fullSizeLink}
-			</div>
-			<div className="flex shrink-0 gap-2">
-				{/* Below the image rather than beside it, 44 px for a finger, and focusable at either end so
-				focus stays put. */}
-				<CarouselPrevious
-					ref={opensOnNext ? undefined : initialFocusRef}
-					className="static pointer-coarse:size-11"
-					aria-label={labels.previous}
-					focusableWhenDisabled
-				/>
-				<CarouselNext
-					ref={opensOnNext ? initialFocusRef : undefined}
-					className="static pointer-coarse:size-11"
-					aria-label={labels.next}
-					focusableWhenDisabled
-				/>
-			</div>
+		<div
+			className={cn('grid min-w-0 flex-1 *:col-start-1 *:row-start-1', described && 'min-h-6 py-1')}
+		>
+			{images.map((image) => (
+				<p key={image.pathname} className="invisible">
+					{image.alt}
+				</p>
+			))}
+			<p role="status" aria-live="polite">
+				{/* The place shows in the title bar; the announcement carries it too. */}
+				{images.length > 1 && (
+					<span className="sr-only">{imagePositionLabel(role, index, images.length)}. </span>
+				)}
+				{images[index]?.alt}
+			</p>
 		</div>
 	);
 }

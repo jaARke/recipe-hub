@@ -59,7 +59,14 @@ function DialogContent({
 				{showCloseButton && (
 					<DialogPrimitive.Close
 						data-slot="dialog-close"
-						render={<Button variant="ghost" className="absolute top-4 right-4" size="icon-sm" />}
+						render={
+							<Button
+								variant="ghost"
+								// 44 px under a finger, like the site's other touch targets.
+								className="absolute top-4 right-4 pointer-coarse:size-11"
+								size="icon-sm"
+							/>
+						}
 					>
 						<XIcon />
 						<span className="sr-only">Close</span>

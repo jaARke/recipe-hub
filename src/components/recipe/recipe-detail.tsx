@@ -2,13 +2,9 @@ import { cn } from 'cn';
 import type { ReactNode } from 'react';
 import type { PublicRecipeDto } from '@/application/recipes/recipe-dtos';
 import { RecipeActions, RecipeActionsSkeleton } from '@/components/recipe/recipe-actions';
-import {
-	RecipeImageViewer,
-	RecipeImageViewerTrigger,
-} from '@/components/recipe/recipe-image-viewer';
+import { RecipeFilmstrip } from '@/components/recipe/recipe-filmstrip';
 import { RecipeIngredientsAndSteps } from '@/components/recipe/recipe-ingredients-and-steps';
 import { RecipeParagraphs } from '@/components/recipe/recipe-paragraphs';
-import { RecipePhoto } from '@/components/recipe/recipe-photo';
 import { RecipeTags } from '@/components/recipe/recipe-summary';
 import {
 	recipeHeadingTags,
@@ -18,7 +14,7 @@ import {
 import { recipeSearchHref } from '@/components/search/search-params';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDuration, totalMinutes } from '@/domain/recipe/duration';
-import type { RecipeImage, RecipeImageRole } from '@/domain/recipe/recipe-image';
+import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import { formatYieldCount, yieldVerbs, type RecipeYield } from '@/domain/recipe/recipe-yield';
 import { formatDate } from '@/lib/dates';
 
@@ -35,12 +31,6 @@ const cellRowClassName = 'grid grid-cols-2 gap-x-4 gap-y-3 py-3 sm:grid-cols-4';
 
 // Who added the recipe takes the two columns the dates leave it from sm.
 const contributorCellClassName = 'sm:col-span-2';
-
-// A reading-width container's column is 624px.
-const coverPhotoSizes = '(min-width: 672px) 624px, 100vw';
-
-// The thumbnails after a gallery's first image are w-24.
-const thumbnailPhotoSizes = '96px';
 
 // The description and the notes read as body text.
 const recipeParagraphsClassName = cn(recipeTextStyles.body, 'gap-4');
@@ -185,68 +175,13 @@ function RecipeCredit({ source, sourceUrl }: Pick<PublicRecipeDto, 'source' | 's
 	);
 }
 
-// The first image large, then a row of thumbnails of the rest, the dish's photos and the original's
-// pages alike; each opens the viewer at itself. Each box is cropped to its shape, since the viewer
-// shows the image whole. Left off the printout, which is for cooking from.
-function RecipeGallery({
-	role,
-	title,
-	images,
-	preload = false,
-}: {
-	role: RecipeImageRole;
-	// Names the viewer.
-	title: string;
-	images: readonly RecipeImage[];
-	// For the first image the page shows, which loads with the page.
-	preload?: boolean;
-}) {
-	const [first, ...others] = images;
-	if (first === undefined) {
-		return null;
-	}
-
-	return (
-		<RecipeImageViewer role={role} title={title} images={images}>
-			<div className="flex flex-col gap-3 print:hidden">
-				{/* Each button is named for its image, so the image inside it is decorative. */}
-				<RecipeImageViewerTrigger index={0} className="w-full rounded-xl">
-					<RecipePhoto
-						pathname={first.pathname}
-						alt=""
-						sizes={coverPhotoSizes}
-						preload={preload}
-						className="aspect-3/2"
-					/>
-				</RecipeImageViewerTrigger>
-				{others.length > 0 && (
-					<ul className="flex flex-wrap gap-3">
-						{others.map((image, index) => (
-							<li key={image.pathname}>
-								<RecipeImageViewerTrigger index={index + 1} className="w-24 rounded-md">
-									<RecipePhoto
-										pathname={image.pathname}
-										alt=""
-										sizes={thumbnailPhotoSizes}
-										className="aspect-4/3"
-									/>
-								</RecipeImageViewerTrigger>
-							</li>
-						))}
-					</ul>
-				)}
-			</div>
-		</RecipeImageViewer>
-	);
-}
-
 // "1 page", "2 pages".
 function pageCount(count: number): string {
 	return count === 1 ? '1 page' : `${count} pages`;
 }
 
-// The pages of the recipe as first written, before its ingredients, shown as the dish photos are;
-// the viewer links each page at full size.
+// The pages of the recipe as first written, before its ingredients, in a filmstrip as the dish photos
+// are; the viewer links each page at full size.
 function RecipeScans({
 	scans,
 	headingLevel,
@@ -266,7 +201,7 @@ function RecipeScans({
 				<Section className={recipeTextStyles.section}>{title}</Section>
 				<p className="text-muted-foreground">{pageCount(scans.length)}</p>
 			</div>
-			<RecipeGallery role="scan" title={title} images={scans} />
+			<RecipeFilmstrip role="scan" title={title} images={scans} />
 		</div>
 	);
 }
@@ -313,7 +248,7 @@ function RecipeDetail({
 				<RecipeRuledBlock recipe={recipe} />
 				<RecipeActions slug={recipe.slug} title={recipe.title} favoriteToggle={favoriteToggle} />
 			</header>
-			<RecipeGallery role="dish" title={recipe.title} images={recipe.images} preload />
+			<RecipeFilmstrip role="dish" title={recipe.title} images={recipe.images} preload />
 			{recipe.description !== undefined && (
 				<RecipeParagraphs text={recipe.description} className={recipeParagraphsClassName} />
 			)}

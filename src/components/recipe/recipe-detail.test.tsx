@@ -176,6 +176,70 @@ describe('RecipeDetail’s credit', () => {
 	});
 });
 
+// The box an image is laid out in takes its shape from --image-ratio.
+function imageRatio(trigger: HTMLElement): string | undefined {
+	return trigger.parentElement?.style.getPropertyValue('--image-ratio');
+}
+
+function imageSizes(trigger: HTMLElement): string | null | undefined {
+	return trigger.querySelector('img')?.getAttribute('sizes');
+}
+
+describe('RecipeDetail’s filmstrips', () => {
+	const wideSoup: RecipeImage = {
+		role: 'dish',
+		pathname: 'dish/seed/soup-wide.jpg',
+		size: { width: 1600, height: 1066 },
+	};
+	const squarerSoup: RecipeImage = {
+		role: 'dish',
+		pathname: 'dish/seed/soup-squarer.jpg',
+		size: { width: 1600, height: 1200 },
+	};
+
+	it('lays each photo in a row out in its own shape, fetched as wide as the row’s height makes it', () => {
+		render(<RecipeDetail recipe={soupWith([wideSoup, squarerSoup])} headingLevel={1} />);
+
+		const photos = screen.getAllByRole('button', { name: /^View photo/ });
+		expect(photos.map(imageRatio)).toEqual(['1600 / 1066', '1600 / 1200']);
+		// 320 and 240 tall, from sm and on phones, and no wider than 82% of the column.
+		expect(photos.map(imageSizes)).toEqual([
+			'(min-width: 640px) min(481px, 512px), min(361px, 82vw)',
+			'(min-width: 640px) min(427px, 512px), min(320px, 82vw)',
+		]);
+	});
+
+	it('gives a photo stored before sizes a 3:2 box, and shows it whole in it', () => {
+		render(<RecipeDetail recipe={soupWith([dishPhoto, wideSoup])} headingLevel={1} />);
+
+		const [unsized, sized] = screen.getAllByRole('button', { name: /^View photo/ });
+		expect(unsized && imageRatio(unsized)).toBe('3 / 2');
+		expect(unsized && imageSizes(unsized)).toBe(
+			'(min-width: 640px) min(480px, 512px), min(360px, 82vw)'
+		);
+		expect(unsized?.querySelector('img')?.classList.contains('object-contain')).toBe(true);
+		expect(sized?.querySelector('img')?.classList.contains('object-cover')).toBe(true);
+	});
+
+	it('shows a lone photo across the column, fetched no wider than its shape allows at its tallest', () => {
+		render(<RecipeDetail recipe={soupWith([wideSoup])} headingLevel={1} />);
+
+		const photo = screen.getByRole('button', { name: 'View photo' });
+		expect(imageRatio(photo)).toBe('1600 / 1066');
+		// At most 576 tall, so 865 wide, within the 624px column.
+		expect(imageSizes(photo)).toBe('(min-width: 672px) min(624px, 865px), min(100vw, 865px)');
+	});
+
+	it('shows the original’s pages in a lower row', () => {
+		const card = { ...cardFront, size: { width: 1600, height: 908 } };
+		render(<RecipeDetail recipe={soupWith([card, cardBack])} headingLevel={1} />);
+
+		const [page] = screen.getAllByRole('button', { name: /^View page/ });
+		// 288 and 208 tall, from sm and on phones.
+		expect(page && imageSizes(page)).toBe('(min-width: 640px) min(508px, 512px), min(367px, 82vw)');
+	});
+});
+
 describe('RecipeDetail’s original recipe', () => {
 	it('shows the scans with their page count before the ingredients', () => {
 		render(<RecipeDetail recipe={soupWith([cardFront, dishPhoto, cardBack])} headingLevel={1} />);

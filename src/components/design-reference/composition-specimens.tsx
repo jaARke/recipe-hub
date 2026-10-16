@@ -29,6 +29,7 @@ import { RecipeImportSubmit } from '@/components/recipe-import/recipe-import-sub
 import { RecipeActions } from '@/components/recipe/recipe-actions';
 import { RecipeCard } from '@/components/recipe/recipe-card';
 import { RecipeDetail, RecipeDetailSkeleton } from '@/components/recipe/recipe-detail';
+import { RecipeFilmstrip } from '@/components/recipe/recipe-filmstrip';
 import { RecipeGrid, RecipeGridSkeleton } from '@/components/recipe/recipe-grid';
 import { RecipeEditLink } from '@/components/recipe/recipe-member-view';
 import { RecipePagination } from '@/components/recipe/recipe-pagination';
@@ -227,7 +228,7 @@ const subsections = [
 		id: 'recipe-detail',
 		title: 'Recipe detail',
 		description:
-			'Reading width, with ingredients and steps in text-lg. Under the title and its credit, a ruled block holds a row of labelled cells for the times and yield, one for who added the recipe, when, and when it was edited if on a later day, and one for the tags; a row or cell with nothing to show is left out. The recipe’s actions follow, then the cover and the row of other photos, each opening a viewer of every photo, the description, and the original recipe’s pages, cropped thumbnails that open the viewer at their page. The pencil beside the title, for the contributor and admins, opens the edit page. Its headings start at h4 here, under this page’s own.',
+			'Reading width, with ingredients and steps in text-lg. Under the title and its credit, a ruled block holds a row of labelled cells for the times and yield, one for who added the recipe, when, and when it was edited if on a later day, and one for the tags; a row or cell with nothing to show is left out. The recipe’s actions follow, then the dish photos in a filmstrip, here a row of four, the description, and the original recipe’s pages in a filmstrip of their own, each image whole in its own shape and opening the viewer at itself. The pencil beside the title, for the contributor and admins, opens the edit page. Its headings start at h4 here, under this page’s own.',
 		Content: RecipeDetailSpecimen,
 	},
 	{
@@ -236,6 +237,13 @@ const subsections = [
 		description:
 			'Skeletons hold the header’s place as most recipes fill it, every row of the ruled block included, while a recipe that was not prerendered loads.',
 		Content: RecipeDetailSkeletonSpecimen,
+	},
+	{
+		id: 'recipe-filmstrip',
+		title: 'Photo filmstrip and viewer',
+		description:
+			'A recipe’s dish photos, and the pages of its original, show whole in their own shapes. One image runs across the column, narrowed where it would stand taller than 576px or 70% of the screen; several sit in a row at one height, 240px on phones and 320px from sm for photos and 208px and 288px for pages, that scrolls sideways and snaps to each image, a wide one narrowed to 82% of the column so the next always peeks in. A mouse gets arrows at the row’s ends, and the printout leaves the images out. A photo stored before sizes were recorded takes a 3:2 box and shows whole inside it. Each image opens the viewer at itself: full screen in the page’s paper or ink, with where you are, the zoom, a page’s Full size, and Close along the top; Previous and Next at the sides from sm and under the image on phones; the description, announced with the image’s place as it changes; and a strip of every image in its own shape, a very wide one cropped. The image zooms by a pinch, by the wheel with Ctrl or Cmd or a trackpad’s pinch, toward the pointer, by a double tap or click to 250% at that point and back, and by the buttons or + and −, with 0 to fit; zoomed, a drag, a trackpad’s scroll, or the arrow keys pan it, and only while it’s whole does a swipe or Left and Right move to the next image. Moving to another image shows it whole.',
+		Content: RecipeFilmstripSpecimen,
 	},
 	{
 		id: 'recipe-actions',
@@ -281,7 +289,7 @@ const subsections = [
 		id: 'recipe-form',
 		title: 'Recipe form',
 		description:
-			'For adding and editing a recipe, and for reviewing an import. An import’s notes sit under what they’re about, and an intro counts them and starts on the first; on the review page it takes focus. Editing a field clears its note, and so does Looks right, which moves on to the next note and says how many are left; an empty title or list must be filled instead. A scan’s [illegible] or [?] left in the text is noted too, and marked in the line’s preview, until it’s edited away. Saving with anything left to check asks first, with Show me and Save anyway; notes survive a failed save, whose errors a summary at the top lists and links to. Ingredients and steps are each one list of growing fields, with headings as rows among the lines: Enter adds a line below, Backspace in an empty one removes it, and a pasted list splits into lines and headings, each announced. A row’s menu moves it up or down, across headings, changes it between a line and a heading, or removes it, and a removed heading’s lines join the ones above; each ingredient shows how it will read. Tags show as chips and suggest the labels in use, still taking new ones, and editing can respell a tag no other recipe uses (here, Slow cooked on the pot roast). Chosen photos are resized and upload at once, and pages of the original recipe move up and down. From lg, a form with pages of the original holds them to the right of its fields, in view as the form scrolls, a page at a time with Zoom and Full size, so Save sits under the fields; below lg, View original opens the viewer. Adding a recipe and reviewing an import offer Save as draft beside Save (Save draft on phones), which saves whatever is there and says when in the action bar. The page’s heading holds a menu of what can be done to what it edits, each Delete confirmed in a dialog: View recipe and Delete recipe when editing, and Delete draft on an import’s review or once the form holds a saved draft, opened or just saved; a new recipe has none. Here uploads are simulated, the review is of an anise cakes card from the National Archives, whose two pages show as uploads, saving checks the recipe as the site does but saves nothing, a draft is saved nowhere, and nothing is deleted.',
+			'For adding and editing a recipe, and for reviewing an import. An import’s notes sit under what they’re about, and an intro counts them and starts on the first; on the review page it takes focus. Editing a field clears its note, and so does Looks right, which moves on to the next note and says how many are left; an empty title or list must be filled instead. A scan’s [illegible] or [?] left in the text is noted too, and marked in the line’s preview, until it’s edited away. Saving with anything left to check asks first, with Show me and Save anyway; notes survive a failed save, whose errors a summary at the top lists and links to. Ingredients and steps are each one list of growing fields, with headings as rows among the lines: Enter adds a line below, Backspace in an empty one removes it, and a pasted list splits into lines and headings, each announced. A row’s menu moves it up or down, across headings, changes it between a line and a heading, or removes it, and a removed heading’s lines join the ones above; each ingredient shows how it will read. Tags show as chips and suggest the labels in use, still taking new ones, and editing can respell a tag no other recipe uses (here, Slow cooked on the pot roast). Chosen photos are resized and upload at once, and pages of the original recipe move up and down. From lg, a form with pages of the original holds them to the right of its fields, in view as the form scrolls, a page at a time, zooming as the viewer’s images do, with the zoom’s buttons and Full size above it and a strip of the pages below, so Save sits under the fields; below lg, View original opens the viewer. Adding a recipe and reviewing an import offer Save as draft beside Save (Save draft on phones), which saves whatever is there and says when in the action bar. The page’s heading holds a menu of what can be done to what it edits, each Delete confirmed in a dialog: View recipe and Delete recipe when editing, and Delete draft on an import’s review or once the form holds a saved draft, opened or just saved; a new recipe has none. Here uploads are simulated, the review is of an anise cakes card from the National Archives, whose two pages show as uploads, saving checks the recipe as the site does but saves nothing, a draft is saved nowhere, and nothing is deleted.',
 		Content: RecipeFormSpecimen,
 	},
 	{
@@ -340,6 +348,39 @@ function RecipeDetailSkeletonSpecimen() {
 				<RecipeDetailSkeleton />
 			</PageContainer>
 		</Specimen>
+	);
+}
+
+// The seed's first photo alone, and the next two as a photo stored before sizes were recorded beside
+// one with its size.
+const sampleLonePhoto = sampleRecipeDetail.images.slice(0, 1);
+const sampleUnsizedAndSizedPhotos = sampleRecipeDetail.images
+	.slice(1, 3)
+	.map(({ role, pathname, alt, size }, index) =>
+		index === 0 ? { role, pathname, alt } : { role, pathname, alt, size }
+	);
+
+function RecipeFilmstripSpecimen() {
+	return (
+		<div className="flex flex-col gap-6">
+			<Specimen label="One photo" className="px-0 py-10 sm:py-14">
+				<PageContainer width="reading">
+					<RecipeFilmstrip role="dish" title={sampleRecipeDetail.title} images={sampleLonePhoto} />
+				</PageContainer>
+			</Specimen>
+			<Specimen
+				label="A photo stored before sizes were recorded, beside one with its size"
+				className="px-0 py-10 sm:py-14"
+			>
+				<PageContainer width="reading">
+					<RecipeFilmstrip
+						role="dish"
+						title={sampleRecipeDetail.title}
+						images={sampleUnsizedAndSizedPhotos}
+					/>
+				</PageContainer>
+			</Specimen>
+		</div>
 	);
 }
 
