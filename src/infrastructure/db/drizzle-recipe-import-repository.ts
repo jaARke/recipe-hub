@@ -11,6 +11,7 @@ import type {
 } from '@/application/ports/recipe-import-repository';
 import type { MemberId } from '@/domain/member/member';
 import type { RecipeImport, RecipeImportId } from '@/domain/recipe/recipe-import';
+import { boundedTransaction } from '@/infrastructure/db/bounded-transaction';
 import {
 	recipeImportColumns,
 	toRecipeImport,
@@ -44,7 +45,7 @@ export class DrizzleRecipeImportRepository implements RecipeImportRepository {
 		recipeImport: NewRecipeImport,
 		limit?: RecipeImportLimit
 	): Promise<RecipeImport | null> {
-		return this.db.transaction(async (tx) => {
+		return boundedTransaction(this.db, 'starting an import', async (tx) => {
 			if (limit !== undefined) {
 				await lockForTransaction(tx, importLockKeyPrefix + recipeImport.memberId);
 				const started = await tx.$count(

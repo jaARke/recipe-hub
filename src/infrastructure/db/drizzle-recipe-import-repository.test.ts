@@ -8,6 +8,7 @@ import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repo
 import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { recipeImports } from '@/infrastructure/db/schema';
+import { requireBoundedWrites } from '@/infrastructure/db/testing/bounded-writes';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 
 const unknownMemberId = memberIdSchema.parse('3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b');
@@ -110,6 +111,15 @@ describe('start', () => {
 		expect(
 			await imports.start({ memberId, mode: 'url' }, { maxImports: 1, since: backdated })
 		).not.toBeNull();
+	});
+
+	it('starts an import in a bounded transaction, limited or not', async () => {
+		await requireBoundedWrites(db, 'recipe_imports');
+
+		expect(
+			await imports.start({ memberId, mode: 'url' }, { maxImports: 1, since: backdated })
+		).not.toBeNull();
+		expect(await imports.start({ memberId, mode: 'photo' })).not.toBeNull();
 	});
 
 	it('is checked here by a trigger that refuses an import stored without the lock', async () => {

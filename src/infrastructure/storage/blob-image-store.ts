@@ -11,6 +11,7 @@ import {
 import { dangerouslyDeleteBySrcImage, dangerouslyDeleteByTag } from '@vercel/functions';
 import type { ImageStore, RemovedImage, StoredImage } from '@/application/ports/image-store';
 import type { ImageFolders } from '@/application/recipes/image-folders';
+import { deadlineAfter, settleWithin } from '@/lib/deadline';
 import { imageCacheMaxAgeSeconds, imageCacheTag, imageRouteSrc } from '@/lib/image-paths';
 
 // A removed image moves here under its pathname, so each environment's removed images sit in its own
@@ -19,6 +20,12 @@ const trashFolder = 'trash/';
 
 // Vercel's example of deleting a store's blobs deletes 100 a request.
 const deleteBatchSize = 100;
+
+// Each Blob call gives up after this long, its retries included: the SDK retries a failed request with
+// backoff from a second, so a call this slow has met an outage rather than a slow answer.
+const blobCallTimeLimitMs = 15_000;
+
+type BlobCall = 'get' | 'head' | 'put' | 'copy' | 'list' | 'delete';
 
 type BlobImageStoreOptions = {
 	storeId: string;
@@ -44,6 +51,30 @@ function trashPathname(pathname: string): string {
 // The pathname a blob in the trash had before it was removed.
 function pathnameBeforeTrash(trashedPathname: string): string {
 	return trashedPathname.slice(trashFolder.length);
+}
+
+// Calls Blob, giving up once the call's time limit passes or the caller's signal aborts, and aborting
+// the request then. A read that answered in time streams its body under the caller's signal alone.
+async function withinTimeLimit<T>(
+	call: BlobCall,
+	request: (abortSignal: AbortSignal) => Promise<T>,
+	cancellation?: AbortSignal
+): Promise<T> {
+	const abandoned = new AbortController();
+	const abortSignal =
+		cancellation === undefined
+			? abandoned.signal
+			: AbortSignal.any([abandoned.signal, cancellation]);
+	try {
+		return await settleWithin(
+			request(abortSignal),
+			{ deadline: deadlineAfter(blobCallTimeLimitMs), cancellation },
+			() => new Error(`Blob ${call} timed out after ${blobCallTimeLimitMs / 1000} seconds`)
+		);
+	} catch (error) {
+		abandoned.abort(error);
+		throw error;
+	}
 }
 
 function batches(pathnames: readonly string[]): string[][] {
@@ -78,12 +109,17 @@ export class BlobImageStore implements ImageStore {
 	// The signal reaches the read's fetch, so it stops the body's stream too.
 	async get(pathname: string, signal?: AbortSignal): Promise<StoredImage | null> {
 		// Past Blob's cache, so an image removed moments ago is not served and cached for another year.
-		const result = await getBlob(pathname, {
-			access: 'private',
-			storeId: this.storeId,
-			useCache: false,
-			abortSignal: signal,
-		});
+		const result = await withinTimeLimit(
+			'get',
+			(abortSignal) =>
+				getBlob(pathname, {
+					access: 'private',
+					storeId: this.storeId,
+					useCache: false,
+					abortSignal,
+				}),
+			signal
+		);
 		if (result === null) {
 			return null;
 		}
@@ -102,7 +138,9 @@ export class BlobImageStore implements ImageStore {
 
 	async has(pathname: string): Promise<boolean> {
 		try {
-			await headBlob(pathname, { storeId: this.storeId });
+			await withinTimeLimit('head', (abortSignal) =>
+				headBlob(pathname, { storeId: this.storeId, abortSignal })
+			);
 			return true;
 		} catch (error) {
 			if (error instanceof BlobNotFoundError) {
@@ -113,14 +151,17 @@ export class BlobImageStore implements ImageStore {
 	}
 
 	async put(pathname: string, body: Uint8Array, contentType: string): Promise<void> {
-		await putBlob(pathname, Buffer.from(body), {
-			access: 'private',
-			storeId: this.storeId,
-			contentType,
-			addRandomSuffix: false,
-			allowOverwrite: false,
-			cacheControlMaxAge: imageCacheMaxAgeSeconds,
-		});
+		await withinTimeLimit('put', (abortSignal) =>
+			putBlob(pathname, Buffer.from(body), {
+				access: 'private',
+				storeId: this.storeId,
+				contentType,
+				addRandomSuffix: false,
+				allowOverwrite: false,
+				cacheControlMaxAge: imageCacheMaxAgeSeconds,
+				abortSignal,
+			})
+		);
 	}
 
 	// Purged first too, so a purge that fails leaves the image in place for the sweep to remove again,
@@ -207,13 +248,16 @@ export class BlobImageStore implements ImageStore {
 	// already gone is skipped.
 	private async copy(from: string, to: string): Promise<void> {
 		try {
-			await copyBlob(from, to, {
-				access: 'private',
-				storeId: this.storeId,
-				addRandomSuffix: false,
-				allowOverwrite: true,
-				cacheControlMaxAge: imageCacheMaxAgeSeconds,
-			});
+			await withinTimeLimit('copy', (abortSignal) =>
+				copyBlob(from, to, {
+					access: 'private',
+					storeId: this.storeId,
+					addRandomSuffix: false,
+					allowOverwrite: true,
+					cacheControlMaxAge: imageCacheMaxAgeSeconds,
+					abortSignal,
+				})
+			);
 		} catch (error) {
 			if (!(error instanceof BlobNotFoundError)) {
 				throw error;
@@ -227,7 +271,9 @@ export class BlobImageStore implements ImageStore {
 		for (const prefix of prefixes) {
 			let cursor: string | undefined;
 			do {
-				const page = await listBlobs({ prefix, cursor, storeId: this.storeId });
+				const page = await withinTimeLimit('list', (abortSignal) =>
+					listBlobs({ prefix, cursor, storeId: this.storeId, abortSignal })
+				);
 				blobs.push(...page.blobs.map(({ pathname, uploadedAt }) => ({ pathname, uploadedAt })));
 				cursor = page.hasMore ? page.cursor : undefined;
 			} while (cursor !== undefined);
@@ -237,7 +283,9 @@ export class BlobImageStore implements ImageStore {
 
 	private async delete(pathnames: readonly string[]): Promise<void> {
 		for (const batch of batches(pathnames)) {
-			await deleteBlobs(batch, { storeId: this.storeId });
+			await withinTimeLimit('delete', (abortSignal) =>
+				deleteBlobs(batch, { storeId: this.storeId, abortSignal })
+			);
 		}
 	}
 }

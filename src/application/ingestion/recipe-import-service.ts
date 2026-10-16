@@ -411,7 +411,7 @@ export class RecipeImportService {
 	// Logged before it is recorded, so the logs keep the failure even when recording it fails. Import
 	// errors' causes carry codes and ids only, never the page or the model's output. An unexpected error
 	// is a failure, a failed or paused model call or a timed-out import a problem to watch, and an
-	// expected refusal routine. A record that does not land in time stays running until the
+	// expected refusal routine. A record that fails or does not land in time stays running until the
 	// interrupted-import lease settles it, so the member still hears of the import's own failure.
 	private async recordFailure(
 		recipeImport: RecipeImport,
@@ -452,15 +452,23 @@ export class RecipeImportService {
 				() => new FailureRecordingTimedOutError()
 			);
 		} catch (recordingError) {
-			if (!(recordingError instanceof FailureRecordingTimedOutError)) {
-				throw recordingError;
-			}
-			logger.warn('Import failure not recorded in time, so its lease settles it later', {
+			const unrecordedFailure = {
 				importId: recipeImport.id,
 				memberId: recipeImport.memberId,
 				mode: recipeImport.mode,
 				failure,
-			});
+			};
+			if (recordingError instanceof FailureRecordingTimedOutError) {
+				logger.warn(
+					'Import failure not recorded in time, so its lease settles it later',
+					unrecordedFailure
+				);
+			} else {
+				logger.error('Import failure not recorded, so its lease settles it later', {
+					...unrecordedFailure,
+					err: recordingError,
+				});
+			}
 		}
 	}
 

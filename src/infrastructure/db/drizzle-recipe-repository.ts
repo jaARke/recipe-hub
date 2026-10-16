@@ -15,6 +15,7 @@ import type { MemberId } from '@/domain/member/member';
 import type { Recipe, RecipeContent, RecipeId } from '@/domain/recipe/recipe';
 import { slugCandidate } from '@/domain/recipe/slug';
 import { tagKey } from '@/domain/recipe/tag-normalization';
+import { boundedTransaction } from '@/infrastructure/db/bounded-transaction';
 import {
 	recipeColumns,
 	toContentColumns,
@@ -194,7 +195,7 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 
 	async create(recipe: NewRecipe): Promise<Recipe> {
 		try {
-			return await this.db.transaction(async (tx) => {
+			return await boundedTransaction(this.db, 'creating a recipe', async (tx) => {
 				await lockForTransaction(tx, slugLockKey);
 				const slug = await findFreeSlug(tx, recipe.slugBase);
 				const [row] = await tx
@@ -210,7 +211,7 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 
 	async update(id: RecipeId, update: RecipeUpdate): Promise<UpdatedRecipe | null> {
 		const { content, expectedUpdatedAt, slugBase } = update;
-		return this.db.transaction(async (tx) => {
+		return boundedTransaction(this.db, 'updating a recipe', async (tx) => {
 			// The slug lock comes before the row lock, in the order every rename takes them.
 			if (slugBase !== undefined) {
 				await lockForTransaction(tx, slugLockKey);

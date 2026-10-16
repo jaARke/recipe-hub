@@ -1,8 +1,17 @@
 import type { IncomingHttpHeaders } from 'node:http';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { get as getBlob, type GetBlobResult } from '@vercel/blob';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ImageFolders } from '@/application/recipes/image-folders';
+import { stalledCall } from '@/application/testing/stalled-call';
 import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
 import { startFakeBlobApi, type FakeBlobApi } from '@/infrastructure/storage/testing/fake-blob-api';
+
+// A read goes to the store's own host rather than Blob's API, which the fake API cannot play, so a
+// test that reads stands in for the SDK's get.
+vi.mock('@vercel/blob', async (importOriginal) => {
+	const blob = await importOriginal<typeof import('@vercel/blob')>();
+	return { ...blob, get: vi.fn(blob.get) };
+});
 
 type ReceivedRequest = {
 	method?: string;
@@ -28,6 +37,9 @@ const recently = new Date('2026-10-12T12:00:00Z');
 let blobApi: FakeBlobApi;
 let blobs: Map<string, StoredBlob>;
 let received: ReceivedRequest[];
+// While set, the fake API never answers, and counts the requests the client gives up on.
+let stalled: boolean;
+let abandonedCount: number;
 
 function storeFor(environment: string): BlobImageStore {
 	return new BlobImageStore({ storeId: 'store_test', folders: new ImageFolders(environment) });
@@ -44,7 +56,16 @@ function store(pathnames: readonly string[], uploadedAt: Date = longAgo): void {
 beforeEach(async () => {
 	blobs = new Map();
 	received = [];
+	stalled = false;
+	abandonedCount = 0;
 	blobApi = await startFakeBlobApi((request, body, response) => {
+		if (stalled) {
+			response.on('close', () => {
+				abandonedCount += 1;
+			});
+			return;
+		}
+
 		const url = new URL(request.url ?? '/', 'http://127.0.0.1');
 		const params = Object.fromEntries(url.searchParams);
 		received.push({
@@ -288,6 +309,88 @@ describe('deleteExpired', () => {
 		expect(await storeFor('preview/feature-x-1a2b3c4d').deleteExpired(cutoff)).toEqual([]);
 		expect(blobs.size).toBe(2);
 		expect(received).toEqual([]);
+	});
+});
+
+describe('time limits', () => {
+	const pathname = 'dish/development/a.jpg';
+	const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+
+	// A read Blob answered at once, whose body has yet to stream.
+	const answeredRead: GetBlobResult = {
+		statusCode: 200,
+		stream: new ReadableStream(),
+		headers: new Headers(),
+		blob: {
+			url: `https://test.private.blob.vercel-storage.com/${pathname}`,
+			downloadUrl: `https://test.private.blob.vercel-storage.com/${pathname}?download=1`,
+			pathname,
+			contentType: 'image/jpeg',
+			contentDisposition: 'inline',
+			cacheControl: `public, max-age=${yearInSeconds}`,
+			size: 4,
+			uploadedAt: longAgo,
+			etag: '"etag"',
+		},
+	};
+
+	beforeEach(() => {
+		stalled = true;
+		vi.mocked(getBlob).mockImplementation((_pathname, { abortSignal }) => stalledCall(abortSignal));
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.mocked(getBlob).mockReset();
+	});
+
+	// The SDK's signal for the read the store last asked Blob for.
+	function readSignal(): AbortSignal | undefined {
+		return vi.mocked(getBlob).mock.lastCall?.[1].abortSignal;
+	}
+
+	it.each([
+		['get', (store: BlobImageStore) => store.get(pathname)],
+		['head', (store: BlobImageStore) => store.has(pathname)],
+		['put', (store: BlobImageStore) => store.put(pathname, jpeg, 'image/jpeg')],
+		['copy', (store: BlobImageStore) => store.remove([pathname])],
+		['list', (store: BlobImageStore) => store.listRemoved()],
+		['delete', (store: BlobImageStore) => store.deleteRemoved([pathname])],
+	])('gives up on a %s Blob never answers after 15 seconds, naming the call', async (call, run) => {
+		const failure = run(storeFor('development'));
+		const settled = vi.fn();
+		failure.catch(settled);
+		await vi.advanceTimersByTimeAsync(15_000 - 1);
+		expect(settled).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1);
+
+		await expect(failure).rejects.toThrow(`Blob ${call} timed out after 15 seconds`);
+	});
+
+	it('aborts the request it gives up on', async () => {
+		const read = storeFor('development').get(pathname);
+		const listing = storeFor('development').listRemoved();
+		read.catch(() => undefined);
+		listing.catch(() => undefined);
+		await vi.advanceTimersByTimeAsync(15_000);
+		vi.useRealTimers();
+
+		expect(readSignal()?.aborted).toBe(true);
+		await vi.waitFor(() => expect(abandonedCount).toBe(1));
+	});
+
+	it("streams a read's body under the caller's signal alone once Blob answered in time", async () => {
+		vi.mocked(getBlob).mockResolvedValue(answeredRead);
+		const caller = new AbortController();
+
+		expect(await storeFor('development').get(pathname, caller.signal)).toMatchObject({
+			contentType: 'image/jpeg',
+		});
+		await vi.advanceTimersByTimeAsync(15_000);
+		expect(readSignal()?.aborted).toBe(false);
+		caller.abort();
+		expect(readSignal()?.aborted).toBe(true);
 	});
 });
 

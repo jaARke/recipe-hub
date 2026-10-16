@@ -681,6 +681,33 @@ describe('import deadline', () => {
 		});
 	});
 
+	it("answers with the import's own failure when recording it fails, logging that and leaving it to the lease", async () => {
+		const pageReader = new FixedPageRecipeExtractor(readLemonade);
+		pageReader.stall();
+		const { imports, serviceFor, lastImport } = createImports({ pageReader });
+		vi.spyOn(imports, 'recordFailure').mockRejectedValue(new Error('Database unreachable'));
+		const member = memberActor();
+
+		const failure = failureOf(serviceFor(member).importFromUrl(url));
+		await vi.advanceTimersByTimeAsync(110_000);
+
+		const error = await failure;
+		expect(error).toBeInstanceOf(ImportTimedOutError);
+		expect((error as ImportTimedOutError).code).toBe('import.timed-out');
+		const recipeImport = await lastImport();
+		expect(recipeImport).toMatchObject({ status: 'running' });
+		expect(logged('Import failure not recorded, so its lease settles it later')).toEqual({
+			level: 'error',
+			logger: 'imports',
+			message: 'Import failure not recorded, so its lease settles it later',
+			importId: recipeImport.id,
+			memberId: member.memberId,
+			mode: 'url',
+			failure: 'import.timed-out',
+			err: expect.objectContaining({ message: 'Database unreachable' }),
+		});
+	});
+
 	it('asks no model to read a page that arrives after the deadline', async () => {
 		const { pages, pageReader, serviceFor } = createImports();
 		vi.spyOn(pages, 'fetch').mockImplementation(

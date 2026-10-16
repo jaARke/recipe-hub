@@ -7,25 +7,12 @@ import { z } from 'zod';
 const tryLockResultSchema = z.object({ rows: z.tuple([z.object({ locked: z.boolean() })]) });
 
 // Waits for the advisory lock named by the key and holds it until the transaction ends, so writers
-// that take the same key run one at a time.
+// that take the same key run one at a time. A bounded transaction bounds the wait.
 export async function lockForTransaction(
 	tx: PgDatabase<PgQueryResultHKT>,
 	key: string
 ): Promise<void> {
 	await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${key}))`);
-}
-
-// As lockForTransaction, but Postgres cancels the wait once the timeout passes, failing the statement
-// and so the transaction, which then never takes the lock. The timeout bounds every later lock wait
-// in the transaction too.
-export async function lockForTransactionWithin(
-	tx: PgDatabase<PgQueryResultHKT>,
-	key: string,
-	timeoutMs: number
-): Promise<void> {
-	// SET LOCAL in the form that takes a parameter; Postgres reads a value without units as milliseconds.
-	await tx.execute(sql`select set_config('lock_timeout', ${String(timeoutMs)}, true)`);
-	await lockForTransaction(tx, key);
 }
 
 // Takes the advisory lock named by the key and holds it until the transaction ends, or returns false

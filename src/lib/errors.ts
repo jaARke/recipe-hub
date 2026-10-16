@@ -14,10 +14,14 @@ export abstract class AppError extends Error {
 const queryParametersSeparator = '\nparams: ';
 
 // What a failed query's cause tells an operator. Postgres's message, `detail`, and `where` can quote a
-// value, and PGlite's cause repeats the parameters, so only the names of what failed are kept.
+// value, and PGlite's cause repeats the parameters, so a cause with Postgres's code keeps only the
+// names of what failed. A cause without a code is the driver's own, such as pg's "Query read timeout",
+// whose message quotes no value and is all it says, so that message is kept too.
 const queryErrorCauseFields = ['name', 'code', 'constraint', 'table', 'column'] as const;
 
-export type QueryErrorCause = Partial<Record<(typeof queryErrorCauseFields)[number], string>>;
+export type QueryErrorCause = Partial<
+	Record<(typeof queryErrorCauseFields)[number] | 'message', string>
+>;
 
 // The text before any query parameters.
 export function withoutQueryParameters(text: string): string {
@@ -43,6 +47,10 @@ export function queryErrorCause(error: Error): QueryErrorCause | undefined {
 		if (typeof value === 'string') {
 			fields[field] = value;
 		}
+	}
+	const message: unknown = Reflect.get(cause, 'message');
+	if (fields.code === undefined && typeof message === 'string') {
+		fields.message = message;
 	}
 	return fields;
 }
