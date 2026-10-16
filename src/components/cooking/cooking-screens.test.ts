@@ -4,12 +4,15 @@ import {
 	cookingResumedText,
 	cookingScreens,
 	cookingStepHeading,
+	cookingViewParams,
 	parseCookingStepParam,
 	startsCookingGroup,
 	withCookingStepParam,
 	type CookingScreen,
 } from '@/components/cooking/cooking-screens';
+import type { RouteSearchParams } from '@/components/recipe/recipe-list-params';
 import type { InstructionSection } from '@/domain/recipe/instruction';
+import type { RecipeYield } from '@/domain/recipe/recipe-yield';
 
 // Two sections, the first without a heading, as a pot roast and its gravy.
 const sectioned: InstructionSection[] = [
@@ -142,5 +145,26 @@ describe('withCookingStepParam', () => {
 	it('round-trips through the parser', () => {
 		const params = withCookingStepParam(new URLSearchParams(), 3);
 		expect(parseCookingStepParam(params, 5)).toBe(3);
+	});
+});
+
+describe('cookingViewParams', () => {
+	const serves6: RecipeYield = { kind: 'servings', amount: { min: 6 } };
+	const makes24: RecipeYield = { kind: 'makes', amount: { min: 24 }, unit: 'cookies' };
+
+	it.each<[string, RouteSearchParams, RecipeYield | undefined, string]>([
+		['the step and the servings', { step: '4', servings: '12' }, serves6, 'step=4&servings=12'],
+		['the step and the count it makes', { makes: '36', step: '2' }, makes24, 'step=2&makes=36'],
+		['the batches of a recipe with no yield', { batches: '1.5' }, undefined, 'batches=1.5'],
+		[
+			'none of the rest, nor another kind of scale',
+			{ step: '3', ref: 'share', makes: '36', servings: '12' },
+			serves6,
+			'step=3&servings=12',
+		],
+		['a repeated value as given', { step: ['2', '3'] }, serves6, 'step=2&step=3'],
+		['nothing, from nothing', {}, serves6, ''],
+	])('keeps %s', (_kept, searchParams, recipeYield, kept) => {
+		expect(cookingViewParams(searchParams, recipeYield).toString()).toBe(kept);
 	});
 });

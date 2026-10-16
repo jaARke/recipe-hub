@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import type { PublicRecipeDto } from '@/application/recipes/recipe-dtos';
+import type { RouteSearchParams } from '@/components/recipe/recipe-list-params';
+import { recipeScaleParamNames } from '@/components/recipe/recipe-scale-params';
+import { numberInstructionSteps } from '@/components/recipe/recipe-step-numbers';
+import { scaleStepperFor, type RecipeYield } from '@/domain/recipe/recipe-yield';
 
 // The cooking view's screens: Gather your ingredients, one per step across every section, and the
 // finish. A screen's index is its step's number, which the URL's step parameter holds, so ?step=4
@@ -48,18 +52,15 @@ export function cookingRecipeFrom(recipe: PublicRecipeDto): CookingRecipe {
 export function cookingScreens(
 	instructionSections: CookingRecipe['instructionSections']
 ): CookingScreen[] {
-	const steps: CookingStepScreen[] = [];
-	instructionSections.forEach((section, sectionIndex) => {
-		for (const step of section.steps) {
-			steps.push({
-				kind: 'step',
-				number: steps.length + 1,
-				sectionIndex,
-				sectionHeading: section.heading,
-				text: step.text,
-			});
-		}
-	});
+	const steps = numberInstructionSteps(instructionSections).flatMap((section, sectionIndex) =>
+		section.steps.map((step): CookingStepScreen => ({
+			kind: 'step',
+			number: step.number,
+			sectionIndex,
+			sectionHeading: section.heading,
+			text: step.text,
+		}))
+	);
 	return [{ kind: 'gather' }, ...steps, { kind: 'finish' }];
 }
 
@@ -144,6 +145,23 @@ export function withCookingStepParam(
 		params.delete(cookingStepParamName);
 	} else {
 		params.set(cookingStepParamName, String(screenIndex));
+	}
+	return params;
+}
+
+// The view's own parameters among a request's, as given: its step and the recipe's scale. A redirect
+// from an old slug keeps them, so a reload mid-cook after a title change keeps its place, and drops
+// the rest.
+export function cookingViewParams(
+	searchParams: RouteSearchParams,
+	recipeYield: RecipeYield | undefined
+): URLSearchParams {
+	const names = [cookingStepParamName, recipeScaleParamNames[scaleStepperFor(recipeYield).kind]];
+	const params = new URLSearchParams();
+	for (const name of names) {
+		for (const value of [searchParams[name] ?? []].flat()) {
+			params.append(name, value);
+		}
 	}
 	return params;
 }

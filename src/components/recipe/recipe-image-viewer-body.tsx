@@ -1,13 +1,13 @@
 'use client';
 
 import { cn } from 'cn';
-import { XIcon } from 'lucide-react';
 import * as React from 'react';
 import { RecipeImageStrip } from '@/components/recipe/recipe-image-strip';
 import {
 	imagePositionLabel,
 	imageViewerLabels,
 } from '@/components/recipe/recipe-image-viewer-labels';
+import { RecipeImageViewerTitleBar } from '@/components/recipe/recipe-image-viewer-title-bar';
 import { FullSizeImageLink, type ShownImage } from '@/components/recipe/shown-recipe-image';
 import {
 	handleZoomKey,
@@ -17,7 +17,6 @@ import {
 	type ImageZoom,
 	type ZoomFrameSize,
 } from '@/components/recipe/zoomable-recipe-image';
-import { Button } from '@/components/ui/button';
 import {
 	Carousel,
 	CarouselContent,
@@ -26,12 +25,16 @@ import {
 	CarouselPrevious,
 	type CarouselApi,
 } from '@/components/ui/carousel';
-import { DialogClose, DialogTitle } from '@/components/ui/dialog';
 import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
 
 // A slide's frame: the screen's width, and its height less the title bar, the caption and strip,
 // and the padding around the image.
 const viewerFrameSize: ZoomFrameSize = { width: '100vw', height: '100dvh - 12rem' };
+
+// The most of the screen's height a description takes before it scrolls: enough to show an ordinary
+// one whole in a phone's narrow caption beside the zoom buttons, and little enough that the longest
+// leaves the image most of the screen.
+const captionHeightClassName = 'max-h-[25dvh]';
 
 // A scan is a page to read, so the viewer links to the page at full size, past the optimizer.
 const viewerLinksFullSize = {
@@ -141,28 +144,19 @@ function RecipeImageViewerBody({
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col" onKeyDownCapture={onKeyDownCapture}>
-			<div className="flex items-center gap-1 border-b px-2 py-1.5 sm:px-4">
-				<div className="flex min-w-0 flex-1 flex-col gap-1 py-1 pl-2">
-					<DialogTitle className="truncate text-base">{title}</DialogTitle>
-					{several && (
-						<p className="truncate text-sm text-muted-foreground">
-							{imagePositionLabel(role, current, images.length)}
-						</p>
-					)}
-				</div>
+			<RecipeImageViewerTitleBar
+				role={role}
+				title={title}
+				index={current}
+				count={images.length}
+				closeRef={several ? undefined : initialFocusRef}
+			>
 				<RecipeImageZoomControls zoom={zoom} className="hidden sm:flex" />
 				{shownImage !== undefined && viewerLinksFullSize[role] && (
 					// 44 px for a finger, like the buttons beside it.
 					<FullSizeImageLink image={shownImage} className="mx-1 pointer-coarse:h-11" />
 				)}
-				<DialogClose
-					ref={several ? undefined : initialFocusRef}
-					render={<Button variant="ghost" size="icon" className="pointer-coarse:size-11" />}
-				>
-					<XIcon aria-hidden="true" />
-					<span className="sr-only">Close</span>
-				</DialogClose>
-			</div>
+			</RecipeImageViewerTitleBar>
 			<Carousel
 				opts={options}
 				setApi={setApi}
@@ -232,7 +226,9 @@ function RecipeImageViewerBody({
 						images={images}
 						current={current}
 						onSelect={(index) => api?.scrollTo(index)}
-						className="-mx-1 sm:justify-center"
+						// Centered only while the row fits: centering a row that overflows would put its first
+						// thumbnails past the left edge, out of the scroll's reach.
+						className="-mx-1 sm:justify-center-safe"
 					/>
 				)}
 			</div>
@@ -242,7 +238,8 @@ function RecipeImageViewerBody({
 
 // The current image's description, announced with its place as it changes. Every description takes
 // the same cell, hidden but the current one's, so the caption keeps the height of the longest and the
-// image above keeps its size from image to image. Without descriptions it takes no room.
+// image above keeps its size from image to image. Without descriptions it takes no room. A
+// description taller than its cell scrolls inside it.
 function RecipeImageCaption({
 	role,
 	images,
@@ -253,22 +250,55 @@ function RecipeImageCaption({
 	index: number;
 }) {
 	const described = images.some((image) => image.alt !== undefined);
+	const scrollerRef = React.useRef<HTMLDivElement>(null);
+	const [scrolls, setScrolls] = React.useState(false);
+
+	// Each description starts at its top. Measured as the description changes, and again as the cell
+	// or the text changes size.
+	React.useEffect(() => {
+		const scroller = scrollerRef.current;
+		if (scroller === null) {
+			return;
+		}
+		scroller.scrollTop = 0;
+		const measure = () => setScrolls(scroller.scrollHeight > scroller.clientHeight);
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(scroller);
+		if (scroller.firstElementChild !== null) {
+			observer.observe(scroller.firstElementChild);
+		}
+		return () => observer.disconnect();
+	}, [index]);
+
 	return (
 		<div
 			className={cn('grid min-w-0 flex-1 *:col-start-1 *:row-start-1', described && 'min-h-6 py-1')}
 		>
 			{images.map((image) => (
-				<p key={image.pathname} className="invisible">
+				<p key={image.pathname} className={cn('invisible overflow-hidden', captionHeightClassName)}>
 					{image.alt}
 				</p>
 			))}
-			<p role="status" aria-live="polite">
-				{/* The place shows in the title bar; the announcement carries it too. */}
-				{images.length > 1 && (
-					<span className="sr-only">{imagePositionLabel(role, index, images.length)}. </span>
+			{/* Only a description that scrolls takes focus, so the keyboard can scroll it too. */}
+			<div
+				ref={scrollerRef}
+				role={scrolls ? 'group' : undefined}
+				aria-label={scrolls ? imageViewerLabels(role).description : undefined}
+				tabIndex={scrolls ? 0 : undefined}
+				className={cn(
+					'overflow-y-auto rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
+					captionHeightClassName
 				)}
-				{images[index]?.alt}
-			</p>
+			>
+				<p role="status" aria-live="polite">
+					{/* The place shows in the title bar; the announcement carries it too. */}
+					{images.length > 1 && (
+						<span className="sr-only">{imagePositionLabel(role, index, images.length)}. </span>
+					)}
+					{images[index]?.alt}
+				</p>
+			</div>
 		</div>
 	);
 }

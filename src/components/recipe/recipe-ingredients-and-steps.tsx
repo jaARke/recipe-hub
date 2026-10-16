@@ -1,5 +1,10 @@
 import { cn } from 'cn';
+import type * as React from 'react';
 import { IngredientLineText } from '@/components/recipe/ingredient-line-text';
+import {
+	numberInstructionSteps,
+	type NumberedInstructionSection,
+} from '@/components/recipe/recipe-step-numbers';
 import {
 	recipeHeadingTags,
 	recipeTextStyles,
@@ -19,6 +24,16 @@ export type RecipeListsScale = {
 };
 
 const stepMarkerClassName = 'marker:font-mono marker:text-sm marker:text-muted-foreground';
+
+// A marker's characters are monospaced at text-sm, 0.875rem, and JetBrains Mono's are 0.6em wide.
+const stepMarkerCharacterWidth = '0.525rem';
+
+// Indents every list of steps as far as the recipe's last number needs, with its ". ", so "10." sits
+// inside the column as "9." does.
+function stepListIndentStyle(lastNumber: number): React.CSSProperties {
+	const characters = String(lastNumber).length + 2;
+	return { paddingLeft: `calc(${characters} * ${stepMarkerCharacterWidth})` };
+}
 
 // An ingredient at a scale. A line the scale left whole though it gives an amount says so, and one it
 // scaled only in part shows the line as written beneath; at the recipe's own scale, or with nothing
@@ -90,19 +105,27 @@ function StepsNote({
 	);
 }
 
+// A list of its own under its heading that starts at its first step's number, so a screen reader
+// counts the steps as the page shows them.
 function InstructionSectionList({
 	section,
 	headingTag,
+	indentStyle,
 }: {
-	section: InstructionSection;
+	section: NumberedInstructionSection;
 	headingTag: RecipeSubsectionTag;
+	indentStyle: React.CSSProperties;
 }) {
 	return (
 		<div className="flex flex-col gap-3">
 			<SectionHeading heading={section.heading} tag={headingTag} />
-			<ol className={cn(recipeTextStyles.body, 'list-decimal space-y-4 pl-6', stepMarkerClassName)}>
-				{section.steps.map((step, index) => (
-					<li key={index} className="pl-2 print:break-inside-avoid">
+			<ol
+				start={section.steps[0]?.number}
+				style={indentStyle}
+				className={cn(recipeTextStyles.body, 'list-decimal space-y-4', stepMarkerClassName)}
+			>
+				{section.steps.map((step) => (
+					<li key={step.number} className="pl-2 print:break-inside-avoid">
 						{step.text}
 					</li>
 				))}
@@ -112,8 +135,9 @@ function InstructionSectionList({
 }
 
 // The recipe's ingredients and steps, each list under its heading and each section under its own,
-// as the recipe is written. Given a scale, as the cooking view's printout is, the ingredients show at
-// it and a note says the steps keep the recipe's own amounts.
+// as the recipe is written, with the steps counted straight through the sections. Given a scale, as
+// the cooking view's printout is, the ingredients show at it and a note says the steps keep the
+// recipe's own amounts.
 function RecipeIngredientsAndSteps({
 	ingredientSections,
 	instructionSections,
@@ -127,6 +151,8 @@ function RecipeIngredientsAndSteps({
 }) {
 	const { section: Section, subsection } = recipeHeadingTags[headingLevel];
 	const factor = scale?.factor ?? 1;
+	const numberedSections = numberInstructionSteps(instructionSections);
+	const indentStyle = stepListIndentStyle(numberedSections.at(-1)?.steps.at(-1)?.number ?? 0);
 
 	return (
 		<>
@@ -148,8 +174,13 @@ function RecipeIngredientsAndSteps({
 						<StepsNote recipeYield={scale.recipeYield} className={recipeTextStyles.supporting} />
 					)}
 				</div>
-				{instructionSections.map((section, index) => (
-					<InstructionSectionList key={index} section={section} headingTag={subsection} />
+				{numberedSections.map((section, index) => (
+					<InstructionSectionList
+						key={index}
+						section={section}
+						headingTag={subsection}
+						indentStyle={indentStyle}
+					/>
 				))}
 			</div>
 		</>

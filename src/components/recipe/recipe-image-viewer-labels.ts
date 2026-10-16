@@ -8,6 +8,8 @@ type ImageViewerLabels = {
 	next: string;
 	// Names the spinner while the viewer loads.
 	loading: string;
+	// Names a description long enough to scroll.
+	description: string;
 };
 
 // A dish photo is a photo; a scan is a page of the recipe as first written.
@@ -23,6 +25,7 @@ export function imageViewerLabels(role: RecipeImageRole): ImageViewerLabels {
 		previous: `Previous ${item}`,
 		next: `Next ${item}`,
 		loading: `Loading the ${items}`,
+		description: `${sentenceCase(item)} description`,
 	};
 }
 

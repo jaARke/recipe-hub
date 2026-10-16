@@ -15,6 +15,7 @@ describe('imageViewerLabels', () => {
 				previous: 'Previous photo',
 				next: 'Next photo',
 				loading: 'Loading the photos',
+				description: 'Photo description',
 			},
 		],
 		[
@@ -24,6 +25,7 @@ describe('imageViewerLabels', () => {
 				previous: 'Previous page',
 				next: 'Next page',
 				loading: 'Loading the pages',
+				description: 'Page description',
 			},
 		],
 	] as const)('words the %s viewer', (role, expected) => {

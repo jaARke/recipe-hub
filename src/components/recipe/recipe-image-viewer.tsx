@@ -4,9 +4,10 @@ import { cn } from 'cn';
 import * as React from 'react';
 import type * as RecipeImageViewerBodyModule from '@/components/recipe/recipe-image-viewer-body';
 import { imageViewerLabels, viewImageLabel } from '@/components/recipe/recipe-image-viewer-labels';
+import { RecipeImageViewerTitleBar } from '@/components/recipe/recipe-image-viewer-title-bar';
 import type { ShownImage } from '@/components/recipe/shown-recipe-image';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
 
@@ -139,27 +140,39 @@ function RecipeImageViewer({ role, images, title, children }: RecipeImageViewerP
 	return (
 		<RecipeImageViewerContext.Provider value={context}>
 			<Dialog onOpenChange={onOpenChange}>
-				{({ payload }) => (
-					<>
-						{children}
-						<DialogContent
-							ref={popupRef}
-							initialFocus={initialFocus}
-							showCloseButton={false}
-							className={viewerPopupClassName}
-						>
-							<React.Suspense fallback={<RecipeImageViewerLoading role={role} title={title} />}>
-								<LoadedRecipeImageViewerBody
-									role={role}
-									images={images}
-									title={title}
-									startIndex={typeof payload === 'number' ? payload : 0}
-									initialFocusRef={initialFocusRef}
-								/>
-							</React.Suspense>
-						</DialogContent>
-					</>
-				)}
+				{({ payload }) => {
+					const startIndex = typeof payload === 'number' ? payload : 0;
+					return (
+						<>
+							{children}
+							<DialogContent
+								ref={popupRef}
+								initialFocus={initialFocus}
+								showCloseButton={false}
+								className={viewerPopupClassName}
+							>
+								<React.Suspense
+									fallback={
+										<RecipeImageViewerLoading
+											role={role}
+											title={title}
+											index={startIndex}
+											count={images.length}
+										/>
+									}
+								>
+									<LoadedRecipeImageViewerBody
+										role={role}
+										images={images}
+										title={title}
+										startIndex={startIndex}
+										initialFocusRef={initialFocusRef}
+									/>
+								</React.Suspense>
+							</DialogContent>
+						</>
+					);
+				}}
 			</Dialog>
 		</RecipeImageViewerContext.Provider>
 	);
@@ -219,17 +232,30 @@ function LoadedRecipeImageViewerBody(
 	return <body.RecipeImageViewerBody {...props} />;
 }
 
-// While the body is on its way: the title, for screen readers, and a spinner.
-function RecipeImageViewerLoading({ role, title }: { role: RecipeImageRole; title: string }) {
+// While the body is on its way: the title bar as the body shows it, with Close but without the
+// controls the body brings, over a spinner. The popup keeps focus, which the body's button takes as
+// it arrives.
+function RecipeImageViewerLoading({
+	role,
+	title,
+	index,
+	count,
+}: {
+	role: RecipeImageRole;
+	title: string;
+	index: number;
+	count: number;
+}) {
 	return (
-		<div className="flex flex-1 items-center justify-center">
-			{/* Names the viewer until the body's title bar takes over. */}
-			<DialogTitle className="sr-only">{title}</DialogTitle>
-			<Spinner
-				aria-label={imageViewerLabels(role).loading}
-				className="size-6 text-muted-foreground"
-			/>
-		</div>
+		<>
+			<RecipeImageViewerTitleBar role={role} title={title} index={index} count={count} />
+			<div className="flex flex-1 items-center justify-center">
+				<Spinner
+					aria-label={imageViewerLabels(role).loading}
+					className="size-6 text-muted-foreground"
+				/>
+			</div>
+		</>
 	);
 }
 

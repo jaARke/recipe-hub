@@ -6,7 +6,8 @@ import {
 	RecipeImageViewerTrigger,
 } from '@/components/recipe/recipe-image-viewer';
 import type { ShownImage } from '@/components/recipe/shown-recipe-image';
-import { stubViewerLayout } from '@/components/recipe/testing/viewer-layout';
+import { stubbedFrame, stubViewerLayout } from '@/components/recipe/testing/viewer-layout';
+import { settings } from '@/lib/settings';
 
 // The stubbed layout makes every frame, and every image whole in it, 400 by 300.
 const photos: ShownImage[] = [
@@ -19,13 +20,19 @@ const bodyModulePath = '@/components/recipe/recipe-image-viewer-body';
 
 let undoLayout = () => {};
 let letBodyArrive = () => {};
+// The fresh viewer's body as it loads, once a test has asked for it.
+let bodyLoaded: Promise<unknown> = Promise.resolve();
 
-afterEach(() => {
+afterEach(async () => {
 	// Unmounts ahead of the setup file's cleanup, while the idle callback the viewer cancels is still
 	// stubbed.
 	cleanup();
 	undoLayout();
 	letBodyArrive();
+	// A body still loading as its test ends finishes first, so it never lands among the modules the
+	// next test loads afresh.
+	await bodyLoaded;
+	bodyLoaded = Promise.resolve();
 	vi.doUnmock(bodyModulePath);
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
@@ -33,12 +40,13 @@ afterEach(() => {
 
 function renderPhotoViewer(
 	Viewer: typeof RecipeImageViewer,
-	Trigger: typeof RecipeImageViewerTrigger
+	Trigger: typeof RecipeImageViewerTrigger,
+	images: readonly ShownImage[] = photos
 ) {
 	undoLayout = stubViewerLayout();
 	render(
-		<Viewer role="dish" title="Weeknight chicken soup" images={photos}>
-			{photos.map((photo, index) => (
+		<Viewer role="dish" title="Weeknight chicken soup" images={images}>
+			{images.map((photo, index) => (
 				<Trigger key={photo.pathname} index={index} className="w-24">
 					{photo.alt}
 				</Trigger>
@@ -112,16 +120,34 @@ async function freshViewer() {
 	const arrival = Promise.withResolvers<void>();
 	letBodyArrive = () => arrival.resolve();
 	const fetchBody = vi.fn();
-	vi.doMock(bodyModulePath, async (importOriginal) => {
+	vi.doMock(bodyModulePath, (importOriginal) => {
 		fetchBody();
-		await arrival.promise;
-		return importOriginal();
+		bodyLoaded = arrival.promise.then(importOriginal);
+		return bodyLoaded;
 	});
 	const idleCallbacks: (() => void)[] = [];
 	vi.stubGlobal('requestIdleCallback', (callback: () => void) => idleCallbacks.push(callback));
 	vi.stubGlobal('cancelIdleCallback', () => {});
 	const viewer = await import('@/components/recipe/recipe-image-viewer');
 	return { ...viewer, fetchBody, idleCallbacks };
+}
+
+// Lays text out a pixel tall for each of its characters, in boxes at most 200 pixels tall, so the
+// caption's text runs past its box when it is longer than that. Frames keep the viewer's layout.
+function stubTextHeights() {
+	const textHeight = (element: HTMLElement) => element.textContent?.length ?? 0;
+	vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (
+		this: HTMLElement
+	) {
+		return textHeight(this);
+	});
+	vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (
+		this: HTMLElement
+	) {
+		return this.classList.contains('react-transform-wrapper')
+			? stubbedFrame.height
+			: Math.min(textHeight(this), 200);
+	});
 }
 
 // The image shown, which alone of the slides can be reached.
@@ -287,6 +313,46 @@ describe('RecipeImageViewer', () => {
 		expect(caption(viewer)).toBe('Photo 2 of 3. Bread on a board');
 	});
 
+	it('centers the strip of thumbnails from sm only while the row fits, so an overflowing row starts at its first', async () => {
+		const { viewer } = await openViewer();
+
+		const strip = within(viewer).getByRole('list');
+		expect(within(strip).getAllByRole('button')).toHaveLength(3);
+		expect(strip.className.split(' ')).toContain('sm:justify-center-safe');
+		expect(strip.className.split(' ')).not.toContain('sm:justify-center');
+	});
+
+	it('scrolls a description longer than its box inside the box, which then takes keyboard focus', async () => {
+		// As long as a description may be.
+		const longDescription = 'Slices of roast on a platter with carrots and onions, gravy beside. '
+			.repeat(15)
+			.slice(0, settings.recipeLimits.maxImageAltLength);
+		const roast: ShownImage = {
+			pathname: 'dish/seed/roast.jpg',
+			alt: longDescription,
+			size: { width: 1600, height: 1200 },
+		};
+		const user = userEvent.setup();
+		renderPhotoViewer(RecipeImageViewer, RecipeImageViewerTrigger, [roast, ...photos.slice(1)]);
+		stubTextHeights();
+		await user.click(screen.getByRole('button', { name: 'View photo 2 of 3: Bread on a board' }));
+		const viewer = await screen.findByRole('dialog', { name: 'Weeknight chicken soup' });
+		await within(viewer).findByRole('region', { name: 'Photos' });
+		expect(within(viewer).queryByRole('group', { name: 'Photo description' })).toBeNull();
+
+		await user.click(within(viewer).getByRole('button', { name: 'Show photo 1 of 3' }));
+
+		const description = within(viewer).getByRole('group', { name: 'Photo description' });
+		expect(caption(viewer)).toBe(`Photo 1 of 3. ${longDescription}`);
+		expect(description.tabIndex).toBe(0);
+		expect(description.className.split(' ')).toEqual(
+			expect.arrayContaining(['overflow-y-auto', 'max-h-[25dvh]'])
+		);
+
+		await user.click(within(viewer).getByRole('button', { name: 'Show photo 3 of 3' }));
+		expect(within(viewer).queryByRole('group', { name: 'Photo description' })).toBeNull();
+	});
+
 	it('shows each image whole when it is moved to, the one zoomed in on included', async () => {
 		const { user, viewer } = await openViewer();
 		await user.keyboard('+');
@@ -316,7 +382,11 @@ describe('RecipeImageViewer’s body, which loads on demand', () => {
 		await dispatchInAct(() => fireEvent.click(trigger));
 		const viewer = await screen.findByRole('dialog', { name: 'Weeknight chicken soup' });
 		expect(within(viewer).getByRole('status', { name: 'Loading the photos' })).toBeDefined();
-		expect(within(viewer).queryByRole('button')).toBeNull();
+		expect(
+			within(viewer)
+				.getAllByRole('button')
+				.map((button) => button.textContent)
+		).toEqual(['Close']);
 		await waitFor(() => expect(document.activeElement).toBe(viewer));
 
 		await bodyArrives();
@@ -331,6 +401,44 @@ describe('RecipeImageViewer’s body, which loads on demand', () => {
 
 		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 		expect(document.activeElement).toBe(trigger);
+	});
+
+	it('shows the title bar with Close while the body loads, which closes the viewer and gives focus back', async () => {
+		const { RecipeImageViewer, RecipeImageViewerTrigger } = await freshViewer();
+		const user = userEvent.setup();
+		renderPhotoViewer(RecipeImageViewer, RecipeImageViewerTrigger);
+		const trigger = screen.getByRole('button', { name: 'View photo 2 of 3: Bread on a board' });
+
+		await dispatchInAct(() => fireEvent.click(trigger));
+		const viewer = await screen.findByRole('dialog', { name: 'Weeknight chicken soup' });
+		expect(within(viewer).getByRole('heading').textContent).toBe('Weeknight chicken soup');
+		expect(within(viewer).getByText('Photo 2 of 3')).toBeDefined();
+		await user.click(within(viewer).getByRole('button', { name: 'Close' }));
+
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		expect(document.activeElement).toBe(trigger);
+	});
+
+	it('moves focus from Close to the button that moves on when the body arrives', async () => {
+		const { RecipeImageViewer, RecipeImageViewerTrigger } = await freshViewer();
+		const user = userEvent.setup();
+		renderPhotoViewer(RecipeImageViewer, RecipeImageViewerTrigger);
+
+		await dispatchInAct(() =>
+			fireEvent.click(screen.getByRole('button', { name: 'View photo 1 of 3: Soup in a bowl' }))
+		);
+		const viewer = await screen.findByRole('dialog', { name: 'Weeknight chicken soup' });
+		await waitFor(() => expect(document.activeElement).toBe(viewer));
+		await user.tab();
+		expect(document.activeElement).toBe(within(viewer).getByRole('button', { name: 'Close' }));
+
+		await bodyArrives();
+
+		await waitFor(() =>
+			expect(document.activeElement).toBe(
+				within(viewer).getByRole('button', { name: 'Next photo' })
+			)
+		);
 	});
 
 	it('gives focus back on Escape while the body loads, and leaves it there when the body arrives as the viewer closes', async () => {

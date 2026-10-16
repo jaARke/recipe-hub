@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import { notFound, permanentRedirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { getCachedRecipe, recipeStaticParams } from '@/app/_lib/recipe-cache';
-import { cookingRecipeFrom } from '@/components/cooking/cooking-screens';
+import { cookingRecipeFrom, cookingViewParams } from '@/components/cooking/cooking-screens';
 import { CookingView, CookingViewSkeleton } from '@/components/cooking/cooking-view';
-import { recipeCookPath, recipePath } from '@/components/recipe/recipe-paths';
+import { hrefWithParams, recipeCookPath, recipePath } from '@/components/recipe/recipe-paths';
 
 export function generateStaticParams(): Promise<{ slug: string }[]> {
 	return recipeStaticParams();
@@ -29,16 +29,21 @@ export async function generateMetadata({
 	};
 }
 
-async function CookingViewBySlug({ params }: Pick<PageProps<'/recipes/[slug]/cook'>, 'params'>) {
+async function CookingViewBySlug({
+	params,
+	searchParams,
+}: Pick<PageProps<'/recipes/[slug]/cook'>, 'params' | 'searchParams'>) {
 	const { slug } = await params;
 	const recipe = await getCachedRecipe(slug);
 	if (recipe === null) {
 		notFound();
 	}
 
-	// An old slug still finds the recipe, as on its page; the redirect happens in the browser.
+	// An old slug still finds the recipe, as on its page; the redirect happens in the browser and keeps
+	// the cook's step and scale. Only an old slug reads the query, so a current one stays prerendered.
 	if (recipe.slug !== slug) {
-		permanentRedirect(recipeCookPath(recipe.slug));
+		const kept = cookingViewParams(await searchParams, recipe.yield);
+		permanentRedirect(hrefWithParams(recipeCookPath(recipe.slug), kept));
 	}
 
 	return <CookingView recipe={cookingRecipeFrom(recipe)} />;
@@ -46,10 +51,10 @@ async function CookingViewBySlug({ params }: Pick<PageProps<'/recipes/[slug]/coo
 
 // Outside the site's chrome, so the view has the whole screen. Its root renders the main landmark
 // the skip link targets.
-export default function CookingPage({ params }: PageProps<'/recipes/[slug]/cook'>) {
+export default function CookingPage({ params, searchParams }: PageProps<'/recipes/[slug]/cook'>) {
 	return (
 		<Suspense fallback={<CookingViewSkeleton />}>
-			<CookingViewBySlug params={params} />
+			<CookingViewBySlug params={params} searchParams={searchParams} />
 		</Suspense>
 	);
 }
