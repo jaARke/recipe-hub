@@ -82,7 +82,7 @@ const fixtures: Fixture[] = [
 		addedBy: 'robin',
 		source: 'Grandpa Lou',
 		lines: [
-			{ text: '2 cups shredded chicken', item: 'chicken' },
+			{ text: '2 cups chicken, shredded', item: 'chicken' },
 			{ text: '4 ounces egg noodles', item: 'egg noodles' },
 			{ text: '2 carrots, sliced', item: 'carrots' },
 		],
@@ -94,7 +94,7 @@ const fixtures: Fixture[] = [
 		daysAgo: 50,
 		source: 'Grandpa Lou',
 		lines: [
-			{ text: '2 cups shredded chicken', item: 'chicken' },
+			{ text: '2 cups chicken, shredded', item: 'chicken' },
 			{ text: '1 cup rice', item: 'rice' },
 		],
 		tags: ['soup'],

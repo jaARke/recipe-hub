@@ -1,8 +1,8 @@
 import 'server-only';
 import { z } from 'zod';
 import {
+	imagePathnameSchema,
 	recipeImageRoleSchema,
-	recipeImageSchema,
 	type RecipeImageRole,
 } from '@/domain/recipe/recipe-image';
 
@@ -25,7 +25,7 @@ function isUnderPrefix(pathname: string, prefix: string): boolean {
 	return recipeImageRoleSchema.options.some(
 		(role) =>
 			pathname.startsWith(roleFolder(role, prefix)) &&
-			recipeImageSchema.safeParse({ role, pathname }).success
+			imagePathnameSchema.safeParse(pathname).success
 	);
 }
 

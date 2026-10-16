@@ -31,29 +31,28 @@ Product policy (the limits on recipes, photos, and imports, which apply when con
 
 The design reference at [localhost:3000/design](http://localhost:3000/design) shows every design token, UI primitive, and composition. It exists in development and on preview deployments only. Add primitives with `pnpm shadcn add <name>`, then run `pnpm format` and `pnpm exec eslint . --fix`.
 
-| Script                         | Purpose                                                         |
-| ------------------------------ | --------------------------------------------------------------- |
-| `pnpm dev`                     | Start the dev server                                            |
-| `pnpm build`                   | Production build                                                |
-| `pnpm lint`                    | Run every `lint:` script                                        |
-| `pnpm lint:boundaries`         | Check the layer boundaries with dependency-cruiser              |
-| `pnpm lint:code`               | ESLint                                                          |
-| `pnpm lint:format`             | Check formatting                                                |
-| `pnpm lint:migrations`         | Check the migration history for conflicts                       |
-| `pnpm format`                  | Format with Prettier                                            |
-| `pnpm typecheck`               | Generate route types, then run `tsc`                            |
-| `pnpm test`                    | Run Vitest: repository tests on PGlite, components in happy-dom |
-| `pnpm db:generate`             | Generate a migration from `src/infrastructure/db/schema.ts`     |
-| `pnpm db:migrate`              | Apply migrations to the database in `DATABASE_URL_UNPOOLED`     |
-| `pnpm db:bootstrap`            | Make the owner, the account at `ADMIN_EMAIL`, an admin          |
-| `pnpm db:seed`                 | Seed synthetic recipes and photos (refused in production)       |
-| `pnpm db:reparse-ingredients`  | Diff saved recipes against tidying and parsing; `--write` saves |
-| `pnpm db:backfill-image-sizes` | Read the size of each image saved without one; `--write` saves  |
-| `pnpm evaluate`                | Score import models on `scripts/evaluate/` (spends AI credit)   |
+| Script                        | Purpose                                                         |
+| ----------------------------- | --------------------------------------------------------------- |
+| `pnpm dev`                    | Start the dev server                                            |
+| `pnpm build`                  | Production build                                                |
+| `pnpm lint`                   | Run every `lint:` script                                        |
+| `pnpm lint:boundaries`        | Check the layer boundaries with dependency-cruiser              |
+| `pnpm lint:code`              | ESLint                                                          |
+| `pnpm lint:format`            | Check formatting                                                |
+| `pnpm lint:migrations`        | Check the migration history for conflicts                       |
+| `pnpm format`                 | Format with Prettier                                            |
+| `pnpm typecheck`              | Generate route types, then run `tsc`                            |
+| `pnpm test`                   | Run Vitest: repository tests on PGlite, components in happy-dom |
+| `pnpm db:generate`            | Generate a migration from `src/infrastructure/db/schema.ts`     |
+| `pnpm db:migrate`             | Apply migrations to the database in `DATABASE_URL_UNPOOLED`     |
+| `pnpm db:bootstrap`           | Make the owner, the account at `ADMIN_EMAIL`, an admin          |
+| `pnpm db:seed`                | Seed synthetic recipes and photos (refused in production)       |
+| `pnpm db:reparse-ingredients` | Diff saved recipes against tidying and parsing; `--write` saves |
+| `pnpm evaluate`               | Score import models on `scripts/evaluate/` (spends AI credit)   |
 
 ## Database
 
-Local development uses the Neon branch `develop`, whose connection strings are Development-scoped variables in Vercel, so `vercel env pull` never points a local checkout at production. Its images live in a Blob store of its own, `recipe-hub-images-dev`, connected to Development only. Run `pnpm db:seed` to fill the branch and the store with the synthetic sample recipes and their photos, added by a "Sample contributor" member; it skips recipes already there but uploads any of their photos the store is missing, so running it again repopulates an emptied store. Recipes `develop` copied from production name production's photos, which that store does not hold, so they show without them. `pnpm db:backfill-image-sizes` gives each image saved before sizes were recorded its width and height, read from the store in `BLOB_STORE_ID`, so point it at one environment's database and store together; it lists what it would write unless given `--write`, and lists an image the store does not hold, such as those production photos, without writing it. `pnpm db:bootstrap` makes the owner, the account at `ADMIN_EMAIL`, an admin, creating it if needed. Change the schema in `src/infrastructure/db/schema.ts`, run `pnpm db:generate --name <change>`, and commit the generated migration. Extensions, functions, and text search configurations go in a custom migration (`pnpm db:generate --custom --name <change>`) with a `--> statement-breakpoint` after every statement. Keep migrations backward compatible (add first, remove in a later deployment), because each deployment's build applies them before the new code goes live.
+Local development uses the Neon branch `develop`, whose connection strings are Development-scoped variables in Vercel, so `vercel env pull` never points a local checkout at production. Its images live in a Blob store of its own, `recipe-hub-images-dev`, connected to Development only. Run `pnpm db:seed` to fill the branch and the store with the synthetic sample recipes and their photos, added by a "Sample contributor" member; it skips recipes already there but uploads any of their photos the store is missing, so running it again repopulates an emptied store. Recipes `develop` copied from production name production's photos, which that store does not hold, so they show without them. `pnpm db:bootstrap` makes the owner, the account at `ADMIN_EMAIL`, an admin, creating it if needed. Change the schema in `src/infrastructure/db/schema.ts`, run `pnpm db:generate --name <change>`, and commit the generated migration. Extensions, functions, and text search configurations go in a custom migration (`pnpm db:generate --custom --name <change>`) with a `--> statement-breakpoint` after every statement. Keep migrations backward compatible (add first, remove in a later deployment), because each deployment's build applies them before the new code goes live.
 
 ## Deployment
 

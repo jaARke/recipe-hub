@@ -248,6 +248,12 @@ describe('storedRecipeContentSchema', () => {
 		expect(storedRecipeContentSchema.parse(stored)).toEqual(stored);
 		expect(problemPaths(stored)).toEqual(['images.0.size']);
 	});
+
+	it('reads each ingredient line with the parts it was stored with', () => {
+		const stored = withLines([{ text: '• 2 eggs;', amount: { min: 1 }, item: 'eggs;' }]);
+
+		expect(storedRecipeContentSchema.parse(stored)).toEqual(stored);
+	});
 });
 
 describe('parseRecipeContent', () => {
@@ -269,6 +275,27 @@ describe('parseRecipeContent', () => {
 			})
 		);
 		expect(() => parseRecipeContent({})).toThrow(InvalidRecipeError);
+	});
+
+	it('stores each ingredient line as its tidied text reads, not with the parts it was given', () => {
+		const content = parseRecipeContent(
+			withLines([{ text: '• 2 eggs;', amount: { min: 1 }, item: 'eggs;' }])
+		);
+
+		expect(content.ingredientSections).toStrictEqual([
+			{ lines: [{ text: '2 eggs', amount: { min: 2 }, item: 'eggs' }] },
+		]);
+	});
+
+	it('refuses an ingredient line that tidying leaves blank', () => {
+		expect(() => parseRecipeContent(withLines([{ text: '•', item: '•' }]))).toThrow(
+			expect.objectContaining({
+				problems: [
+					{ path: 'ingredientSections.0.lines.0.text', message: 'Enter some text.' },
+					{ path: 'ingredientSections.0.lines.0.item', message: 'Enter some text.' },
+				],
+			})
+		);
 	});
 });
 

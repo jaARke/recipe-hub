@@ -4,7 +4,12 @@ import { problemsFromZodError } from '@/domain/problem';
 import { storedContent, writtenContent, type ContentLimits } from '@/domain/recipe/content-limits';
 import { recipeTimesSchema } from '@/domain/recipe/duration';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
-import { ingredientSectionSchemaFor, noIngredientsMessage } from '@/domain/recipe/ingredient';
+import {
+	ingredientSectionSchemaFor,
+	noIngredientsMessage,
+	type IngredientSection,
+} from '@/domain/recipe/ingredient';
+import { parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import { instructionSectionSchemaFor, noStepsMessage } from '@/domain/recipe/instruction';
 import { provenanceSchema } from '@/domain/recipe/provenance';
 import { recipeImageListSchemaFor } from '@/domain/recipe/recipe-image';
@@ -63,6 +68,15 @@ function sectionListSchema<Section extends z.ZodType>(
 		);
 }
 
+// Each line as its tidied text reads, whatever parts it was given. Here rather than in ingredient.ts,
+// which the parser takes the line's type from.
+function linesFromText(sections: readonly IngredientSection[]): IngredientSection[] {
+	return sections.map((section) => ({
+		...section,
+		lines: section.lines.map((line) => parseIngredientLine(line.text)),
+	}));
+}
+
 // Stored as one document: add fields as optional, and unknown fields drop.
 function recipeContentSchemaFor(limits: ContentLimits) {
 	return z.object({
@@ -74,12 +88,17 @@ function recipeContentSchemaFor(limits: ContentLimits) {
 		source: limits.text(settings.recipeLimits.maxSourceLength).optional(),
 		yield: recipeYieldSchemaFor(limits).optional(),
 		times: recipeTimesSchema,
-		ingredientSections: sectionListSchema(ingredientSectionSchemaFor(limits), limits, {
-			emptyMessage: missingContentMessages.ingredientSections,
-			itemCount: (section) => section.lines.length,
-			maxItems: settings.recipeLimits.maxIngredientLinesPerRecipe,
-			itemUnits: 'ingredients',
-		}),
+		// Written content takes the parts each line's text gives, so no line is written whose text and
+		// parts disagree.
+		ingredientSections: limits.derived(
+			sectionListSchema(ingredientSectionSchemaFor(limits), limits, {
+				emptyMessage: missingContentMessages.ingredientSections,
+				itemCount: (section) => section.lines.length,
+				maxItems: settings.recipeLimits.maxIngredientLinesPerRecipe,
+				itemUnits: 'ingredients',
+			}),
+			linesFromText
+		),
 		instructionSections: sectionListSchema(instructionSectionSchemaFor(limits), limits, {
 			emptyMessage: missingContentMessages.instructionSections,
 			itemCount: (section) => section.steps.length,

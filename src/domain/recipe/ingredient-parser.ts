@@ -247,10 +247,11 @@ export function withoutClosingPunctuation(text: string, punctuation: string): st
 }
 
 // The line as stored: tidied as all text is, without the bullet or number a list put before it or
-// the punctuation that only ends it. Words and their case stay as written.
+// the punctuation that only ends it. Words and their case stay as written. A line left as only a
+// marker once its punctuation goes, such as "2);", is none, so tidying a tidied line changes nothing.
 export function normalizeIngredientLine(text: string): string {
 	const line = withoutListMarkers(normalizeText(text).trim());
-	return withoutClosingPunctuation(line, lineEndPunctuation);
+	return withoutListMarkers(withoutClosingPunctuation(line, lineEndPunctuation));
 }
 
 // The line's structure, read only where it is unambiguous; anything else keeps the text as its item.
