@@ -225,8 +225,9 @@ function FilmstripScrollButton({
 			// Keeps focus where it was, as a button the keyboard can't reach should.
 			onMouseDown={(event) => event.preventDefault()}
 			onClick={() => onScroll(direction)}
+			// Centered by its margins rather than a translate, which a button's press would replace.
 			className={cn(
-				'absolute top-1/2 -translate-y-1/2 rounded-full bg-background/85 pointer-coarse:hidden',
+				'absolute inset-y-0 my-auto rounded-full bg-background/85 pointer-coarse:hidden',
 				className
 			)}
 		>
