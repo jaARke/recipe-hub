@@ -1,5 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import * as React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RecipeBackLink } from '@/components/recipe/recipe-back-link';
 import { stubTabNavigation } from '@/components/recipe/testing/tab-navigation';
@@ -43,6 +44,42 @@ describe('RecipeBackLink', () => {
 		await userEvent.click(screen.getByRole('link', { name: 'Back to search results' }));
 
 		expect(go).toHaveBeenCalledWith(-2);
+	});
+
+	it('follows a history entry written while React commits, once the commit is done', async () => {
+		const tab = stubTabNavigation([favoritesUrl, `${origin}${recipePathname}`]);
+		writeTabStorage(`opened-from:${recipePathname}`, favoritesUrl);
+		const consoleError = vi.spyOn(console, 'error');
+		// Writes the tab's history in an insertion effect, as Next's router does on navigating.
+		function HistoryWriter({ url }: { url?: string }) {
+			React.useInsertionEffect(() => {
+				if (url !== undefined) {
+					tab.push(url);
+				}
+			}, [url]);
+			return null;
+		}
+		const { rerender } = render(
+			<>
+				<RecipeBackLink recipePathname={recipePathname} />
+				<HistoryWriter />
+			</>
+		);
+		expect(screen.getByRole('link', { name: 'Back to Favorites' }).getAttribute('href')).toBe(
+			favoritesUrl
+		);
+
+		await act(async () => {
+			rerender(
+				<>
+					<RecipeBackLink recipePathname={recipePathname} />
+					<HistoryWriter url={`${origin}/`} />
+				</>
+			);
+		});
+
+		expect(screen.queryByRole('link')).toBeNull();
+		expect(consoleError).not.toHaveBeenCalled();
 	});
 
 	it('shows none for a recipe reached from another page than the list', () => {

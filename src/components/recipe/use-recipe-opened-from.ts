@@ -52,10 +52,22 @@ function readRecipeOpenedFromUrl(recipePathname: string): string | undefined {
 			);
 }
 
+// Next writes a navigation's history entry in an insertion effect, where React allows no update, and
+// the browser reports the new entry at once; so the change is passed on once that commit is done.
 function subscribeToHistory(onChange: () => void): () => void {
 	const navigation = tabNavigation();
-	navigation?.addEventListener('currententrychange', onChange);
-	return () => navigation?.removeEventListener('currententrychange', onChange);
+	let subscribed = true;
+	const onEntryChange = () =>
+		queueMicrotask(() => {
+			if (subscribed) {
+				onChange();
+			}
+		});
+	navigation?.addEventListener('currententrychange', onEntryChange);
+	return () => {
+		subscribed = false;
+		navigation?.removeEventListener('currententrychange', onEntryChange);
+	};
 }
 
 // Records this page, by its full URL, as where the recipe at the pathname is opened from, as a link
