@@ -1,6 +1,6 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent, { type UserEvent } from '@testing-library/user-event';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	RecipeImageViewer,
 	RecipeImageViewerTrigger,
@@ -15,27 +15,113 @@ const photos: ShownImage[] = [
 	{ pathname: 'dish/seed/salad.jpg', alt: 'Salad', size: { width: 1600, height: 1200 } },
 ];
 
+const bodyModulePath = '@/components/recipe/recipe-image-viewer-body';
+
 let undoLayout = () => {};
+let letBodyArrive = () => {};
 
 afterEach(() => {
+	// Unmounts ahead of the setup file's cleanup, while the idle callback the viewer cancels is still
+	// stubbed.
+	cleanup();
 	undoLayout();
+	letBodyArrive();
+	vi.doUnmock(bodyModulePath);
+	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
 });
 
-async function openViewer(pressed = 'View photo 1 of 3: Soup in a bowl') {
+function renderPhotoViewer(
+	Viewer: typeof RecipeImageViewer,
+	Trigger: typeof RecipeImageViewerTrigger
+) {
 	undoLayout = stubViewerLayout();
-	const user = userEvent.setup();
 	render(
-		<RecipeImageViewer role="dish" title="Weeknight chicken soup" images={photos}>
+		<Viewer role="dish" title="Weeknight chicken soup" images={photos}>
 			{photos.map((photo, index) => (
-				<RecipeImageViewerTrigger key={photo.pathname} index={index} className="w-24">
+				<Trigger key={photo.pathname} index={index} className="w-24">
 					{photo.alt}
-				</RecipeImageViewerTrigger>
+				</Trigger>
 			))}
-		</RecipeImageViewer>
+		</Viewer>
 	);
+}
+
+async function openViewer(pressed = 'View photo 1 of 3: Soup in a bowl') {
+	const user = userEvent.setup();
+	renderPhotoViewer(RecipeImageViewer, RecipeImageViewerTrigger);
 	await user.click(screen.getByRole('button', { name: pressed }));
 	const viewer = await screen.findByRole('dialog', { name: 'Weeknight chicken soup' });
+	// The first viewer opened in this file waits for its body to load.
+	await within(viewer).findByRole('region', { name: 'Photos' });
 	return { user, viewer };
+}
+
+// Dispatches where the viewer may suspend, in an act that is awaited: user-event's own act is not, and
+// React drops a render that suspends in one.
+async function dispatchInAct(dispatch: () => void) {
+	await act(async () => {
+		dispatch();
+	});
+}
+
+// Lets the body the fresh viewer asked for arrive, and waits for the viewer to take it.
+async function bodyArrives() {
+	await act(async () => {
+		letBodyArrive();
+		await import(bodyModulePath);
+	});
+}
+
+// Keeps the viewer on screen as it closes, as its animation does, until the function returned ends it.
+function holdClosingAnimation(viewer: HTMLElement): () => void {
+	const closing = Promise.withResolvers<void>();
+	const animation = {
+		finished: closing.promise,
+		effect: { getTiming: () => ({ duration: 100, iterations: 1 }) },
+	};
+	viewer.getAnimations = () => [animation] as unknown as Animation[];
+	return () => closing.resolve();
+}
+
+// Counts the spinners added to the page from now on, until the function returned is called.
+function watchForSpinners(): () => number {
+	let added = 0;
+	const countSpinners = (records: MutationRecord[]) => {
+		for (const record of records) {
+			for (const node of record.addedNodes) {
+				if (node instanceof Element && node.querySelector('[data-slot="spinner"]') !== null) {
+					added += 1;
+				}
+			}
+		}
+	};
+	const observer = new MutationObserver(countSpinners);
+	observer.observe(document.body, { childList: true, subtree: true });
+	return () => {
+		countSpinners(observer.takeRecords());
+		observer.disconnect();
+		return added;
+	};
+}
+
+// The viewer from modules loaded afresh, so its body has yet to be fetched, with a body that arrives
+// only when the test lets it. Counts each fetch of the body; the idle browser never calls back.
+async function freshViewer() {
+	vi.resetModules();
+	const arrival = Promise.withResolvers<void>();
+	letBodyArrive = () => arrival.resolve();
+	const fetchBody = vi.fn();
+	vi.doMock(bodyModulePath, async (importOriginal) => {
+		fetchBody();
+		await arrival.promise;
+		return importOriginal();
+	});
+	const idleCallbacks: (() => void)[] = [];
+	vi.stubGlobal('requestIdleCallback', (callback: () => void) => idleCallbacks.push(callback));
+	vi.stubGlobal('cancelIdleCallback', () => {});
+	const viewer = await import('@/components/recipe/recipe-image-viewer');
+	return { ...viewer, fetchBody, idleCallbacks };
 }
 
 // The image shown, which alone of the slides can be reached.
@@ -217,5 +303,113 @@ describe('RecipeImageViewer', () => {
 		expect(
 			within(viewer).getByRole('button', { name: 'Show photo 1 of 3' }).getAttribute('aria-current')
 		).toBe('true');
+	});
+});
+
+describe('RecipeImageViewer’s body, which loads on demand', () => {
+	it('shows a labelled spinner while the body loads, and moves focus to the button that moves on as it arrives', async () => {
+		const { RecipeImageViewer, RecipeImageViewerTrigger } = await freshViewer();
+		const user = userEvent.setup();
+		renderPhotoViewer(RecipeImageViewer, RecipeImageViewerTrigger);
+		const trigger = screen.getByRole('button', { name: 'View photo 2 of 3: Bread on a board' });
+
+		await dispatchInAct(() => fireEvent.click(trigger));
+		const viewer = await screen.findByRole('dialog', { name: 'Weeknight chicken soup' });
+		expect(within(viewer).getByRole('status', { name: 'Loading the photos' })).toBeDefined();
+		expect(within(viewer).queryByRole('button')).toBeNull();
+		await waitFor(() => expect(document.activeElement).toBe(viewer));
+
+		await bodyArrives();
+
+		const next = within(viewer).getByRole('button', { name: 'Next photo' });
+		expect(document.activeElement).toBe(next);
+		expect(within(viewer).queryByRole('status', { name: 'Loading the photos' })).toBeNull();
+		expect(caption(viewer)).toBe('Photo 2 of 3. Bread on a board');
+		expect(screen.getByRole('dialog', { name: 'Weeknight chicken soup' })).toBe(viewer);
+
+		await user.keyboard('{Escape}');
+
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		expect(document.activeElement).toBe(trigger);
+	});
+
+	it('gives focus back on Escape while the body loads, and leaves it there when the body arrives as the viewer closes', async () => {
+		const { RecipeImageViewer, RecipeImageViewerTrigger } = await freshViewer();
+		renderPhotoViewer(RecipeImageViewer, RecipeImageViewerTrigger);
+		const trigger = screen.getByRole('button', { name: 'View photo 1 of 3: Soup in a bowl' });
+
+		await dispatchInAct(() => fireEvent.click(trigger));
+		const viewer = await screen.findByRole('dialog', { name: 'Weeknight chicken soup' });
+		await waitFor(() => expect(document.activeElement).toBe(viewer));
+		const closed = holdClosingAnimation(viewer);
+
+		await dispatchInAct(() => fireEvent.keyDown(viewer, { key: 'Escape' }));
+		expect(viewer.hasAttribute('data-closed')).toBe(true);
+		await bodyArrives();
+
+		expect(within(viewer).getByRole('button', { name: 'Next photo', hidden: true })).toBeDefined();
+		expect(document.activeElement).toBe(viewer);
+		closed();
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		expect(document.activeElement).toBe(trigger);
+	});
+
+	it('opens at once, with no loading state, when the body has arrived beforehand', async () => {
+		const { RecipeImageViewer, RecipeImageViewerTrigger } = await freshViewer();
+		const user = userEvent.setup();
+		renderPhotoViewer(RecipeImageViewer, RecipeImageViewerTrigger);
+		const trigger = screen.getByRole('button', { name: 'View photo 1 of 3: Soup in a bowl' });
+		await user.hover(trigger);
+		await bodyArrives();
+		const spinners = watchForSpinners();
+
+		await dispatchInAct(() => fireEvent.click(trigger));
+
+		const viewer = screen.getByRole('dialog', { name: 'Weeknight chicken soup' });
+		expect(spinners()).toBe(0);
+		await waitFor(() =>
+			expect(document.activeElement).toBe(
+				within(viewer).getByRole('button', { name: 'Next photo' })
+			)
+		);
+	});
+
+	it.each([
+		['hovered', (user: UserEvent, trigger: HTMLElement) => user.hover(trigger)],
+		['focused', (user: UserEvent) => user.tab()],
+		[
+			'touched',
+			(user: UserEvent, trigger: HTMLElement) =>
+				user.pointer({ keys: '[TouchA>]', target: trigger }),
+		],
+	])('fetches the body when a trigger is first %s, and not again', async (_approach, approach) => {
+		const { RecipeImageViewer, RecipeImageViewerTrigger, fetchBody } = await freshViewer();
+		const user = userEvent.setup();
+		renderPhotoViewer(RecipeImageViewer, RecipeImageViewerTrigger);
+		expect(fetchBody).not.toHaveBeenCalled();
+
+		await approach(user, screen.getByRole('button', { name: 'View photo 1 of 3: Soup in a bowl' }));
+		await waitFor(() => expect(fetchBody).toHaveBeenCalledTimes(1));
+
+		await user.hover(screen.getByRole('button', { name: 'View photo 2 of 3: Bread on a board' }));
+		await user.tab();
+		expect(fetchBody).toHaveBeenCalledTimes(1);
+	});
+
+	it('fetches the body once the page has loaded and the browser is idle', async () => {
+		const { RecipeImageViewer, RecipeImageViewerTrigger, fetchBody, idleCallbacks } =
+			await freshViewer();
+		vi.spyOn(document, 'readyState', 'get').mockReturnValue('interactive');
+		renderPhotoViewer(RecipeImageViewer, RecipeImageViewerTrigger);
+		expect(idleCallbacks).toHaveLength(0);
+
+		window.dispatchEvent(new Event('load'));
+		expect(idleCallbacks).toHaveLength(1);
+		expect(fetchBody).not.toHaveBeenCalled();
+
+		for (const callback of idleCallbacks) {
+			callback();
+		}
+		await waitFor(() => expect(fetchBody).toHaveBeenCalledTimes(1));
 	});
 });

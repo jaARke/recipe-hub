@@ -121,6 +121,26 @@ const config: IConfiguration = {
 			from: { pathNot: TEST_SUPPORT },
 			to: { path: `${NODE_MODULES}vitest/` },
 		},
+		{
+			name: 'image-viewer-body-only-in-the-viewer',
+			comment:
+				"The image viewer's body brings the zoom and the carousel, which no page needs until the viewer opens, so only the viewer imports it.",
+			severity: 'error',
+			from: { pathNot: ['^src/components/recipe/recipe-image-viewer\\.tsx$', TESTS] },
+			to: { path: '^src/components/recipe/recipe-image-viewer-body\\.tsx$' },
+		},
+		{
+			name: 'image-viewer-body-on-demand',
+			comment:
+				"The viewer imports its body by import() or for its types only, keeping it out of every recipe page's first load.",
+			severity: 'error',
+			from: { path: '^src/components/recipe/recipe-image-viewer\\.tsx$' },
+			to: {
+				path: '^src/components/recipe/recipe-image-viewer-body\\.tsx$',
+				dynamic: false,
+				dependencyTypesNot: ['type-only'],
+			},
+		},
 	],
 	required: [
 		{

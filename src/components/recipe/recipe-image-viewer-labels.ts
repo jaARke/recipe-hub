@@ -6,6 +6,8 @@ type ImageViewerLabels = {
 	region: string;
 	previous: string;
 	next: string;
+	// Names the spinner while the viewer loads.
+	loading: string;
 };
 
 // A dish photo is a photo; a scan is a page of the recipe as first written.
@@ -16,7 +18,12 @@ const imageViewerWording = {
 
 export function imageViewerLabels(role: RecipeImageRole): ImageViewerLabels {
 	const { item, items } = imageViewerWording[role];
-	return { region: sentenceCase(items), previous: `Previous ${item}`, next: `Next ${item}` };
+	return {
+		region: sentenceCase(items),
+		previous: `Previous ${item}`,
+		next: `Next ${item}`,
+		loading: `Loading the ${items}`,
+	};
 }
 
 // "Photo 2 of 4", counting from one.

@@ -282,11 +282,11 @@ describe('RecipeDetail’s original recipe', () => {
 		await user.click(screen.getByRole('button', { name: 'View page 2 of 2' }));
 
 		const viewer = await screen.findByRole('dialog', { name: 'Original recipe' });
-		expect(
-			within(viewer)
-				.getByRole('link', { name: 'Full size, opens in a new tab' })
-				.getAttribute('href')
-		).toBe(`/api/images/${cardBack.pathname}`);
+		// The viewer's body loads as it opens.
+		const fullSize = await within(viewer).findByRole('link', {
+			name: 'Full size, opens in a new tab',
+		});
+		expect(fullSize.getAttribute('href')).toBe(`/api/images/${cardBack.pathname}`);
 	});
 
 	it('gives a dish photo’s viewer no Full size', async () => {
@@ -296,6 +296,7 @@ describe('RecipeDetail’s original recipe', () => {
 		await user.click(screen.getByRole('button', { name: 'View photo' }));
 
 		const viewer = await screen.findByRole('dialog');
+		await within(viewer).findByRole('region', { name: 'Photos' });
 		expect(within(viewer).queryByRole('link', { name: /^Full size/ })).toBeNull();
 	});
 });

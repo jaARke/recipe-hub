@@ -8,8 +8,24 @@ import {
 
 describe('imageViewerLabels', () => {
 	it.each([
-		['dish', { region: 'Photos', previous: 'Previous photo', next: 'Next photo' }],
-		['scan', { region: 'Pages', previous: 'Previous page', next: 'Next page' }],
+		[
+			'dish',
+			{
+				region: 'Photos',
+				previous: 'Previous photo',
+				next: 'Next photo',
+				loading: 'Loading the photos',
+			},
+		],
+		[
+			'scan',
+			{
+				region: 'Pages',
+				previous: 'Previous page',
+				next: 'Next page',
+				loading: 'Loading the pages',
+			},
+		],
 	] as const)('words the %s viewer', (role, expected) => {
 		expect(imageViewerLabels(role)).toEqual(expected);
 	});
