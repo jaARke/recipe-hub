@@ -49,7 +49,12 @@ class SeedActorProvider implements ActorProvider {
 	private readonly actor: MemberActor;
 
 	constructor(contributor: Member) {
-		this.actor = { kind: 'member', memberId: contributor.id, role: contributor.role };
+		this.actor = {
+			kind: 'member',
+			memberId: contributor.id,
+			role: contributor.role,
+			sessionStartedAt: new Date(),
+		};
 	}
 
 	async currentActor(): Promise<Actor> {

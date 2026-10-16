@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { safeNextPath, signInHref } from '@/components/auth/auth-paths';
+import { joinedInviteHref, safeNextPath, signInHref } from '@/components/auth/auth-paths';
 
 describe('signInHref', () => {
 	it('names the page to return to', () => {
 		expect(signInHref('/account')).toBe('/sign-in?next=%2Faccount');
 		expect(signInHref('/admin?tab=open')).toBe('/sign-in?next=%2Fadmin%3Ftab%3Dopen');
+	});
+});
+
+describe('joinedInviteHref', () => {
+	it('names whether the invite created the account', () => {
+		expect(joinedInviteHref('created')).toBe('/invite?account=created');
+		expect(joinedInviteHref('existing')).toBe('/invite?account=existing');
 	});
 });
 

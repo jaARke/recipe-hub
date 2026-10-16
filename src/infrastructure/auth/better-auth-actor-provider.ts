@@ -32,6 +32,7 @@ export class BetterAuthActorProvider implements ActorProvider {
 			kind: 'member',
 			memberId: memberIdSchema.parse(session.user.id),
 			role: memberRoleSchema.parse(session.user.role),
+			sessionStartedAt: session.session.createdAt,
 		};
 	}
 }

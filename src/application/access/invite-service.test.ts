@@ -26,7 +26,8 @@ const issuedAt = new Date('2026-10-13T01:30:00Z');
 const expiresAt = new Date(
 	issuedAt.getTime() + daysInMilliseconds(settings.accounts.inviteLifetimeDays)
 );
-const minute = 60 * 1000;
+const second = 1000;
+const minute = 60 * second;
 const day = 24 * 60 * minute;
 
 const missingId = '0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e';
@@ -467,7 +468,7 @@ describe('completeInvite', () => {
 		expect(await visitor.getInvitePreview(tokenOf(issued.link))).not.toBeNull();
 	});
 
-	it('reports a new account when the invite created the member', async () => {
+	it('reports a new account to the sign-in that created it', async () => {
 		const { invites, members, adminService, visitor, serviceFor } = await invitesWithAdmin();
 		const issued = await adminService.issueInvite({ displayName: 'Ada' });
 		await visitor.bindInviteEmail(tokenOf(issued.link), 'ada@example.com');
@@ -477,6 +478,8 @@ describe('completeInvite', () => {
 			role: 'member',
 		});
 		invites.accept(issued.id, ada.id);
+		// Sign-up stores the account, then starts the session it signs in with.
+		advanceTime(second);
 
 		expect(await serviceFor(actorFor(ada)).completeInvite(tokenOf(issued.link))).toEqual({
 			account: 'created',
@@ -505,7 +508,7 @@ describe('completeInvite', () => {
 	});
 
 	it('reports an existing account for an invite already used, revoked, or expired', async () => {
-		const { invites, members, adminService, serviceFor } = await invitesWithAdmin();
+		const { invites, members, adminService, visitor, serviceFor } = await invitesWithAdmin();
 		const ada = await members.create({
 			email: 'ada@example.com',
 			displayName: 'Ada',
@@ -513,10 +516,13 @@ describe('completeInvite', () => {
 		});
 		advanceTime(day);
 		const used = await adminService.issueInvite({ displayName: 'Used' });
-		invites.accept(used.id, memberActor().memberId);
 		const revoked = await adminService.issueInvite({ displayName: 'Revoked' });
-		await adminService.revokeInvite(revoked.id);
 		const expired = await adminService.issueInvite({ displayName: 'Expired' });
+		for (const { link } of [used, revoked, expired]) {
+			await visitor.bindInviteEmail(tokenOf(link), 'ada@example.com');
+		}
+		invites.accept(used.id, memberActor().memberId);
+		await adminService.revokeInvite(revoked.id);
 		vi.setSystemTime(expiresAt.getTime() + day);
 
 		for (const { link } of [used, revoked, expired]) {
@@ -553,6 +559,52 @@ describe('completeInvite', () => {
 			});
 		}
 		expect(await adminService.listOpenInvites()).toEqual([]);
+	});
+
+	it('tells a member who joined through a newer link that their account exists', async () => {
+		const { invites, members, adminService, visitor, serviceFor } = await invitesWithAdmin();
+		const older = await adminService.issueInvite({ displayName: 'Ada' });
+		advanceTime(minute);
+		const newer = await adminService.issueInvite({ displayName: 'Ada' });
+		await visitor.bindInviteEmail(tokenOf(older.link), 'ada@example.com');
+		await visitor.bindInviteEmail(tokenOf(newer.link), 'ada@example.com');
+		const ada = await members.create({
+			email: 'ada@example.com',
+			displayName: 'Ada',
+			role: 'member',
+		});
+		invites.accept(newer.id, ada.id);
+		await serviceFor(actorFor(ada)).completeInvite(tokenOf(newer.link));
+		expect(await visitor.getInvitePreview(tokenOf(older.link))).not.toBeNull();
+		// She signs out, and later signs in again through the older link.
+		advanceTime(10 * minute);
+
+		expect(await serviceFor(actorFor(ada)).completeInvite(tokenOf(older.link))).toEqual({
+			account: 'existing',
+		});
+		expect(await visitor.getInvitePreview(tokenOf(older.link))).toBeNull();
+		expect(await adminService.listOpenInvites()).toEqual([]);
+	});
+
+	it.each([
+		{ bound: 'another address', email: 'grace@example.com' },
+		{ bound: 'no address', email: undefined },
+	])('refuses an invite bound to $bound and keeps it open', async ({ email }) => {
+		const { members, adminService, visitor, serviceFor } = await invitesWithAdmin();
+		const ada = await members.create({
+			email: 'ada@example.com',
+			displayName: 'Ada',
+			role: 'member',
+		});
+		const issued = await adminService.issueInvite({ displayName: 'Grace' });
+		if (email !== undefined) {
+			await visitor.bindInviteEmail(tokenOf(issued.link), email);
+		}
+
+		await expect(serviceFor(actorFor(ada)).completeInvite(tokenOf(issued.link))).rejects.toThrow(
+			InviteUnavailableError
+		);
+		expect(await visitor.getInvitePreview(tokenOf(issued.link))).not.toBeNull();
 	});
 
 	it.each(['A'.repeat(43), 'not a token'])('refuses the token "%s"', async (token) => {

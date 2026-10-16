@@ -1,3 +1,6 @@
+import type { CompletedInviteDto } from '@/application/access/access-dtos';
+import { invitePath } from '@/lib/auth-paths';
+
 export const signInPath = '/sign-in';
 
 export const requestAccessPath = '/request-access';
@@ -20,6 +23,12 @@ const placeholderOrigin = 'https://next.invalid';
 
 export function signInHref(next: string): string {
 	return `${signInPath}?${new URLSearchParams({ [nextParamName]: next })}`;
+}
+
+// The invite page loaded again for the member a code signed in, saying whether the invite created
+// their account.
+export function joinedInviteHref(account: CompletedInviteDto['account']): string {
+	return `${invitePath}?${new URLSearchParams({ [inviteAccountParamName]: account })}`;
 }
 
 // Only a path on this site, otherwise the recipe list; a repeated parameter counts as absent. A
