@@ -2,11 +2,12 @@ import 'server-only';
 import { requireMember } from '@/application/authorization';
 import type { ActorProvider } from '@/application/ports/actor-provider';
 import type { ImageMoveLock, LockAttempt } from '@/application/ports/image-move-lock';
-import type {
-	FailedImage,
-	ImageMoveOutcome,
-	ImageStore,
-	StoredImage,
+import {
+	ImageMoveInterruptedError,
+	type FailedImage,
+	type ImageMoveOutcome,
+	type ImageStore,
+	type StoredImage,
 } from '@/application/ports/image-store';
 import type { ProductionImages } from '@/application/ports/production-images';
 import type { RecipeImportRepository } from '@/application/ports/recipe-import-repository';
@@ -25,7 +26,7 @@ import { removedImageCutoff, unusedImageCutoff } from '@/domain/recipe/image-ret
 import type { RecipeId } from '@/domain/recipe/recipe';
 import { isRecipeImageContentType, type RecipeImageRole } from '@/domain/recipe/recipe-image';
 import { deadlineAfter, settleWithin } from '@/lib/deadline';
-import { getLogger, type LogFields } from '@/lib/logger';
+import { getLogger } from '@/lib/logger';
 
 // The browser re-encodes every photo as a JPEG before uploading it.
 const uploadContentType = 'image/jpeg';
@@ -56,8 +57,10 @@ type SweepStepOutcome = {
 
 const noFailures: ImageMoveOutcome = { failed: [], unpurged: [] };
 
-function imageMoveTimedOut(): Error {
-	return new Error(`The image move timed out after ${imageMoveTimeLimitMs / 1000} seconds`);
+function imageMoveTimedOut(cause?: unknown): Error {
+	return new Error(`The image move timed out after ${imageMoveTimeLimitMs / 1000} seconds`, {
+		cause,
+	});
 }
 
 // Runs one step of an image move within its deadline, and none once the deadline has passed.
@@ -69,23 +72,69 @@ async function withinImageMove<T>(deadline: AbortSignal, step: () => Promise<T>)
 	return settleWithin(step(), { deadline }, imageMoveTimedOut);
 }
 
+// Runs a store's move, which takes the deadline as its signal and stops at it on its own, purging what
+// it moved first, so it is waited for rather than left behind at the deadline. None starts once the
+// deadline has passed, and one the deadline stopped ends with the time-out, caused by its own error.
+async function moveWithin<T>(
+	deadline: AbortSignal,
+	move: (signal: AbortSignal) => Promise<T>
+): Promise<T> {
+	if (deadline.aborted) {
+		throw imageMoveTimedOut();
+	}
+
+	try {
+		return await move(deadline);
+	} catch (err) {
+		throw deadline.aborted ? imageMoveTimedOut(err) : err;
+	}
+}
+
+// The images a move the deadline stopped had moved but could not purge. No later sweep purges an
+// image once it has moved, so each failure line names them, as a finished move's line does.
+function unpurgedBeforeTimeOut(err: unknown): FailedImage[] {
+	return err instanceof Error && err.cause instanceof ImageMoveInterruptedError
+		? err.cause.unpurged
+		: [];
+}
+
 // The images a move handled: all it was given but those it left in place.
 function movedPathnames(pathnames: string[], failed: FailedImage[]): string[] {
 	const failedPathnames = new Set(failed.map(({ pathname }) => pathname));
 	return pathnames.filter((pathname) => !failedPathnames.has(pathname));
 }
 
+// The items in a fresh random order, each placed by a random key of its own.
+function shuffled<T>(items: readonly T[]): T[] {
+	return items
+		.map((item) => ({ item, key: Math.random() }))
+		.sort((first, second) => first.key - second.key)
+		.map(({ item }) => item);
+}
+
 // A step that fails is logged and left for the next sweep, which finds the same images again; the
-// deadline passing ends the sweep instead.
-function sweepStepFailed(deadline: AbortSignal, err: unknown, fields: LogFields): void {
+// deadline passing then ends the sweep.
+function sweepStepFailed(
+	step: ImageSweepStep,
+	pathnames: string[],
+	err: unknown,
+	deadline: AbortSignal
+): void {
+	const unpurged = unpurgedBeforeTimeOut(err);
+	logger.warn('Image sweep step failed', {
+		step,
+		pathnames,
+		...(unpurged.length > 0 && { unpurgedImages: unpurged.map((image) => ({ step, ...image })) }),
+		err,
+	});
 	if (deadline.aborted) {
 		throw err;
 	}
-
-	logger.warn('Image sweep step failed', { ...fields, err });
 }
 
-// An image that fails alone is recorded with why, and the rest carry on.
+// An image that fails alone is recorded with why, and the rest carry on. Each sweep hands the store
+// the step's images in a fresh order, so images whose moves stall hold no fixed place ahead of the
+// rest, which a later sweep reaches when this one's deadline does not.
 async function sweepStep(
 	step: ImageSweepStep,
 	pathnames: string[],
@@ -97,21 +146,29 @@ async function sweepStep(
 	}
 
 	try {
-		const { failed, unpurged } = await withinImageMove(deadline, () => run(pathnames, deadline));
+		const { failed, unpurged } = await moveWithin(deadline, (signal) =>
+			run(shuffled(pathnames), signal)
+		);
 		return {
 			pathnames: movedPathnames(pathnames, failed),
 			failedImages: failed.map((image) => ({ step, ...image })),
 			unpurgedImages: unpurged.map((image) => ({ step, ...image })),
 		};
 	} catch (err) {
-		sweepStepFailed(deadline, err, { step, pathnames });
+		sweepStepFailed(step, pathnames, err, deadline);
 		return { pathnames: [], failedImages: [], unpurgedImages: [] };
 	}
 }
 
 // Left where they are, for a later sweep to remove once nothing has named them for a day.
 function warnImagesNotRemoved(recipeId: RecipeId, pathnames: string[], err: unknown): void {
-	logger.warn('Recipe images could not be removed', { recipeId, pathnames, err });
+	const unpurged = unpurgedBeforeTimeOut(err);
+	logger.warn('Recipe images could not be removed', {
+		recipeId,
+		pathnames,
+		...(unpurged.length > 0 && { unpurgedImages: unpurged }),
+		err,
+	});
 }
 
 export class RecipeImageService {
@@ -154,17 +211,17 @@ export class RecipeImageService {
 
 	// A dish photo or a scan, which anyone may see, from a folder this environment reads in its store
 	// or fetches from production, as a preview does production's. Never asks for the actor, so
-	// responses can be cached.
-	async getPublicImage(pathname: string): Promise<StoredImage | null> {
+	// responses can be cached. The read and its body stop once the signal aborts.
+	async getPublicImage(pathname: string, signal?: AbortSignal): Promise<StoredImage | null> {
 		if (this.folders.isFetchedFromProduction(pathname)) {
-			return this.servedImage(pathname, await this.productionImages.get(pathname));
+			return this.servedImage(pathname, await this.productionImages.get(pathname, signal));
 		}
 
 		if (!this.folders.isReadable(pathname)) {
 			return null;
 		}
 
-		return this.servedImage(pathname, await this.images.get(pathname));
+		return this.servedImage(pathname, await this.images.get(pathname, signal));
 	}
 
 	// The browser names each upload <folder><uuid>.jpg.
@@ -276,7 +333,7 @@ export class RecipeImageService {
 			const keptPathnames = pathnames.filter((pathname) => inUse.has(pathname));
 			const { failed, unpurged } =
 				unusedPathnames.length > 0
-					? await withinImageMove(deadline, () => this.images.remove(unusedPathnames, deadline))
+					? await moveWithin(deadline, (signal) => this.images.remove(unusedPathnames, signal))
 					: noFailures;
 
 			logger.info('Recipe images removed', {
@@ -295,8 +352,8 @@ export class RecipeImageService {
 	// or a save attaches an image an earlier sweep was removing; deletes for good those removed long
 	// enough ago; then removes uploads that nothing has named for a day. In that order, so an image
 	// both stored and removed, as an interrupted removal leaves it, ends up removed. Each step runs
-	// within the image move's deadline, which also stops every store call, and the deadline passing
-	// ends the sweep.
+	// within the image move's deadline, which also stops every store call but a move's purge of what it
+	// moved, and the deadline passing ends the sweep.
 	private async sweep(deadline: AbortSignal): Promise<ImageSweepCounts> {
 		const now = new Date();
 		const [removed, uploaded] = await withinImageMove(deadline, () =>

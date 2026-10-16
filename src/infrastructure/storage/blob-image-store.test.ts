@@ -2,6 +2,7 @@ import type { IncomingHttpHeaders } from 'node:http';
 import { get as getBlob, type GetBlobResult } from '@vercel/blob';
 import { dangerouslyDeleteBySrcImage, dangerouslyDeleteByTag } from '@vercel/functions';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
+import { ImageMoveInterruptedError } from '@/application/ports/image-store';
 import { ImageFolders } from '@/application/recipes/image-folders';
 import { RecipeImageService } from '@/application/recipes/recipe-image-service';
 import { anonymousActor } from '@/application/testing/actors';
@@ -73,7 +74,7 @@ function store(pathnames: readonly string[], uploadedAt: Date = longAgo): void {
 }
 
 // Blob's API lists by prefix a page at a time, copies, and deletes. Copying a pathname whose name
-// says so fails.
+// says so fails, or never answers.
 beforeEach(async () => {
 	blobs = new Map();
 	received = [];
@@ -81,7 +82,8 @@ beforeEach(async () => {
 	unansweredCount = 0;
 	abandonedCount = 0;
 	blobApi = await startFakeBlobApi((request, body, response) => {
-		if (stalled) {
+		const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+		if (stalled || url.searchParams.get('fromUrl')?.includes('stalling')) {
 			unansweredCount += 1;
 			response.on('close', () => {
 				abandonedCount += 1;
@@ -89,7 +91,6 @@ beforeEach(async () => {
 			return;
 		}
 
-		const url = new URL(request.url ?? '/', 'http://127.0.0.1');
 		const params = Object.fromEntries(url.searchParams);
 		received.push({
 			method: request.method,
@@ -333,17 +334,61 @@ describe('remove', () => {
 		store(['dish/development/a.jpg', 'dish/development/b.jpg']);
 		stalled = true;
 		const caller = new AbortController();
+		const reason = new Error('The sweep ran out of time');
 
 		const removal = storeFor('development').remove(
 			['dish/development/a.jpg', 'dish/development/b.jpg'],
 			caller.signal
 		);
 		await vi.waitFor(() => expect(unansweredCount).toBe(1));
-		caller.abort(new Error('The sweep ran out of time'));
+		caller.abort(reason);
 
-		await expect(removal).rejects.toThrow('The sweep ran out of time');
+		await expect(removal).rejects.toThrow(ImageMoveInterruptedError);
+		await expect(removal).rejects.toMatchObject({ cause: reason, unpurged: [] });
 		await vi.waitFor(() => expect(abandonedCount).toBe(1));
 		expect(unansweredCount).toBe(1);
+	});
+
+	describe('stopped part way', () => {
+		const moved = 'dish/development/a.jpg';
+		const stalling = 'dish/development/stalling.jpg';
+		const untried = 'dish/development/b.jpg';
+
+		// Moves the first image, then stops at a copy Blob never answers once the caller's signal aborts.
+		async function removeUntilStopped(reason: Error): Promise<unknown> {
+			store([moved, stalling, untried]);
+			const caller = new AbortController();
+			const removal = storeFor('development').remove([moved, stalling, untried], caller.signal);
+			await vi.waitFor(() => expect(unansweredCount).toBe(1));
+			caller.abort(reason);
+			return removal.catch((error: unknown) => error);
+		}
+
+		it('still purges the image it moved, then rejects with the signal as its cause', async () => {
+			const reason = new Error('The sweep ran out of time');
+
+			const failure = await removeUntilStopped(reason);
+
+			expect(failure).toBeInstanceOf(ImageMoveInterruptedError);
+			expect(failure).toMatchObject({ cause: reason, unpurged: [] });
+			const sources = (pathnames: string[]) =>
+				pathnames.map((pathname) => `/api/images/${pathname}`);
+			expect(vi.mocked(dangerouslyDeleteBySrcImage).mock.calls.map(([source]) => source)).toEqual([
+				sources([moved, stalling, untried]),
+				sources([moved]),
+			]);
+			expect([...blobs.keys()].sort()).toEqual([untried, stalling, `trash/${moved}`]);
+		});
+
+		it('names the image it moved whose purge then failed', async () => {
+			vi.mocked(dangerouslyDeleteByTag)
+				.mockResolvedValueOnce(undefined)
+				.mockRejectedValueOnce(new Error('Purge refused'));
+
+			expect(await removeUntilStopped(new Error('The sweep ran out of time'))).toMatchObject({
+				unpurged: [{ pathname: moved, reason: 'Error: Purge refused' }],
+			});
+		});
 	});
 });
 

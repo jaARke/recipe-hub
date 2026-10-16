@@ -47,8 +47,8 @@ async function serveImages() {
 	);
 }
 
-function requestImage(pathname: string, query = ''): Promise<Response> {
-	return GET(new NextRequest(`http://localhost/api/images/${pathname}${query}`), {
+function requestImage(pathname: string, query = '', signal?: AbortSignal): Promise<Response> {
+	return GET(new NextRequest(`http://localhost/api/images/${pathname}${query}`, { signal }), {
 		params: Promise.resolve({ path: pathname.split('/') }),
 	});
 }
@@ -102,6 +102,17 @@ describe('the image route', () => {
 		expect(response.headers.get('Cache-Control')).toBe('no-store');
 		expect(warn).toHaveBeenCalledOnce();
 	});
+
+	it.each([dishPhoto, productionScan])(
+		'reads %s no further once the visitor has left',
+		async (pathname) => {
+			await serveImages();
+			const visitor = new AbortController();
+			visitor.abort(new Error('The visitor left'));
+
+			await expect(requestImage(pathname, '', visitor.signal)).rejects.toThrow('The visitor left');
+		}
+	);
 
 	it.each(['trash/dish/seed/soup.jpg', 'scan/seed/missing.jpg', 'scan/production/missing.jpg'])(
 		'answers %s with a 404 no cache keeps',

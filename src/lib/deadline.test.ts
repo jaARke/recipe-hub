@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { deadlineAfter, settleWithin } from '@/lib/deadline';
+import { deadlineAfter, requestWithin, settleWithin } from '@/lib/deadline';
 
 class SampleTimeoutError extends Error {}
 
@@ -195,5 +195,84 @@ describe('settleWithin', () => {
 		vi.advanceTimersByTime(1);
 
 		await expect(result).rejects.toBe(reason);
+	});
+});
+
+describe('requestWithin', () => {
+	// A request that never answers, recording the signal it was given.
+	function unansweredRequest() {
+		const given: AbortSignal[] = [];
+		const request = (signal: AbortSignal): Promise<never> => {
+			given.push(signal);
+			return unanswered();
+		};
+		return { given, request };
+	}
+
+	it('gives up once the time limit passes on a request that never answers, aborting it', async () => {
+		const { given, request } = unansweredRequest();
+		const result = requestWithin(request, { timeLimitMs: 1000 }, timedOut);
+		const settled = vi.fn();
+		result.catch(settled);
+
+		await vi.advanceTimersByTimeAsync(999);
+		expect(settled).not.toHaveBeenCalled();
+		expect(given[0]?.aborted).toBe(false);
+		await vi.advanceTimersByTimeAsync(1);
+
+		await expect(result).rejects.toThrow(SampleTimeoutError);
+		expect(given[0]?.aborted).toBe(true);
+	});
+
+	it("rejects with the cancellation's reason when it fires first, aborting the request", async () => {
+		const { given, request } = unansweredRequest();
+		const cancellation = new AbortController();
+		const reason = new Error('The visitor left');
+		const result = requestWithin(
+			request,
+			{ timeLimitMs: 1000, cancellation: cancellation.signal },
+			timedOut
+		);
+		result.catch(() => undefined);
+
+		cancellation.abort(reason);
+
+		await expect(result).rejects.toBe(reason);
+		expect(given[0]?.aborted).toBe(true);
+	});
+
+	it('starts no request once the cancellation has fired', async () => {
+		const request = vi.fn(() => Promise.resolve('soup'));
+		const reason = new Error('The visitor left');
+
+		await expect(
+			requestWithin(
+				request,
+				{ timeLimitMs: 1000, cancellation: AbortSignal.abort(reason) },
+				timedOut
+			)
+		).rejects.toBe(reason);
+		expect(request).not.toHaveBeenCalled();
+	});
+
+	it('leaves a request that answered in time under the cancellation alone', async () => {
+		const given: AbortSignal[] = [];
+		const cancellation = new AbortController();
+
+		await expect(
+			requestWithin(
+				(signal) => {
+					given.push(signal);
+					return Promise.resolve('soup');
+				},
+				{ timeLimitMs: 1000, cancellation: cancellation.signal },
+				timedOut
+			)
+		).resolves.toBe('soup');
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(given[0]?.aborted).toBe(false);
+		cancellation.abort(new Error('The visitor left'));
+
+		expect(given[0]?.aborted).toBe(true);
 	});
 });

@@ -1,4 +1,5 @@
 import 'server-only';
+import { AppError } from '@/lib/errors';
 
 export type StoredImage = {
 	body: ReadableStream<Uint8Array>;
@@ -25,8 +26,23 @@ export type ImageMoveOutcome = {
 	unpurged: FailedImage[];
 };
 
+// A move its signal stopped part way, caused by the signal's reason. The images it had moved were
+// purged all the same, as no later sweep purges an image once it has moved, and it names those whose
+// purge failed.
+export class ImageMoveInterruptedError extends AppError {
+	readonly code = 'image.move-interrupted';
+	readonly unpurged: FailedImage[];
+
+	constructor(unpurged: FailedImage[], options?: ErrorOptions) {
+		super('Image move stopped part way', options);
+		this.unpurged = unpurged;
+	}
+}
+
 // Every operation but get, has, hasRemoved, and put stays inside this environment's folders. An
-// operation given a signal stops once it aborts, rejecting with its reason.
+// operation given a signal stops once it aborts, rejecting with its reason, but for remove and restore
+// once they have begun moving: those purge the images they moved, each purge within its own time
+// limit, and reject with ImageMoveInterruptedError.
 export interface ImageStore {
 	// Returns null when no image has this pathname. The read and its body stop once the signal aborts.
 	get(pathname: string, signal?: AbortSignal): Promise<StoredImage | null>;

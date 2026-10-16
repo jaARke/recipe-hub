@@ -28,7 +28,8 @@ export async function GET(request: NextRequest, context: RouteContext<'/api/imag
 		return notFoundResponse();
 	}
 
-	const image = await getRecipeImageService().getPublicImage(pathname);
+	// Next aborts the request's signal when the visitor leaves before the response ends.
+	const image = await getRecipeImageService().getPublicImage(pathname, request.signal);
 	if (image === null) {
 		return notFoundResponse();
 	}

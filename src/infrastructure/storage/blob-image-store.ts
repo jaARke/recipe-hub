@@ -9,15 +9,16 @@ import {
 	put as putBlob,
 } from '@vercel/blob';
 import { dangerouslyDeleteBySrcImage, dangerouslyDeleteByTag } from '@vercel/functions';
-import type {
-	FailedImage,
-	ImageMoveOutcome,
-	ImageStore,
-	RemovedImage,
-	StoredImage,
+import {
+	ImageMoveInterruptedError,
+	type FailedImage,
+	type ImageMoveOutcome,
+	type ImageStore,
+	type RemovedImage,
+	type StoredImage,
 } from '@/application/ports/image-store';
 import type { ImageFolders } from '@/application/recipes/image-folders';
-import { deadlineAfter, settleWithin } from '@/lib/deadline';
+import { requestWithin } from '@/lib/deadline';
 import { imageCacheMaxAgeSeconds, imageCacheTag, imageRouteSrc } from '@/lib/image-paths';
 
 // A removed image moves here under its pathname, so each environment's removed images sit in its own
@@ -65,12 +66,6 @@ type Move = {
 	to: string;
 };
 
-// What a move did: the images it moved, or found already gone, and those it left in place.
-type MoveOutcome = {
-	moved: string[];
-	failed: FailedImage[];
-};
-
 // What purging did: the images whose cached copies it purged, and those it could not.
 type PurgeOutcome = {
 	purged: string[];
@@ -86,30 +81,18 @@ function pathnameBeforeTrash(trashedPathname: string): string {
 	return trashedPathname.slice(trashFolder.length);
 }
 
-// Calls Blob or the cache, giving up once the call's time limit passes or the caller's signal aborts,
-// and aborting a Blob request then; a purge takes no signal. Once the caller's signal has aborted, no
-// call starts. A read that answered in time streams its body under the caller's signal alone.
-async function withinTimeLimit<T>(
+// Calls Blob or the cache within the call's time limit and the caller's signal, aborting a Blob request
+// that is given up on; a purge takes no signal.
+function withinTimeLimit<T>(
 	call: StoreCall,
 	request: (abortSignal: AbortSignal) => Promise<T>,
 	cancellation?: AbortSignal
 ): Promise<T> {
-	cancellation?.throwIfAborted();
-	const abandoned = new AbortController();
-	const abortSignal =
-		cancellation === undefined
-			? abandoned.signal
-			: AbortSignal.any([abandoned.signal, cancellation]);
-	try {
-		return await settleWithin(
-			request(abortSignal),
-			{ deadline: deadlineAfter(callTimeLimitMs), cancellation },
-			() => new Error(`${call} timed out after ${callTimeLimitMs / 1000} seconds`)
-		);
-	} catch (error) {
-		abandoned.abort(error);
-		throw error;
-	}
+	return requestWithin(
+		request,
+		{ timeLimitMs: callTimeLimitMs, cancellation },
+		() => new Error(`${call} timed out after ${callTimeLimitMs / 1000} seconds`)
+	);
 }
 
 // The images an error left undone, each with why: the error's name and message, which name a pathname
@@ -232,18 +215,15 @@ export class BlobImageStore implements ImageStore {
 		);
 	}
 
-	// Purged first too, so an image whose purge fails stays in place for the sweep to remove again, and
-	// after the move for anything cached in between; a purge that fails then is reported against the
-	// images it covered, which have moved.
+	// Purged first too, so an image whose purge fails stays in place for the sweep to remove again.
 	async remove(pathnames: readonly string[], signal?: AbortSignal): Promise<ImageMoveOutcome> {
 		this.assertInFolders(pathnames);
 		const before = await purgeCaches(pathnames, signal);
-		const { moved, failed } = await this.move(
+		const { failed, unpurged } = await this.move(
 			before.purged.map((pathname) => ({ pathname, from: pathname, to: trashPathname(pathname) })),
 			signal
 		);
-		const after = await purgeCaches(moved, signal);
-		return { failed: [...before.failed, ...failed], unpurged: after.failed };
+		return { failed: [...before.failed, ...failed], unpurged };
 	}
 
 	async listUploadedBefore(cutoff: Date, signal?: AbortSignal): Promise<string[]> {
@@ -272,12 +252,10 @@ export class BlobImageStore implements ImageStore {
 	// A restored photo may have been asked for while it was removed, so its caches are purged again.
 	async restore(pathnames: readonly string[], signal?: AbortSignal): Promise<ImageMoveOutcome> {
 		this.assertInFolders(pathnames);
-		const { moved, failed } = await this.move(
+		return this.move(
 			pathnames.map((pathname) => ({ pathname, from: trashPathname(pathname), to: pathname })),
 			signal
 		);
-		const after = await purgeCaches(moved, signal);
-		return { failed, unpurged: after.failed };
 	}
 
 	async deleteRemoved(pathnames: readonly string[], signal?: AbortSignal): Promise<void> {
@@ -293,19 +271,32 @@ export class BlobImageStore implements ImageStore {
 
 	// One image at a time, each copied before its own original is deleted, so an image that fails is
 	// left in place, at both pathnames at worst, and the rest still move. A signal that aborts stops
-	// the move rather than failing the image at hand.
-	private async move(moves: readonly Move[], signal?: AbortSignal): Promise<MoveOutcome> {
-		const outcome: MoveOutcome = { moved: [], failed: [] };
+	// the move at the image at hand rather than failing it. What moved is then purged however the move
+	// ended, as a request during the move can cache an image for a year: each purge keeps its own time
+	// limit, no signal stops it, and one that fails is reported against the moved images it covered.
+	private async move(moves: readonly Move[], signal?: AbortSignal): Promise<ImageMoveOutcome> {
+		const moved: string[] = [];
+		const failed: FailedImage[] = [];
+		let stoppedBy: { reason: unknown } | undefined;
 		for (const { pathname, from, to } of moves) {
 			try {
 				await this.copy(from, to, signal);
 				await this.delete([from], signal);
-				outcome.moved.push(pathname);
+				moved.push(pathname);
 			} catch (error) {
-				outcome.failed.push(...failuresOf([pathname], error, signal));
+				if (signal?.aborted) {
+					stoppedBy = { reason: signal.reason };
+					break;
+				}
+				failed.push(...failuresOf([pathname], error));
 			}
 		}
-		return outcome;
+
+		const after = await purgeCaches(moved);
+		if (stoppedBy !== undefined) {
+			throw new ImageMoveInterruptedError(after.failed, { cause: stoppedBy.reason });
+		}
+		return { failed, unpurged: after.failed };
 	}
 
 	// A copy takes neither the cache lifetime nor the content type of its source: the type comes from

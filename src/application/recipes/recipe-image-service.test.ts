@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { SignInRequiredError } from '@/application/authorization';
 import type { Actor } from '@/application/ports/actor-provider';
+import { ImageMoveInterruptedError } from '@/application/ports/image-store';
 import type { TaskScheduler } from '@/application/ports/task-scheduler';
 import { InvalidImageUploadError } from '@/application/recipes/errors';
 import { ImageFolders } from '@/application/recipes/image-folders';
@@ -14,6 +15,7 @@ import { InMemoryProductionImages } from '@/application/testing/in-memory-produc
 import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
 import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
+import { stalledCall } from '@/application/testing/stalled-call';
 import { recipeContentSchema, recipeIdSchema } from '@/domain/recipe/recipe';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import { sampleChickenSoup } from '@/domain/recipe/samples/sample-recipes';
@@ -329,6 +331,19 @@ describe('getPublicImage', () => {
 		expect(consoleWarn).toHaveBeenCalledOnce();
 	});
 
+	it.each([dishPhoto, scan])(
+		'reads %s no further once the signal has aborted',
+		async (pathname) => {
+			const { images, productionImages } = await imagesWithSoup();
+			const { service } = serviceFor(images, anonymousActor(), productionImages);
+
+			await expect(
+				service.getPublicImage(pathname, AbortSignal.abort(new Error('The visitor left')))
+			).rejects.toThrow('The visitor left');
+			expect(productionImages.requestedPathnames).toEqual([]);
+		}
+	);
+
 	it.each([
 		'dish/seed/biscuits.jpg',
 		'scan/development/biscuit-card.jpg',
@@ -548,7 +563,7 @@ describe('sweepImages', () => {
 		drafts.backdate(savedDraftId, pastLifetime(settings.drafts.savedDraftLifetimeDays));
 
 		expect(await service.sweepImages()).toEqual(sweptCounts({ removedCount: 2 }));
-		expect(images.removedPathnames).toEqual([saved, unused]);
+		expect(new Set(images.removedPathnames)).toEqual(new Set([saved, unused]));
 	});
 
 	it('brings back removed images that a recipe or draft names again, as after a database restore', async () => {
@@ -694,7 +709,69 @@ describe('sweepImages', () => {
 		await expect(sweep).rejects.toThrow('The image move timed out after 60 seconds');
 		expect(removes.mock.lastCall?.[1]?.aborted).toBe(true);
 		expect(lock.isHeld).toBe(false);
-		expect(consoleWarn).not.toHaveBeenCalled();
+		expect(logLines(consoleWarn)).toEqual([
+			expect.objectContaining({
+				message: 'Image sweep step failed',
+				step: 'remove',
+				err: expect.objectContaining({ message: 'The image move timed out after 60 seconds' }),
+			}),
+		]);
+	});
+
+	it('names the uploads it moved but could not purge when the deadline stopped the move', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		const { images, service, unused } = await createSweep();
+		// As the Blob adapter's move rejects once it has purged what it moved before the deadline.
+		vi.spyOn(images, 'remove').mockImplementationOnce(async (_pathnames, signal) => {
+			const reason = await stalledCall(signal).catch((error: unknown) => error);
+			throw new ImageMoveInterruptedError([{ pathname: unused, reason: unpurgeableReason }], {
+				cause: reason,
+			});
+		});
+
+		const sweep = service.sweepImages();
+		sweep.catch(() => undefined);
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		await expect(sweep).rejects.toThrow('The image move timed out after 60 seconds');
+		expect(logLines(consoleWarn)).toEqual([
+			expect.objectContaining({
+				message: 'Image sweep step failed',
+				step: 'remove',
+				pathnames: [unused],
+				unpurgedImages: [{ step: 'remove', pathname: unused, reason: unpurgeableReason }],
+			}),
+		]);
+	});
+
+	it('moves the uploads behind ones whose moves stall at a later sweep, taking them in a fresh order', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		const { images, service } = await createSweep();
+		// Listed after the stalling uploads, which the store lists in the order they were stored.
+		const healthy = 'dish/development/healthy.jpg';
+		for (const pathname of [
+			'dish/development/stalling-1.jpg',
+			'dish/development/stalling-2.jpg',
+			'dish/development/stalling-3.jpg',
+			healthy,
+		]) {
+			await images.put(pathname, jpeg, 'image/jpeg');
+			images.backdateUpload(pathname, pastLifetime(settings.retention.unusedImageLifetimeDays));
+			if (pathname !== healthy) {
+				images.stallMovesOf(pathname);
+			}
+		}
+
+		// A sweep reaches the healthy upload when it comes before all three, a chance of 1 in 4, so it
+		// stays behind them through 100 sweeps by a chance of about 3 in 10^13.
+		for (let sweeps = 0; sweeps < 100 && !(await images.hasRemoved(healthy)); sweeps += 1) {
+			const sweep = service.sweepImages();
+			sweep.catch(() => undefined);
+			await vi.advanceTimersByTimeAsync(60_000);
+			await expect(sweep).rejects.toThrow('The image move timed out after 60 seconds');
+		}
+
+		expect(await images.hasRemoved(healthy)).toBe(true);
 	});
 
 	it('logs a step that fails and carries on with the others, leaving it for the next sweep', async () => {
@@ -943,6 +1020,38 @@ describe('scheduleSweep with the images an edit or delete let go', () => {
 			unpurgedImages: [{ pathname: cached, reason: unpurgeableReason }],
 		});
 		expect(consoleWarn).not.toHaveBeenCalled();
+	});
+
+	it('names those it moved but could not purge when the deadline stopped the move', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		const { images, service, tasks } = await createRemoval();
+		const stalling = 'dish/development/stalling.jpg';
+		await images.put(stalling, jpeg, 'image/jpeg');
+		images.failPurgesOf(released);
+		images.stallMovesOf(stalling);
+
+		service.scheduleSweep({
+			recipeId,
+			images: [releasedImage, { role: 'dish', pathname: stalling, size: photoSize }],
+		});
+		const running = tasks[0]?.();
+		await vi.advanceTimersByTimeAsync(60_000);
+		await running;
+
+		expect(await images.hasRemoved(released)).toBe(true);
+		expect(await images.has(stalling)).toBe(true);
+		expect(logLines(consoleWarn)).toEqual([
+			expect.objectContaining({
+				message: 'Recipe images could not be removed',
+				recipeId,
+				pathnames: [released, stalling],
+				unpurgedImages: [{ pathname: released, reason: unpurgeableReason }],
+				err: expect.objectContaining({
+					message: 'The image move timed out after 60 seconds',
+					cause: expect.objectContaining({ name: 'ImageMoveInterruptedError' }),
+				}),
+			}),
+		]);
 	});
 
 	it('leaves them for a later sweep and logs a warning when the lock stays held past its wait', async () => {

@@ -1,9 +1,10 @@
-import type {
-	FailedImage,
-	ImageMoveOutcome,
-	ImageStore,
-	RemovedImage,
-	StoredImage,
+import {
+	ImageMoveInterruptedError,
+	type FailedImage,
+	type ImageMoveOutcome,
+	type ImageStore,
+	type RemovedImage,
+	type StoredImage,
 } from '@/application/ports/image-store';
 import type { ImageFolders } from '@/application/recipes/image-folders';
 import { stalledCall } from '@/application/testing/stalled-call';
@@ -29,14 +30,15 @@ const unpurgeableReason = 'Error: The cache purge failed';
 // An environment's store, which may also hold images outside the folders it works in, as the preview
 // store holds every preview's. It records whether it was read, so tests can prove that refused
 // pathnames never reach the store, and
-// what it removed. A test can make removing fail, one image's moves or purges fail, or reading or
-// moving stall, as an unreachable store would.
+// what it removed. A test can make removing fail, one image's moves fail or stall or its purges fail,
+// or reading or moving stall, as an unreachable store would.
 export class InMemoryImageStore implements ImageStore {
 	private readonly images = new Map<string, InMemoryImage>();
 	private readonly removed = new Map<string, RemovedInMemoryImage>();
 	private readonly removedHistory: string[] = [];
 	private readonly unmovable = new Set<string>();
 	private readonly unpurgeable = new Set<string>();
+	private readonly stalling = new Set<string>();
 	private readonly folders: ImageFolders;
 	private read = false;
 	private removesFail = false;
@@ -70,6 +72,12 @@ export class InMemoryImageStore implements ImageStore {
 	// does, while the image stays moved.
 	failPurgesOf(pathname: string): void {
 		this.unpurgeable.add(pathname);
+	}
+
+	// Moving this image aside or back then never answers, as a copy Blob never answers does, and stops
+	// the move once its signal aborts, after the images before it have moved.
+	stallMovesOf(pathname: string): void {
+		this.stalling.add(pathname);
 	}
 
 	// Reads then never answer, and stop only when their signal aborts.
@@ -153,21 +161,14 @@ export class InMemoryImageStore implements ImageStore {
 			throw new Error('The image store could not be reached');
 		}
 
-		const failed: FailedImage[] = [];
-		for (const pathname of pathnames) {
-			this.removedHistory.push(pathname);
-			if (this.unmovable.has(pathname)) {
-				failed.push({ pathname, reason: unmovableReason });
-				continue;
-			}
-
+		this.removedHistory.push(...pathnames);
+		return this.move(pathnames, signal, (pathname) => {
 			const image = this.images.get(pathname);
 			if (image !== undefined) {
 				this.images.delete(pathname);
 				this.removed.set(pathname, { image, removedAt: new Date() });
 			}
-		}
-		return { failed, unpurged: this.unpurgedOf(pathnames) };
+		});
 	}
 
 	async listUploadedBefore(cutoff: Date, signal?: AbortSignal): Promise<string[]> {
@@ -196,20 +197,13 @@ export class InMemoryImageStore implements ImageStore {
 		}
 		signal?.throwIfAborted();
 
-		const failed: FailedImage[] = [];
-		for (const pathname of pathnames) {
-			if (this.unmovable.has(pathname)) {
-				failed.push({ pathname, reason: unmovableReason });
-				continue;
-			}
-
+		return this.move(pathnames, signal, (pathname) => {
 			const removed = this.removed.get(pathname);
 			if (removed !== undefined) {
 				this.removed.delete(pathname);
 				this.images.set(pathname, { ...removed.image, uploadedAt: new Date() });
 			}
-		}
-		return { failed, unpurged: this.unpurgedOf(pathnames) };
+		});
 	}
 
 	async deleteRemoved(pathnames: readonly string[], signal?: AbortSignal): Promise<void> {
@@ -220,10 +214,36 @@ export class InMemoryImageStore implements ImageStore {
 		}
 	}
 
+	// One image at a time, as the Blob adapter moves them. An image a test made stall stops the move
+	// once the signal aborts, and the images moved before it are purged all the same, as Blob's are.
+	private async move(
+		pathnames: readonly string[],
+		signal: AbortSignal | undefined,
+		moveOne: (pathname: string) => void
+	): Promise<ImageMoveOutcome> {
+		const moved: string[] = [];
+		const failed: FailedImage[] = [];
+		for (const pathname of pathnames) {
+			if (this.stalling.has(pathname)) {
+				const reason = await stalledCall(signal).catch((error: unknown) => error);
+				throw new ImageMoveInterruptedError(this.unpurgedOf(moved), { cause: reason });
+			}
+
+			if (this.unmovable.has(pathname)) {
+				failed.push({ pathname, reason: unmovableReason });
+				continue;
+			}
+
+			moveOne(pathname);
+			moved.push(pathname);
+		}
+		return { failed, unpurged: this.unpurgedOf(moved) };
+	}
+
 	// The moved images whose caches a test made unpurgeable.
-	private unpurgedOf(pathnames: readonly string[]): FailedImage[] {
-		return pathnames
-			.filter((pathname) => this.unpurgeable.has(pathname) && !this.unmovable.has(pathname))
+	private unpurgedOf(moved: readonly string[]): FailedImage[] {
+		return moved
+			.filter((pathname) => this.unpurgeable.has(pathname))
 			.map((pathname) => ({ pathname, reason: unpurgeableReason }));
 	}
 

@@ -1,7 +1,7 @@
 import 'server-only';
 import type { StoredImage } from '@/application/ports/image-store';
 import type { ProductionImages } from '@/application/ports/production-images';
-import { deadlineAfter, settleWithin } from '@/lib/deadline';
+import { requestWithin } from '@/lib/deadline';
 import { imageRouteSrc } from '@/lib/image-paths';
 
 // Longer than the 15 seconds production's route gives a Blob read, so a slow read fails there first,
@@ -49,25 +49,14 @@ export class HttpProductionImages implements ProductionImages {
 		return { body: response.body, contentType, etag };
 	}
 
-	// Gives up once the time limit passes or the caller's signal aborts, aborting the request then, and
-	// refuses a redirect, which production's route never answers with. A response that came in time
-	// streams its body under the caller's signal alone.
-	private async request(pathname: string, cancellation?: AbortSignal): Promise<Response> {
-		cancellation?.throwIfAborted();
-		const abandoned = new AbortController();
-		const signal =
-			cancellation === undefined
-				? abandoned.signal
-				: AbortSignal.any([abandoned.signal, cancellation]);
-		try {
-			return await settleWithin(
+	// Within the time limit and the caller's signal, aborting a request that is given up on, and refusing
+	// a redirect, which production's route never answers with.
+	private request(pathname: string, cancellation?: AbortSignal): Promise<Response> {
+		return requestWithin(
+			(signal) =>
 				fetch(new URL(imageRouteSrc(pathname), this.siteUrl), { redirect: 'error', signal }),
-				{ deadline: deadlineAfter(fetchTimeLimitMs), cancellation },
-				() => routeFailed(`timed out after ${fetchTimeLimitMs / 1000} seconds`)
-			);
-		} catch (error) {
-			abandoned.abort(error);
-			throw error;
-		}
+			{ timeLimitMs: fetchTimeLimitMs, cancellation },
+			() => routeFailed(`timed out after ${fetchTimeLimitMs / 1000} seconds`)
+		);
 	}
 }
