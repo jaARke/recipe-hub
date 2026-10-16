@@ -1,6 +1,7 @@
 import 'server-only';
 import { and, arrayOverlaps, desc, eq, gte, lt, ne, sql } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
+import { SavedDraftEditConflictError } from '@/application/drafts/errors';
 import type { SavedDraftId } from '@/application/drafts/saved-draft';
 import type {
 	NewSavedDraft,
@@ -8,6 +9,7 @@ import type {
 	SavedDraftContents,
 	SavedDraftRepository,
 	SavedDraftSummary,
+	SavedDraftUpdate,
 } from '@/application/ports/saved-draft-repository';
 import type { MemberId } from '@/domain/member/member';
 import type { RecipeImportId } from '@/domain/recipe/recipe-import';
@@ -27,6 +29,16 @@ function contentColumns({ title, values, imagePathnames }: SavedDraftContents) {
 	return { title: title ?? null, values, imagePathnames: [...imagePathnames] };
 }
 
+// Each save moves updatedAt by a millisecond at least, so it versions the draft at a Date's precision.
+const savedNow = sql`greatest(now(), ${recipeDrafts.updatedAt} + interval '1 millisecond')`;
+
+// Whether the draft was last saved at the version a save started from. Postgres keeps microseconds
+// and a Date milliseconds, cut off rather than rounded as the driver reads it, so the stored time is
+// cut to milliseconds before it is compared.
+function savedAtVersion(expectedUpdatedAt: Date) {
+	return sql`date_trunc('milliseconds', ${recipeDrafts.updatedAt}) = ${expectedUpdatedAt.toISOString()}::timestamptz`;
+}
+
 export class DrizzleSavedDraftRepository implements SavedDraftRepository {
 	private readonly db: PgDatabase<PgQueryResultHKT>;
 
@@ -34,8 +46,8 @@ export class DrizzleSavedDraftRepository implements SavedDraftRepository {
 		this.db = db;
 	}
 
-	// The import's unique key makes a second draft for it replace the first in the same statement, so
-	// two saves at once leave one draft.
+	// The import's unique key keeps a second draft for it out in the same statement, so of two saves at
+	// once only one is stored.
 	async create({
 		memberId,
 		importId,
@@ -50,28 +62,34 @@ export class DrizzleSavedDraftRepository implements SavedDraftRepository {
 				provenance: provenance ?? null,
 				...contentColumns(contents),
 			})
-			.onConflictDoUpdate({
-				target: recipeDrafts.importId,
-				set: {
-					provenance: sql`excluded.provenance`,
-					title: sql`excluded.title`,
-					values: sql`excluded.values`,
-					imagePathnames: sql`excluded.image_pathnames`,
-					updatedAt: sql`now()`,
-				},
-				setWhere: sql`${recipeDrafts.memberId} = excluded.member_id`,
-			})
+			.onConflictDoNothing({ target: recipeDrafts.importId })
 			.returning(savedDraftColumns);
 		return row === undefined ? null : toSavedDraft(row);
 	}
 
-	async update(id: SavedDraftId, contents: SavedDraftContents): Promise<SavedDraft | null> {
+	// The version is checked in the update's own condition, so a save made since is never replaced.
+	async update(
+		id: SavedDraftId,
+		{ expectedUpdatedAt, ...contents }: SavedDraftUpdate
+	): Promise<SavedDraft | null> {
 		const [row] = await this.db
 			.update(recipeDrafts)
-			.set({ ...contentColumns(contents), updatedAt: sql`now()` })
-			.where(eq(recipeDrafts.id, id))
+			.set({ ...contentColumns(contents), updatedAt: savedNow })
+			.where(and(eq(recipeDrafts.id, id), savedAtVersion(expectedUpdatedAt)))
 			.returning(savedDraftColumns);
-		return row === undefined ? null : toSavedDraft(row);
+		if (row !== undefined) {
+			return toSavedDraft(row);
+		}
+
+		// Nothing was updated: the draft was saved since, or there is none.
+		const [current] = await this.db
+			.select({ id: recipeDrafts.id })
+			.from(recipeDrafts)
+			.where(eq(recipeDrafts.id, id));
+		if (current !== undefined) {
+			throw new SavedDraftEditConflictError();
+		}
+		return null;
 	}
 
 	async findById(id: SavedDraftId): Promise<SavedDraft | null> {

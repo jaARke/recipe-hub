@@ -4,6 +4,7 @@ import { FilePenLineIcon } from 'lucide-react';
 import Link from 'next/link';
 import type { DraftSummaryDto } from '@/application/drafts/saved-draft-dtos';
 import type { FormAction } from '@/components/forms/form-state';
+import type { HeldDraft } from '@/components/recipe-form/held-draft';
 import type { RecipeFormEntrySubject } from '@/components/recipe-form/recipe-form-autosave';
 import { DraftMenu } from '@/components/recipe-form/subject-menus';
 import { savedDraftPath } from '@/components/recipe-import/recipe-entry-paths';
@@ -28,6 +29,35 @@ const importModeLabels = {
 
 const untitled = 'Untitled recipe';
 
+// A draft as the list shows it: as the service listed it, or as the page's form saved it since, by
+// the id the form holds.
+export type ListedDraft =
+	DraftSummaryDto | (Omit<Extract<DraftSummaryDto, { kind: 'saved' }>, 'id'> & { id: string });
+
+// The drafts as the page listed them, with the draft its form holds as it last saved it there, which
+// the list was rendered without: in its place when listed, keeping where it came from, or else
+// first, as the newest.
+export function withHeldDraft(
+	drafts: readonly ListedDraft[],
+	held: HeldDraft | undefined
+): readonly ListedDraft[] {
+	if (held?.saved === undefined) {
+		return drafts;
+	}
+	const index = drafts.findIndex(({ kind, id }) => kind === 'saved' && id === held.id);
+	const listed = drafts[index]?.kind === 'saved' ? drafts[index] : undefined;
+	const saved: ListedDraft = {
+		kind: 'saved',
+		id: held.id,
+		...(listed?.continuesImportId !== undefined && { continuesImportId: listed.continuesImportId }),
+		...(listed?.mode !== undefined && { mode: listed.mode }),
+		...(held.title !== undefined && { title: held.title }),
+		savedAt: held.saved.savedAt,
+		expiresAt: held.saved.expiresAt,
+	};
+	return listed === undefined ? [saved, ...drafts] : drafts.with(index, saved);
+}
+
 function DraftsEmptyState() {
 	return (
 		<Empty className="border">
@@ -48,7 +78,7 @@ function DraftsEmptyState() {
 
 // Where the draft opens: an import's review, which opens the draft that continues it, or the add
 // page's form.
-function draftPath(draft: DraftSummaryDto): string {
+function draftPath(draft: ListedDraft): string {
 	if (draft.kind === 'import') {
 		return recipeImportPath(draft.id);
 	}
@@ -58,7 +88,7 @@ function draftPath(draft: DraftSummaryDto): string {
 }
 
 // The form whose unsaved changes in this browser go with the draft.
-function draftFormSubject(draft: DraftSummaryDto): RecipeFormEntrySubject {
+function draftFormSubject(draft: ListedDraft): RecipeFormEntrySubject {
 	if (draft.kind === 'import') {
 		return { kind: 'import', importId: draft.id };
 	}
@@ -68,7 +98,7 @@ function draftFormSubject(draft: DraftSummaryDto): RecipeFormEntrySubject {
 }
 
 type DraftListProps = {
-	drafts: readonly DraftSummaryDto[];
+	drafts: readonly ListedDraft[];
 	// When the page rendered, which each draft's age counts back from.
 	now: Date;
 	// The member signed in, whose unsaved changes to a deleted draft go with it.
@@ -76,7 +106,7 @@ type DraftListProps = {
 	deleteDraft: FormAction;
 };
 
-// The member's drafts, as the service lists them, each a link to where it continues, named by its
+// The member's drafts, as the page lists them, each a link to where it continues, named by its
 // title and described by when it was saved and when it goes, with a menu holding Delete draft
 // beside it. The Drafts tab names the list, so it has no heading of its own. Deleting one refreshes
 // the page, which drops its row.

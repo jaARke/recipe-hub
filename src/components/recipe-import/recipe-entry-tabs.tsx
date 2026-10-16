@@ -1,10 +1,13 @@
+'use client';
+
 import type * as React from 'react';
 import type { DraftSummaryDto } from '@/application/drafts/saved-draft-dtos';
 import type { FormAction } from '@/components/forms/form-state';
 import { CountBadge } from '@/components/layout/count-badge';
 import { readingPartWidthClassName } from '@/components/layout/page-container';
+import { useHeldDraft } from '@/components/recipe-form/held-draft';
 import { RecipeFormSkeleton } from '@/components/recipe-form/recipe-form';
-import { DraftList } from '@/components/recipe-import/draft-list';
+import { DraftList, withHeldDraft } from '@/components/recipe-import/draft-list';
 import type { RecipeEntryTab } from '@/components/recipe-import/recipe-entry-paths';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -33,7 +36,8 @@ type RecipeEntryTabsProps = {
 	forms: Record<EntryMode, React.ReactNode>;
 	// The tab it opens on, which the page's URL names.
 	defaultTab: RecipeEntryTab;
-	// The member's drafts, which the Drafts tab lists.
+	// The member's drafts as the page rendered, which the Drafts tab lists with the draft the manual
+	// form saved since.
 	drafts: readonly DraftSummaryDto[];
 	// When the page rendered, which each draft's age counts back from.
 	now: Date;
@@ -44,7 +48,8 @@ type RecipeEntryTabsProps = {
 
 // The three ways to add a recipe, one tab each, then the member's drafts, whose tab always shows so
 // the row never shifts. Hidden tabs stay mounted, so switching keeps what was typed and lets uploads
-// finish. A panel that opens with a field or a link takes no tab stop of its own.
+// finish. A panel that opens with a field or a link takes no tab stop of its own. A draft the form
+// saves shows in Drafts at once, without a reload that would start the form over.
 function RecipeEntryTabs({
 	forms,
 	defaultTab,
@@ -53,7 +58,8 @@ function RecipeEntryTabs({
 	memberId,
 	deleteDraft,
 }: RecipeEntryTabsProps) {
-	const draftCount = drafts.length;
+	const listed = withHeldDraft(drafts, useHeldDraft());
+	const draftCount = listed.length;
 
 	return (
 		<Tabs defaultValue={defaultTab} className="gap-8">
@@ -85,7 +91,7 @@ function RecipeEntryTabs({
 				tabIndex={draftCount > 0 ? -1 : undefined}
 				className={readingPartWidthClassName}
 			>
-				<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={deleteDraft} />
+				<DraftList drafts={listed} now={now} memberId={memberId} deleteDraft={deleteDraft} />
 			</TabsContent>
 		</Tabs>
 	);

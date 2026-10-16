@@ -13,8 +13,13 @@ import {
 	type RecipeFormValues,
 	type RecipeYieldKind,
 } from '@/components/recipe-form/recipe-form-values';
+import type { Problem } from '@/domain/problem';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
-import { storedImageSizeSchema, type ImageSize } from '@/domain/recipe/recipe-image';
+import {
+	imageSizeSchema,
+	storedImageSizeSchema,
+	type ImageSize,
+} from '@/domain/recipe/recipe-image';
 
 // The recipe form's values as they are kept outside the page: in this browser as the member edits,
 // and on the server as a draft they save. It holds what the member typed and chose and each review
@@ -73,7 +78,8 @@ const photoSchema = z.object({
 	alt: z.string(),
 	// Absent for a photo that was never stored: one that failed, or one still on its way.
 	pathname: z.string().optional(),
-	// A stored photo's size, absent from one kept before sizes were recorded.
+	// A stored photo's size, absent from one kept before sizes were recorded. Read whatever it is, as a
+	// recipe's is, and checked when a draft is written.
 	size: storedImageSizeSchema.optional(),
 });
 
@@ -162,7 +168,8 @@ export function savedDraftSnapshot(values: RecipeFormValues): RecipeFormSnapshot
 }
 
 // A posted draft's snapshot, for the Server Action that receives it. Throws InvalidRecipeError when
-// it can't be read.
+// it can't be read, or when a photo's size is one a recipe may not be written with, at the photo
+// where the size came from.
 export function recipeFormSnapshotFromForm(json: string): RecipeFormSnapshot {
 	let data: unknown;
 	try {
@@ -174,7 +181,34 @@ export function recipeFormSnapshotFromForm(json: string): RecipeFormSnapshot {
 	if (!result.success) {
 		throw new InvalidRecipeError([unreadableSnapshotProblem]);
 	}
+	const problems = unwritableSizeProblems(result.data);
+	if (problems.length > 0) {
+		throw new InvalidRecipeError(problems);
+	}
 	return result.data;
+}
+
+// A draft may hold a photo without its size, as one kept before sizes were recorded, which saving
+// the recipe asks for; a size it has is bounded as a recipe's. Each problem is at
+// images.<index>.size, counting the stored photos as recipeFormSnapshotImages lists them; a photo
+// never stored names no image, so its size makes the snapshot one the form never sends.
+function unwritableSizeProblems({ photos }: RecipeFormSnapshot): Problem[] {
+	const problems: Problem[] = [];
+	let index = 0;
+	for (const { pathname, size } of [...photos.dish, ...photos.scan]) {
+		const issue = size === undefined ? undefined : imageSizeSchema.safeParse(size).error?.issues[0];
+		if (issue !== undefined) {
+			problems.push(
+				pathname === undefined
+					? unreadableSnapshotProblem
+					: { path: `images.${index}.size`, message: issue.message }
+			);
+		}
+		if (pathname !== undefined) {
+			index += 1;
+		}
+	}
+	return problems;
 }
 
 // The snapshot a draft keeps, or undefined where it can't be read, as after a change to what the form

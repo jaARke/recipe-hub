@@ -375,6 +375,57 @@ describe('reading a snapshot', () => {
 		);
 	});
 
+	it('refuses a posted draft’s photo too large to write, at the photo, though it reads from a kept one', () => {
+		const tooLarge = { width: 100000, height: 100000 };
+		const posted: RecipeFormSnapshot = {
+			...keptEdit,
+			photos: {
+				// The unsized bars photo, the slice, the swept upload, and one never stored, then a scan.
+				dish: [
+					...keptEdit.photos.dish.slice(0, 2),
+					{ ...keptEdit.photos.dish[2]!, size: tooLarge },
+					keptEdit.photos.dish[3]!,
+				],
+				scan: [{ id: 6, alt: '', pathname: 'scan/development/card.jpg', size: tooLarge }],
+			},
+		};
+
+		expect(readRecipeFormSnapshot(posted)).toEqual(posted);
+		expect(() => recipeFormSnapshotFromForm(JSON.stringify(posted))).toThrow(
+			expect.objectContaining({
+				code: 'recipe.invalid',
+				problems: [
+					{
+						path: 'images.2.size',
+						message: 'This photo is too large. Remove it and add it again.',
+					},
+					{
+						path: 'images.3.size',
+						message: 'This photo is too large. Remove it and add it again.',
+					},
+				],
+			})
+		);
+	});
+
+	it('refuses a posted draft giving a size to a photo never stored, which names no image', () => {
+		const posted: RecipeFormSnapshot = {
+			...keptEdit,
+			photos: {
+				dish: [{ id: 2, alt: '', size: { width: 100000, height: 100000 } }],
+				scan: [],
+			},
+		};
+
+		expect(() => recipeFormSnapshotFromForm(JSON.stringify(posted))).toThrow(
+			expect.objectContaining({
+				problems: [
+					{ path: '', message: 'We couldn’t read the draft. Reload the page and try again.' },
+				],
+			})
+		);
+	});
+
 	it('refuses a posted form that isn’t JSON', () => {
 		expect(() => recipeFormSnapshotFromForm('{"text":')).toThrow(
 			expect.objectContaining({ code: 'recipe.invalid' })

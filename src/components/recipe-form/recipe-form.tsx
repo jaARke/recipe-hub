@@ -175,7 +175,8 @@ const photoFieldLegends = {
 	scan: 'Original recipe',
 } as const satisfies Record<RecipeImageRole, string>;
 
-// A draft the member saved, which the form opened or saved.
+// A draft the member saved, which the form opened or saved, with when it was last saved, which is the
+// version of it the form has.
 export type OpenedDraft = {
 	id: string;
 	savedAt: Date;
@@ -282,7 +283,7 @@ function RecipeForm({
 		() => showSameRecipeForm(recipeFormSnapshot(values), recipeFormSnapshot(baseline)),
 		[values, baseline]
 	);
-	const subject = recipeFormSubject({ editing, importId, draftId: savedDraft?.id });
+	const subject = recipeFormSubject({ editing, importId, draft: savedDraft });
 	// Announced as "Looks right" clears a note and as unsaved changes come back or go, and never as a
 	// draft loads.
 	const [announcement, announce] = useLiveAnnouncement();
@@ -554,6 +555,7 @@ function RecipeForm({
 		formData.set(recipeFormFieldNames.draft, JSON.stringify(snapshot));
 		if (savedDraft !== undefined) {
 			formData.set(recipeFormFieldNames.draftId, savedDraft.id);
+			formData.set(recipeFormFieldNames.draftVersion, savedDraft.savedAt.toISOString());
 		}
 		if (importId !== undefined) {
 			formData.set(recipeFormFieldNames.importId, importId);
@@ -569,7 +571,11 @@ function RecipeForm({
 			if (result.status === 'success') {
 				const saved = { id: result.draftId, savedAt: result.savedAt };
 				setSavedDraft(saved);
-				holdDraft?.({ id: saved.id, title: recipeFormSnapshotTitle(snapshot) });
+				holdDraft?.({
+					id: saved.id,
+					title: recipeFormSnapshotTitle(snapshot),
+					saved: { savedAt: result.savedAt, expiresAt: result.expiresAt },
+				});
 				setBaseline(restoredRecipeForm(snapshot, initial));
 				setDraftStatus({ kind: 'saved', savedAt: saved.savedAt });
 				if (drafts.inUrl && saved.id !== savedDraft?.id) {

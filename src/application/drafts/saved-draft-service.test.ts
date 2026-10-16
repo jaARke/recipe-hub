@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { SignInRequiredError } from '@/application/authorization';
+import { SavedDraftEditConflictError } from '@/application/drafts/errors';
 import type { SavedDraftId } from '@/application/drafts/saved-draft';
+import type { SavedDraftRef } from '@/application/drafts/saved-draft-dtos';
 import { SavedDraftService, type SaveDraftInput } from '@/application/drafts/saved-draft-service';
 import { ImportUnavailableError } from '@/application/ingestion/errors';
 import type { Actor, MemberActor } from '@/application/ports/actor-provider';
@@ -48,6 +50,11 @@ const lemonBars: SaveDraftInput = {
 const theirDraft: SaveDraftInput = { ...lemonBars, imagePathnames: [] };
 
 const lifetime = settings.drafts.savedDraftLifetimeDays;
+
+// What a form that opened or saved the draft sends to save over it: its id and its version.
+function over({ id, savedAt }: SavedDraftRef): Pick<SaveDraftInput, 'draftId' | 'draftVersion'> {
+	return { draftId: id, draftVersion: savedAt.toISOString() };
+}
 
 function daysAgo(days: number): Date {
 	return new Date(Date.now() - daysInMilliseconds(days));
@@ -145,6 +152,9 @@ describe('saveDraft', () => {
 
 		const saved = await service.saveDraft(lemonBars);
 
+		expect(saved.expiresAt).toEqual(
+			new Date(saved.savedAt.getTime() + daysInMilliseconds(lifetime))
+		);
 		expect(await service.getDraft(saved.id)).toEqual({
 			id: saved.id,
 			values: lemonBars.values,
@@ -162,12 +172,13 @@ describe('saveDraft', () => {
 		const first = await service.saveDraft(lemonBars);
 
 		const second = await service.saveDraft({
-			draftId: first.id,
+			...over(first),
 			values: { text: { title: '' } },
 			imagePathnames: [],
 		});
 
 		expect(second.id).toBe(first.id);
+		expect(second.savedAt.getTime()).toBeGreaterThan(first.savedAt.getTime());
 		expect(await drafts.findById(first.id)).toMatchObject({
 			values: { text: { title: '' } },
 			imagePathnames: [],
@@ -204,6 +215,81 @@ describe('saveDraft', () => {
 		expect(saved.id).not.toBe(expired.id);
 	});
 
+	it('refuses to save over a draft another page saved since, which stays as that page saved it', async () => {
+		const { drafts, serviceFor } = await createDrafts();
+		const service = serviceFor(memberActor());
+		const opened = await service.saveDraft(lemonBars);
+		const elsewhere = await service.saveDraft({
+			...over(opened),
+			values: { text: { title: 'Lemon squares' } },
+			title: 'Lemon squares',
+			imagePathnames: [slicePhoto],
+		});
+
+		await expect(
+			service.saveDraft({ ...over(opened), values: {}, imagePathnames: [] })
+		).rejects.toThrow(SavedDraftEditConflictError);
+		expect(await drafts.findById(opened.id)).toMatchObject({
+			title: 'Lemon squares',
+			imagePathnames: [slicePhoto],
+			updatedAt: elsewhere.savedAt,
+		});
+		expect(logLines(consoleWarn)).toEqual([
+			expect.objectContaining({ message: 'Draft save refused as stale', draftId: opened.id }),
+		]);
+	});
+
+	it.each([
+		['no version', undefined],
+		['a malformed version', 'yesterday'],
+	])('refuses to save over a draft naming %s', async (_name, draftVersion) => {
+		const { drafts, serviceFor } = await createDrafts();
+		const service = serviceFor(memberActor());
+		const opened = await service.saveDraft(lemonBars);
+
+		await expect(
+			service.saveDraft({ draftId: opened.id, draftVersion, values: {}, imagePathnames: [] })
+		).rejects.toThrow(SavedDraftEditConflictError);
+		expect(await drafts.findById(opened.id)).toMatchObject({ title: 'Lemon bars' });
+	});
+
+	it("refuses an import's review saved first where another page has since saved a draft of it", async () => {
+		const member = memberActor();
+		const { drafts, serviceFor, importDraft } = await createDrafts();
+		const service = serviceFor(member);
+		const importId = await importDraft(member);
+		const elsewhere = await service.saveDraft({ ...lemonBars, importId });
+
+		await expect(
+			service.saveDraft({ ...lemonBars, importId, title: 'Lemon squares' })
+		).rejects.toThrow(SavedDraftEditConflictError);
+		expect(await drafts.findByImportId(importId)).toMatchObject({
+			id: elsewhere.id,
+			title: 'Lemon bars',
+		});
+		expect(logLines(consoleWarn)).toEqual([
+			expect.objectContaining({ message: 'Draft save refused as stale', importId }),
+		]);
+	});
+
+	it("refuses the second of two first saves of an import's review made at once", async () => {
+		const member = memberActor();
+		const { drafts, serviceFor, importDraft } = await createDrafts();
+		const service = serviceFor(member);
+		const importId = await importDraft(member);
+
+		const both = await Promise.allSettled([
+			service.saveDraft({ ...lemonBars, importId }),
+			service.saveDraft({ ...lemonBars, importId, title: 'Lemon squares' }),
+		]);
+
+		expect(both).toEqual([
+			{ status: 'fulfilled', value: expect.objectContaining({ id: expect.any(String) }) },
+			{ status: 'rejected', reason: expect.any(SavedDraftEditConflictError) },
+		]);
+		expect(await drafts.findByImportId(importId)).toMatchObject({ title: 'Lemon bars' });
+	});
+
 	it("keeps one draft for an import's review, which the next save replaces", async () => {
 		const member = memberActor();
 		const { serviceFor, importDraft } = await createDrafts();
@@ -211,7 +297,12 @@ describe('saveDraft', () => {
 		const importId = await importDraft(member);
 
 		const first = await service.saveDraft({ ...lemonBars, importId });
-		const second = await service.saveDraft({ ...lemonBars, importId, title: 'Lemon squares' });
+		const second = await service.saveDraft({
+			...lemonBars,
+			...over(first),
+			importId,
+			title: 'Lemon squares',
+		});
 
 		expect(second.id).toBe(first.id);
 		expect(await service.getImportDraft(importId)).toMatchObject({
@@ -318,7 +409,12 @@ describe('saveDraft', () => {
 		const importId = await importDraft(member, 'photo');
 		const saved = await service.saveDraft({ ...lemonBars, importId, imagePathnames: [cardScan] });
 
-		await service.saveDraft({ ...lemonBars, importId, imagePathnames: [cardScan, slicePhoto] });
+		await service.saveDraft({
+			...lemonBars,
+			...over(saved),
+			importId,
+			imagePathnames: [cardScan, slicePhoto],
+		});
 
 		expect((await drafts.findById(saved.id))?.imagePathnames).toEqual([cardScan, slicePhoto]);
 	});
@@ -366,7 +462,7 @@ describe('getDraft', () => {
 		await expireImport(importId);
 
 		// Saved again where it now opens, the add page, which names the draft and no import.
-		const resaved = await service.saveDraft({ ...lemonBars, draftId: saved.id });
+		const resaved = await service.saveDraft({ ...lemonBars, ...over(saved) });
 
 		expect(resaved.id).toBe(saved.id);
 		expect(await service.getDraft(saved.id)).toEqual({

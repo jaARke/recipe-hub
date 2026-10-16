@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SavedDraftEditConflictError } from '@/application/drafts/errors';
 import { savedDraftIdSchema, type SavedDraftId } from '@/application/drafts/saved-draft';
 import type { RecipeImportRepository } from '@/application/ports/recipe-import-repository';
 import type {
@@ -113,32 +114,32 @@ export function describeSavedDraftRepositoryContract(
 			expect(await drafts.findById(byHand.id)).not.toHaveProperty('provenance');
 		});
 
-		it('keeps one draft for an import, which a new one replaces under the same id', async () => {
-			const { drafts } = fixture();
-			const importId = await startImport();
-			const first = await create({ importId });
-
-			const second = await create({ importId, provenance: fromLink, ...lemonSquares });
-
-			expect(second).toEqual({
-				...first,
-				provenance: fromLink,
-				...lemonSquares,
-				updatedAt: expect.any(Date),
-			});
-			expect(second.updatedAt.getTime()).toBeGreaterThanOrEqual(first.updatedAt.getTime());
-			expect(await drafts.findByImportId(importId)).toEqual(second);
-		});
-
-		it("never replaces another member's draft for the import", async () => {
+		it('stores no second draft for an import, and keeps the first as it was', async () => {
 			const { drafts, otherMemberId } = fixture();
 			const importId = await startImport();
 			const first = await create({ importId });
 
 			expect(
+				await drafts.create({ ...lemonSquares, memberId: fixture().memberId, importId })
+			).toBeNull();
+			expect(
 				await drafts.create({ ...lemonSquares, memberId: otherMemberId, importId })
 			).toBeNull();
 			expect(await drafts.findByImportId(importId)).toEqual(first);
+		});
+
+		it('stores one of two drafts for an import saved at once', async () => {
+			const { drafts, memberId } = fixture();
+			const importId = await startImport();
+
+			const both = await Promise.all([
+				drafts.create({ ...lemonBars, memberId, importId }),
+				drafts.create({ ...lemonSquares, memberId, importId }),
+			]);
+
+			const stored = both.filter((draft) => draft !== null);
+			expect(stored).toHaveLength(1);
+			expect(await drafts.findByImportId(importId)).toEqual(stored[0]);
 		});
 	});
 
@@ -147,11 +148,13 @@ export function describeSavedDraftRepositoryContract(
 			const { drafts } = fixture();
 			const importId = await startImport();
 			const created = await create({ importId, provenance: fromLink });
-			await fixture().backdate(created.id, new Date(Date.now() - hourMs));
+			const anHourAgo = new Date(Date.now() - hourMs);
+			await fixture().backdate(created.id, anHourAgo);
 
 			const updated = await drafts.update(created.id, {
 				values: lemonSquares.values,
 				imagePathnames: [],
+				expectedUpdatedAt: anHourAgo,
 			});
 
 			expect(updated).toEqual({
@@ -168,8 +171,44 @@ export function describeSavedDraftRepositoryContract(
 			expect(await drafts.findById(created.id)).toEqual(updated);
 		});
 
+		it('moves the version a millisecond on at least, so a save in the same millisecond is a new one', async () => {
+			const { drafts } = fixture();
+			const created = await create();
+			// Later than the clock, as a save a moment ago in the same millisecond would leave it.
+			const ahead = new Date(Date.now() + hourMs);
+			await fixture().backdate(created.id, ahead);
+
+			const updated = await drafts.update(created.id, {
+				...lemonSquares,
+				expectedUpdatedAt: ahead,
+			});
+
+			expect(updated?.updatedAt.getTime()).toBe(ahead.getTime() + 1);
+		});
+
+		it('refuses a version saved over since, and changes nothing', async () => {
+			const { drafts } = fixture();
+			const created = await create();
+			// Saved right away, so the next save names a version less than a millisecond old.
+			const first = await drafts.update(created.id, {
+				...lemonSquares,
+				expectedUpdatedAt: created.updatedAt,
+			});
+
+			await expect(
+				drafts.update(created.id, {
+					values: {},
+					imagePathnames: [],
+					expectedUpdatedAt: created.updatedAt,
+				})
+			).rejects.toThrow(SavedDraftEditConflictError);
+			expect(await drafts.findById(created.id)).toEqual(first);
+		});
+
 		it('returns null for an id no draft has', async () => {
-			expect(await fixture().drafts.update(missingId, lemonBars)).toBeNull();
+			expect(
+				await fixture().drafts.update(missingId, { ...lemonBars, expectedUpdatedAt: new Date() })
+			).toBeNull();
 		});
 	});
 

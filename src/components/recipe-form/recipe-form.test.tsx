@@ -941,6 +941,51 @@ describe('RecipeForm’s autosave', () => {
 		expect(localStorage.getItem(`member:recipe-form:${memberId}:recipe:${recipeId}`)).toBeNull();
 	});
 
+	it.each([
+		{ name: 'a saved draft', props: { inUrl: true }, key: `draft:${draftId}` },
+		{
+			name: 'an import’s review holding a saved draft',
+			props: { inUrl: false, importId },
+			key: `import:${importId}`,
+		},
+	])(
+		'brings changes to $name back only to the version of the draft they were made on',
+		async ({ props, key }) => {
+			const user = userEvent.setup();
+			const entryKey = `member:recipe-form:${memberId}:${key}`;
+			const openedAt = (savedAt: string) => ({
+				save: vi.fn<FormAction<SavedDraftResult>>(),
+				inUrl: props.inUrl,
+				opened: { id: draftId, savedAt: new Date(savedAt) },
+			});
+			const first = render(
+				<AutosavedForm
+					initial={recipeFormValues(lemonBars)}
+					importId={props.importId}
+					drafts={openedAt('2026-10-14T12:00:00.000Z')}
+				/>
+			);
+			await user.type(title(), ' squares');
+			expect(JSON.parse(localStorage.getItem(entryKey) ?? '{}').version).toBe(
+				'2026-10-14T12:00:00.000Z'
+			);
+			first.unmount();
+
+			// Another page saved the draft since.
+			render(
+				<AutosavedForm
+					initial={recipeFormValues(lemonBars)}
+					importId={props.importId}
+					drafts={openedAt('2026-10-15T09:30:00.000Z')}
+				/>
+			);
+
+			await waitFor(() => expect(localStorage.getItem(entryKey)).toBeNull());
+			expect(title().value).toBe('Lemon bars');
+			expect(screen.queryByText(restoredNotice)).toBeNull();
+		}
+	);
+
 	it('brings an import’s review back with its notes as they were', async () => {
 		const user = userEvent.setup();
 		const initial = recipeFormValues(lemonBars, threeNotes);
@@ -1029,6 +1074,32 @@ describe('RecipeForm’s autosave', () => {
 		expect(screen.queryByText(restoredNotice)).toBeNull();
 	});
 
+	it('keeps when the restored changes were made until the member edits again', async () => {
+		const user = userEvent.setup();
+		const kept = entryFor(
+			{ ...recipeFormSnapshot(recipeFormValues()), text: { ...blankText, title: 'L' } },
+			writtenAt
+		);
+		localStorage.setItem(newRecipeKey, kept);
+		const first = render(<AutosavedForm />);
+		await screen.findByText(restoredNotice);
+		expect(localStorage.getItem(newRecipeKey)).toBe(kept);
+		first.unmount();
+
+		render(<AutosavedForm />);
+
+		expect(
+			await screen.findByText(
+				`Restored changes made in this browser on ${formatDayAndTime(writtenAt)}`
+			)
+		).toBeDefined();
+		expect(localStorage.getItem(newRecipeKey)).toBe(kept);
+		await user.type(title(), 'emon bars');
+		const edited = JSON.parse(localStorage.getItem(newRecipeKey) ?? '{}') as AutosavedRecipeForm;
+		expect(edited.form.text.title).toBe('Lemon bars');
+		expect(new Date(edited.writtenAt).getTime()).toBeGreaterThan(writtenAt.getTime());
+	});
+
 	it('names what Discard returns to by what the form edits', async () => {
 		const restoredOver = (initial: RecipeFormValues) => ({
 			...recipeFormSnapshot(initial),
@@ -1113,9 +1184,12 @@ describe('RecipeForm’s autosave', () => {
 
 describe('RecipeForm’s drafts', () => {
 	const savedAt = new Date('2026-10-15T19:12:00.000Z');
+	const expiresAt = new Date('2026-11-14T19:12:00.000Z');
 
 	// Saves every draft as the one id, at the one moment.
-	function saving(result: FormState<SavedDraftResult> = { status: 'success', draftId, savedAt }) {
+	function saving(
+		result: FormState<SavedDraftResult> = { status: 'success', draftId, savedAt, expiresAt }
+	) {
 		return vi.fn<FormAction<SavedDraftResult>>(async () => result);
 	}
 
@@ -1192,6 +1266,54 @@ describe('RecipeForm’s drafts', () => {
 		await user.click(await saveAsDraft());
 		await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
 		expect(save.mock.calls[1]?.[1].get('draftId')).toBe(draftId);
+		// The version the first save returned, so a save made elsewhere since is never replaced.
+		expect(save.mock.calls[1]?.[1].get('draftVersion')).toBe(savedAt.toISOString());
+	});
+
+	it('keeps what is typed while a draft saves under the version that save made', async () => {
+		const user = userEvent.setup();
+		const saved = Promise.withResolvers<FormState<SavedDraftResult>>();
+		const save = vi.fn<FormAction<SavedDraftResult>>(() => saved.promise);
+		const openedAt = new Date('2026-10-15T12:00:00.000Z');
+		render(
+			<AutosavedForm
+				initial={recipeFormValues(lemonBars)}
+				drafts={draftsWith(save, { opened: { id: draftId, savedAt: openedAt } })}
+			/>
+		);
+		await user.type(title(), ' squares');
+		await user.click(await saveAsDraft());
+		await user.type(title(), ' with glaze');
+
+		saved.resolve({ status: 'success', draftId, savedAt, expiresAt });
+
+		await screen.findByText(`Draft saved at ${formatTime(savedAt)}`);
+		const entry = JSON.parse(localStorage.getItem(draftKey) ?? '{}') as AutosavedRecipeForm;
+		expect(entry.form.text.title).toBe('Lemon bars squares with glaze');
+		// A reload opens the draft as that save left it, and brings these changes back over it.
+		expect(entry.version).toBe(savedAt.toISOString());
+	});
+
+	it('says when another page saved the draft since, and keeps what was typed here', async () => {
+		const user = userEvent.setup();
+		const message =
+			'This draft was saved somewhere else after you opened it here. Copy anything you want to keep, then reload the page to see that version.';
+		const save = saving({ status: 'error', message, fieldErrors: {} });
+		render(
+			<AutosavedForm
+				initial={recipeFormValues(lemonBars)}
+				drafts={draftsWith(save, { opened: { id: draftId, savedAt } })}
+			/>
+		);
+		await user.type(title(), ' squares');
+
+		await user.click(await saveAsDraft());
+
+		expect(await screen.findByText(message)).toBeDefined();
+		expect(screen.getByText(message).closest('[role="status"]')).not.toBeNull();
+		expect(save.mock.calls[0]?.[1].get('draftVersion')).toBe(savedAt.toISOString());
+		expect(title().value).toBe('Lemon bars squares');
+		expect(stored(draftKey)?.text.title).toBe('Lemon bars squares');
 	});
 
 	it('opens a saved draft, discards back to it, and saves the recipe from it, naming the draft', async () => {
@@ -1201,6 +1323,7 @@ describe('RecipeForm’s drafts', () => {
 		localStorage.setItem(
 			draftKey,
 			JSON.stringify({
+				version: savedAt.toISOString(),
 				writtenAt: new Date().toISOString(),
 				form: recipeFormSnapshot(
 					editRecipeForm(opened, { type: 'setText', field: 'title', text: 'Lemon squares' })
@@ -1356,6 +1479,7 @@ describe('RecipeForm with its page’s menu', () => {
 			status: 'success',
 			draftId,
 			savedAt: new Date(),
+			expiresAt: new Date(),
 		}));
 		render(
 			<HeldDraftProvider opened={undefined}>

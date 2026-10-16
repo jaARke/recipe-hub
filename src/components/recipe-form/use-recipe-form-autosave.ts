@@ -19,7 +19,11 @@ import {
 	restoredRecipeForm,
 	showSameRecipeForm,
 } from '@/components/recipe-form/recipe-form-snapshot';
-import type { RecipeFormEdit, RecipeFormValues } from '@/components/recipe-form/recipe-form-values';
+import {
+	editRecipeForm,
+	type RecipeFormEdit,
+	type RecipeFormValues,
+} from '@/components/recipe-form/recipe-form-values';
 import {
 	readBrowserStorage,
 	removeBrowserStorage,
@@ -42,8 +46,8 @@ type RecipeFormAutosaveOptions = {
 	onRestore: (restoredAt: Date) => void;
 };
 
-// What was last written, and under which key; no form where the entry was removed.
-type Written = { key: string; form: string | undefined };
+// What was last written, under which key and version; no form where the entry was removed.
+type Written = { key: string; version: string | undefined; form: string | undefined };
 
 // The photos whose uploads the image route says are gone. One it can't answer for stays, and saving
 // says if it is gone.
@@ -65,8 +69,10 @@ async function missingUploads(uploads: readonly UnsavedUpload[]): Promise<number
 // Writing waits until the changes are back, so the form as it loads never replaces them, and a form
 // that shows what its baseline does keeps nothing. Changes come back only where they show something
 // the baseline doesn't, at once, and a lookup that then finds an upload gone changes only its photo,
-// so nothing typed meanwhile is lost. They stay marked restored, with when they were made, until the
-// member discards them or the form shows its baseline again. leave removes the entry, as a save that
+// so nothing typed meanwhile is lost. Restored changes count as written, so their entry keeps when
+// they were made until the member edits, and they stay marked restored, with that time, until the
+// member discards them or the form shows its baseline again. Each entry records the version of what
+// the form edits, so a save of its draft writes it again. leave removes the entry, as a save that
 // leads away must first; the page Next keeps still holds the values, so they count as written and
 // showing the page again never writes them back.
 export function useRecipeFormAutosave({
@@ -107,7 +113,16 @@ export function useRecipeFormAutosave({
 			return;
 		}
 		const writtenAt = new Date(stored.writtenAt);
-		dispatch({ type: 'replaceForm', values: restoredRecipeForm(stored.form, baseline) });
+		const restored = editRecipeForm(values, {
+			type: 'replaceForm',
+			values: restoredRecipeForm(stored.form, baseline),
+		});
+		written.current = {
+			key: storageKey,
+			version,
+			form: JSON.stringify(recipeFormSnapshot(restored)),
+		};
+		dispatch({ type: 'replaceForm', values: restored });
 		setRestoredAt(writtenAt);
 		setSettled(true);
 		onRestore(writtenAt);
@@ -135,10 +150,11 @@ export function useRecipeFormAutosave({
 		}
 		const snapshot = recipeFormSnapshot(values);
 		const form = unchanged ? undefined : JSON.stringify(snapshot);
-		if (last?.key === key && last.form === form) {
+		// A new version, as when the form saves its draft, is written even where the form is as it was.
+		if (last?.key === key && last.version === version && last.form === form) {
 			return;
 		}
-		written.current = { key, form };
+		written.current = { key, version, form };
 		if (form === undefined) {
 			removeBrowserStorage(key);
 		} else {
@@ -162,6 +178,7 @@ export function useRecipeFormAutosave({
 		removeBrowserStorage(key);
 		written.current = {
 			key,
+			version,
 			form: unchanged ? undefined : JSON.stringify(recipeFormSnapshot(values)),
 		};
 	}

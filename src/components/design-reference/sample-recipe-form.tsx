@@ -30,6 +30,8 @@ import {
 import { DraftMenu, EditedRecipeMenu, HeldDraftMenu } from '@/components/recipe-form/subject-menus';
 import { parseRecipeContent } from '@/domain/recipe/recipe';
 import type { ImageSize, RecipeImageRole } from '@/domain/recipe/recipe-image';
+import { daysInMilliseconds } from '@/lib/dates';
+import { settings } from '@/lib/settings';
 
 // Photo pathnames name a folder the recipe accepts, though nothing is stored there.
 const sampleUploadFolders: Record<RecipeImageRole, string> = {
@@ -140,12 +142,17 @@ const saveSampleRecipe: FormAction = (_state, formData) =>
 	);
 
 // Says a draft was saved, under the one id the samples share, and keeps nothing.
-const saveSampleDraft: FormAction<SavedDraftResult> = () =>
-	standIn<FormState<SavedDraftResult>>({
+const saveSampleDraft: FormAction<SavedDraftResult> = () => {
+	const savedAt = new Date();
+	return standIn<FormState<SavedDraftResult>>({
 		status: 'success',
 		draftId: 'sample-draft',
-		savedAt: new Date(),
+		savedAt,
+		expiresAt: new Date(
+			savedAt.getTime() + daysInMilliseconds(settings.drafts.savedDraftLifetimeDays)
+		),
 	});
+};
 
 // Stands in for the member signed in, whose unsaved changes a menu's delete removes; deleting a
 // sample is refused, so none are.

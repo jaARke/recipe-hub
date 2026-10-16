@@ -17,10 +17,12 @@ export type SavedDraftDto = {
 	expiresAt: Date;
 };
 
-// Returned by a save, so the form can name the draft and say when it was saved.
+// Returned by a save, so the form can name the draft and say when it was saved, which is its version,
+// and the page's list of drafts can show it with when it goes.
 export type SavedDraftRef = {
 	id: SavedDraftId;
 	savedAt: Date;
+	expiresAt: Date;
 };
 
 // One entry in the member's Drafts: a draft they saved, or an import's draft awaiting review, each

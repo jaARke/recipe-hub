@@ -17,21 +17,25 @@ import { settings } from '@/lib/settings';
 // draft's lifetime.
 
 // What a form edits, which names its entry: a new recipe, an import's draft under review, a draft the
-// member saved, or a recipe at the version the edit loaded.
-export type RecipeFormSubject =
+// member saved, or a recipe.
+export type RecipeFormEntrySubject =
 	| { kind: 'new' }
 	| { kind: 'import'; importId: string }
 	| { kind: 'draft'; draftId: string }
-	| { kind: 'recipe'; recipeId: string; version: string };
+	| { kind: 'recipe'; recipeId: string };
 
-// The subject without an edit's version, which is all a key names.
-export type RecipeFormEntrySubject =
-	Exclude<RecipeFormSubject, { kind: 'recipe' }> | { kind: 'recipe'; recipeId: string };
+// The subject with the version of it the form loaded or last saved, which its entry records: a
+// recipe's, a saved draft's, and an import's once its review holds a saved draft.
+export type RecipeFormSubject =
+	| { kind: 'new' }
+	| { kind: 'import'; importId: string; version?: string }
+	| { kind: 'draft'; draftId: string; version: string }
+	| { kind: 'recipe'; recipeId: string; version: string };
 
 const keyPrefix = memberBrowserStorageKey('recipe-form:');
 
 const entrySchema = z.object({
-	// The version of the recipe an edit loaded; the other subjects' entries have none.
+	// The version of what the form edits as it loaded or last saved it, where it has one.
 	version: z.string().optional(),
 	writtenAt: z.iso.datetime(),
 	form: recipeFormSnapshotSchema,
@@ -42,8 +46,8 @@ export type AutosavedRecipeForm = z.infer<typeof entrySchema>;
 // An upload stored since the form loaded, by the photo that shows it.
 export type UnsavedUpload = { photoId: number; pathname: string };
 
-// One entry for each form and member, so an edit's entry for an older version of the recipe is
-// replaced. The key names the recipe and not the version, so a recipe's entry is found without one.
+// One entry for each form and member, so an entry for an older version of what it edits is replaced.
+// The key names the recipe or draft and not the version, so its entry is found without one.
 export function recipeFormAutosaveKey(memberId: string, subject: RecipeFormEntrySubject): string {
 	const member = `${keyPrefix}${memberId}:`;
 	switch (subject.kind) {
@@ -58,30 +62,35 @@ export function recipeFormAutosaveKey(memberId: string, subject: RecipeFormEntry
 	}
 }
 
-// The version an edit's entry names, so changes made to one version never come back over another.
+// The version an entry names, so changes made to one version never come back over another, as when
+// another page saved the recipe or the draft since.
 export function recipeFormAutosaveVersion(subject: RecipeFormSubject): string | undefined {
-	return subject.kind === 'recipe' ? subject.version : undefined;
+	return subject.kind === 'new' ? undefined : subject.version;
 }
 
 // What the form edits, from what it is given: a recipe to edit, a saved draft, an import to review,
 // or none of them. A saved draft that continues an import is named by the import, as its review
-// always opens it.
+// always opens it. A saved draft's version is when it was last saved.
 export function recipeFormSubject({
 	editing,
 	importId,
-	draftId,
+	draft,
 }: {
 	editing?: Pick<EditedRecipe, 'id' | 'version'>;
 	importId?: string;
-	draftId?: string;
+	draft?: { id: string; savedAt: Date };
 }): RecipeFormSubject {
 	if (editing !== undefined) {
 		return { kind: 'recipe', recipeId: editing.id, version: editing.version };
 	}
 	if (importId !== undefined) {
-		return { kind: 'import', importId };
+		return draft === undefined
+			? { kind: 'import', importId }
+			: { kind: 'import', importId, version: draft.savedAt.toISOString() };
 	}
-	return draftId === undefined ? { kind: 'new' } : { kind: 'draft', draftId };
+	return draft === undefined
+		? { kind: 'new' }
+		: { kind: 'draft', draftId: draft.id, version: draft.savedAt.toISOString() };
 }
 
 // The entry for the form as it now is, written at the given moment.

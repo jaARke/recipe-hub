@@ -14,6 +14,11 @@ export type SavedDraftContents = {
 	imagePathnames: readonly string[];
 };
 
+export type SavedDraftUpdate = SavedDraftContents & {
+	// The updatedAt the save started from; the update is refused when the draft was saved since.
+	expectedUpdatedAt: Date;
+};
+
 export type NewSavedDraft = SavedDraftContents & {
 	memberId: MemberId;
 	// The import whose review the draft continues.
@@ -45,12 +50,15 @@ export type SavedDraftSummary = Pick<
 // time before which a draft has expired, and ignore those last saved before it. Removing a member
 // deletes theirs (MemberRepository.remove).
 export interface SavedDraftRepository {
-	// Stores a new draft. An import has at most one: a draft that continues it takes the place of the
-	// import's earlier one, keeping its id, or returns null when that one is another member's.
+	// Stores a new draft. An import has at most one, so a draft for an import that already has one is
+	// not stored, even when two saves race, and null is returned; the one stored is changed only by
+	// update.
 	create(draft: NewSavedDraft): Promise<SavedDraft | null>;
-	// Replaces the draft's contents, keeping its import and provenance, and marks it saved now.
-	// Returns null when no draft has this id.
-	update(id: SavedDraftId, contents: SavedDraftContents): Promise<SavedDraft | null>;
+	// Replaces the draft's contents, keeping its import and provenance, and marks it saved now. Each
+	// save moves updatedAt forward by at least a millisecond, the precision a Date keeps, so it
+	// versions the draft. Throws SavedDraftEditConflictError when updatedAt is no longer the expected
+	// one, and returns null when no draft has this id.
+	update(id: SavedDraftId, update: SavedDraftUpdate): Promise<SavedDraft | null>;
 	findById(id: SavedDraftId): Promise<SavedDraft | null>;
 	// The draft that continues the import, if any.
 	findByImportId(importId: RecipeImportId): Promise<SavedDraft | null>;

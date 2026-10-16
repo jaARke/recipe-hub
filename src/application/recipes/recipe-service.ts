@@ -2,6 +2,7 @@ import 'server-only';
 import { z } from 'zod';
 import { requireMember } from '@/application/authorization';
 import { savedDraftIdSchema } from '@/application/drafts/saved-draft';
+import { editVersionSchema } from '@/application/edit-version';
 import { ImportUnavailableError } from '@/application/ingestion/errors';
 import { paginationSchema } from '@/application/pagination';
 import type { ActorProvider } from '@/application/ports/actor-provider';
@@ -60,9 +61,6 @@ import { tagKey } from '@/domain/recipe/tag-normalization';
 import { getLogger } from '@/lib/logger';
 
 const recipePageSchema = paginationSchema.extend({ sort: z.enum(recipeSorts) });
-
-// A recipe's version as an editor holds it: its updatedAt, from Date.toISOString().
-const versionSchema = z.iso.datetime().transform((value) => new Date(value));
 
 const logger = getLogger('recipes');
 
@@ -216,7 +214,7 @@ export class RecipeService {
 		const recipe = await this.findRecipe(id);
 		assertCanModifyRecipe(actor, recipe);
 		// Checked before the content, so a stale copy is not checked against images saved since.
-		const version = versionSchema.safeParse(expectedUpdatedAt);
+		const version = editVersionSchema.safeParse(expectedUpdatedAt);
 		if (!version.success || version.data.getTime() !== recipe.updatedAt.getTime()) {
 			throw this.staleSave(recipe.id, actor.memberId);
 		}

@@ -23,6 +23,8 @@ const errorMessages: Partial<Record<string, string>> = {
 		'That recipe was deleted, or this page is out of date. Reload the page and try again.',
 	'recipe.edit-conflict':
 		'This recipe changed after you opened it. Copy anything you want to keep, then reload the page and make your changes again.',
+	'draft.edit-conflict':
+		'This draft was saved somewhere else after you opened it here. Copy anything you want to keep, then reload the page to see that version.',
 	'image.invalid-upload': unstoredImageMessage,
 	'favorite.device-full': `You’ve reached the limit of ${settings.favorites.maxPerDevice} favorites on this device. Remove one to add another.`,
 	'import.unavailable': 'This import can’t be saved anymore. Import the recipe again.',

@@ -1,16 +1,18 @@
 import 'server-only';
 import { requireMember } from '@/application/authorization';
-import { InvalidSavedDraftError } from '@/application/drafts/errors';
+import { InvalidSavedDraftError, SavedDraftEditConflictError } from '@/application/drafts/errors';
 import {
 	savedDraftCutoff,
 	savedDraftExpiry,
 	savedDraftIdSchema,
+	type SavedDraftId,
 } from '@/application/drafts/saved-draft';
 import type {
 	DraftSummaryDto,
 	SavedDraftDto,
 	SavedDraftRef,
 } from '@/application/drafts/saved-draft-dtos';
+import { editVersionSchema } from '@/application/edit-version';
 import { ImportUnavailableError } from '@/application/ingestion/errors';
 import type { ActorProvider } from '@/application/ports/actor-provider';
 import type { ImageStore } from '@/application/ports/image-store';
@@ -22,8 +24,10 @@ import type { RecipeRepository } from '@/application/ports/recipe-repository';
 import type {
 	NewSavedDraft,
 	SavedDraft,
+	SavedDraftContents,
 	SavedDraftRepository,
 	SavedDraftSummary,
+	SavedDraftUpdate,
 } from '@/application/ports/saved-draft-repository';
 import { unattachableImageProblems } from '@/application/recipes/attachable-images';
 import type { ImageFolders } from '@/application/recipes/image-folders';
@@ -42,8 +46,9 @@ import { settings } from '@/lib/settings';
 const logger = getLogger('drafts');
 
 export type SaveDraftInput = {
-	// The draft the form opened or last saved, if any.
+	// The draft the form opened or last saved, if any, and its version as the form has it.
 	draftId?: string;
+	draftVersion?: string;
 	// The import whose review the form shows, if any, whose one draft this is.
 	importId?: string;
 	// The recipe form's values, which only the form reads.
@@ -149,10 +154,12 @@ export class SavedDraftService {
 
 	// Saves whatever the form holds, with nothing required: over the member's draft the form opened or
 	// last saved, over an import's one draft for its review, or else as a new draft, as when the draft
-	// was deleted elsewhere. An import's review saves only while the import is the member's and can
-	// still be saved, as its recipe can, and its draft keeps the import's provenance, so it still
-	// credits the import's source once the review is gone. Its images are checked as a recipe's are,
-	// so a draft keeps alive only images the member could attach.
+	// was deleted elsewhere. A save over a draft must name the version the form has of it, so one
+	// another page saved since, or an import's draft another page saved first, is never replaced: that
+	// save is a conflict, which the form reports. An import's review saves only while the import is the
+	// member's and can still be saved, as its recipe can, and its draft keeps the import's provenance,
+	// so it still credits the import's source once the review is gone. Its images are checked as a
+	// recipe's are, so a draft keeps alive only images the member could attach.
 	async saveDraft(input: SaveDraftInput): Promise<SavedDraftRef> {
 		const actor = requireMember(await this.actors.currentActor());
 		const now = new Date();
@@ -166,6 +173,14 @@ export class SavedDraftService {
 				? await this.findDraft(input.draftId)
 				: await this.drafts.findByImportId(importId);
 		const existing = this.isOwnDraft(found, actor.memberId, now) ? found : null;
+		// Checked before the images, so a stale copy is not checked against images saved since.
+		const version = editVersionSchema.safeParse(input.draftVersion);
+		if (
+			existing !== null &&
+			(!version.success || version.data.getTime() !== existing.updatedAt.getTime())
+		) {
+			throw this.staleSave(actor.memberId, { draftId: existing.id, importId });
+		}
 
 		const problems = await unattachableImageProblems(
 			input.imagePathnames,
@@ -183,20 +198,26 @@ export class SavedDraftService {
 			throw new InvalidSavedDraftError(problems);
 		}
 
-		const contents = {
+		const contents: SavedDraftContents = {
 			...(input.title !== undefined && { title: input.title }),
 			values: input.values,
 			imagePathnames: input.imagePathnames,
 		};
+		// At the version the form named, which is the one found.
 		const updated =
-			existing === null || importId !== undefined
+			existing === null
 				? null
-				: await this.drafts.update(existing.id, contents);
+				: await this.updateDraft(
+						existing.id,
+						{ ...contents, expectedUpdatedAt: existing.updatedAt },
+						actor.memberId
+					);
 		const saved =
 			updated ??
 			(await this.drafts.create({ ...contents, memberId: actor.memberId, ...continued }));
+		// Refused only for an import another page saved a draft of since this one looked.
 		if (saved === null) {
-			throw new Error('The import’s draft is another member’s');
+			throw this.staleSave(actor.memberId, { importId });
 		}
 
 		logger.info('Draft saved', {
@@ -204,7 +225,7 @@ export class SavedDraftService {
 			memberId: actor.memberId,
 			...(importId !== undefined && { importId }),
 		});
-		return { id: saved.id, savedAt: saved.updatedAt };
+		return { id: saved.id, savedAt: saved.updatedAt, expiresAt: savedDraftExpiry(saved.updatedAt) };
 	}
 
 	// Deletes the member's draft, and the import's draft it continues, so neither stays in their Drafts.
@@ -299,6 +320,31 @@ export class SavedDraftService {
 			throw new ImportUnavailableError();
 		}
 		return continued;
+	}
+
+	// The repository checks the version again as it writes, so a save made since is never replaced.
+	// Null for a draft deleted meanwhile, which the save then stores anew.
+	private async updateDraft(
+		id: SavedDraftId,
+		update: SavedDraftUpdate,
+		memberId: MemberId
+	): Promise<SavedDraft | null> {
+		try {
+			return await this.drafts.update(id, update);
+		} catch (error) {
+			throw error instanceof SavedDraftEditConflictError
+				? this.staleSave(memberId, { draftId: id })
+				: error;
+		}
+	}
+
+	// Logged, since the member has to open the draft again and redo their changes.
+	private staleSave(
+		memberId: MemberId,
+		refs: { draftId?: SavedDraftId; importId?: RecipeImportId }
+	): SavedDraftEditConflictError {
+		logger.warn('Draft save refused as stale', { ...refs, memberId });
+		return new SavedDraftEditConflictError();
 	}
 
 	private async clearImportDraft(importId: RecipeImportId, memberId: MemberId): Promise<void> {

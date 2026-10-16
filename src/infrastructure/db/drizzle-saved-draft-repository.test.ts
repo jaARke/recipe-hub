@@ -1,6 +1,7 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ZodError } from 'zod';
+import { SavedDraftEditConflictError } from '@/application/drafts/errors';
 import type { SavedDraftId } from '@/application/drafts/saved-draft';
 import { describeSavedDraftRepositoryContract } from '@/application/testing/saved-draft-repository-contract';
 import type { MemberId } from '@/domain/member/member';
@@ -70,6 +71,34 @@ describe('create', () => {
 		expect(found).not.toHaveProperty('importId');
 		expect(found).toEqual({ ...draft, importId: undefined });
 		expect(found?.provenance).toEqual({ entryMode: 'url', sourceUrl: 'https://example.com/soup' });
+	});
+});
+
+describe('update', () => {
+	it('takes the version as a Date holds it, though Postgres keeps the microseconds', async () => {
+		const draft = await drafts.create({ memberId, values: {}, imagePathnames: [] });
+		await db
+			.update(recipeDrafts)
+			.set({ updatedAt: sql`'2026-10-15T12:00:00.123987Z'::timestamptz` })
+			.where(eq(recipeDrafts.id, draft!.id));
+		const loaded = await drafts.findById(draft!.id);
+		expect(loaded?.updatedAt.toISOString()).toBe('2026-10-15T12:00:00.123Z');
+
+		const updated = await drafts.update(draft!.id, {
+			title: 'Lemon bars',
+			values: {},
+			imagePathnames: [],
+			expectedUpdatedAt: loaded!.updatedAt,
+		});
+
+		expect(updated?.title).toBe('Lemon bars');
+		await expect(
+			drafts.update(draft!.id, {
+				values: {},
+				imagePathnames: [],
+				expectedUpdatedAt: loaded!.updatedAt,
+			})
+		).rejects.toThrow(SavedDraftEditConflictError);
 	});
 });
 

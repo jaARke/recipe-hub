@@ -10,6 +10,7 @@ import {
 	SampleScanImportForm,
 	SampleUrlImportForm,
 } from '@/components/design-reference/sample-recipe-import';
+import { HeldDraftProvider } from '@/components/recipe-form/held-draft';
 import { recipeFormValues } from '@/components/recipe-form/recipe-form-values';
 import { RecipeEntryTabs } from '@/components/recipe-import/recipe-entry-tabs';
 
@@ -25,19 +26,22 @@ function SampleRecipeEntryTabs({
 	now: Date;
 	tagLabels: readonly string[];
 }) {
+	// Holds the sample form's draft once saved, which the Drafts tab then lists, as the add page does.
 	return (
-		<RecipeEntryTabs
-			forms={{
-				manual: <SampleRecipeForm initial={recipeFormValues()} tagLabels={tagLabels} />,
-				url: <SampleUrlImportForm />,
-				photo: <SampleScanImportForm />,
-			}}
-			defaultTab="manual"
-			drafts={drafts}
-			now={now}
-			memberId={sampleMemberId}
-			deleteDraft={deleteSample}
-		/>
+		<HeldDraftProvider opened={undefined}>
+			<RecipeEntryTabs
+				forms={{
+					manual: <SampleRecipeForm initial={recipeFormValues()} tagLabels={tagLabels} />,
+					url: <SampleUrlImportForm />,
+					photo: <SampleScanImportForm />,
+				}}
+				defaultTab="manual"
+				drafts={drafts}
+				now={now}
+				memberId={sampleMemberId}
+				deleteDraft={deleteSample}
+			/>
+		</HeldDraftProvider>
 	);
 }
 

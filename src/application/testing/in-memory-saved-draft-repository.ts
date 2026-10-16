@@ -1,3 +1,4 @@
+import { SavedDraftEditConflictError } from '@/application/drafts/errors';
 import { savedDraftIdSchema, type SavedDraftId } from '@/application/drafts/saved-draft';
 import type {
 	NewSavedDraft,
@@ -5,6 +6,7 @@ import type {
 	SavedDraftContents,
 	SavedDraftRepository,
 	SavedDraftSummary,
+	SavedDraftUpdate,
 } from '@/application/ports/saved-draft-repository';
 import type { MemberId } from '@/domain/member/member';
 import type { RecipeImportId } from '@/domain/recipe/recipe-import';
@@ -30,24 +32,8 @@ export class InMemorySavedDraftRepository implements SavedDraftRepository {
 
 	async create(draft: NewSavedDraft): Promise<SavedDraft | null> {
 		const { memberId, importId, provenance, ...contents } = draft;
-		const continued = importId === undefined ? undefined : this.findWithImport(importId);
-		if (continued !== undefined) {
-			if (continued.memberId !== memberId) {
-				return null;
-			}
-			return this.store(
-				withContents(
-					{
-						id: continued.id,
-						memberId,
-						importId,
-						...(provenance !== undefined && { provenance }),
-						createdAt: continued.createdAt,
-						updatedAt: new Date(),
-					},
-					contents
-				)
-			);
+		if (importId !== undefined && this.findWithImport(importId) !== undefined) {
+			return null;
 		}
 
 		const createdAt = new Date();
@@ -66,10 +52,17 @@ export class InMemorySavedDraftRepository implements SavedDraftRepository {
 		);
 	}
 
-	async update(id: SavedDraftId, contents: SavedDraftContents): Promise<SavedDraft | null> {
+	async update(
+		id: SavedDraftId,
+		{ expectedUpdatedAt, ...contents }: SavedDraftUpdate
+	): Promise<SavedDraft | null> {
 		const stored = this.drafts.get(id);
 		if (stored === undefined) {
 			return null;
+		}
+
+		if (stored.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+			throw new SavedDraftEditConflictError();
 		}
 
 		return this.store(
@@ -80,7 +73,8 @@ export class InMemorySavedDraftRepository implements SavedDraftRepository {
 					...(stored.importId !== undefined && { importId: stored.importId }),
 					...(stored.provenance !== undefined && { provenance: stored.provenance }),
 					createdAt: stored.createdAt,
-					updatedAt: new Date(),
+					// Later by a millisecond at least, so saves within one millisecond are still new versions.
+					updatedAt: new Date(Math.max(Date.now(), stored.updatedAt.getTime() + 1)),
 				},
 				contents
 			)

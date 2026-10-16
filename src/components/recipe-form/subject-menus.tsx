@@ -8,7 +8,7 @@ import { useConfirmActionDialogOpener } from '@/components/forms/confirm-action-
 import type { FormAction } from '@/components/forms/form-state';
 import { DeleteDraftDialog, type DeletedDraft } from '@/components/recipe-form/delete-draft-dialog';
 import { DeleteRecipeDialog } from '@/components/recipe-form/delete-recipe-dialog';
-import { useHeldDraft } from '@/components/recipe-form/held-draft';
+import { useHeldDraft, useReleaseDraft } from '@/components/recipe-form/held-draft';
 import type { RecipeFormEntrySubject } from '@/components/recipe-form/recipe-form-autosave';
 import { removeRecipeFormChanges } from '@/components/recipe-form/use-recipe-form-autosave';
 import { draftsTabPath } from '@/components/recipe-import/recipe-entry-paths';
@@ -103,6 +103,7 @@ function DraftMenu({
 	leavesFor,
 }: DraftMenuProps) {
 	const router = useRouter();
+	const releaseDraft = useReleaseDraft();
 	const triggerRef = React.useRef<HTMLButtonElement>(null);
 	const opener = useConfirmActionDialogOpener(triggerRef);
 
@@ -124,6 +125,8 @@ function DraftMenu({
 				action={action}
 				onDeleted={() => {
 					removeRecipeFormChanges(memberId, formSubject);
+					// The page lets go of it if its form holds it, so its list of drafts stops showing it.
+					releaseDraft?.(draft.id);
 					// The draft is gone, so the drafts left take its place in the history.
 					if (leavesFor !== undefined) {
 						router.replace(leavesFor);

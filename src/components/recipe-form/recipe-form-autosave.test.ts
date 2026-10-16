@@ -74,27 +74,35 @@ describe('recipeFormAutosaveKey', () => {
 		}
 	});
 
-	it('names a recipe’s entry without its version', () => {
+	it('names a recipe’s or a draft’s entry without its version', () => {
 		const edit = (editVersion: string) =>
 			recipeFormSubject({ editing: { id: recipeId, version: editVersion } });
+		const saved = (savedAt: string) =>
+			recipeFormSubject({ draft: { id: draftId, savedAt: new Date(savedAt) } });
 
 		expect(recipeFormAutosaveKey(memberId, edit('a'))).toBe(
 			recipeFormAutosaveKey(memberId, edit('b'))
 		);
+		expect(recipeFormAutosaveKey(memberId, saved(version))).toBe(
+			recipeFormAutosaveKey(memberId, saved(now.toISOString()))
+		);
 	});
 
-	it('takes the subject from what the form edits, and an edit’s version with it', () => {
+	it('takes the subject from what the form edits, with the version of it the form has', () => {
 		const editing = { id: recipeId, version };
+		const draft = { id: draftId, savedAt: new Date(version) };
 
 		expect(recipeFormSubject({})).toEqual({ kind: 'new' });
-		expect(recipeFormSubject({ draftId })).toEqual({ kind: 'draft', draftId });
+		expect(recipeFormSubject({ draft })).toEqual({ kind: 'draft', draftId, version });
 		expect(recipeFormSubject({ importId })).toEqual({ kind: 'import', importId });
-		// A saved draft continuing an import is the import's review.
-		expect(recipeFormSubject({ importId, draftId })).toEqual({ kind: 'import', importId });
+		// A saved draft continuing an import is the import's review, at the draft's version.
+		expect(recipeFormSubject({ importId, draft })).toEqual({ kind: 'import', importId, version });
 		expect(recipeFormSubject({ editing })).toEqual({ kind: 'recipe', recipeId, version });
 		expect(recipeFormAutosaveVersion(recipeFormSubject({ editing }))).toBe(version);
+		expect(recipeFormAutosaveVersion(recipeFormSubject({ draft }))).toBe(version);
+		expect(recipeFormAutosaveVersion(recipeFormSubject({ importId, draft }))).toBe(version);
+		expect(recipeFormAutosaveVersion({ kind: 'import', importId })).toBeUndefined();
 		expect(recipeFormAutosaveVersion({ kind: 'new' })).toBeUndefined();
-		expect(recipeFormAutosaveVersion({ kind: 'draft', draftId })).toBeUndefined();
 	});
 });
 
@@ -112,7 +120,7 @@ describe('readAutosavedRecipeForm', () => {
 		});
 	});
 
-	it('reads nothing where nothing was written, or where an edit’s entry is about another version', () => {
+	it('reads nothing where nothing was written, or where an entry is about another version', () => {
 		expect(readAutosavedRecipeForm(undefined, undefined, now)).toBeUndefined();
 		expect(readAutosavedRecipeForm(entry(now, version), 'b', now)).toBeUndefined();
 		expect(readAutosavedRecipeForm(entry(now, version), undefined, now)).toBeUndefined();

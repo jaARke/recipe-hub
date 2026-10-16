@@ -65,6 +65,7 @@ export async function saveDraft(
 		const snapshot = recipeFormSnapshotFromForm(formText(formData, recipeFormFieldNames.draft));
 		draft = await getSavedDraftService().saveDraft({
 			draftId: optionalFormText(formData, recipeFormFieldNames.draftId),
+			draftVersion: optionalFormText(formData, recipeFormFieldNames.draftVersion),
 			importId: optionalFormText(formData, recipeFormFieldNames.importId),
 			values: snapshot,
 			title: recipeFormSnapshotTitle(snapshot),
@@ -75,7 +76,12 @@ export async function saveDraft(
 	}
 
 	getRecipeImageService().scheduleSweep();
-	return { status: 'success', draftId: draft.id, savedAt: draft.savedAt };
+	return {
+		status: 'success',
+		draftId: draft.id,
+		savedAt: draft.savedAt,
+		expiresAt: draft.expiresAt,
+	};
 }
 
 // Deletes a saved draft, or an import's draft awaiting review, whichever the form names. The page
