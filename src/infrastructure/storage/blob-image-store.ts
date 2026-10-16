@@ -49,7 +49,7 @@ type StoreCall =
 type BlobImageStoreOptions = {
 	storeId: string;
 	// The only folders it lists, moves, and deletes in, so a deployment never touches another
-	// environment's images but the old ones in the expiring environments' folders.
+	// environment's images.
 	folders: ImageFolders;
 };
 
@@ -283,26 +283,6 @@ export class BlobImageStore implements ImageStore {
 	async deleteRemoved(pathnames: readonly string[], signal?: AbortSignal): Promise<void> {
 		this.assertInFolders(pathnames);
 		await this.delete(pathnames.map(trashPathname), signal);
-	}
-
-	// A removed image's uploadedAt is when it was removed, so each copy goes by its own date. Nothing is
-	// purged: production, which expires these folders, never serves them, and a preview's cached copies
-	// are test data behind its deployment's protection that leave with its deployments.
-	async deleteExpired(cutoff: Date, signal?: AbortSignal): Promise<string[]> {
-		const folders = this.folders.expiringFolders();
-		const [stored, removed] = await Promise.all([
-			this.list(folders, signal),
-			this.list(folders.map(trashPathname), signal),
-		]);
-		const isExpired = ({ pathname, uploadedAt }: ListedBlob) =>
-			this.folders.isExpiring(pathname) && uploadedAt < cutoff;
-		const storedPathnames = stored.filter(isExpired).map(({ pathname }) => pathname);
-		const removedPathnames = removed
-			.map(({ pathname, uploadedAt }) => ({ pathname: pathnameBeforeTrash(pathname), uploadedAt }))
-			.filter(isExpired)
-			.map(({ pathname }) => pathname);
-		await this.delete([...storedPathnames, ...removedPathnames.map(trashPathname)], signal);
-		return [...storedPathnames, ...removedPathnames];
 	}
 
 	private assertInFolders(pathnames: readonly string[]): void {

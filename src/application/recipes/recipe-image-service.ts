@@ -8,6 +8,7 @@ import type {
 	ImageStore,
 	StoredImage,
 } from '@/application/ports/image-store';
+import type { ProductionImages } from '@/application/ports/production-images';
 import type { RecipeImportRepository } from '@/application/ports/recipe-import-repository';
 import type { RecipeRepository } from '@/application/ports/recipe-repository';
 import type { SavedDraftRepository } from '@/application/ports/saved-draft-repository';
@@ -20,11 +21,7 @@ import type {
 	ImageUploadGrant,
 	ReleasedImages,
 } from '@/application/recipes/recipe-dtos';
-import {
-	expiringImageCutoff,
-	removedImageCutoff,
-	unusedImageCutoff,
-} from '@/domain/recipe/image-retention';
+import { removedImageCutoff, unusedImageCutoff } from '@/domain/recipe/image-retention';
 import type { RecipeId } from '@/domain/recipe/recipe';
 import { isRecipeImageContentType, type RecipeImageRole } from '@/domain/recipe/recipe-image';
 import { deadlineAfter, settleWithin } from '@/lib/deadline';
@@ -44,7 +41,7 @@ const imageMoveTimeLimitMs = 60 * 1000;
 
 const logger = getLogger('images');
 
-type ImageSweepStep = 'restore' | 'delete' | 'remove' | 'expire';
+type ImageSweepStep = 'restore' | 'delete' | 'remove';
 
 // An image a sweep step failed on, with why.
 type FailedSweepImage = FailedImage & { step: ImageSweepStep };
@@ -112,20 +109,6 @@ async function sweepStep(
 	}
 }
 
-// The store finds expired images as it deletes them, so a failure is logged without pathnames, and
-// the next sweep finds whatever is left.
-async function expireStep(
-	run: (signal: AbortSignal) => Promise<string[]>,
-	deadline: AbortSignal
-): Promise<string[]> {
-	try {
-		return await withinImageMove(deadline, () => run(deadline));
-	} catch (err) {
-		sweepStepFailed(deadline, err, { step: 'expire' satisfies ImageSweepStep });
-		return [];
-	}
-}
-
 // Left where they are, for a later sweep to remove once nothing has named them for a day.
 function warnImagesNotRemoved(recipeId: RecipeId, pathnames: string[], err: unknown): void {
 	logger.warn('Recipe images could not be removed', { recipeId, pathnames, err });
@@ -136,6 +119,7 @@ export class RecipeImageService {
 	private readonly imports: RecipeImportRepository;
 	private readonly drafts: SavedDraftRepository;
 	private readonly images: ImageStore;
+	private readonly productionImages: ProductionImages;
 	private readonly actors: ActorProvider;
 	private readonly folders: ImageFolders;
 	private readonly moveLock: ImageMoveLock;
@@ -149,6 +133,7 @@ export class RecipeImageService {
 		imports: RecipeImportRepository,
 		drafts: SavedDraftRepository,
 		images: ImageStore,
+		productionImages: ProductionImages,
 		actors: ActorProvider,
 		folders: ImageFolders,
 		moveLock: ImageMoveLock,
@@ -159,6 +144,7 @@ export class RecipeImageService {
 		this.imports = imports;
 		this.drafts = drafts;
 		this.images = images;
+		this.productionImages = productionImages;
 		this.actors = actors;
 		this.folders = folders;
 		this.moveLock = moveLock;
@@ -166,14 +152,19 @@ export class RecipeImageService {
 		this.sweepsAfterWrites = sweepsAfterWrites;
 	}
 
-	// A dish photo or a scan, which anyone may see, from a folder this environment reads. Never asks for
-	// the actor, so responses can be cached.
+	// A dish photo or a scan, which anyone may see, from a folder this environment reads in its store
+	// or fetches from production, as a preview does production's. Never asks for the actor, so
+	// responses can be cached.
 	async getPublicImage(pathname: string): Promise<StoredImage | null> {
+		if (this.folders.isFetchedFromProduction(pathname)) {
+			return this.servedImage(pathname, await this.productionImages.get(pathname));
+		}
+
 		if (!this.folders.isReadable(pathname)) {
 			return null;
 		}
 
-		return this.findServedImage(pathname);
+		return this.servedImage(pathname, await this.images.get(pathname));
 	}
 
 	// The browser names each upload <folder><uuid>.jpg.
@@ -302,10 +293,10 @@ export class RecipeImageService {
 
 	// Brings back removed images that a recipe or draft names again, as after the database is restored
 	// or a save attaches an image an earlier sweep was removing; deletes for good those removed long
-	// enough ago; removes uploads that nothing has named for a day; then deletes old images in the
-	// expiring environments' folders. In that order, so an image both stored and removed, as an
-	// interrupted removal leaves it, ends up removed. Each step runs within the image move's deadline,
-	// which also stops every store call, and the deadline passing ends the sweep.
+	// enough ago; then removes uploads that nothing has named for a day. In that order, so an image
+	// both stored and removed, as an interrupted removal leaves it, ends up removed. Each step runs
+	// within the image move's deadline, which also stops every store call, and the deadline passing
+	// ends the sweep.
 	private async sweep(deadline: AbortSignal): Promise<ImageSweepCounts> {
 		const now = new Date();
 		const [removed, uploaded] = await withinImageMove(deadline, () =>
@@ -349,10 +340,6 @@ export class RecipeImageService {
 			(pathnames, signal) => this.images.remove(pathnames, signal),
 			deadline
 		);
-		const expiredPathnames = await expireStep(
-			(signal) => this.images.deleteExpired(expiringImageCutoff(now), signal),
-			deadline
-		);
 
 		const steps = [restored, deleted, removedUploads];
 		const failedImages = steps.flatMap((outcome) => outcome.failedImages);
@@ -360,7 +347,6 @@ export class RecipeImageService {
 			restoredCount: restored.pathnames.length,
 			deletedCount: deleted.pathnames.length,
 			removedCount: removedUploads.pathnames.length,
-			expiredCount: expiredPathnames.length,
 			failedCount: failedImages.length,
 		};
 		logger.info('Images swept', {
@@ -368,7 +354,6 @@ export class RecipeImageService {
 			restoredPathnames: restored.pathnames,
 			deletedPathnames: deleted.pathnames,
 			removedPathnames: removedUploads.pathnames,
-			expiredPathnames,
 			failedImages,
 			unpurgedImages: steps.flatMap((outcome) => outcome.unpurgedImages),
 		});
@@ -376,8 +361,10 @@ export class RecipeImageService {
 	}
 
 	// Only image types every browser displays are served.
-	private async findServedImage(pathname: string): Promise<StoredImage | null> {
-		const image = await this.images.get(pathname);
+	private async servedImage(
+		pathname: string,
+		image: StoredImage | null
+	): Promise<StoredImage | null> {
 		if (image === null || isRecipeImageContentType(image.contentType)) {
 			return image;
 		}

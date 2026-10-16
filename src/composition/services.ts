@@ -37,12 +37,13 @@ import { ResendEmailSender } from '@/infrastructure/email/resend-email-sender';
 import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
 import { BlobUploadHandler } from '@/infrastructure/storage/blob-upload-handler';
 import { GuardedWebPageFetcher } from '@/infrastructure/web/guarded-web-page-fetcher';
+import { HttpProductionImages } from '@/infrastructure/web/http-production-images';
 import { JsonLdPageRecipeExtractor } from '@/infrastructure/web/json-ld-page-recipe-extractor';
 import {
 	appUrl,
 	env,
-	expiringImageEnvironmentPrefixes,
 	imageEnvironment,
+	imageEnvironmentsFetchedFromProduction,
 	readableImageEnvironments,
 	secureCookies,
 	siteUrl,
@@ -59,10 +60,13 @@ const emails = new ResendEmailSender({
 const imageFolders = new ImageFolders(
 	imageEnvironment,
 	readableImageEnvironments,
-	expiringImageEnvironmentPrefixes
+	imageEnvironmentsFetchedFromProduction
 );
 
 const images = new BlobImageStore({ storeId: env.BLOB_STORE_ID, folders: imageFolders });
+
+// Asked only on previews: production's and development's folders fetch nothing from production.
+const productionImages = new HttpProductionImages({ siteUrl });
 
 // The hosts a deployment answers on: the one its links name, and its own Vercel hosts.
 const deploymentHosts = [
@@ -134,6 +138,7 @@ export function getRecipeImageService(): RecipeImageService {
 		new DrizzleRecipeImportRepository(db),
 		new DrizzleSavedDraftRepository(db),
 		images,
+		productionImages,
 		actors,
 		imageFolders,
 		new DrizzleImageMoveLock(db),

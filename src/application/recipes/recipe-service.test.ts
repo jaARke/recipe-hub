@@ -63,7 +63,7 @@ const secondDishPhoto: RecipeImage = {
 	size: photoSize,
 };
 const scan: RecipeImage = { role: 'scan', pathname: 'scan/seed/soup-card.jpg', size: photoSize };
-// Stored by another environment, as production's photos are for a preview's copied recipes.
+// Another environment's, as production's photos are for a preview's copied recipes.
 const productionPhoto: RecipeImage = {
 	role: 'dish',
 	pathname: 'dish/production/soup.jpg',

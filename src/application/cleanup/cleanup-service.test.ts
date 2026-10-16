@@ -14,6 +14,7 @@ import { FixedWebPageFetcher } from '@/application/testing/fixed-web-page-fetche
 import { InMemoryImageMoveLock } from '@/application/testing/in-memory-image-move-lock';
 import { InMemoryImageStore } from '@/application/testing/in-memory-image-store';
 import { InMemoryInviteRepository } from '@/application/testing/in-memory-invite-repository';
+import { InMemoryProductionImages } from '@/application/testing/in-memory-production-images';
 import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
 import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
@@ -162,6 +163,7 @@ async function createCleanup() {
 		imports,
 		drafts,
 		images,
+		new InMemoryProductionImages(),
 		actors,
 		folders,
 		lock,
@@ -205,7 +207,6 @@ const fullReport: CleanupReport = {
 		restoredCount: 0,
 		deletedCount: 0,
 		removedCount: 1,
-		expiredCount: 0,
 		failedCount: 0,
 	},
 };
@@ -257,7 +258,6 @@ describe('runCleanup', () => {
 				restoredCount: 0,
 				deletedCount: 0,
 				removedCount: 0,
-				expiredCount: 0,
 				failedCount: 0,
 			},
 		});

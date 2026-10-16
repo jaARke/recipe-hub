@@ -66,9 +66,6 @@ export const settingsSchema = z
 				.int()
 				.gt(neonSnapshotLifetimeDays, "Keep removed images past Neon's 35-day snapshots."),
 			unusedImageLifetimeDays: z.int().positive(),
-			// A week at least, as long as Vercel keeps a preview deployment, so a live preview keeps its
-			// images.
-			expiringImageLifetimeDays: z.int().min(7),
 		}),
 		display: z.object({
 			// A page is one query, which the pagination schema's maxPageLimit in

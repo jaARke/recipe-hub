@@ -79,6 +79,7 @@ export const appUrl =
 
 // A branch as one folder name: readable (lowercase letters and digits, every other run one hyphen),
 // then a hash of the exact name, so feature/x and feature-x differ and no name comes out empty.
+// .github/workflows/preview-cleanup.yml computes the same 8-character hash to delete its folders.
 function branchFolder(branch: string): string {
 	const readable = branch
 		.toLowerCase()
@@ -89,7 +90,7 @@ function branchFolder(branch: string): string {
 }
 
 // Where this deployment's images go under each role's folder: production, a preview's branch, or
-// development. Production and previews share a store, so each writes and deletes only in its own.
+// development. Every preview shares the preview store, so each writes and deletes only in its own.
 export const imageEnvironment =
 	env.VERCEL_ENV === 'production'
 		? productionImageEnvironment
@@ -100,11 +101,11 @@ export const imageEnvironment =
 // What this deployment reaches besides its own images. Next.js run directly is local development.
 const imageAccess = imageEnvironmentAccess[env.VERCEL_ENV ?? 'development'];
 
-// The other environments whose images this deployment serves.
+// The other environments in this deployment's store whose images it serves.
 export const readableImageEnvironments = imageAccess.readableEnvironments;
 
-// The prefixes of the other environments whose old images this deployment deletes.
-export const expiringImageEnvironmentPrefixes = imageAccess.expiringEnvironmentPrefixes;
+// The environments whose images this deployment fetches from production's public image route.
+export const imageEnvironmentsFetchedFromProduction = imageAccess.fetchedFromProduction;
 
 // Whether this deployment sweeps its images after each write, as every one without the daily
 // cleanup cron does.

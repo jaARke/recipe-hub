@@ -64,9 +64,6 @@ export const settings: z.output<typeof settingsSchema> = {
 		// How long an upload that no recipe or import draft names is kept, so a recipe being written can
 		// still save it.
 		unusedImageLifetimeDays: 1,
-		// How long an image in an expiring environment's folders, such as a preview's, is kept after it
-		// was uploaded or removed. Nothing says when a branch's previews are gone, so its images go by age.
-		expiringImageLifetimeDays: 30,
 	},
 	display: {
 		// Recipes on each page of the home page and search: a multiple of six, so a full page ends on a

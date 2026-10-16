@@ -25,9 +25,8 @@ export type ImageMoveOutcome = {
 	unpurged: FailedImage[];
 };
 
-// Every operation but get, has, hasRemoved, put, and deleteExpired stays inside this environment's
-// folders; deleteExpired stays inside the expiring environments' folders. An operation given a signal
-// stops once it aborts, rejecting with its reason.
+// Every operation but get, has, hasRemoved, and put stays inside this environment's folders. An
+// operation given a signal stops once it aborts, rejecting with its reason.
 export interface ImageStore {
 	// Returns null when no image has this pathname. The read and its body stop once the signal aborts.
 	get(pathname: string, signal?: AbortSignal): Promise<StoredImage | null>;
@@ -48,8 +47,4 @@ export interface ImageStore {
 	restore(pathnames: readonly string[], signal?: AbortSignal): Promise<ImageMoveOutcome>;
 	// Deletes removed images for good.
 	deleteRemoved(pathnames: readonly string[], signal?: AbortSignal): Promise<void>;
-	// Deletes for good the images in the expiring environments' folders uploaded before the cutoff, and
-	// the removed ones there removed before it, and returns the pathnames they had. It purges no caches,
-	// since the deployment that expires those folders never serves them.
-	deleteExpired(cutoff: Date, signal?: AbortSignal): Promise<string[]>;
 }

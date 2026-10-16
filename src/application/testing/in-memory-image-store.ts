@@ -20,25 +20,20 @@ type RemovedInMemoryImage = {
 	removedAt: Date;
 };
 
-// Every environment's images, stored and removed, as the one Blob store holds them.
-type InMemoryImages = {
-	stored: Map<string, InMemoryImage>;
-	removed: Map<string, RemovedInMemoryImage>;
-};
-
 // Why a move left an image a test made unmovable, as Blob gives a copy that fails.
 const unmovableReason = 'Error: The image could not be copied';
 
 // Why a move could not purge the caches of an image a test made unpurgeable, as the CDN gives.
 const unpurgeableReason = 'Error: The cache purge failed';
 
-// One environment's view of the store, which also holds other environments' images, as Blob does. It
-// records whether it was read, so tests can prove that refused pathnames never reach the store, and
+// An environment's store, which may also hold images outside the folders it works in, as the preview
+// store holds every preview's. It records whether it was read, so tests can prove that refused
+// pathnames never reach the store, and
 // what it removed. A test can make removing fail, one image's moves or purges fail, or reading or
 // moving stall, as an unreachable store would.
 export class InMemoryImageStore implements ImageStore {
-	private readonly images: Map<string, InMemoryImage>;
-	private readonly removed: Map<string, RemovedInMemoryImage>;
+	private readonly images = new Map<string, InMemoryImage>();
+	private readonly removed = new Map<string, RemovedInMemoryImage>();
 	private readonly removedHistory: string[] = [];
 	private readonly unmovable = new Set<string>();
 	private readonly unpurgeable = new Set<string>();
@@ -49,13 +44,8 @@ export class InMemoryImageStore implements ImageStore {
 	private movesStall = false;
 
 	// The folders that listing, removing, restoring, and deleting stay inside.
-	constructor(
-		folders: ImageFolders,
-		images: InMemoryImages = { stored: new Map(), removed: new Map() }
-	) {
+	constructor(folders: ImageFolders) {
 		this.folders = folders;
-		this.images = images.stored;
-		this.removed = images.removed;
 	}
 
 	get wasRead(): boolean {
@@ -90,11 +80,6 @@ export class InMemoryImageStore implements ImageStore {
 	// Removing and restoring then never answer, and stop only when their signal aborts.
 	stallMoves(): void {
 		this.movesStall = true;
-	}
-
-	// Another environment's view of the same images, as another deployment sees the one store.
-	viewAs(folders: ImageFolders): InMemoryImageStore {
-		return new InMemoryImageStore(folders, { stored: this.images, removed: this.removed });
 	}
 
 	// Stands in for an image uploaded at an earlier time.
@@ -233,25 +218,6 @@ export class InMemoryImageStore implements ImageStore {
 		for (const pathname of pathnames) {
 			this.removed.delete(pathname);
 		}
-	}
-
-	async deleteExpired(cutoff: Date, signal?: AbortSignal): Promise<string[]> {
-		signal?.throwIfAborted();
-		const stored = [...this.images]
-			.filter(([pathname, image]) => this.folders.isExpiring(pathname) && image.uploadedAt < cutoff)
-			.map(([pathname]) => pathname);
-		const removed = [...this.removed]
-			.filter(
-				([pathname, { removedAt }]) => this.folders.isExpiring(pathname) && removedAt < cutoff
-			)
-			.map(([pathname]) => pathname);
-		for (const pathname of stored) {
-			this.images.delete(pathname);
-		}
-		for (const pathname of removed) {
-			this.removed.delete(pathname);
-		}
-		return [...stored, ...removed];
 	}
 
 	// The moved images whose caches a test made unpurgeable.

@@ -10,6 +10,7 @@ import { anonymousActor, memberActor } from '@/application/testing/actors';
 import { FixedActorProvider } from '@/application/testing/fixed-actor-provider';
 import { InMemoryImageMoveLock } from '@/application/testing/in-memory-image-move-lock';
 import { InMemoryImageStore } from '@/application/testing/in-memory-image-store';
+import { InMemoryProductionImages } from '@/application/testing/in-memory-production-images';
 import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
 import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
@@ -17,6 +18,7 @@ import { recipeContentSchema, recipeIdSchema } from '@/domain/recipe/recipe';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import { sampleChickenSoup } from '@/domain/recipe/samples/sample-recipes';
 import { daysInMilliseconds } from '@/lib/dates';
+import { imageEnvironmentAccess } from '@/lib/image-paths';
 import { settings } from '@/lib/settings';
 
 const dishPhoto = 'dish/seed/soup.jpg';
@@ -26,8 +28,9 @@ const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 const photoSize = { width: 2400, height: 1800 };
 const upload = 'dish/development/3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b.jpg';
 const scanUpload = 'scan/development/0b6e2f4a-9c1d-4e8b-a7f3-5d2c1b0a9e8f.jpg';
-// A deployment that, like a preview, also reads production's and the seed's images.
-const folders = new ImageFolders('development', ['production', 'seed']);
+// A deployment that, like a preview, also serves the seed's images from its store and production's
+// from production's public image route.
+const folders = new ImageFolders('development', ['seed'], ['production']);
 // How long the test lock lets a removal wait before it gives up.
 const moveLockWaitMs = 10_000;
 // Why the in-memory store leaves an image a test made unmovable, or its caches unpurged.
@@ -49,11 +52,13 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-async function storeWithSoup() {
+// The seed's dish photo in the store, and production's scan behind production's image route.
+async function imagesWithSoup() {
 	const images = new InMemoryImageStore(folders);
 	await images.put(dishPhoto, jpeg, 'image/jpeg');
-	await images.put(scan, jpeg, 'image/jpeg');
-	return images;
+	const productionImages = new InMemoryProductionImages();
+	productionImages.add(scan, jpeg, 'image/jpeg');
+	return { images, productionImages };
 }
 
 // Tasks are held until a test runs them, as after() holds them until the response is sent.
@@ -65,7 +70,11 @@ function heldTasks() {
 	return { tasks, scheduleTask };
 }
 
-function serviceFor(images: InMemoryImageStore, actor: Actor) {
+function serviceFor(
+	images: InMemoryImageStore,
+	actor: Actor,
+	productionImages = new InMemoryProductionImages()
+) {
 	const actors = new FixedActorProvider(actor);
 	const recipes = new InMemoryRecipeRepository();
 	return {
@@ -75,6 +84,7 @@ function serviceFor(images: InMemoryImageStore, actor: Actor) {
 			new InMemoryRecipeImportRepository(recipes),
 			new InMemorySavedDraftRepository(),
 			images,
+			productionImages,
 			actors,
 			folders,
 			new InMemoryImageMoveLock(),
@@ -86,13 +96,18 @@ function serviceFor(images: InMemoryImageStore, actor: Actor) {
 
 // As src/lib/env.ts sets up production, which reads only its own images and leaves sweeping to its
 // daily cleanup.
-function productionServiceFor(images: InMemoryImageStore, actor: Actor) {
+function productionServiceFor(
+	images: InMemoryImageStore,
+	actor: Actor,
+	productionImages = new InMemoryProductionImages()
+) {
 	const recipes = new InMemoryRecipeRepository();
 	return new RecipeImageService(
 		recipes,
 		new InMemoryRecipeImportRepository(recipes),
 		new InMemorySavedDraftRepository(),
 		images,
+		productionImages,
 		new FixedActorProvider(actor),
 		new ImageFolders('production'),
 		new InMemoryImageMoveLock(),
@@ -122,12 +137,8 @@ function withinLifetime(days: number): Date {
 // awaiting review names, a draft a member saved names, or nothing names, and the seed's and
 // production's beside them. The sweep runs with no actor. By default the environment sweeps after
 // writes, as previews and the dev server do.
-async function createSweep(
-	environment = 'development',
-	expiringPrefixes: string[] = [],
-	sweepsAfterWrites = true
-) {
-	const sweepFolders = new ImageFolders(environment, [], expiringPrefixes);
+async function createSweep(environment = 'development', sweepsAfterWrites = true) {
+	const sweepFolders = new ImageFolders(environment);
 	const recipes = new InMemoryRecipeRepository();
 	const imports = new InMemoryRecipeImportRepository(recipes);
 	const drafts = new InMemorySavedDraftRepository();
@@ -174,6 +185,7 @@ async function createSweep(
 		imports,
 		drafts,
 		images,
+		new InMemoryProductionImages(),
 		new FixedActorProvider(anonymousActor()),
 		sweepFolders,
 		lock,
@@ -214,7 +226,6 @@ function sweptCounts(counts: Partial<ImageSweepCounts>) {
 			restoredCount: 0,
 			deletedCount: 0,
 			removedCount: 0,
-			expiredCount: 0,
 			failedCount: 0,
 			...counts,
 		},
@@ -233,7 +244,8 @@ describe('getPublicImage', () => {
 	it.each([dishPhoto, scan])(
 		'returns %s to anyone without asking who is calling, so responses can be cached',
 		async (pathname) => {
-			const { actors, service } = serviceFor(await storeWithSoup(), anonymousActor());
+			const { images, productionImages } = await imagesWithSoup();
+			const { actors, service } = serviceFor(images, anonymousActor(), productionImages);
 
 			const image = await service.getPublicImage(pathname);
 
@@ -249,36 +261,39 @@ describe('getPublicImage', () => {
 	it.each([
 		'menus/soup.jpg',
 		'trash/dish/seed/soup.jpg',
+		'trash/scan/production/soup-card.jpg',
 		'dish/../trash/dish/seed/soup.jpg',
+		'scan/production/../../trash/scan/production/soup-card.jpg',
 		'scan/%2e%2e/dish',
 		'dish/preview/feature-x/soup.jpg',
 		'scan/preview/feature-x/soup-card.jpg',
 		'dish/soup.jpg',
 		'scan/soup-card.jpg',
-	])('refuses %s without reading the store', async (pathname) => {
-		const images = await storeWithSoup();
-		const { service } = serviceFor(images, anonymousActor());
+	])('refuses %s without reading the store or asking production', async (pathname) => {
+		const { images, productionImages } = await imagesWithSoup();
+		const { service } = serviceFor(images, anonymousActor(), productionImages);
 
 		expect(await service.getPublicImage(pathname)).toBeNull();
 		expect(images.wasRead).toBe(false);
+		expect(productionImages.requestedPathnames).toEqual([]);
 	});
 
 	it("refuses another environment's images, though stored, without reading the store", async () => {
-		const images = await storeWithSoup();
+		const { images } = await imagesWithSoup();
 		await images.put('dish/preview/feature-x/soup.jpg', jpeg, 'image/jpeg');
 		await images.put('scan/preview/feature-x/soup-card.jpg', jpeg, 'image/jpeg');
-		const productionImages = new InMemoryImageStore(new ImageFolders('production'));
-		await productionImages.put(dishPhoto, jpeg, 'image/jpeg');
-		await productionImages.put('scan/development/card.jpg', jpeg, 'image/jpeg');
+		const productionStore = new InMemoryImageStore(new ImageFolders('production'));
+		await productionStore.put(dishPhoto, jpeg, 'image/jpeg');
+		await productionStore.put('scan/development/card.jpg', jpeg, 'image/jpeg');
 		const { service } = serviceFor(images, anonymousActor());
-		const production = productionServiceFor(productionImages, anonymousActor());
+		const production = productionServiceFor(productionStore, anonymousActor());
 
 		expect(await service.getPublicImage('dish/preview/feature-x/soup.jpg')).toBeNull();
 		expect(await service.getPublicImage('scan/preview/feature-x/soup-card.jpg')).toBeNull();
 		expect(await production.getPublicImage(dishPhoto)).toBeNull();
 		expect(await production.getPublicImage('scan/development/card.jpg')).toBeNull();
 		expect(images.wasRead).toBe(false);
-		expect(productionImages.wasRead).toBe(false);
+		expect(productionStore.wasRead).toBe(false);
 	});
 
 	it('serves production its own images of either role', async () => {
@@ -297,7 +312,7 @@ describe('getPublicImage', () => {
 		['dish/seed/page.html', 'text/html'],
 		['scan/development/card.pdf', 'application/pdf'],
 	])('refuses %s, a stored file that is not an image type', async (pathname, contentType) => {
-		const images = await storeWithSoup();
+		const { images } = await imagesWithSoup();
 		await images.put(pathname, jpeg, contentType);
 		const { service } = serviceFor(images, anonymousActor());
 
@@ -305,14 +320,137 @@ describe('getPublicImage', () => {
 		expect(consoleWarn).toHaveBeenCalledOnce();
 	});
 
-	it.each(['dish/seed/biscuits.jpg', 'scan/development/biscuit-card.jpg'])(
-		'returns null for %s, which the store does not have',
-		async (pathname) => {
-			const { service } = serviceFor(await storeWithSoup(), anonymousActor());
+	it('refuses a file production serves that is not an image type', async () => {
+		const { images, productionImages } = await imagesWithSoup();
+		productionImages.add('scan/production/card.pdf', jpeg, 'application/pdf');
+		const { service } = serviceFor(images, anonymousActor(), productionImages);
 
-			expect(await service.getPublicImage(pathname)).toBeNull();
+		expect(await service.getPublicImage('scan/production/card.pdf')).toBeNull();
+		expect(consoleWarn).toHaveBeenCalledOnce();
+	});
+
+	it.each([
+		'dish/seed/biscuits.jpg',
+		'scan/development/biscuit-card.jpg',
+		'dish/production/biscuits.jpg',
+	])('returns null for %s, which neither the store nor production has', async (pathname) => {
+		const { images, productionImages } = await imagesWithSoup();
+		const { service } = serviceFor(images, anonymousActor(), productionImages);
+
+		expect(await service.getPublicImage(pathname)).toBeNull();
+	});
+});
+
+describe('getPublicImage on each deployment', () => {
+	const ownUpload = 'dish/preview/feature-x-1a2b3c4d/3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b.jpg';
+	const otherPreviewPhoto = 'dish/preview/feature-y-5e6f7a8b/soup.jpg';
+	const seedPhoto = 'dish/seed/buttermilk-biscuits.jpg';
+	const productionPhoto = 'dish/production/soup.jpg';
+	const productionScan = 'scan/production/soup-card.jpg';
+
+	// A deployment's service as src/composition/services.ts builds it, with its Vercel environment's
+	// access from src/lib/image-paths.ts. Its store holds every image these tests ask for, so only the
+	// deployment's folders decide where each is read, and production's route serves production's.
+	async function deploymentService(
+		environment: string,
+		vercelEnvironment: keyof typeof imageEnvironmentAccess
+	) {
+		const { readableEnvironments, fetchedFromProduction } =
+			imageEnvironmentAccess[vercelEnvironment];
+		const deploymentFolders = new ImageFolders(
+			environment,
+			readableEnvironments,
+			fetchedFromProduction
+		);
+		const images = new InMemoryImageStore(deploymentFolders);
+		for (const pathname of [
+			ownUpload,
+			seedPhoto,
+			otherPreviewPhoto,
+			productionPhoto,
+			productionScan,
+		]) {
+			await images.put(pathname, jpeg, 'image/jpeg');
+		}
+		const productionImages = new InMemoryProductionImages();
+		for (const pathname of [productionPhoto, productionScan]) {
+			productionImages.add(pathname, jpeg, 'image/jpeg');
+		}
+		const recipes = new InMemoryRecipeRepository();
+		const service = new RecipeImageService(
+			recipes,
+			new InMemoryRecipeImportRepository(recipes),
+			new InMemorySavedDraftRepository(),
+			images,
+			productionImages,
+			new FixedActorProvider(anonymousActor()),
+			deploymentFolders,
+			new InMemoryImageMoveLock(),
+			heldTasks().scheduleTask,
+			imageEnvironmentAccess[vercelEnvironment].sweepsAfterWrites
+		);
+		return { images, productionImages, service };
+	}
+
+	it.each([productionPhoto, productionScan])(
+		"has a preview fetch production's %s from production, never its store",
+		async (pathname) => {
+			const { images, productionImages, service } = await deploymentService(
+				'preview/feature-x-1a2b3c4d',
+				'preview'
+			);
+
+			expect(await bytes((await service.getPublicImage(pathname))?.body)).toEqual(jpeg);
+			expect(productionImages.requestedPathnames).toEqual([pathname]);
+			expect(images.wasRead).toBe(false);
 		}
 	);
+
+	it.each([ownUpload, seedPhoto])(
+		'has a preview read %s from its store, never production',
+		async (pathname) => {
+			const { productionImages, service } = await deploymentService(
+				'preview/feature-x-1a2b3c4d',
+				'preview'
+			);
+
+			expect(await bytes((await service.getPublicImage(pathname))?.body)).toEqual(jpeg);
+			expect(productionImages.requestedPathnames).toEqual([]);
+		}
+	);
+
+	it("finds nothing for another preview's image in the preview store", async () => {
+		const { images, productionImages, service } = await deploymentService(
+			'preview/feature-x-1a2b3c4d',
+			'preview'
+		);
+
+		expect(await service.getPublicImage(otherPreviewPhoto)).toBeNull();
+		expect(images.wasRead).toBe(false);
+		expect(productionImages.requestedPathnames).toEqual([]);
+	});
+
+	it('has production read its own images from its store, never asking its route', async () => {
+		const { productionImages, service } = await deploymentService('production', 'production');
+
+		for (const pathname of [productionPhoto, productionScan]) {
+			expect(await bytes((await service.getPublicImage(pathname))?.body)).toEqual(jpeg);
+		}
+		expect(productionImages.requestedPathnames).toEqual([]);
+	});
+
+	it("never has development ask production, so it shows none of production's images", async () => {
+		const { images, productionImages, service } = await deploymentService(
+			'development',
+			'development'
+		);
+
+		for (const pathname of [productionPhoto, productionScan]) {
+			expect(await service.getPublicImage(pathname)).toBeNull();
+		}
+		expect(productionImages.requestedPathnames).toEqual([]);
+		expect(images.wasRead).toBe(false);
+	});
 });
 
 describe('uploadFolders', () => {
@@ -467,7 +605,7 @@ describe('sweepImages', () => {
 		expect(await removedPathnames(images)).toEqual([]);
 	});
 
-	it('logs what it restored, deleted, removed, and expired in one line', async () => {
+	it('logs what it restored, deleted, and removed in one line', async () => {
 		const { images, service, listed, unused } = await createSweep();
 		const longRemoved = 'scan/development/long-removed.jpg';
 		await images.put(longRemoved, jpeg, 'image/jpeg');
@@ -484,12 +622,10 @@ describe('sweepImages', () => {
 				restoredCount: 1,
 				deletedCount: 1,
 				removedCount: 1,
-				expiredCount: 0,
 				failedCount: 0,
 				restoredPathnames: [listed],
 				deletedPathnames: [longRemoved],
 				removedPathnames: [unused],
-				expiredPathnames: [],
 				failedImages: [],
 				unpurgedImages: [],
 			},
@@ -605,86 +741,6 @@ describe('sweepImages', () => {
 		expect(lock.isHeld).toBe(false);
 		expect(await service.sweepImages()).toEqual(sweptCounts({ removedCount: 1 }));
 		expect(images.removedPathnames).toEqual([unused]);
-	});
-});
-
-describe('sweepImages expiring other environments', () => {
-	const previewImages = {
-		old: 'dish/preview/feature-x-1a2b3c4d/old.jpg',
-		oldScan: 'scan/preview/feature-y-5e6f7a8b/old-card.jpg',
-		oldRemoved: 'dish/preview/feature-x-1a2b3c4d/old-removed.jpg',
-		recent: 'dish/preview/feature-x-1a2b3c4d/recent.jpg',
-		recentRemoved: 'scan/preview/feature-x-1a2b3c4d/recent-removed.jpg',
-	};
-
-	// Previews' images in the one store: some stored or removed longer ago than their lifetime, others
-	// since.
-	// A preview removes its own, through its own view of the store.
-	async function storePreviewImages(images: InMemoryImageStore) {
-		for (const pathname of Object.values(previewImages)) {
-			await images.put(pathname, jpeg, 'image/jpeg');
-		}
-		await images
-			.viewAs(new ImageFolders('preview/feature-x-1a2b3c4d'))
-			.remove([previewImages.oldRemoved, previewImages.recentRemoved]);
-		const expired = pastLifetime(settings.retention.expiringImageLifetimeDays);
-		const recent = withinLifetime(settings.retention.expiringImageLifetimeDays);
-		images.backdateUpload(previewImages.old, expired);
-		images.backdateUpload(previewImages.oldScan, expired);
-		images.backdateRemoval(previewImages.oldRemoved, expired);
-		images.backdateUpload(previewImages.recent, recent);
-		images.backdateRemoval(previewImages.recentRemoved, recent);
-	}
-
-	it("deletes production's expired preview images, removed ones included, and keeps the rest", async () => {
-		const { images, service, listed, drafted, saved, unused, others } = await createSweep(
-			'production',
-			['preview/']
-		);
-		await storePreviewImages(images);
-
-		expect(await service.sweepImages()).toEqual(sweptCounts({ removedCount: 1, expiredCount: 3 }));
-		expect(await images.has(previewImages.old)).toBe(false);
-		expect(await images.has(previewImages.oldScan)).toBe(false);
-		expect(await images.hasRemoved(previewImages.oldRemoved)).toBe(false);
-		expect(await images.has(previewImages.recent)).toBe(true);
-		expect(await images.hasRemoved(previewImages.recentRemoved)).toBe(true);
-		for (const pathname of [listed, drafted, saved, ...others]) {
-			expect(await images.has(pathname)).toBe(true);
-		}
-		expect(await images.hasRemoved(unused)).toBe(true);
-		expect(logLines(consoleInfo)).toEqual([
-			expect.objectContaining({
-				message: 'Images swept',
-				expiredCount: 3,
-				expiredPathnames: [previewImages.old, previewImages.oldScan, previewImages.oldRemoved],
-			}),
-		]);
-	});
-
-	it("never expires another environment's images where nothing expires", async () => {
-		const { images, service } = await createSweep('preview/feature-z-9c8d7e6f');
-		await storePreviewImages(images);
-
-		expect(await service.sweepImages()).toMatchObject({ result: { expiredCount: 0 } });
-		expect(await images.has(previewImages.old)).toBe(true);
-		expect(await images.hasRemoved(previewImages.oldRemoved)).toBe(true);
-	});
-
-	it('logs an expiry that fails and carries on, leaving it for the next sweep', async () => {
-		const { images, service } = await createSweep('production', ['preview/']);
-		await storePreviewImages(images);
-		vi.spyOn(images, 'deleteExpired').mockRejectedValueOnce(new Error('Blob is unreachable'));
-
-		expect(await service.sweepImages()).toEqual(sweptCounts({ removedCount: 1 }));
-		expect(logLines(consoleWarn)).toEqual([
-			expect.objectContaining({
-				message: 'Image sweep step failed',
-				step: 'expire',
-				err: expect.objectContaining({ message: 'Blob is unreachable' }),
-			}),
-		]);
-		expect(await service.sweepImages()).toMatchObject({ result: { expiredCount: 3 } });
 	});
 });
 
@@ -996,7 +1052,7 @@ describe('scheduleSweep where the daily cleanup sweeps instead, as on production
 	const releasedImage: RecipeImage = { role: 'dish', pathname: released, size: photoSize };
 
 	function createProductionSweep() {
-		return createSweep('production', ['preview/'], false);
+		return createSweep('production', false);
 	}
 
 	it('schedules nothing after a write that let no images go', async () => {
