@@ -7,6 +7,7 @@ import { cache } from 'react';
 import { AccessRequestService } from '@/application/access/access-request-service';
 import { AccountService } from '@/application/access/account-service';
 import { InviteService } from '@/application/access/invite-service';
+import { CleanupService } from '@/application/cleanup/cleanup-service';
 import { SavedDraftService } from '@/application/drafts/saved-draft-service';
 import { FavoriteService } from '@/application/favorites/favorite-service';
 import { RecipeImportService } from '@/application/ingestion/recipe-import-service';
@@ -31,6 +32,7 @@ import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recip
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { DrizzleRecipeSearch } from '@/infrastructure/db/drizzle-recipe-search';
 import { DrizzleSavedDraftRepository } from '@/infrastructure/db/drizzle-saved-draft-repository';
+import { DrizzleSignInRepository } from '@/infrastructure/db/drizzle-sign-in-repository';
 import { ResendEmailSender } from '@/infrastructure/email/resend-email-sender';
 import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
 import { BlobUploadHandler } from '@/infrastructure/storage/blob-upload-handler';
@@ -43,6 +45,7 @@ import {
 	imageEnvironment,
 	readableImageEnvironments,
 	siteUrl,
+	sweepsImagesAfterWrites,
 } from '@/lib/env';
 import { settings } from '@/lib/settings';
 
@@ -132,7 +135,8 @@ export function getRecipeImageService(): RecipeImageService {
 		actors,
 		imageFolders,
 		new DrizzleImageMoveLock(db),
-		after
+		after,
+		sweepsImagesAfterWrites
 	);
 }
 
@@ -159,6 +163,17 @@ export function getSavedDraftService(): SavedDraftService {
 		images,
 		actors,
 		imageFolders
+	);
+}
+
+// The time-based cleanup, which production's daily cron runs.
+export function getCleanupService(): CleanupService {
+	return new CleanupService(
+		getRecipeImportService(),
+		new DrizzleSavedDraftRepository(db),
+		new DrizzleInviteRepository(db),
+		new DrizzleSignInRepository(db),
+		getRecipeImageService()
 	);
 }
 

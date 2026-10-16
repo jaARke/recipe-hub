@@ -75,12 +75,14 @@ function serviceFor(images: InMemoryImageStore, actor: Actor) {
 			actors,
 			folders,
 			new InMemoryImageMoveLock(),
-			heldTasks().scheduleTask
+			heldTasks().scheduleTask,
+			true
 		),
 	};
 }
 
-// As src/lib/env.ts sets up production, which reads only its own images.
+// As src/lib/env.ts sets up production, which reads only its own images and leaves sweeping to its
+// daily cleanup.
 function productionServiceFor(images: InMemoryImageStore, actor: Actor) {
 	const recipes = new InMemoryRecipeRepository();
 	return new RecipeImageService(
@@ -91,7 +93,8 @@ function productionServiceFor(images: InMemoryImageStore, actor: Actor) {
 		new FixedActorProvider(actor),
 		new ImageFolders('production'),
 		new InMemoryImageMoveLock(),
-		heldTasks().scheduleTask
+		heldTasks().scheduleTask,
+		false
 	);
 }
 
@@ -114,8 +117,13 @@ function withinLifetime(days: number): Date {
 
 // Images stored past an unused upload's lifetime: this environment's, which a recipe lists, a draft
 // awaiting review names, a draft a member saved names, or nothing names, and the seed's and
-// production's beside them. The sweep runs with no actor.
-async function createSweep(environment = 'development', expiringPrefixes: string[] = []) {
+// production's beside them. The sweep runs with no actor. By default the environment sweeps after
+// writes, as previews and the dev server do.
+async function createSweep(
+	environment = 'development',
+	expiringPrefixes: string[] = [],
+	sweepsAfterWrites = true
+) {
 	const sweepFolders = new ImageFolders(environment, [], expiringPrefixes);
 	const recipes = new InMemoryRecipeRepository();
 	const imports = new InMemoryRecipeImportRepository(recipes);
@@ -166,7 +174,8 @@ async function createSweep(environment = 'development', expiringPrefixes: string
 		new FixedActorProvider(anonymousActor()),
 		sweepFolders,
 		lock,
-		scheduleTask
+		scheduleTask,
+		sweepsAfterWrites
 	);
 	return {
 		images,
@@ -862,4 +871,56 @@ describe('scheduleSweep with the images an edit or delete let go', () => {
 			await endMove();
 		}
 	);
+});
+
+describe('scheduleSweep where the daily cleanup sweeps instead, as on production', () => {
+	const recipeId = recipeIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e');
+	const released = 'dish/production/released.jpg';
+	const releasedImage: RecipeImage = { role: 'dish', pathname: released, size: photoSize };
+
+	function createProductionSweep() {
+		return createSweep('production', ['preview/'], false);
+	}
+
+	it('schedules nothing after a write that let no images go', async () => {
+		const { images, service, tasks, unused } = await createProductionSweep();
+
+		service.scheduleSweep();
+
+		expect(tasks).toEqual([]);
+		expect(await images.has(unused)).toBe(true);
+	});
+
+	it('removes the images an edit or delete let go, and sweeps nothing else', async () => {
+		const { images, service, tasks, unused } = await createProductionSweep();
+		await images.put(released, jpeg, 'image/jpeg');
+
+		service.scheduleSweep({ recipeId, images: [releasedImage] });
+		await tasks[0]?.();
+
+		expect(images.removedPathnames).toEqual([released]);
+		expect(await images.has(unused)).toBe(true);
+		expect(logLines(consoleInfo)).toEqual([
+			{
+				level: 'info',
+				logger: 'images',
+				message: 'Recipe images removed',
+				recipeId,
+				pathnames: [released],
+			},
+		]);
+	});
+
+	it("does nothing for an edit that let go only other environments' images", async () => {
+		const { images, service, tasks } = await createProductionSweep();
+
+		service.scheduleSweep({
+			recipeId,
+			images: [{ role: 'dish', pathname: 'dish/seed/soup.jpg' }],
+		});
+		await tasks[0]?.();
+
+		expect(images.removedPathnames).toEqual([]);
+		expect(consoleInfo).not.toHaveBeenCalled();
+	});
 });

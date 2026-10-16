@@ -102,8 +102,8 @@ function toImportSummary({ id, mode, title, createdAt }: UnsavedImport): DraftSu
 
 // The drafts members save from the recipe form, each kept for the settings' lifetime after its last
 // save, and listed in Drafts with their imports' drafts. Readers ignore an expired draft, which the
-// import service's cleanup deletes. A member sees and changes only their own drafts, and one that is
-// not theirs reads as one that does not exist.
+// daily cleanup deletes. A member sees and changes only their own drafts, and one that is not theirs
+// reads as one that does not exist.
 export class SavedDraftService {
 	private readonly drafts: SavedDraftRepository;
 	private readonly imports: RecipeImportRepository;

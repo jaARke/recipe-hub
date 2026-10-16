@@ -78,7 +78,10 @@ export class RecipeImageService {
 	private readonly folders: ImageFolders;
 	private readonly moveLock: ImageMoveLock;
 	private readonly scheduleTask: TaskScheduler;
+	private readonly sweepsAfterWrites: boolean;
 
+	// Where nothing sweeps on a schedule, as on previews and the dev server, each write's background
+	// task sweeps once it is done.
 	constructor(
 		recipes: RecipeRepository,
 		imports: RecipeImportRepository,
@@ -87,7 +90,8 @@ export class RecipeImageService {
 		actors: ActorProvider,
 		folders: ImageFolders,
 		moveLock: ImageMoveLock,
-		scheduleTask: TaskScheduler
+		scheduleTask: TaskScheduler,
+		sweepsAfterWrites: boolean
 	) {
 		this.recipes = recipes;
 		this.imports = imports;
@@ -97,6 +101,7 @@ export class RecipeImageService {
 		this.folders = folders;
 		this.moveLock = moveLock;
 		this.scheduleTask = scheduleTask;
+		this.sweepsAfterWrites = sweepsAfterWrites;
 	}
 
 	// A dish photo or a scan, which anyone may see, from a folder this environment reads. Never asks for
@@ -129,10 +134,14 @@ export class RecipeImageService {
 		return { contentType: uploadContentType, maximumSizeInBytes: maxUploadSizeInBytes };
 	}
 
-	// Sweeps once the response is sent, so the write that calls it never waits. Every recipe, import,
-	// and saved draft write calls it, so cleanup follows activity rather than a schedule. An edit or delete passes the
-	// images it let go, which the task removes before it sweeps.
+	// Runs once the response is sent, so the write that calls it never waits. Every recipe, import, and
+	// saved draft write calls it. An edit or delete passes the images it let go, which the task
+	// removes everywhere; where the environment sweeps after writes, the task then sweeps.
 	scheduleSweep(released?: ReleasedImages): void {
+		if (released === undefined && !this.sweepsAfterWrites) {
+			return;
+		}
+
 		this.scheduleTask(async () => {
 			try {
 				await (released === undefined ? this.sweepImages() : this.removeAndSweep(released));
@@ -143,7 +152,7 @@ export class RecipeImageService {
 	}
 
 	// A system use case with no actor. Skipped while another image move runs: a running sweep covers
-	// it, as does a write's removal, which sweeps in the same hold once its images are removed.
+	// it, as does a write's removal that sweeps in the same hold, and the next sweep finds the rest.
 	async sweepImages(): Promise<LockAttempt<ImageSweepCounts>> {
 		const attempt = await this.moveLock.tryRun(() => this.sweep());
 		if (attempt.status === 'skipped') {
@@ -160,15 +169,18 @@ export class RecipeImageService {
 		return stored || removed;
 	}
 
-	// Waits for the lock rather than skipping, so the images go now rather than at a later write's
-	// sweep, and sweeps in the same hold. Other environments' images, such as production's on a
-	// preview's copy, are kept. A wait that times out leaves the images for a later sweep.
+	// Waits for the lock rather than skipping, so the images go now rather than at a later sweep, and
+	// sweeps in the same hold where the environment sweeps after writes. Other environments' images,
+	// such as production's on a preview's copy, are kept. A wait that times out leaves the images for a
+	// later sweep.
 	private async removeAndSweep({ recipeId, images }: ReleasedImages): Promise<void> {
 		const pathnames = images
 			.map(({ pathname }) => pathname)
 			.filter((pathname) => this.folders.contains(pathname));
 		if (pathnames.length === 0) {
-			await this.sweepImages();
+			if (this.sweepsAfterWrites) {
+				await this.sweepImages();
+			}
 			return;
 		}
 
@@ -178,7 +190,9 @@ export class RecipeImageService {
 			await this.moveLock.run(async () => {
 				held = true;
 				await this.removeReleasedImages(recipeId, pathnames);
-				await this.sweep();
+				if (this.sweepsAfterWrites) {
+					await this.sweep();
+				}
 			});
 		} catch (err) {
 			if (held) {

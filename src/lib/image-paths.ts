@@ -4,6 +4,9 @@ type ImageEnvironmentAccess = {
 	readableEnvironments: readonly string[];
 	// The prefixes of the environments whose old images it deletes.
 	expiringEnvironmentPrefixes: readonly string[];
+	// Whether each write's background task sweeps once it is done. Vercel runs crons only on
+	// production, whose daily cleanup sweeps instead.
+	sweepsAfterWrites: boolean;
 };
 
 // Pathnames are never reused, so a stored image never changes and every cache may keep it a year.
@@ -29,14 +32,17 @@ export const imageEnvironmentAccess = {
 	production: {
 		readableEnvironments: [],
 		expiringEnvironmentPrefixes: [previewImageEnvironmentPrefix],
+		sweepsAfterWrites: false,
 	},
 	preview: {
 		readableEnvironments: [productionImageEnvironment, seedImageEnvironment],
 		expiringEnvironmentPrefixes: [],
+		sweepsAfterWrites: true,
 	},
 	development: {
 		readableEnvironments: [seedImageEnvironment],
 		expiringEnvironmentPrefixes: [],
+		sweepsAfterWrites: true,
 	},
 } as const satisfies Record<'production' | 'preview' | 'development', ImageEnvironmentAccess>;
 

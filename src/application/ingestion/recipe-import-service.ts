@@ -1,6 +1,5 @@
 import 'server-only';
 import { requireMember } from '@/application/authorization';
-import { savedDraftCutoff } from '@/application/drafts/saved-draft';
 import {
 	ImportFailedError,
 	ImportNoRecipeError,
@@ -288,6 +287,25 @@ export class RecipeImportService {
 		return { status: 'reviewable', draft: toImportDraftDto(recipeImport, draft) };
 	}
 
+	// A system use case with no actor, which the daily cleanup runs: clears the draft and source URL of
+	// every import past the draft lifetime, and returns how many it cleared.
+	async clearExpiredDrafts(): Promise<number> {
+		return this.imports.clearDraftsCreatedBefore(importDraftCutoff(new Date()));
+	}
+
+	// A system use case with no actor, which the daily cleanup runs: records every import still running
+	// past its lease as failed, and returns how many it recorded. Each is a problem to watch.
+	async settleInterruptedImports(): Promise<number> {
+		const settled = await this.imports.failRunningCreatedBefore(
+			new Date(Date.now() - importLeaseMs),
+			interruptedFailure
+		);
+		if (settled > 0) {
+			logger.warn('Interrupted imports settled as failed', { importCount: settled });
+		}
+		return settled;
+	}
+
 	// Every outcome of a started import is recorded, with what the model calls cost. Recording a failure
 	// waits past the deadline, for a bound of its own that ends before the function does.
 	private async runImport(
@@ -334,8 +352,6 @@ export class RecipeImportService {
 
 	// The repository counts the member's recent imports and starts this one under one lock.
 	private async startImport(actor: MemberActor, mode: RecipeImportMode): Promise<RecipeImport> {
-		await this.clearExpiredDrafts();
-		await this.settleInterruptedImports();
 		const recipeImport = await this.imports.start(
 			{ memberId: actor.memberId, mode },
 			importLimit(actor, new Date())
@@ -351,31 +367,6 @@ export class RecipeImportService {
 			mode: recipeImport.mode,
 		});
 		return recipeImport;
-	}
-
-	// Drafts are cleared lazily, before each import, so no scheduled job is needed: imports' drafts, and
-	// the drafts members saved from the recipe form.
-	private async clearExpiredDrafts(): Promise<void> {
-		const now = new Date();
-		const cleared = await this.imports.clearDraftsCreatedBefore(importDraftCutoff(now));
-		if (cleared > 0) {
-			logger.info('Expired import drafts cleared', { importCount: cleared });
-		}
-		const deleted = await this.drafts.deleteSavedBefore(savedDraftCutoff(now));
-		if (deleted > 0) {
-			logger.info('Expired saved drafts deleted', { draftCount: deleted });
-		}
-	}
-
-	// Imports left running are settled lazily too, before each import. Each is a problem to watch.
-	private async settleInterruptedImports(): Promise<void> {
-		const settled = await this.imports.failRunningCreatedBefore(
-			new Date(Date.now() - importLeaseMs),
-			interruptedFailure
-		);
-		if (settled > 0) {
-			logger.warn('Interrupted imports settled as failed', { importCount: settled });
-		}
 	}
 
 	// The draft keeps the scans it was read from. Its provenance comes from the import's record when it

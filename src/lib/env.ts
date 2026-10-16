@@ -39,6 +39,8 @@ const envSchema = z
 		RESEND_API_KEY: z.string().min(1),
 		// The verified sending domain, from the Vercel integration; mail comes from an address on it.
 		RESEND_EMAIL_DOMAIN: z.hostname(),
+		// Vercel sends it as the bearer token of each cron request, which only production receives.
+		CRON_SECRET: z.string().min(32).optional(),
 	})
 	.refine((vars) => vars.VERCEL_ENV !== 'preview' || vars.VERCEL_URL !== undefined, {
 		message: 'Vercel sets VERCEL_URL on every preview deployment',
@@ -47,6 +49,10 @@ const envSchema = z
 	.refine((vars) => vars.VERCEL_ENV !== 'preview' || vars.VERCEL_GIT_COMMIT_REF !== undefined, {
 		message: 'Vercel sets VERCEL_GIT_COMMIT_REF on every Git deployment',
 		path: ['VERCEL_GIT_COMMIT_REF'],
+	})
+	.refine((vars) => vars.VERCEL_ENV !== 'production' || vars.CRON_SECRET !== undefined, {
+		message: "Production's daily cleanup cron authenticates with CRON_SECRET",
+		path: ['CRON_SECRET'],
 	});
 
 export const env = envSchema.parse(process.env);
@@ -95,3 +101,11 @@ export const readableImageEnvironments = imageAccess.readableEnvironments;
 
 // The prefixes of the other environments whose old images this deployment deletes.
 export const expiringImageEnvironmentPrefixes = imageAccess.expiringEnvironmentPrefixes;
+
+// Whether this deployment sweeps its images after each write, as every one without the daily
+// cleanup cron does.
+export const sweepsImagesAfterWrites = imageAccess.sweepsAfterWrites;
+
+// The token the daily cleanup cron's requests carry. Only production has one, since Vercel runs
+// crons only there.
+export const cronSecret = env.VERCEL_ENV === 'production' ? env.CRON_SECRET : undefined;

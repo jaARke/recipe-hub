@@ -24,4 +24,7 @@ export interface InviteRepository {
 	bindEmail(id: InviteId, email: string, now: Date): Promise<Invite | null>;
 	// Returns false when no open invite has this id.
 	revoke(id: InviteId, now: Date): Promise<boolean>;
+	// Deletes every invite no account used that expired or was revoked before the given time, and
+	// returns how many it deleted. A used invite stays, since its account names it.
+	deleteUnusedClosedBefore(cutoff: Date): Promise<number>;
 }

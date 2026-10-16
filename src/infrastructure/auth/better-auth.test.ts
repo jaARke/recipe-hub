@@ -18,7 +18,7 @@ import { passkeyRegistrationResponse } from '@/infrastructure/auth/testing/test-
 import { DrizzleAccessRequestRepository } from '@/infrastructure/db/drizzle-access-request-repository';
 import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
-import { passkeys, rateLimits, sessions, users, verifications } from '@/infrastructure/db/schema';
+import { passkeys, rateLimits, sessions, users } from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 import { settings } from '@/lib/settings';
 
@@ -696,67 +696,5 @@ describe('logging', () => {
 			message: 'Better Auth reported an error',
 			err: { message: 'CAPTCHA service unavailable', cause: { message: 'No OIDC token' } },
 		});
-	});
-});
-
-describe('pruning expired sessions and verifications', () => {
-	const past = new Date('2020-01-01T00:00:00Z');
-	const future = new Date('2100-01-01T00:00:00Z');
-
-	it('deletes every expired session and verification when a member signs in', async () => {
-		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
-		const grace = await members.create({
-			email: 'grace@example.com',
-			displayName: 'Grace',
-			role: 'member',
-		});
-		await db.insert(sessions).values([
-			{ userId: grace.id, token: 'expired-session', expiresAt: past },
-			{ userId: grace.id, token: 'live-session', expiresAt: future },
-		]);
-		await db.insert(verifications).values([
-			{ identifier: 'expired-challenge', value: '{}', expiresAt: past },
-			{ identifier: 'live-challenge', value: '{}', expiresAt: future },
-		]);
-
-		const response = await signIn('ada@example.com');
-		const { token } = (await response.json()) as { token: string };
-		await backgroundWork();
-
-		const remainingSessions = await db.select({ token: sessions.token }).from(sessions);
-		expect(remainingSessions.map((row) => row.token).toSorted()).toEqual(
-			[token, 'live-session'].toSorted()
-		);
-		expect(await db.select({ identifier: verifications.identifier }).from(verifications)).toEqual([
-			{ identifier: 'live-challenge' },
-		]);
-	});
-
-	it('signs the member in and logs a warning when the deletion fails', async () => {
-		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
-		await db.execute(sql`
-			create function refuse_deletion() returns trigger language plpgsql
-			as $$ begin raise exception 'deletion refused'; end $$
-		`);
-		await db.execute(sql`
-			create trigger refuse_session_deletion before delete on sessions
-			for each statement execute function refuse_deletion()
-		`);
-		const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-		const response = await signIn('ada@example.com');
-		await backgroundWork();
-
-		expect(response.status).toBe(200);
-		const logged = consoleWarn.mock.calls.map(([line]) => JSON.parse(String(line)));
-		expect(logged).toContainEqual(
-			expect.objectContaining({
-				message: 'Expired sessions and verifications could not be deleted',
-				err: expect.objectContaining({
-					// raise_exception, the code the trigger's refusal carries; its message stays out of logs.
-					cause: expect.objectContaining({ code: 'P0001' }),
-				}),
-			})
-		);
 	});
 });

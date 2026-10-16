@@ -294,6 +294,44 @@ describe('revokeOpenByEmail', () => {
 	});
 });
 
+describe('deleteUnusedClosedBefore', () => {
+	const cutoff = new Date('2026-10-07T12:00:00Z');
+	const beforeCutoff = new Date(cutoff.getTime() - 60_000);
+	const afterCutoff = new Date(cutoff.getTime() + 60_000);
+
+	async function remainingIds(): Promise<InviteId[]> {
+		const rows = await db.select({ id: invites.id }).from(invites);
+		return rows.map(({ id }) => inviteIdSchema.parse(id)).toSorted();
+	}
+
+	it('deletes the unused invites revoked or expired before the cutoff, and keeps the rest', async () => {
+		const revokedBefore = await repository.create(newInvite({ expiresAt: afterCutoff }));
+		await repository.revoke(revokedBefore.id, beforeCutoff);
+		await repository.create(newInvite({ expiresAt: beforeCutoff }));
+		const revokedAfter = await repository.create(newInvite({ expiresAt: now }));
+		await repository.revoke(revokedAfter.id, afterCutoff);
+		const expiredAfter = await repository.create(newInvite({ expiresAt: afterCutoff }));
+		const open = await repository.create(newInvite({ expiresAt: inviteExpiry(now) }));
+
+		expect(await repository.deleteUnusedClosedBefore(cutoff)).toBe(2);
+
+		expect(await remainingIds()).toEqual([revokedAfter.id, expiredAfter.id, open.id].toSorted());
+	});
+
+	it('keeps an invite an account used, however long ago it expired, since the account names it', async () => {
+		const usedInvite = newInvite({ expiresAt: beforeCutoff });
+		const used = await repository.create(usedInvite);
+		const memberId = await accept(used, 'grace@example.com');
+
+		expect(await repository.deleteUnusedClosedBefore(now)).toBe(0);
+
+		expect(await repository.findByTokenHash(usedInvite.tokenHash)).toEqual({
+			...used,
+			acceptedBy: memberId,
+		});
+	});
+});
+
 describe('acceptance', () => {
 	it('refuses a second account for one invite', async () => {
 		const invite = await repository.create(newInvite());

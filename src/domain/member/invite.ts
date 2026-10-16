@@ -74,6 +74,12 @@ export function inviteExpiry(createdAt: Date): Date {
 	return new Date(createdAt.getTime() + daysInMilliseconds(settings.accounts.inviteLifetimeDays));
 }
 
+// An unused invite that expired or was revoked before this time is kept no longer, one invite
+// lifetime after it closed.
+export function closedInviteCutoff(now: Date): Date {
+	return new Date(now.getTime() - daysInMilliseconds(settings.accounts.inviteLifetimeDays));
+}
+
 export function parseInviteFields(input: unknown): InviteFields {
 	const result = inviteFieldsSchema.safeParse(input);
 	if (!result.success) {

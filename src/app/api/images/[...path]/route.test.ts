@@ -37,7 +37,8 @@ async function serveImages() {
 		new FixedActorProvider(anonymousActor()),
 		folders,
 		new InMemoryImageMoveLock(),
-		() => {}
+		() => {},
+		true
 	);
 }
 

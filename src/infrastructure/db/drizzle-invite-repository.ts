@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, desc, eq, gt, isNull, notExists, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, lt, notExists, or, type SQL } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import type { InviteRepository, NewInvite } from '@/application/ports/invite-repository';
 import type { Invite, InviteId } from '@/domain/member/invite';
@@ -60,6 +60,15 @@ export class DrizzleInviteRepository implements InviteRepository {
 		return rows.length > 0;
 	}
 
+	// An invite closed at the earlier of its revocation and its expiry.
+	async deleteUnusedClosedBefore(cutoff: Date): Promise<number> {
+		const rows = await this.db
+			.delete(invites)
+			.where(and(this.isUnused(), or(lt(invites.revokedAt, cutoff), lt(invites.expiresAt, cutoff))))
+			.returning({ id: invites.id });
+		return rows.length;
+	}
+
 	// Not on the port: only a member's removal revokes this way, inside its own transaction. Migration
 	// 0008_free-removed-member-emails.sql revokes the same way for members removed before it.
 	async revokeOpenByEmail(email: string, now: Date): Promise<void> {
@@ -79,10 +88,13 @@ export class DrizzleInviteRepository implements InviteRepository {
 
 	// No account has used it, it is not revoked, and it expires after now.
 	private isOpen(now: Date): SQL | undefined {
-		return and(
-			notExists(this.db.select({ id: users.id }).from(users).where(eq(users.inviteId, invites.id))),
-			isNull(invites.revokedAt),
-			gt(invites.expiresAt, now)
+		return and(this.isUnused(), isNull(invites.revokedAt), gt(invites.expiresAt, now));
+	}
+
+	// No account names it.
+	private isUnused(): SQL {
+		return notExists(
+			this.db.select({ id: users.id }).from(users).where(eq(users.inviteId, invites.id))
 		);
 	}
 }
