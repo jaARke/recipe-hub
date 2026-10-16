@@ -74,7 +74,8 @@ function store(pathnames: readonly string[], uploadedAt: Date = longAgo): void {
 }
 
 // Blob's API lists by prefix a page at a time, copies, and deletes. Copying a pathname whose name
-// says so fails, or never answers.
+// says so fails, or never answers, and deleting one whose name says so deletes it but never answers,
+// as when Blob's answer is lost.
 beforeEach(async () => {
 	blobs = new Map();
 	received = [];
@@ -83,11 +84,14 @@ beforeEach(async () => {
 	abandonedCount = 0;
 	blobApi = await startFakeBlobApi((request, body, response) => {
 		const url = new URL(request.url ?? '/', 'http://127.0.0.1');
-		if (stalled || url.searchParams.get('fromUrl')?.includes('stalling')) {
+		const leaveUnanswered = () => {
 			unansweredCount += 1;
 			response.on('close', () => {
 				abandonedCount += 1;
 			});
+		};
+		if (stalled || url.searchParams.get('fromUrl')?.includes('stalling')) {
+			leaveUnanswered();
 			return;
 		}
 
@@ -143,10 +147,15 @@ beforeEach(async () => {
 				});
 			}
 		} else if (request.method === 'POST' && url.pathname === '/delete') {
-			for (const pathname of (JSON.parse(body) as { urls: string[] }).urls) {
+			const { urls } = JSON.parse(body) as { urls: string[] };
+			for (const pathname of urls) {
 				blobs.delete(pathname);
 			}
-			answer(200, {});
+			if (urls.some((pathname) => pathname.includes('unconfirmed'))) {
+				leaveUnanswered();
+			} else {
+				answer(200, {});
+			}
 		} else {
 			answer(404, { error: { code: 'not_found', message: 'No such endpoint' } });
 		}
@@ -352,13 +361,20 @@ describe('remove', () => {
 	describe('stopped part way', () => {
 		const moved = 'dish/development/a.jpg';
 		const stalling = 'dish/development/stalling.jpg';
+		const unconfirmed = 'dish/development/unconfirmed.jpg';
 		const untried = 'dish/development/b.jpg';
 
-		// Moves the first image, then stops at a copy Blob never answers once the caller's signal aborts.
-		async function removeUntilStopped(reason: Error): Promise<unknown> {
-			store([moved, stalling, untried]);
+		const sources = (pathnames: string[]) => pathnames.map((pathname) => `/api/images/${pathname}`);
+
+		// Moves the first image, then stops at the second, whose copy or delete Blob never answers, once
+		// the caller's signal aborts.
+		async function removeUntilStopped(
+			reason: Error,
+			stoppedAt: string = stalling
+		): Promise<unknown> {
+			store([moved, stoppedAt, untried]);
 			const caller = new AbortController();
-			const removal = storeFor('development').remove([moved, stalling, untried], caller.signal);
+			const removal = storeFor('development').remove([moved, stoppedAt, untried], caller.signal);
 			await vi.waitFor(() => expect(unansweredCount).toBe(1));
 			caller.abort(reason);
 			return removal.catch((error: unknown) => error);
@@ -371,13 +387,22 @@ describe('remove', () => {
 
 			expect(failure).toBeInstanceOf(ImageMoveInterruptedError);
 			expect(failure).toMatchObject({ cause: reason, unpurged: [] });
-			const sources = (pathnames: string[]) =>
-				pathnames.map((pathname) => `/api/images/${pathname}`);
 			expect(vi.mocked(dangerouslyDeleteBySrcImage).mock.calls.map(([source]) => source)).toEqual([
 				sources([moved, stalling, untried]),
 				sources([moved]),
 			]);
 			expect([...blobs.keys()].sort()).toEqual([untried, stalling, `trash/${moved}`]);
+		});
+
+		it('purges an image whose delete it stopped, as Blob may have deleted its original', async () => {
+			const failure = await removeUntilStopped(new Error('The sweep ran out of time'), unconfirmed);
+
+			expect(failure).toBeInstanceOf(ImageMoveInterruptedError);
+			expect(vi.mocked(dangerouslyDeleteBySrcImage).mock.calls.map(([source]) => source)).toEqual([
+				sources([moved, unconfirmed, untried]),
+				sources([moved, unconfirmed]),
+			]);
+			expect([...blobs.keys()].sort()).toEqual([untried, `trash/${moved}`, `trash/${unconfirmed}`]);
 		});
 
 		it('names the image it moved whose purge then failed', async () => {
@@ -498,6 +523,66 @@ describe('time limits', () => {
 			failed: [{ pathname, reason: 'Error: Blob copy timed out after 15 seconds' }],
 			unpurged: [],
 		});
+	});
+
+	it('gives up on a delete Blob never answers after 15 seconds, returning the image with why and purging it, as Blob may have deleted it', async () => {
+		stalled = false;
+		const unconfirmed = 'dish/development/unconfirmed.jpg';
+		store([pathname, unconfirmed]);
+
+		const removal = storeFor('development').remove([pathname, unconfirmed]);
+		await vi.waitFor(() => expect(unansweredCount).toBe(1));
+		await vi.advanceTimersByTimeAsync(15_000);
+
+		expect(await removal).toEqual({
+			failed: [{ pathname: unconfirmed, reason: 'Error: Blob delete timed out after 15 seconds' }],
+			unpurged: [],
+		});
+		expect(vi.mocked(dangerouslyDeleteBySrcImage).mock.lastCall?.[0]).toEqual([
+			`/api/images/${pathname}`,
+			`/api/images/${unconfirmed}`,
+		]);
+	});
+
+	it('gives the purge after the move 20 seconds in all, returning the batches it cut off or never reached with why', async () => {
+		stalled = false;
+		const pathnames = Array.from({ length: 33 }, (_, index) => `dish/development/${index}.jpg`);
+		store(pathnames);
+		const purgeAfterMoveAsked = Promise.withResolvers<void>();
+		// The three batches' purges before the move answer, and the first two's after it never do.
+		vi.mocked(dangerouslyDeleteByTag)
+			.mockResolvedValueOnce(undefined)
+			.mockResolvedValueOnce(undefined)
+			.mockResolvedValueOnce(undefined)
+			.mockImplementationOnce(() => {
+				purgeAfterMoveAsked.resolve();
+				return stalledCall();
+			})
+			.mockImplementationOnce(() => stalledCall());
+
+		const removal = storeFor('development').remove(pathnames);
+		const settled = vi.fn();
+		removal.then(settled, settled);
+		await purgeAfterMoveAsked.promise;
+		await vi.advanceTimersByTimeAsync(20_000 - 1);
+		expect(settled).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1);
+		expect(settled).toHaveBeenCalled();
+
+		const unpurged = (batch: string[], reason: string) =>
+			batch.map((pathname) => ({ pathname, reason }));
+		expect(await removal).toEqual({
+			failed: [],
+			unpurged: [
+				...unpurged(pathnames.slice(0, 16), 'Error: Cache purge by tag timed out after 15 seconds'),
+				...unpurged(
+					pathnames.slice(16),
+					'Error: The purge after the move timed out after 20 seconds'
+				),
+			],
+		});
+		// The third batch's purge after the move is never asked for.
+		expect(vi.mocked(dangerouslyDeleteByTag)).toHaveBeenCalledTimes(5);
 	});
 
 	it('aborts the request it gives up on', async () => {

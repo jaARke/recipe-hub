@@ -20,15 +20,17 @@ export type FailedImage = {
 };
 
 // What a move did besides moving: the images it left in place, and those it moved whose cached copies
-// it could not purge, which may be served until they expire. Every other image moved, or was gone.
+// it could not purge, which may be served until they expire. An image copied whose original's delete
+// failed may or may not have left its old pathname, so it is failed, and purged as a moved one is,
+// so unpurged too when that purge fails. Every other image moved, or was gone.
 export type ImageMoveOutcome = {
 	failed: FailedImage[];
 	unpurged: FailedImage[];
 };
 
-// A move its signal stopped part way, caused by the signal's reason. The images it had moved were
-// purged all the same, as no later sweep purges an image once it has moved, and it names those whose
-// purge failed.
+// A move its signal stopped part way, caused by the signal's reason. The images it had moved, and one
+// copied whose original's delete the signal stopped, which may have moved, were purged all the same,
+// as no later sweep purges an image once it has moved, and it names those whose purge failed.
 export class ImageMoveInterruptedError extends AppError {
 	readonly code = 'image.move-interrupted';
 	readonly unpurged: FailedImage[];
@@ -41,8 +43,8 @@ export class ImageMoveInterruptedError extends AppError {
 
 // Every operation but get, has, hasRemoved, and put stays inside this environment's folders. An
 // operation given a signal stops once it aborts, rejecting with its reason, but for remove and restore
-// once they have begun moving: those purge the images they moved, each purge within its own time
-// limit, and reject with ImageMoveInterruptedError.
+// once they have begun moving: those purge the images they moved, within the purge's own time limit,
+// and reject with ImageMoveInterruptedError.
 export interface ImageStore {
 	// Returns null when no image has this pathname. The read and its body stop once the signal aborts.
 	get(pathname: string, signal?: AbortSignal): Promise<StoredImage | null>;

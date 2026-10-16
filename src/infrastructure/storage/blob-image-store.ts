@@ -18,7 +18,7 @@ import {
 	type StoredImage,
 } from '@/application/ports/image-store';
 import type { ImageFolders } from '@/application/recipes/image-folders';
-import { requestWithin } from '@/lib/deadline';
+import { deadlineAfter, requestWithin, settleWithin } from '@/lib/deadline';
 import { imageCacheMaxAgeSeconds, imageCacheTag, imageRouteSrc } from '@/lib/image-paths';
 
 // A removed image moves here under its pathname, so each environment's removed images sit in its own
@@ -35,6 +35,12 @@ const purgeBatchSize = 16;
 // backoff from a second, so a call this slow has met an outage rather than a slow answer. A cache
 // purge is held to the same bound.
 const callTimeLimitMs = 15_000;
+
+// The purge after a move ends after this long, however many batches it has left, as no signal stops
+// it. A move still purges once the image move's 60-second bound has passed, so this bounds how far
+// past it the move runs, leaving the cleanup cron's 120 seconds room for its other steps and its
+// answer. It lets one batch use its whole call limit and leaves time for more.
+const purgeAfterMoveTimeLimitMs = 20_000;
 
 // Each call the store makes, as its time-out error names it.
 type StoreCall =
@@ -72,6 +78,14 @@ type PurgeOutcome = {
 	failed: FailedImage[];
 };
 
+// What ends a purge early besides each call's time limit: the caller's signal before a move, which
+// stops it, rejecting with its reason, and the deadline of a purge after a move, past which the batch
+// at hand and those after it are returned as failed.
+type PurgeLimits = {
+	cancellation?: AbortSignal;
+	deadline?: AbortSignal;
+};
+
 function trashPathname(pathname: string): string {
 	return `${trashFolder}${pathname}`;
 }
@@ -92,6 +106,12 @@ function withinTimeLimit<T>(
 		request,
 		{ timeLimitMs: callTimeLimitMs, cancellation },
 		() => new Error(`${call} timed out after ${callTimeLimitMs / 1000} seconds`)
+	);
+}
+
+function purgeAfterMoveTimedOut(): Error {
+	return new Error(
+		`The purge after the move timed out after ${purgeAfterMoveTimeLimitMs / 1000} seconds`
 	);
 }
 
@@ -118,30 +138,38 @@ function batches(pathnames: readonly string[], size: number): string[][] {
 }
 
 // Dish photos and scans alike are cached by Vercel's CDN and image optimizer. Each batch is purged on
-// its own, so one whose purge fails is returned and the rest are still purged. Outside a Vercel
-// request, as in a script or the dev server, the purges do nothing.
+// its own, so one whose purge fails is returned and the rest are still purged; none starts once the
+// deadline has passed, and one it cuts off is left running, as a purge takes no signal. Outside a
+// Vercel request, as in a script or the dev server, the purges do nothing.
 async function purgeCaches(
 	pathnames: readonly string[],
-	signal?: AbortSignal
+	{ cancellation, deadline }: PurgeLimits
 ): Promise<PurgeOutcome> {
 	const outcome: PurgeOutcome = { purged: [], failed: [] };
 	for (const batch of batches(pathnames, purgeBatchSize)) {
 		try {
-			await Promise.all([
+			if (deadline?.aborted) {
+				throw purgeAfterMoveTimedOut();
+			}
+
+			const purge = Promise.all([
 				withinTimeLimit(
 					'Cache purge by tag',
 					() => dangerouslyDeleteByTag(batch.map(imageCacheTag)),
-					signal
+					cancellation
 				),
 				withinTimeLimit(
 					'Cache purge by source image',
 					() => dangerouslyDeleteBySrcImage(batch.map(imageRouteSrc)),
-					signal
+					cancellation
 				),
 			]);
+			await (deadline === undefined
+				? purge
+				: settleWithin(purge, { deadline }, purgeAfterMoveTimedOut));
 			outcome.purged.push(...batch);
 		} catch (error) {
-			outcome.failed.push(...failuresOf(batch, error, signal));
+			outcome.failed.push(...failuresOf(batch, error, cancellation));
 		}
 	}
 	return outcome;
@@ -218,7 +246,7 @@ export class BlobImageStore implements ImageStore {
 	// Purged first too, so an image whose purge fails stays in place for the sweep to remove again.
 	async remove(pathnames: readonly string[], signal?: AbortSignal): Promise<ImageMoveOutcome> {
 		this.assertInFolders(pathnames);
-		const before = await purgeCaches(pathnames, signal);
+		const before = await purgeCaches(pathnames, { cancellation: signal });
 		const { failed, unpurged } = await this.move(
 			before.purged.map((pathname) => ({ pathname, from: pathname, to: trashPathname(pathname) })),
 			signal
@@ -271,18 +299,22 @@ export class BlobImageStore implements ImageStore {
 
 	// One image at a time, each copied before its own original is deleted, so an image that fails is
 	// left in place, at both pathnames at worst, and the rest still move. A signal that aborts stops
-	// the move at the image at hand rather than failing it. What moved is then purged however the move
-	// ended, as a request during the move can cache an image for a year: each purge keeps its own time
-	// limit, no signal stops it, and one that fails is reported against the moved images it covered.
+	// the move at the image at hand rather than failing it. Every image whose copy succeeded is then
+	// purged however the move ended, as a request during the move can cache an image for a year, within
+	// the purge's own time limit, which no signal stops; a batch that fails or that the limit cuts off
+	// is reported against the images it covered. So an image whose delete fails or times out is returned
+	// as failed and still purged, and one whose delete the signal stops is purged too: Blob may have
+	// deleted the original before its answer was lost, and the SDK retries a request it had no answer
+	// to, so no failure proves the original remains.
 	private async move(moves: readonly Move[], signal?: AbortSignal): Promise<ImageMoveOutcome> {
-		const moved: string[] = [];
+		const copied: string[] = [];
 		const failed: FailedImage[] = [];
 		let stoppedBy: { reason: unknown } | undefined;
 		for (const { pathname, from, to } of moves) {
 			try {
 				await this.copy(from, to, signal);
+				copied.push(pathname);
 				await this.delete([from], signal);
-				moved.push(pathname);
 			} catch (error) {
 				if (signal?.aborted) {
 					stoppedBy = { reason: signal.reason };
@@ -292,7 +324,9 @@ export class BlobImageStore implements ImageStore {
 			}
 		}
 
-		const after = await purgeCaches(moved);
+		const after = await purgeCaches(copied, {
+			deadline: deadlineAfter(purgeAfterMoveTimeLimitMs),
+		});
 		if (stoppedBy !== undefined) {
 			throw new ImageMoveInterruptedError(after.failed, { cause: stoppedBy.reason });
 		}
