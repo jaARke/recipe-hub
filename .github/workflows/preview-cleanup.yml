@@ -1,0 +1,118 @@
+name: Preview cleanup
+
+# pull_request_target, delete, and schedule run this file as main has it, so a branch cannot change
+# what runs with VERCEL_TOKEN. Nothing here checks out code, and a branch name reaches a shell only
+# through the environment.
+on:
+  pull_request_target:
+    types: [closed]
+  delete:
+  schedule:
+    - cron: '17 10 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # The sweep's idle limit, matching the project's preview retention in Vercel.
+  PREVIEW_IDLE_DAYS: 7
+  VERCEL_PROJECT_ID: prj_GeBPGpiAp3MaFqhzfcqOvvd152CX
+
+jobs:
+  # The Neon integration deletes a preview's Neon branch only with the branch's last preview, and
+  # Vercel keeps an open branch's newest preview and the project's newest previews past retention.
+  delete-previews:
+    # Skips a fork's pull request, whose branch can share a name with one of this repository's, and a
+    # deleted tag.
+    if: github.event.pull_request.head.repo.full_name == github.repository || github.event.ref_type == 'branch' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # A merge may fire both closed and delete for one branch, so a branch's runs go one at a time.
+    concurrency:
+      group: preview-cleanup-${{ (github.event_name == 'pull_request_target' && format('branch-{0}', github.event.pull_request.head.ref)) || (github.event_name == 'delete' && format('branch-{0}', github.event.ref)) || 'sweep' }}
+    steps:
+      - name: Delete previews
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          # The closed pull request's or the deleted branch's name; empty for the sweep.
+          BRANCH: ${{ (github.event_name == 'pull_request_target' && github.event.pull_request.head.ref) || (github.event_name == 'delete' && github.event.ref) || '' }}
+        run: |
+          set -euo pipefail
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "::error::Set the repository secret VERCEL_TOKEN to a token scoped to the Vercel project"
+            exit 1
+          fi
+          response="$RUNNER_TEMP/vercel-response.json"
+          # curl reads the header from stdin, so the token never reaches a command line.
+          vercel_api() {
+            : > "$response"
+            curl -sS --retry 3 -o "$response" -w '%{http_code}' -X "$1" -H @- \
+              "https://api.vercel.com$2" <<< "Authorization: Bearer $VERCEL_TOKEN"
+          }
+
+          # Pages run newest first, and each page's pagination.next is the next page's until.
+          previews="$RUNNER_TEMP/previews.jsonl"
+          : > "$previews"
+          query="projectId=$VERCEL_PROJECT_ID&target=preview&limit=100"
+          if [ -n "$BRANCH" ]; then
+            query="$query&branch=$(jq -rn '$ENV.BRANCH | @uri')"
+          fi
+          next=''
+          while :; do
+            status=$(vercel_api GET "/v7/deployments?$query${next:+&until=$next}")
+            if [ "$status" != 200 ]; then
+              echo "::error::Listing previews answered $status: $(cat "$response")"
+              exit 1
+            fi
+            jq -c '.deployments[] | {uid, created, branch: .meta.githubCommitRef}' "$response" >> "$previews"
+            next=$(jq -r '.pagination.next // empty' "$response")
+            [ -n "$next" ] || break
+          done
+
+          branches="$RUNNER_TEMP/branches.json"
+          if [ -n "$BRANCH" ]; then
+            echo '[]' > "$branches"
+          else
+            gh api --paginate "repos/$GITHUB_REPOSITORY/branches?per_page=100" --jq '.[].name' |
+              jq -Rn '[inputs]' > "$branches"
+          fi
+
+          # One line per branch: what this run does with it, then a tab and the previews it deletes.
+          # Vercel does not document whether its branch filter matches exactly, so the select does.
+          plan=$(jq -rs --slurpfile branches "$branches" '
+            ($ENV.PREVIEW_IDLE_DAYS | tonumber) as $idle_days
+            | map(select($ENV.BRANCH == "" or .branch == $ENV.BRANCH))
+            | group_by(.branch)
+            | .[]
+            | .[0].branch as $branch
+            | ((now * 1000 - (map(.created) | max)) / 86400000) as $age
+            | (if $ENV.GITHUB_EVENT_NAME == "pull_request_target" then "pull request closed"
+              elif $ENV.GITHUB_EVENT_NAME == "delete" then "branch deleted"
+              elif $branch != null and (any($branches[0][]; . == $branch) | not) then "gone from GitHub"
+              elif $age > $idle_days then "idle over \($idle_days) days"
+              else null end) as $reason
+            | ("\($branch // "(no branch)"): \(length) preview\(if length > 1 then "s" else "" end),"
+              + " the newest \(($age * 10 | floor) / 10) days old") as $summary
+            | if $reason then ["Clearing \($summary) (\($reason))", (map(.uid) | join(" "))]
+              else ["Keeping \($summary)"] end
+            | @tsv' "$previews")
+          if [ -z "$plan" ]; then
+            echo "No previews${BRANCH:+ of $BRANCH}"
+            exit 0
+          fi
+
+          failed=0
+          while IFS=$'\t' read -r message uids; do
+            echo "$message"
+            for uid in $uids; do
+              status=$(vercel_api DELETE "/v13/deployments/$uid") || true
+              # 404: another run, or Vercel's retention, deleted it first.
+              if [ "$status" != 200 ] && [ "$status" != 404 ]; then
+                echo "::error::Deleting $uid answered $status: $(cat "$response")"
+                failed=1
+              fi
+            done
+          done <<< "$plan"
+          exit "$failed"
