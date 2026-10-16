@@ -1,4 +1,4 @@
-import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
+import type { ImageSize, RecipeImageRole } from '@/domain/recipe/recipe-image';
 import type { RecipeYield } from '@/domain/recipe/recipe-yield';
 
 // The fields the recipe form submits and its actions read. The recipe travels whole as JSON in one
@@ -11,7 +11,8 @@ export const recipeFormFieldNames = {
 	importId: 'importId',
 	// The form's snapshot as JSON, which saving a draft sends.
 	draft: 'draft',
-	// The saved draft the form holds, which saving the recipe deletes.
+	// The saved draft the form holds, which saving the recipe deletes, and whose provenance the recipe
+	// takes when no import is named.
 	draftId: 'draftId',
 } as const;
 
@@ -50,5 +51,5 @@ export type RecipeFormPayload = {
 	instructionSections: { heading?: string; steps: string[] }[];
 	tags: string[];
 	// Dish photos in order, the cover first, then scans.
-	images: { role: RecipeImageRole; pathname: string; alt?: string }[];
+	images: { role: RecipeImageRole; pathname: string; size?: ImageSize; alt?: string }[];
 };

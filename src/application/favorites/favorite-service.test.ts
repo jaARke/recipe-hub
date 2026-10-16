@@ -278,6 +278,7 @@ describe('listFavorites', () => {
 						role: 'dish',
 						pathname: 'dish/seed/weeknight-chicken-soup.jpg',
 						alt: 'A square white bowl of chicken noodle soup with carrots and peppers',
+						size: { width: 1600, height: 961 },
 					},
 					createdAt: soup.createdAt,
 				},

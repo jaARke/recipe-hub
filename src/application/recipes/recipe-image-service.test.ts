@@ -22,6 +22,8 @@ import { settings } from '@/lib/settings';
 const dishPhoto = 'dish/seed/soup.jpg';
 const scan = 'scan/production/soup-card.jpg';
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+// The size the browser draws a landscape photo at, which every image written to a recipe has.
+const photoSize = { width: 2400, height: 1800 };
 const upload = 'dish/development/3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b.jpg';
 const scanUpload = 'scan/development/0b6e2f4a-9c1d-4e8b-a7f3-5d2c1b0a9e8f.jpg';
 // A deployment that, like a preview, also reads production's and the seed's images.
@@ -119,7 +121,11 @@ async function createSweep(environment = 'development', expiringPrefixes: string
 	const imports = new InMemoryRecipeImportRepository(recipes);
 	const drafts = new InMemorySavedDraftRepository();
 	const images = new InMemoryImageStore(sweepFolders);
-	const listed: RecipeImage = { role: 'dish', pathname: `dish/${environment}/listed.jpg` };
+	const listed: RecipeImage = {
+		role: 'dish',
+		pathname: `dish/${environment}/listed.jpg`,
+		size: photoSize,
+	};
 	const drafted: RecipeImage = { role: 'scan', pathname: `scan/${environment}/drafted.jpg` };
 	const saved = `dish/${environment}/saved.jpg`;
 	const unused = `dish/${environment}/unused.jpg`;
@@ -426,7 +432,7 @@ describe('sweepImages', () => {
 		// The save lands after the sweep found the upload unused and before it removes it.
 		const remove = images.remove.bind(images);
 		vi.spyOn(images, 'remove').mockImplementationOnce(async (pathnames) => {
-			await attach(recipes, { role: 'dish', pathname: unused });
+			await attach(recipes, { role: 'dish', pathname: unused, size: photoSize });
 			await remove(pathnames);
 		});
 
@@ -626,7 +632,7 @@ describe('scheduleSweep with the images an edit or delete let go', () => {
 	// The recipe the write let them go from, which their log lines name.
 	const recipeId = recipeIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e');
 	const released = 'dish/development/released.jpg';
-	const releasedImage: RecipeImage = { role: 'dish', pathname: released };
+	const releasedImage: RecipeImage = { role: 'dish', pathname: released, size: photoSize };
 
 	afterEach(() => {
 		vi.useRealTimers();

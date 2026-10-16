@@ -10,7 +10,11 @@ import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import { importDraftCutoff } from '@/domain/recipe/recipe-import';
 import { sampleChickenSoup } from '@/domain/recipe/samples/sample-recipes';
 
-const listedPhoto: RecipeImage = { role: 'dish', pathname: 'dish/development/soup.jpg' };
+const listedPhoto: RecipeImage = {
+	role: 'dish',
+	pathname: 'dish/development/soup.jpg',
+	size: { width: 2400, height: 1800 },
+};
 const draftScan: RecipeImage = { role: 'scan', pathname: 'scan/development/card.jpg' };
 const expiredDraftScan: RecipeImage = { role: 'scan', pathname: 'scan/development/old-card.jpg' };
 const savedDraftPhoto = 'dish/development/saved.jpg';

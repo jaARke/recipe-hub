@@ -98,7 +98,11 @@ export const sampleRecipeDetail = toPublicRecipeDto(
 			...sampleBiscuits.images,
 			...sampleRecipe(sampleChickenSoup).images,
 			...sampleRecipe(sampleSundayPotRoast).images,
-			...sampleRecipe(sampleTomatoSalad).images.map(({ role, pathname }) => ({ role, pathname })),
+			...sampleRecipe(sampleTomatoSalad).images.map(({ role, pathname, size }) => ({
+				role,
+				pathname,
+				size,
+			})),
 		],
 	},
 	sampleContributor
@@ -233,5 +237,14 @@ export const sampleDrafts: readonly DraftSummaryDto[] = [
 		title: 'Lemon bars',
 		importedAt: new Date('2026-10-10T12:00:00.000Z'),
 		expiresAt: new Date('2026-10-17T12:00:00.000Z'),
+	},
+	// Saved from a link import's review, which has since gone, so it says where it came from itself.
+	{
+		kind: 'saved',
+		id: savedDraftIdSchema.parse('0199d2a0-1b2c-7d3e-8f40-000000000005'),
+		mode: 'url',
+		title: 'Buttermilk biscuits',
+		savedAt: new Date('2026-10-02T09:15:00.000Z'),
+		expiresAt: new Date('2026-11-01T09:15:00.000Z'),
 	},
 ];

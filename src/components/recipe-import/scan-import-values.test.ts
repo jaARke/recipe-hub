@@ -14,9 +14,17 @@ function edited(values: ScanImportValues, ...edits: ScanImportEdit[]): ScanImpor
 
 const photoFile = new File(['jpeg'], 'page.jpg', { type: 'image/jpeg' });
 
-function uploaded(photoId: number, pathname: string): ScanImportEdit[] {
+// A portrait page and a landscape card, as the browser draws them.
+const pageSize = { width: 2304, height: 3072 };
+const cardSize = { width: 3072, height: 1843 };
+
+function uploaded(
+	photoId: number,
+	pathname: string,
+	size: { width: number; height: number }
+): ScanImportEdit[] {
 	return [
-		{ type: 'startPhotoUpload', photoId, pathname, file: photoFile },
+		{ type: 'startPhotoUpload', photoId, pathname, size, file: photoFile },
 		{ type: 'finishPhotoUpload', photoId },
 	];
 }
@@ -26,17 +34,20 @@ function threePages(): ScanImportValues {
 	return edited(
 		emptyScanImport,
 		{ type: 'addPhotos', role: 'scan', fileNames: ['front.jpg', 'back.heic', 'notes.jpg'] },
-		...uploaded(0, 'scan/development/front.jpg'),
+		...uploaded(0, 'scan/development/front.jpg', pageSize),
 		{ type: 'failPhoto', photoId: 1, failure: 'unreadable' },
-		...uploaded(2, 'scan/development/notes.jpg')
+		...uploaded(2, 'scan/development/notes.jpg', cardSize)
 	);
 }
 
 describe('scanImportSubmission', () => {
-	it('sends stored pages in order, each under the path its problems take', () => {
-		const { pathnames, targets } = scanImportSubmission(threePages());
+	it('sends stored pages in order with their sizes, each under the path its problems take', () => {
+		const { scans, targets } = scanImportSubmission(threePages());
 
-		expect(pathnames).toEqual(['scan/development/front.jpg', 'scan/development/notes.jpg']);
+		expect(scans).toEqual([
+			{ pathname: 'scan/development/front.jpg', size: pageSize },
+			{ pathname: 'scan/development/notes.jpg', size: cardSize },
+		]);
 		expect([...targets]).toEqual([
 			['scans.0', 0],
 			['scans.1', 2],
@@ -46,7 +57,7 @@ describe('scanImportSubmission', () => {
 	it('follows the pages’ order as they move', () => {
 		const moved = edited(threePages(), { type: 'movePhoto', photoId: 2, toIndex: 0 });
 
-		expect(scanImportSubmission(moved).pathnames).toEqual([
+		expect(scanImportSubmission(moved).scans.map(({ pathname }) => pathname)).toEqual([
 			'scan/development/notes.jpg',
 			'scan/development/front.jpg',
 		]);
@@ -59,7 +70,7 @@ describe('scanImportSubmission', () => {
 			fileNames: ['front.jpg'],
 		});
 
-		expect(scanImportSubmission(chosen)).toEqual({ pathnames: [], targets: new Map() });
+		expect(scanImportSubmission(chosen)).toEqual({ scans: [], targets: new Map() });
 	});
 });
 

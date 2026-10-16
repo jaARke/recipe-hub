@@ -4,7 +4,7 @@ import type { Problem } from '@/domain/problem';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
 import { parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import { parseRecipeContent, type RecipeContentInput } from '@/domain/recipe/recipe';
-import { recipeImageRoleSchema } from '@/domain/recipe/recipe-image';
+import { recipeImageRoleSchema, storedImageSizeSchema } from '@/domain/recipe/recipe-image';
 import { readYieldAmount } from '@/domain/recipe/recipe-yield';
 
 // Maps what the recipe form sends to the recipe service's input, for the Server Actions that
@@ -38,6 +38,7 @@ const payloadSchema = z.object({
 		z.object({
 			role: recipeImageRoleSchema,
 			pathname: z.string(),
+			size: storedImageSizeSchema.optional(),
 			alt: z.string().optional(),
 		})
 	),
@@ -115,9 +116,10 @@ export function recipeContentFromForm(json: string): RecipeContentInput {
 			steps: section.steps.map((text) => ({ text })),
 		})),
 		tags: payload.tags,
-		images: payload.images.map(({ role, pathname, alt }) => ({
+		images: payload.images.map(({ role, pathname, size, alt }) => ({
 			role,
 			pathname,
+			size,
 			alt: optionalText(alt),
 		})),
 	};

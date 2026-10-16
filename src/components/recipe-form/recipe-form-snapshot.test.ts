@@ -27,6 +27,11 @@ function edited(values: RecipeFormValues, ...edits: RecipeFormEdit[]): RecipeFor
 
 const photoFile = new File(['jpeg'], 'IMG_0001.jpg', { type: 'image/jpeg' });
 
+// The size a new photo is drawn at, and the sizes lemon bars' photos were stored with.
+const drawnSize = { width: 2400, height: 1600 };
+const barsSize = { width: 2400, height: 1800 };
+const sliceSize = { width: 1800, height: 2400 };
+
 const blankText = {
 	title: '',
 	description: '',
@@ -56,10 +61,22 @@ function halfFilledNewRecipe(): RecipeFormValues {
 			role: 'dish',
 			fileNames: ['IMG_0001.jpg', 'IMG_0002.jpg', 'IMG_0003.jpg'],
 		},
-		{ type: 'startPhotoUpload', photoId: 3, pathname: 'dish/development/a.jpg', file: photoFile },
+		{
+			type: 'startPhotoUpload',
+			photoId: 3,
+			pathname: 'dish/development/a.jpg',
+			size: drawnSize,
+			file: photoFile,
+		},
 		{ type: 'finishPhotoUpload', photoId: 3 },
 		{ type: 'setPhotoAlt', photoId: 3, alt: 'Bars on a plate' },
-		{ type: 'startPhotoUpload', photoId: 4, pathname: 'dish/development/b.jpg', file: photoFile },
+		{
+			type: 'startPhotoUpload',
+			photoId: 4,
+			pathname: 'dish/development/b.jpg',
+			size: drawnSize,
+			file: photoFile,
+		},
 		{ type: 'failPhoto', photoId: 5, failure: 'unreadable' },
 		{
 			type: 'attachErrors',
@@ -74,11 +91,12 @@ const lemonBars: RecipeDraftContent = {
 	title: 'Lemon bars',
 	ingredientSections: [{ lines: [{ text: '1 cup flour' }] }],
 	instructionSections: [{ steps: [{ text: 'Bake.' }] }],
-	images: [{ role: 'dish', pathname: 'dish/development/bars.jpg' }],
+	images: [{ role: 'dish', pathname: 'dish/development/bars.jpg', size: barsSize }],
 };
 
 // What an edit of lemon bars kept: the saved photo, an upload still stored, one the sweep removed,
-// and one that never finished, with a note left open on the line and one resolved on the step.
+// and one that never finished, with a note left open on the line and one resolved on the step. The
+// saved photo and the removed one were kept before sizes were recorded.
 const keptEdit: RecipeFormSnapshot = {
 	text: { ...blankText, title: 'Lemon squares' },
 	yieldKind: 'makes',
@@ -93,7 +111,13 @@ const keptEdit: RecipeFormSnapshot = {
 	photos: {
 		dish: [
 			{ id: 2, alt: 'Bars on a plate', pathname: 'dish/development/bars.jpg' },
-			{ id: 3, fileName: 'IMG_0002.jpg', alt: 'A slice', pathname: 'dish/development/slice.jpg' },
+			{
+				id: 3,
+				fileName: 'IMG_0002.jpg',
+				alt: 'A slice',
+				pathname: 'dish/development/slice.jpg',
+				size: sliceSize,
+			},
 			{ id: 4, fileName: 'IMG_0003.jpg', alt: '', pathname: 'dish/development/swept.jpg' },
 			{ id: 5, fileName: 'IMG_0004.jpg', alt: '' },
 		],
@@ -120,13 +144,14 @@ describe('recipeFormSnapshot', () => {
 			instructionSections: { rows: [{ kind: 'item', id: 1, text: '' }] },
 			tags: [],
 			photos: {
-				// Only a stored photo keeps its pathname.
+				// Only a stored photo keeps its pathname and size.
 				dish: [
 					{
 						id: 3,
 						fileName: 'IMG_0001.jpg',
 						alt: 'Bars on a plate',
 						pathname: 'dish/development/a.jpg',
+						size: drawnSize,
 					},
 					{ id: 4, fileName: 'IMG_0002.jpg', alt: '' },
 					{ id: 5, fileName: 'IMG_0003.jpg', alt: '' },
@@ -161,6 +186,7 @@ describe('recipeFormSnapshot', () => {
 					fileName: 'IMG_0001.jpg',
 					alt: 'Bars on a plate',
 					pathname: 'dish/development/a.jpg',
+					size: drawnSize,
 				},
 			],
 			scan: [],
@@ -219,6 +245,15 @@ describe('showSameRecipeForm', () => {
 		expect(addedAndRemoved.nextId).toBe(4);
 		expect(same(addedAndRemoved)).toBe(true);
 		expect(same(blankHeadingAdded)).toBe(true);
+	});
+
+	it('finds a form the same though a photo was kept before sizes were recorded', () => {
+		const unsized = recipeFormValues({
+			...lemonBars,
+			images: [{ role: 'dish', pathname: 'dish/development/bars.jpg' }],
+		});
+
+		expect(same(unsized)).toBe(true);
 	});
 
 	it('finds a form the same though its text differs only at its ends, or a hidden unit changed', () => {
@@ -283,6 +318,23 @@ describe('reading a snapshot', () => {
 		expect(recipeFormSnapshotFromForm(JSON.stringify(keptEdit))).toEqual(keptEdit);
 	});
 
+	it('reads back each stored photo’s size, and photos kept before sizes were recorded', () => {
+		const kept = recipeFormSnapshot(halfFilledNewRecipe());
+
+		expect(readRecipeFormSnapshot(JSON.parse(JSON.stringify(kept)))?.photos.dish[0]).toEqual({
+			id: 3,
+			fileName: 'IMG_0001.jpg',
+			alt: 'Bars on a plate',
+			pathname: 'dish/development/a.jpg',
+			size: drawnSize,
+		});
+		expect(readRecipeFormSnapshot(keptEdit)?.photos.dish[0]).toStrictEqual({
+			id: 2,
+			alt: 'Bars on a plate',
+			pathname: 'dish/development/bars.jpg',
+		});
+	});
+
 	it.each([
 		['a list as sections rather than rows', { ingredientSections: { sections: [] } }],
 		[
@@ -299,6 +351,15 @@ describe('reading a snapshot', () => {
 		[
 			'a note in no known state',
 			{ reviewNotes: [['form', { message: 'Check.', status: 'done' }]] },
+		],
+		[
+			'a photo size that is no size',
+			{
+				photos: {
+					dish: [{ id: 2, alt: '', pathname: 'dish/development/bars.jpg', size: { width: 0 } }],
+					scan: [],
+				},
+			},
 		],
 	])('reads nothing from a snapshot holding %s', (_name, change) => {
 		const snapshot = { ...keptEdit, ...change };
@@ -346,16 +407,17 @@ describe('restoredRecipeForm', () => {
 	it('keeps a loaded photo saved, shows each stored upload from storage, and one never stored as not uploaded', () => {
 		expect(restoredRecipeForm(keptEdit, initial).photos).toEqual({
 			dish: [
+				// Kept before sizes were recorded, so it takes the size the form loaded it with.
 				{
 					id: 2,
 					alt: 'Bars on a plate',
-					upload: { status: 'saved', pathname: 'dish/development/bars.jpg' },
+					upload: { status: 'saved', pathname: 'dish/development/bars.jpg', size: barsSize },
 				},
 				{
 					id: 3,
 					fileName: 'IMG_0002.jpg',
 					alt: 'A slice',
-					upload: { status: 'uploaded', pathname: 'dish/development/slice.jpg' },
+					upload: { status: 'uploaded', pathname: 'dish/development/slice.jpg', size: sliceSize },
 				},
 				{
 					id: 4,
@@ -382,8 +444,13 @@ describe('restoredRecipeForm', () => {
 
 		expect(hasPhotosInProgress(restored)).toBe(false);
 		expect(recipeFormSubmission(restored).payload.images).toEqual([
-			{ role: 'dish', pathname: 'dish/development/bars.jpg', alt: 'Bars on a plate' },
-			{ role: 'dish', pathname: 'dish/development/slice.jpg', alt: 'A slice' },
+			{
+				role: 'dish',
+				pathname: 'dish/development/bars.jpg',
+				size: barsSize,
+				alt: 'Bars on a plate',
+			},
+			{ role: 'dish', pathname: 'dish/development/slice.jpg', size: sliceSize, alt: 'A slice' },
 		]);
 	});
 

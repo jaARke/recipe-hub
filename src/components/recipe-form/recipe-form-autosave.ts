@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { EditedRecipe } from '@/components/recipe-form/recipe-form-fields';
 import {
-	loadedPathnames,
+	loadedPhotos,
 	recipeFormSnapshotSchema,
 	type RecipeFormSnapshot,
 } from '@/components/recipe-form/recipe-form-snapshot';
@@ -140,7 +140,7 @@ export function unsavedUploads(
 	stored: RecipeFormSnapshot,
 	initial: RecipeFormValues
 ): UnsavedUpload[] {
-	const loaded = loadedPathnames(initial);
+	const loaded = loadedPhotos(initial);
 	return [...stored.photos.dish, ...stored.photos.scan].flatMap(({ id, pathname }) =>
 		pathname === undefined || loaded.has(pathname) ? [] : [{ photoId: id, pathname }]
 	);

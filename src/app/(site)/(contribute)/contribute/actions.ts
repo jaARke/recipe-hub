@@ -21,7 +21,7 @@ import {
 } from '@/components/recipe-form/recipe-form-snapshot';
 import {
 	recipeImportFieldNames,
-	scanPathnamesFromForm,
+	scanUploadsFromForm,
 } from '@/components/recipe-import/recipe-import-forms';
 import { recipeImportPath } from '@/components/recipe-import/recipe-import-paths';
 import { recipePath } from '@/components/recipe/recipe-paths';
@@ -115,7 +115,7 @@ export async function importFromUrl(_state: FormState, formData: FormData): Prom
 export async function importFromScans(_state: FormState, formData: FormData): Promise<FormState> {
 	let recipeImport: RecipeImportRef;
 	try {
-		recipeImport = await getRecipeImportService().importFromScans(scanPathnamesFromForm(formData));
+		recipeImport = await getRecipeImportService().importFromScans(scanUploadsFromForm(formData));
 	} catch (error) {
 		return toFormError(error);
 	}

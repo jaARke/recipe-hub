@@ -304,6 +304,7 @@ describe('RecipeForm’s original recipe', () => {
 		const uploading = uploaded + 2;
 		const jpeg = (name: string) =>
 			new File([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], name, { type: 'image/jpeg' });
+		const pageSize = { width: 2304, height: 3072 };
 		// Ahead of the saved scan: an upload done, one that failed, and one still uploading.
 		const edits: RecipeFormEdit[] = [
 			{ type: 'addPhotos', role: 'scan', fileNames: ['back.jpg', 'bad.jpg', 'wip.jpg'] },
@@ -311,6 +312,7 @@ describe('RecipeForm’s original recipe', () => {
 				type: 'startPhotoUpload',
 				photoId: uploaded,
 				pathname: 'scan/development/back.jpg',
+				size: pageSize,
 				file: jpeg('back.jpg'),
 			},
 			{ type: 'finishPhotoUpload', photoId: uploaded },
@@ -319,6 +321,7 @@ describe('RecipeForm’s original recipe', () => {
 				type: 'startPhotoUpload',
 				photoId: uploading,
 				pathname: 'scan/development/wip.jpg',
+				size: pageSize,
 				file: jpeg('wip.jpg'),
 			},
 			{ type: 'movePhoto', photoId: failed, toIndex: 0 },
@@ -422,6 +425,7 @@ describe('RecipeForm’s photos', () => {
 				type: 'startPhotoUpload',
 				photoId: uploading,
 				pathname: 'dish/development/wip.jpg',
+				size: { width: 2400, height: 1800 },
 				file: new File([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], 'wip.jpg', {
 					type: 'image/jpeg',
 				}),

@@ -49,17 +49,32 @@ const anyVersion = '2026-10-12T00:00:00.000Z';
 // The samples' photos are the seed's, so the catalog writes images where the seed does.
 const folders = new ImageFolders('seed');
 
+// The size the browser draws a landscape photo at, which every image written to a recipe has.
+const photoSize = { width: 2400, height: 1800 };
 const dishPhoto: RecipeImage = {
 	role: 'dish',
 	pathname: 'dish/seed/soup.jpg',
 	alt: 'A bowl of soup',
+	size: photoSize,
 };
-const secondDishPhoto: RecipeImage = { role: 'dish', pathname: 'dish/seed/soup-pot.jpg' };
-const scan: RecipeImage = { role: 'scan', pathname: 'scan/seed/soup-card.jpg' };
+const secondDishPhoto: RecipeImage = {
+	role: 'dish',
+	pathname: 'dish/seed/soup-pot.jpg',
+	size: photoSize,
+};
+const scan: RecipeImage = { role: 'scan', pathname: 'scan/seed/soup-card.jpg', size: photoSize };
 // Stored by another environment, as production's photos are for a preview's copied recipes.
-const productionPhoto: RecipeImage = { role: 'dish', pathname: 'dish/production/soup.jpg' };
+const productionPhoto: RecipeImage = {
+	role: 'dish',
+	pathname: 'dish/production/soup.jpg',
+	size: photoSize,
+};
 // In this environment's folder, but its upload never finished.
-const unfinishedPhoto: RecipeImage = { role: 'dish', pathname: 'dish/seed/half-sent.jpg' };
+const unfinishedPhoto: RecipeImage = {
+	role: 'dish',
+	pathname: 'dish/seed/half-sent.jpg',
+	size: photoSize,
+};
 
 const unstoredImageMessage = 'This photo didn’t upload. Remove it and add it again.';
 
@@ -1178,7 +1193,11 @@ describe('updateRecipe', () => {
 		const { images, serviceFor, addMember, versionOf, author, recipe } =
 			await catalogWithStoredImages([dishPhoto]);
 		const admin = serviceFor(adminActor());
-		const adminPhoto: RecipeImage = { role: 'dish', pathname: 'dish/seed/salad.jpg' };
+		const adminPhoto: RecipeImage = {
+			role: 'dish',
+			pathname: 'dish/seed/salad.jpg',
+			size: photoSize,
+		};
 		await images.put(adminPhoto.pathname, jpeg, 'image/jpeg');
 		await admin.createRecipe(manualEntry({ ...sampleTomatoSalad, images: [adminPhoto] }));
 		await serviceFor(author).createRecipe(

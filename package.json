@@ -20,6 +20,7 @@
 		"db:bootstrap": "tsx --tsconfig scripts/tsconfig.json scripts/bootstrap/bootstrap.ts",
 		"db:seed": "tsx --tsconfig scripts/tsconfig.json scripts/seed/seed.ts",
 		"db:reparse-ingredients": "tsx --tsconfig scripts/tsconfig.json scripts/reparse-ingredients/reparse-ingredients.ts",
+		"db:backfill-image-sizes": "tsx --tsconfig scripts/tsconfig.json scripts/backfill-image-sizes/backfill-image-sizes.ts",
 		"evaluate": "tsx --tsconfig scripts/tsconfig.json scripts/evaluate/evaluate.ts"
 	},
 	"dependencies": {

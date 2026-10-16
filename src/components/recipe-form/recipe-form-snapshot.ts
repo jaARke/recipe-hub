@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import {
-	storedPathname,
+	storedPhoto,
 	type PhotoUpload,
 	type ProblemKey,
 	type RecipeFormErrorField,
@@ -14,6 +14,7 @@ import {
 	type RecipeYieldKind,
 } from '@/components/recipe-form/recipe-form-values';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
+import { storedImageSizeSchema, type ImageSize } from '@/domain/recipe/recipe-image';
 
 // The recipe form's values as they are kept outside the page: in this browser as the member edits,
 // and on the server as a draft they save. It holds what the member typed and chose and each review
@@ -72,6 +73,8 @@ const photoSchema = z.object({
 	alt: z.string(),
 	// Absent for a photo that was never stored: one that failed, or one still on its way.
 	pathname: z.string().optional(),
+	// A stored photo's size, absent from one kept before sizes were recorded.
+	size: storedImageSizeSchema.optional(),
 });
 
 const reviewNoteSchema = z.object({
@@ -132,7 +135,7 @@ export function recipeFormSnapshot(values: RecipeFormValues): RecipeFormSnapshot
 		id: shown.id,
 		fileName: shown.fileName,
 		alt: shown.alt,
-		pathname: storedPathname(shown),
+		...storedPhoto(shown),
 	});
 	return {
 		text: values.text,
@@ -245,33 +248,38 @@ export function showSameRecipeForm(a: RecipeFormSnapshot, b: RecipeFormSnapshot)
 	return shownRecipeForm(a) === shownRecipeForm(b);
 }
 
-// The photos the recipe or draft the form loaded names, which the image sweep keeps.
-export function loadedPathnames(initial: RecipeFormValues): Set<string> {
-	return new Set(
+// The photos the recipe or draft the form loaded names, which the image sweep keeps, each by its
+// pathname with its size.
+export function loadedPhotos(initial: RecipeFormValues): Map<string, ImageSize | undefined> {
+	return new Map(
 		[...initial.photos.dish, ...initial.photos.scan].flatMap(({ upload }) =>
-			upload.status === 'saved' ? [upload.pathname] : []
+			upload.status === 'saved' ? [[upload.pathname, upload.size]] : []
 		)
 	);
 }
 
 // The kept form in place of the one that loaded. A photo the form loaded with is saved, a stored
 // upload shows from storage, and one never stored comes back as one that didn't upload, which saving
-// leaves out. Ids go on above every restored one, so nothing new takes the id, or the note, of
-// something removed.
+// leaves out. A photo kept before sizes were recorded takes the size the form loaded it with, if any.
+// Ids go on above every restored one, so nothing new takes the id, or the note, of something removed.
 export function restoredRecipeForm(
 	snapshot: RecipeFormSnapshot,
 	initial: RecipeFormValues
 ): RecipeFormValues {
-	const loaded = loadedPathnames(initial);
-	const upload = (pathname: string | undefined): PhotoUpload => {
+	const loaded = loadedPhotos(initial);
+	const upload = ({ pathname, size }: SnapshotPhoto): PhotoUpload => {
 		if (pathname === undefined) {
 			return { status: 'failed', failure: 'upload' };
 		}
-		return loaded.has(pathname) ? { status: 'saved', pathname } : { status: 'uploaded', pathname };
+		return loaded.has(pathname)
+			? { status: 'saved', pathname, size: size ?? loaded.get(pathname) }
+			: { status: 'uploaded', pathname, size };
 	};
-	const photo = ({ pathname, ...kept }: SnapshotPhoto): RecipeFormPhoto => ({
-		...kept,
-		upload: upload(pathname),
+	const photo = (kept: SnapshotPhoto): RecipeFormPhoto => ({
+		id: kept.id,
+		fileName: kept.fileName,
+		alt: kept.alt,
+		upload: upload(kept),
 	});
 	return {
 		text: snapshot.text,

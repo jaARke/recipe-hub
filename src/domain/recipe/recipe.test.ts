@@ -61,6 +61,7 @@ const pastEveryTextLimit = {
 			role: 'dish',
 			pathname: 'dish/soup.jpg',
 			alt: pastLimit(settings.recipeLimits.maxImageAltLength),
+			size: { width: 2400, height: 1800 },
 		},
 	],
 };
@@ -130,10 +131,11 @@ describe('recipeContentSchema', () => {
 	});
 
 	it('rejects an image attached twice', () => {
+		const size = { width: 2400, height: 1800 };
 		const images = [
-			{ role: 'dish', pathname: 'dish/soup.jpg' },
-			{ role: 'scan', pathname: 'scan/card.jpg' },
-			{ role: 'dish', pathname: 'dish/soup.jpg', alt: 'A bowl of soup' },
+			{ role: 'dish', pathname: 'dish/soup.jpg', size },
+			{ role: 'scan', pathname: 'scan/card.jpg', size },
+			{ role: 'dish', pathname: 'dish/soup.jpg', alt: 'A bowl of soup', size },
 		];
 		expect(problemPaths({ ...sampleChickenSoup, images })).toEqual(['images.2.pathname']);
 	});
@@ -235,6 +237,16 @@ describe('storedRecipeContentSchema', () => {
 		};
 
 		expect(storedRecipeContentSchema.parse(stored)).toEqual(stored);
+	});
+
+	it('reads content stored before images had sizes, which a save then needs', () => {
+		const stored = {
+			...sampleChickenSoup,
+			images: [{ role: 'dish', pathname: 'dish/seed/weeknight-chicken-soup.jpg' }],
+		};
+
+		expect(storedRecipeContentSchema.parse(stored)).toEqual(stored);
+		expect(problemPaths(stored)).toEqual(['images.0.size']);
 	});
 });
 

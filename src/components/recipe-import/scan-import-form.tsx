@@ -7,7 +7,10 @@ import { useFormAction } from '@/components/forms/use-form-action';
 import { PhotoField } from '@/components/recipe-form/photo-field';
 import { uploadPhoto, type PhotoUploader } from '@/components/recipe-form/photo-upload';
 import { hasPhotosInProgress } from '@/components/recipe-form/recipe-form-values';
-import { recipeImportFieldNames } from '@/components/recipe-import/recipe-import-forms';
+import {
+	recipeImportFieldNames,
+	scanFieldValue,
+} from '@/components/recipe-import/recipe-import-forms';
 import { RecipeImportSubmit } from '@/components/recipe-import/recipe-import-submit';
 import {
 	editScanImport,
@@ -55,8 +58,13 @@ function ScanImportForm({ action, uploadFolder, uploader = uploadPhoto }: ScanIm
 	return (
 		<form {...formProps} className="flex flex-col gap-4">
 			<FormErrorAlert message={state.status === 'error' ? state.message : undefined} />
-			{submission.pathnames.map((pathname) => (
-				<input key={pathname} type="hidden" name={recipeImportFieldNames.scans} value={pathname} />
+			{submission.scans.map((scan) => (
+				<input
+					key={scan.pathname}
+					type="hidden"
+					name={recipeImportFieldNames.scans}
+					value={scanFieldValue(scan)}
+				/>
 			))}
 			<PhotoField
 				idPrefix={photosId}

@@ -304,7 +304,7 @@ function PhotoField({
 				return;
 			}
 			const pathname = newPhotoPathname(uploadFolder);
-			dispatch({ type: 'startPhotoUpload', photoId, pathname, file: photo.file });
+			dispatch({ type: 'startPhotoUpload', photoId, pathname, size: photo.size, file: photo.file });
 			await uploader(pathname, photo.file, {
 				signal: controller.signal,
 				onProgress: (fraction) => dispatch({ type: 'setPhotoProgress', photoId, fraction }),

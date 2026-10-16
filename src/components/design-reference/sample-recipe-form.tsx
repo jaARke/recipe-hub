@@ -29,7 +29,7 @@ import {
 } from '@/components/recipe-form/recipe-form-values';
 import { DraftMenu, EditedRecipeMenu, HeldDraftMenu } from '@/components/recipe-form/subject-menus';
 import { parseRecipeContent } from '@/domain/recipe/recipe';
-import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
+import type { ImageSize, RecipeImageRole } from '@/domain/recipe/recipe-image';
 
 // Photo pathnames name a folder the recipe accepts, though nothing is stored there.
 const sampleUploadFolders: Record<RecipeImageRole, string> = {
@@ -68,10 +68,16 @@ const standInScanPages = [
 	{ image: standInScanPage2, fileName: 'anise-cakes-page-2.jpg' },
 ] as const;
 
+// A stand-in page as it would be once uploaded: its file, and the size it was drawn at.
+type UploadedScan = {
+	file: File;
+	size: ImageSize;
+};
+
 // Reads the stand-in pages into files once, when asked to. The form shows a scan it has uploaded but
 // not saved from its file, so the pages need no stored scan.
-function useStandInScanFiles(wanted: boolean): File[] | undefined {
-	const [files, setFiles] = React.useState<File[]>();
+function useStandInScans(wanted: boolean): UploadedScan[] | undefined {
+	const [scans, setScans] = React.useState<UploadedScan[]>();
 
 	React.useEffect(() => {
 		if (!wanted) {
@@ -83,9 +89,10 @@ function useStandInScanFiles(wanted: boolean): File[] | undefined {
 			if (!response.ok) {
 				throw new Error(`The stand-in scan ${fileName} answered ${response.status}`);
 			}
-			return new File([await response.blob()], fileName, { type: 'image/jpeg' });
+			const file = new File([await response.blob()], fileName, { type: 'image/jpeg' });
+			return { file, size: { width: image.width, height: image.height } };
 		});
-		Promise.all(reads).then(setFiles, (error: unknown) => {
+		Promise.all(reads).then(setScans, (error: unknown) => {
 			// A cancelled read can fail with any error, so the signal is what tells.
 			if (!controller.signal.aborted) {
 				throw error;
@@ -94,20 +101,24 @@ function useStandInScanFiles(wanted: boolean): File[] | undefined {
 		return () => controller.abort();
 	}, [wanted]);
 
-	return files;
+	return scans;
 }
 
-// The values with the files added as scans the member just uploaded, through the edits the photo
+// The values with the scans added as the member just uploaded them, through the edits the photo
 // field makes.
-function withUploadedScans(values: RecipeFormValues, files: readonly File[]): RecipeFormValues {
+function withUploadedScans(
+	values: RecipeFormValues,
+	scans: readonly UploadedScan[]
+): RecipeFormValues {
 	const firstId = values.nextId;
 	const edits: RecipeFormEdit[] = [
-		{ type: 'addPhotos', role: 'scan', fileNames: files.map((file) => file.name) },
-		...files.flatMap((file, index): RecipeFormEdit[] => [
+		{ type: 'addPhotos', role: 'scan', fileNames: scans.map(({ file }) => file.name) },
+		...scans.flatMap(({ file, size }, index): RecipeFormEdit[] => [
 			{
 				type: 'startPhotoUpload',
 				photoId: firstId + index,
 				pathname: `${sampleUploadFolders.scan}${file.name}`,
+				size,
 				file,
 			},
 			{ type: 'finishPhotoUpload', photoId: firstId + index },
@@ -169,16 +180,16 @@ function SampleRecipeForm({
 	// Adds the stand-in pages of an original recipe, as just uploaded.
 	standInScans?: boolean;
 }) {
-	const scanFiles = useStandInScanFiles(standInScans);
+	const scans = useStandInScans(standInScans);
 	const values = React.useMemo(
-		() => (scanFiles === undefined ? initial : withUploadedScans(initial, scanFiles)),
-		[initial, scanFiles]
+		() => (scans === undefined ? initial : withUploadedScans(initial, scans)),
+		[initial, scans]
 	);
 
 	return (
 		<RecipeForm
 			// The form reads its values once, so it starts again with the pages once they're read.
-			key={scanFiles === undefined ? 'without-scans' : 'with-scans'}
+			key={scans === undefined ? 'without-scans' : 'with-scans'}
 			initial={values}
 			action={saveSampleRecipe}
 			uploadFolders={sampleUploadFolders}

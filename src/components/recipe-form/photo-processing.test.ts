@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { encodeWithinBudget, normalizedPhotoSize } from '@/components/recipe-form/photo-processing';
 import { maxImportScanSizeInBytes } from '@/domain/recipe/import-limits';
+import { imageSizeSchema } from '@/domain/recipe/recipe-image';
 
 describe('normalizedPhotoSize', () => {
 	it.each([
@@ -66,6 +67,12 @@ describe('normalizedPhotoSize', () => {
 			width: 2400,
 			height: 1,
 		});
+	});
+
+	it.each(['dish', 'scan'] as const)('draws a %s at a size a recipe accepts', (role) => {
+		const size = normalizedPhotoSize({ width: 12000, height: 9000 }, role);
+
+		expect(imageSizeSchema.safeParse(size).success).toBe(true);
 	});
 });
 

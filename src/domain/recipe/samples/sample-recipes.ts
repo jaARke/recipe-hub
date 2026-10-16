@@ -31,6 +31,7 @@ import {
 } from '@/domain/recipe/samples/soups-and-mains';
 
 // Synthetic recipes for tests, the seed script, and the design reference. Never real family data.
+// Each photo's size is the size of its file in scripts/seed/photos/, measured once.
 
 export const sampleButtermilkBiscuits: RecipeContentInput = {
 	title: 'Buttermilk biscuits',
@@ -115,6 +116,7 @@ export const sampleButtermilkBiscuits: RecipeContentInput = {
 		{
 			role: 'dish',
 			pathname: 'dish/seed/buttermilk-biscuits.jpg',
+			size: { width: 1600, height: 1066 },
 			alt: 'A split biscuit on a blue-rimmed plate with honey drizzled from a spoon',
 		},
 	],
@@ -183,6 +185,7 @@ export const sampleChickenSoup: RecipeContentInput = {
 		{
 			role: 'dish',
 			pathname: 'dish/seed/weeknight-chicken-soup.jpg',
+			size: { width: 1600, height: 961 },
 			alt: 'A square white bowl of chicken noodle soup with carrots and peppers',
 		},
 	],
@@ -403,6 +406,7 @@ export const sampleSundayPotRoast: RecipeContentInput = {
 		{
 			role: 'dish',
 			pathname: 'dish/seed/sunday-pot-roast.jpg',
+			size: { width: 1600, height: 1204 },
 			alt: 'Sliced roast beef with gravy, mashed potatoes, and mixed vegetables on a plate',
 		},
 	],
@@ -471,6 +475,7 @@ export const sampleTomatoSalad: RecipeContentInput = {
 		{
 			role: 'dish',
 			pathname: 'dish/seed/garden-tomato-salad.jpg',
+			size: { width: 1600, height: 1021 },
 			alt: 'Sliced tomatoes dressed with olive oil and a sprig of parsley in a white dish',
 		},
 	],

@@ -3,12 +3,14 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { FormAction } from '@/components/forms/form-state';
 import type { PhotoUploader } from '@/components/recipe-form/photo-upload';
+import { scanUploadsFromForm } from '@/components/recipe-import/recipe-import-forms';
 import { ScanImportForm } from '@/components/recipe-import/scan-import-form';
 
-// Resizing needs a real browser's canvas, so photos arrive as chosen.
+// Resizing needs a real browser's canvas, so photos arrive as chosen, drawn at this size.
+const drawnSize = { width: 1200, height: 1600 };
 vi.mock('@/components/recipe-form/photo-processing', async (importOriginal) => ({
 	...(await importOriginal<typeof import('@/components/recipe-form/photo-processing')>()),
-	normalizePhoto: async (file: File) => ({ file, width: 1200, height: 1600 }),
+	normalizePhoto: async (file: File) => ({ file, size: drawnSize }),
 }));
 
 const failUpload: PhotoUploader = () => Promise.reject(new TypeError('Failed to fetch'));
@@ -71,5 +73,23 @@ describe('ScanImportForm', () => {
 
 		await waitFor(() => expect(action).toHaveBeenCalledOnce());
 		expect(screen.queryByText('Add at least one photo.')).toBeNull();
+	});
+
+	it('sends each page with the size it was drawn at', async () => {
+		const action = vi.fn<FormAction>(() => new Promise(() => {}));
+		const user = userEvent.setup();
+		renderForm(action, async () => {});
+
+		await user.upload(filePicker(), card);
+		await waitFor(() =>
+			expect(screen.queryByText('Wait for the photos to finish uploading.')).toBeNull()
+		);
+		await user.click(screen.getByRole('button', { name: 'Read recipe' }));
+
+		await waitFor(() => expect(action).toHaveBeenCalledOnce());
+		const [, formData] = action.mock.calls[0] ?? [];
+		expect(scanUploadsFromForm(formData ?? new FormData())).toEqual([
+			{ pathname: expect.stringMatching(/^scan\/development\/[\w-]+\.jpg$/), size: drawnSize },
+		]);
 	});
 });

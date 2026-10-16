@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { writtenContent, type ContentLimits } from '@/domain/recipe/content-limits';
+import { storedContent, writtenContent, type ContentLimits } from '@/domain/recipe/content-limits';
 import { limitMessage } from '@/domain/text';
 import { settings } from '@/lib/settings';
 
@@ -23,10 +23,36 @@ function imagePathnamePrefix(role: RecipeImageRole): string {
 // happened.
 export const unstoredImageMessage = 'This photo didn’t upload. Remove it and add it again.';
 
+// What a written image without its size is told: one stored before sizes were recorded, or kept in
+// a browser from before. Adding it again records its size.
+export const unsizedImageMessage =
+	'We couldn’t read this photo’s size. Remove it and add it again.';
+
+// The longest side, in pixels, of an image written to a recipe. The browser draws a scan, its largest
+// photo, at this long edge (photo-processing.ts), and the seed's photos are smaller.
+export const maxImageSideInPixels = 3072;
+
+// Adding the photo again draws it within the longest side.
+const oversizedImageMessage = 'This photo is too large. Remove it and add it again.';
+
 // Dish photos show the finished dish; scans are the original photos of a written recipe. Anyone may
 // see either.
 export const recipeImageRoleSchema = z.enum(['dish', 'scan']);
 export type RecipeImageRole = z.infer<typeof recipeImageRoleSchema>;
+
+function imageSizeSchemaFor(limits: ContentLimits) {
+	return z
+		.object({ width: z.int().positive(), height: z.int().positive() })
+		.refine(
+			(size) => !limits.exceeds(Math.max(size.width, size.height), maxImageSideInPixels),
+			oversizedImageMessage
+		);
+}
+
+// An image's width and height in pixels, as stored, so a page can lay it out before it loads.
+export const imageSizeSchema = imageSizeSchemaFor(writtenContent);
+export const storedImageSizeSchema = imageSizeSchemaFor(storedContent);
+export type ImageSize = z.infer<typeof imageSizeSchema>;
 
 function recipeImageSchemaFor(limits: ContentLimits) {
 	return z
@@ -34,6 +60,9 @@ function recipeImageSchemaFor(limits: ContentLimits) {
 			role: recipeImageRoleSchema,
 			pathname: imagePathnameSchema,
 			alt: limits.text(settings.recipeLimits.maxImageAltLength).optional(),
+			// Absent from an image stored before sizes were recorded, until the image-size backfill gives
+			// it its own. Written content needs it, which the list checks.
+			size: imageSizeSchemaFor(limits).optional(),
 		})
 		.refine((image) => image.pathname.startsWith(imagePathnamePrefix(image.role)), {
 			message: 'Store the image under the folder for its role.',
@@ -41,6 +70,8 @@ function recipeImageSchemaFor(limits: ContentLimits) {
 		});
 }
 
+// One image's own fields, so a pathname can be checked on its own; the list adds what written content
+// needs of each image.
 export const recipeImageSchema = recipeImageSchemaFor(writtenContent);
 export type RecipeImage = z.infer<typeof recipeImageSchema>;
 
@@ -50,11 +81,15 @@ const maxImagesByRole: Record<RecipeImageRole, number> = {
 };
 
 // Array order is display order. A role over its limit has one problem, on its first image past it.
+// Written content needs each image's size.
 export function recipeImageListSchemaFor(limits: ContentLimits) {
 	return z.array(recipeImageSchemaFor(limits)).superRefine((images, context) => {
 		const seen = new Set<string>();
 		const counts: Record<RecipeImageRole, number> = { dish: 0, scan: 0 };
 		images.forEach((image, index) => {
+			if (limits.missing(image.size)) {
+				context.addIssue({ code: 'custom', message: unsizedImageMessage, path: [index, 'size'] });
+			}
 			if (seen.has(image.pathname)) {
 				context.addIssue({
 					code: 'custom',

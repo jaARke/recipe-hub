@@ -6,7 +6,7 @@ import { formatAmount } from '@/domain/recipe/amount-format';
 import { parseAmountText } from '@/domain/recipe/ingredient-parser';
 import { missingContentMessages, type RecipeContent } from '@/domain/recipe/recipe';
 import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
-import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
+import type { ImageSize, RecipeImage, RecipeImageRole } from '@/domain/recipe/recipe-image';
 import type { RecipeYield } from '@/domain/recipe/recipe-yield';
 import { tagKey, uniqueTagLabels } from '@/domain/recipe/tag-normalization';
 import {
@@ -54,12 +54,13 @@ export type RecipeFormTag = {
 export type PhotoFailure = 'unreadable' | 'upload';
 
 // From choosing a photo to storing it. A photo the recipe already has is saved. An uploaded photo
-// shows from its file while the page holds it, and from storage once unsaved changes come back.
+// shows from its file while the page holds it, and from storage once unsaved changes come back. A
+// stored photo has the size it was drawn at, unless it was stored, or kept, before sizes were recorded.
 export type PhotoUpload =
-	| { status: 'saved'; pathname: string }
+	| { status: 'saved'; pathname: string; size?: ImageSize }
 	| { status: 'processing' }
-	| { status: 'uploading'; pathname: string; file: File; fraction: number }
-	| { status: 'uploaded'; pathname: string; file?: File }
+	| { status: 'uploading'; pathname: string; size: ImageSize; file: File; fraction: number }
+	| { status: 'uploaded'; pathname: string; size?: ImageSize; file?: File }
 	| { status: 'failed'; failure: PhotoFailure };
 
 export type RecipeFormPhoto = {
@@ -175,7 +176,7 @@ export type RecipeFormSubmission = {
 export type PhotoEdit =
 	// The photos take the next ids, in order.
 	| { type: 'addPhotos'; role: RecipeImageRole; fileNames: readonly string[] }
-	| { type: 'startPhotoUpload'; photoId: number; pathname: string; file: File }
+	| { type: 'startPhotoUpload'; photoId: number; pathname: string; size: ImageSize; file: File }
 	| { type: 'setPhotoProgress'; photoId: number; fraction: number }
 	| { type: 'finishPhotoUpload'; photoId: number }
 	| { type: 'failPhoto'; photoId: number; failure: PhotoFailure }
@@ -308,9 +309,17 @@ export function hasPhotosInProgress(values: RecipeFormPhotoValues): boolean {
 	return photoRoles.some((role) => values.photos[role].some(isPhotoInProgress));
 }
 
-// The pathname of a stored photo; one still uploading, or one that failed, has none to save.
-export function storedPathname({ upload }: RecipeFormPhoto): string | undefined {
-	return upload.status === 'saved' || upload.status === 'uploaded' ? upload.pathname : undefined;
+// A stored photo's pathname and size; one still uploading, or one that failed, has none to save.
+export function storedPhoto({
+	upload,
+}: RecipeFormPhoto): Pick<RecipeImage, 'pathname' | 'size'> | undefined {
+	return upload.status === 'saved' || upload.status === 'uploaded'
+		? { pathname: upload.pathname, size: upload.size }
+		: undefined;
+}
+
+export function storedPathname(photo: RecipeFormPhoto): string | undefined {
+	return storedPhoto(photo)?.pathname;
 }
 
 // Records where problems with a section, its heading, and its lines show, at the section's place in
@@ -532,7 +541,7 @@ export function recipeFormValues(
 		photos[image.role].push({
 			id,
 			alt: image.alt ?? '',
-			upload: { status: 'saved', pathname: image.pathname },
+			upload: { status: 'saved', pathname: image.pathname, size: image.size },
 		});
 	});
 
@@ -595,13 +604,16 @@ export function recipeFormSubmission(values: RecipeFormValues): RecipeFormSubmis
 	const images: RecipeFormPayload['images'] = [];
 	for (const role of photoRoles) {
 		for (const photo of values.photos[role]) {
-			const pathname = storedPathname(photo);
-			if (pathname === undefined) {
+			const stored = storedPhoto(photo);
+			if (stored === undefined) {
 				continue;
 			}
 			targets.set(`images.${images.length}`, { kind: 'photo', id: photo.id });
+			const { pathname, size } = stored;
 			images.push(
-				role === 'dish' ? { role, pathname, alt: filledText(photo.alt) } : { role, pathname }
+				role === 'dish'
+					? { role, pathname, size, alt: filledText(photo.alt) }
+					: { role, pathname, size }
 			);
 		}
 	}
@@ -874,7 +886,13 @@ export function editPhotos<Values extends RecipeFormPhotoValues>(
 		case 'startPhotoUpload':
 			return updateUpload(values, edit.photoId, (upload) =>
 				upload.status === 'processing'
-					? { status: 'uploading', pathname: edit.pathname, file: edit.file, fraction: 0 }
+					? {
+							status: 'uploading',
+							pathname: edit.pathname,
+							size: edit.size,
+							file: edit.file,
+							fraction: 0,
+						}
 					: undefined
 			);
 		case 'setPhotoProgress':
@@ -884,7 +902,7 @@ export function editPhotos<Values extends RecipeFormPhotoValues>(
 		case 'finishPhotoUpload':
 			return updateUpload(values, edit.photoId, (upload) =>
 				upload.status === 'uploading'
-					? { status: 'uploaded', pathname: upload.pathname, file: upload.file }
+					? { status: 'uploaded', pathname: upload.pathname, size: upload.size, file: upload.file }
 					: undefined
 			);
 		case 'failPhoto':

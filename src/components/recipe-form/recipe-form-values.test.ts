@@ -31,6 +31,12 @@ function rowsOf(values: RecipeFormValues, list: RecipeFormListName) {
 
 const photoFile = new File(['jpeg'], 'IMG_0001.jpg', { type: 'image/jpeg' });
 
+// The sizes the recipe's photos were stored with, and the size a new photo is drawn at.
+const cardSize = { width: 3072, height: 1843 };
+const barsSize = { width: 2400, height: 1800 };
+const sliceSize = { width: 1800, height: 2400 };
+const drawnSize = { width: 2400, height: 1600 };
+
 // Ids follow the order the form builds things in: the ingredients' headings and lines (0 to 4), the
 // steps, whose section has no heading and so no row (5 and 6), tags (7 and 8), then images in the
 // recipe's order (9 to 11).
@@ -51,9 +57,14 @@ const lemonBars = parseRecipeContent({
 	],
 	tags: ['Dessert', 'Baking'],
 	images: [
-		{ role: 'scan', pathname: 'scan/production/card.jpg' },
-		{ role: 'dish', pathname: 'dish/production/bars.jpg', alt: 'Lemon bars on a plate' },
-		{ role: 'dish', pathname: 'dish/production/slice.jpg' },
+		{ role: 'scan', pathname: 'scan/production/card.jpg', size: cardSize },
+		{
+			role: 'dish',
+			pathname: 'dish/production/bars.jpg',
+			alt: 'Lemon bars on a plate',
+			size: barsSize,
+		},
+		{ role: 'dish', pathname: 'dish/production/slice.jpg', size: sliceSize },
 	],
 });
 
@@ -124,11 +135,21 @@ describe('recipeFormValues', () => {
 				{
 					id: 10,
 					alt: 'Lemon bars on a plate',
-					upload: { status: 'saved', pathname: 'dish/production/bars.jpg' },
+					upload: { status: 'saved', pathname: 'dish/production/bars.jpg', size: barsSize },
 				},
-				{ id: 11, alt: '', upload: { status: 'saved', pathname: 'dish/production/slice.jpg' } },
+				{
+					id: 11,
+					alt: '',
+					upload: { status: 'saved', pathname: 'dish/production/slice.jpg', size: sliceSize },
+				},
 			],
-			scan: [{ id: 9, alt: '', upload: { status: 'saved', pathname: 'scan/production/card.jpg' } }],
+			scan: [
+				{
+					id: 9,
+					alt: '',
+					upload: { status: 'saved', pathname: 'scan/production/card.jpg', size: cardSize },
+				},
+			],
 		});
 		expect(values.nextId).toBe(12);
 	});
@@ -579,6 +600,7 @@ describe('editRecipeForm', () => {
 				type: 'startPhotoUpload',
 				photoId: 12,
 				pathname: 'dish/development/a.jpg',
+				size: drawnSize,
 				file: photoFile,
 			},
 			{ type: 'setPhotoProgress', photoId: 12, fraction: 0.5 }
@@ -586,6 +608,7 @@ describe('editRecipeForm', () => {
 		expect(uploading.photos.dish[2]?.upload).toEqual({
 			status: 'uploading',
 			pathname: 'dish/development/a.jpg',
+			size: drawnSize,
 			file: photoFile,
 			fraction: 0.5,
 		});
@@ -596,7 +619,7 @@ describe('editRecipeForm', () => {
 			{ type: 'failPhoto', photoId: 13, failure: 'unreadable' }
 		);
 		expect(settled.photos.dish.slice(2).map((photo) => photo.upload)).toEqual([
-			{ status: 'uploaded', pathname: 'dish/development/a.jpg', file: photoFile },
+			{ status: 'uploaded', pathname: 'dish/development/a.jpg', size: drawnSize, file: photoFile },
 			{ status: 'failed', failure: 'unreadable' },
 		]);
 		expect(hasPhotosInProgress(settled)).toBe(false);
@@ -616,6 +639,7 @@ describe('editRecipeForm', () => {
 					type: 'startPhotoUpload',
 					photoId: 12,
 					pathname: 'scan/development/a.jpg',
+					size: drawnSize,
 					file: photoFile,
 				},
 				{ type: 'setPhotoProgress', photoId: 10, fraction: 0.5 },
@@ -666,10 +690,17 @@ describe('editRecipeForm', () => {
 				type: 'startPhotoUpload',
 				photoId: 12,
 				pathname: 'dish/development/a.jpg',
+				size: drawnSize,
 				file: photoFile,
 			},
 			{ type: 'finishPhotoUpload', photoId: 12 },
-			{ type: 'startPhotoUpload', photoId: 13, pathname: 'dish/development/b.jpg', file: photoFile }
+			{
+				type: 'startPhotoUpload',
+				photoId: 13,
+				pathname: 'dish/development/b.jpg',
+				size: drawnSize,
+				file: photoFile,
+			}
 		);
 
 		expect(
@@ -677,12 +708,13 @@ describe('editRecipeForm', () => {
 				(photo) => photo.upload
 			)
 		).toEqual([
-			{ status: 'saved', pathname: 'dish/production/bars.jpg' },
-			{ status: 'saved', pathname: 'dish/production/slice.jpg' },
+			{ status: 'saved', pathname: 'dish/production/bars.jpg', size: barsSize },
+			{ status: 'saved', pathname: 'dish/production/slice.jpg', size: sliceSize },
 			{ status: 'failed', failure: 'upload' },
 			{
 				status: 'uploading',
 				pathname: 'dish/development/b.jpg',
+				size: drawnSize,
 				file: photoFile,
 				fraction: 0,
 			},
@@ -1393,9 +1425,14 @@ describe('recipeFormSubmission', () => {
 			],
 			tags: ['Dessert', 'Baking', 'Summer', 'Citrus'],
 			images: [
-				{ role: 'dish', pathname: 'dish/production/bars.jpg', alt: 'Lemon bars on a plate' },
-				{ role: 'dish', pathname: 'dish/production/slice.jpg' },
-				{ role: 'scan', pathname: 'scan/production/card.jpg' },
+				{
+					role: 'dish',
+					pathname: 'dish/production/bars.jpg',
+					size: barsSize,
+					alt: 'Lemon bars on a plate',
+				},
+				{ role: 'dish', pathname: 'dish/production/slice.jpg', size: sliceSize },
+				{ role: 'scan', pathname: 'scan/production/card.jpg', size: cardSize },
 			],
 		});
 	});
@@ -1502,7 +1539,7 @@ describe('recipeFormSubmission', () => {
 		expect(recipeFormSubmission(noAmount).payload.yield).toBeUndefined();
 	});
 
-	it('sends only stored photos', () => {
+	it('sends only stored photos, each with its size', () => {
 		const values = edited(
 			lemonBarsForm(),
 			{ type: 'addPhotos', role: 'dish', fileNames: ['a.jpg', 'b.jpg', 'c.heic'] },
@@ -1510,6 +1547,7 @@ describe('recipeFormSubmission', () => {
 				type: 'startPhotoUpload',
 				photoId: 12,
 				pathname: 'dish/development/a.jpg',
+				size: drawnSize,
 				file: photoFile,
 			},
 			{ type: 'finishPhotoUpload', photoId: 12 },
@@ -1517,16 +1555,29 @@ describe('recipeFormSubmission', () => {
 				type: 'startPhotoUpload',
 				photoId: 13,
 				pathname: 'dish/development/b.jpg',
+				size: drawnSize,
 				file: photoFile,
 			},
 			{ type: 'failPhoto', photoId: 14, failure: 'unreadable' }
 		);
 
-		expect(recipeFormSubmission(values).payload.images.map((image) => image.pathname)).toEqual([
-			'dish/production/bars.jpg',
-			'dish/production/slice.jpg',
-			'dish/development/a.jpg',
-			'scan/production/card.jpg',
+		expect(
+			recipeFormSubmission(values).payload.images.map(({ pathname, size }) => ({ pathname, size }))
+		).toEqual([
+			{ pathname: 'dish/production/bars.jpg', size: barsSize },
+			{ pathname: 'dish/production/slice.jpg', size: sliceSize },
+			{ pathname: 'dish/development/a.jpg', size: drawnSize },
+			{ pathname: 'scan/production/card.jpg', size: cardSize },
+		]);
+	});
+
+	it('sends a photo stored before sizes were recorded without one, for the save to name', () => {
+		const values = recipeFormValues({
+			images: [{ role: 'dish', pathname: 'dish/production/bars.jpg' }],
+		});
+
+		expect(recipeFormSubmission(values).payload.images).toEqual([
+			{ role: 'dish', pathname: 'dish/production/bars.jpg' },
 		]);
 	});
 });

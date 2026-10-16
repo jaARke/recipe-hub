@@ -41,7 +41,12 @@ import {
 } from '@/domain/recipe/extracted-recipe';
 import { maxImportScanSizeInBytes } from '@/domain/recipe/import-limits';
 import { invalidSourceUrlMessage, sourceUrlSchema } from '@/domain/recipe/provenance';
-import { unstoredImageMessage, type RecipeImage } from '@/domain/recipe/recipe-image';
+import {
+	imageSizeSchema,
+	unsizedImageMessage,
+	unstoredImageMessage,
+	type RecipeImage,
+} from '@/domain/recipe/recipe-image';
 import {
 	importDraftCutoff,
 	noScansMessage,
@@ -89,6 +94,10 @@ const logger = getLogger('imports');
 
 // Recording a failure outlasted failureRecordingTimeLimitMs.
 class FailureRecordingTimedOutError extends Error {}
+
+// A page the member uploaded for a photo import: the browser's upload name, and the size it drew
+// the photo at.
+export type ScanUpload = Pick<RecipeImage, 'pathname' | 'size'>;
 
 // What an import reads: the page at the address the member gave, or their scans, which stay
 // attached to the recipe.
@@ -168,6 +177,15 @@ function assertNoScanProblems(messages: readonly (string | undefined)[]): void {
 	}
 }
 
+// The browser sends the size it drew the photo at, which the recipe keeps.
+function scanSizeProblem({ size }: ScanUpload): string | undefined {
+	if (size === undefined) {
+		return unsizedImageMessage;
+	}
+
+	return imageSizeSchema.safeParse(size).error?.issues[0]?.message;
+}
+
 function scanContentProblem(scan: ScanImage | null): string | undefined {
 	if (scan === null) {
 		return unstoredImageMessage;
@@ -227,18 +245,22 @@ export class RecipeImportService {
 	}
 
 	// Every page goes to the model in one call, so a recipe that runs onto the back of a card stays one
-	// recipe. Pathnames are the browser's upload names, in page order.
-	async importFromScans(pathnames: readonly string[]): Promise<RecipeImportRef> {
+	// recipe. The uploads are in page order.
+	async importFromScans(uploads: readonly ScanUpload[]): Promise<RecipeImportRef> {
 		const deadline = deadlineAfter(importTimeLimitMs);
 		const actor = requireMember(
 			await this.beforeStart(this.actors.currentActor(), deadline, { mode: 'photo' })
 		);
 		const scans = await this.beforeStart(
-			this.readScans(pathnames, actor.memberId, deadline),
+			this.readScans(uploads, actor.memberId, deadline),
 			deadline,
 			{ memberId: actor.memberId, mode: 'photo' }
 		);
-		const images = pathnames.map((pathname): RecipeImage => ({ role: 'scan', pathname }));
+		const images = uploads.map(({ pathname, size }): RecipeImage => ({
+			role: 'scan',
+			pathname,
+			size,
+		}));
 		return this.runImport(actor, { mode: 'photo', images }, deadline, (requester) =>
 			this.scanReader.extract(scans, requester, deadline)
 		);
@@ -456,20 +478,25 @@ export class RecipeImportService {
 		return this.pageReader.extract(page, requester, deadline);
 	}
 
-	// Names, and whether another member's recipe or draft names a scan, are checked before the store is
-	// read, so refused pathnames never reach it. The member's own scans can be imported again.
+	// Names and sizes, and whether another member's recipe or draft names a scan, are checked before
+	// the store is read, so refused pathnames never reach it. The member's own scans can be imported
+	// again.
 	private async readScans(
-		pathnames: readonly string[],
+		uploads: readonly ScanUpload[],
 		memberId: MemberId,
 		deadline: AbortSignal
 	): Promise<ScanImage[]> {
-		if (pathnames.length === 0 || pathnames.length > settings.photos.maxScansPerImport) {
-			const message = pathnames.length === 0 ? noScansMessage : tooManyScansMessage;
+		if (uploads.length === 0 || uploads.length > settings.photos.maxScansPerImport) {
+			const message = uploads.length === 0 ? noScansMessage : tooManyScansMessage;
 			throw new InvalidImportError([{ path: 'scans', message }]);
 		}
 
+		const pathnames = uploads.map(({ pathname }) => pathname);
 		assertNoScanProblems(
-			pathnames.map((pathname, index) => this.scanNameProblem(pathname, index, pathnames))
+			uploads.map(
+				(upload, index) =>
+					this.scanNameProblem(upload.pathname, index, pathnames) ?? scanSizeProblem(upload)
+			)
 		);
 		const othersScans = await imagesInUse(
 			pathnames,

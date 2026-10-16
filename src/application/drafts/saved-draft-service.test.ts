@@ -286,7 +286,7 @@ describe('saveDraft', () => {
 		await recipes.create({
 			content: recipeContentSchema.parse({
 				...sampleChickenSoup,
-				images: [{ role: 'dish', pathname: barsPhoto }],
+				images: [{ role: 'dish', pathname: barsPhoto, size: { width: 2400, height: 1800 } }],
 			}),
 			provenance: { entryMode: 'manual' },
 			contributorId: owner.memberId,
