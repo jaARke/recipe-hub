@@ -92,6 +92,12 @@ const colorSwatches: readonly ColorSwatch[] = [
 		tokens: [{ utility: 'text-destructive', variable: '--destructive' }],
 		note: 'No foreground pair. Primitives set it as text on a 10 percent tint.',
 	},
+	{
+		name: 'favorite',
+		sampleClassName: 'bg-muted text-favorite',
+		tokens: [{ utility: 'text-favorite', variable: '--favorite' }],
+		note: 'No foreground pair. A pressed favorite toggle fills its heart with it, on the pressed surface.',
+	},
 ];
 
 const lineTokens: readonly LineToken[] = [

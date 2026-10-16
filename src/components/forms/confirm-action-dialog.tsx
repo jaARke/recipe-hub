@@ -15,14 +15,38 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 	AlertDialogTrigger,
+	createAlertDialogHandle,
+	type AlertDialogHandle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { toast } from '@/components/ui/toast';
 
-type ConfirmActionDialogProps = {
-	// The trigger's content, such as "Decline" with a screen-reader-only name of what it declines.
-	trigger: React.ReactNode;
+// Opens the dialog from another control, such as a menu's item, which is gone once the menu closes:
+// the handle the control opens it with, and the element focus returns to, such as the menu's button.
+export type ConfirmActionDialogOpener = {
+	handle: AlertDialogHandle;
+	returnFocusTo: React.RefObject<HTMLElement | null>;
+};
+
+// An opener that lasts as long as the component holding it. The control calls handle.open(null).
+function useConfirmActionDialogOpener(
+	returnFocusTo: React.RefObject<HTMLElement | null>
+): ConfirmActionDialogOpener {
+	const [handle] = React.useState(() => createAlertDialogHandle());
+	return React.useMemo(() => ({ handle, returnFocusTo }), [handle, returnFocusTo]);
+}
+
+// What opens the dialog: its own button, or another control through an opener.
+type ConfirmActionDialogTrigger =
+	| {
+			// The button's content, such as "Decline" with a screen-reader-only name of what it declines.
+			trigger: React.ReactNode;
+			opener?: never;
+	  }
+	| { trigger?: never; opener: ConfirmActionDialogOpener };
+
+type ConfirmActionDialogProps = ConfirmActionDialogTrigger & {
 	title: string;
 	description: string;
 	cancelLabel: string;
@@ -43,7 +67,7 @@ type ConfirmActionDialogProps = {
 
 type ConfirmActionFormProps = Omit<
 	ConfirmActionDialogProps,
-	'trigger' | 'successMessage' | 'onSuccess'
+	'trigger' | 'opener' | 'successMessage' | 'onSuccess'
 >;
 
 // Rendered inside the popup, so closing the dialog clears a refusal's reason.
@@ -83,6 +107,7 @@ function ConfirmActionForm({
 // one's reason in place, and closes once it succeeds.
 function ConfirmActionDialog({
 	trigger,
+	opener,
 	successMessage,
 	action,
 	onSuccess,
@@ -94,23 +119,30 @@ function ConfirmActionDialog({
 		onSuccess?.();
 	});
 	const triggerRef = React.useRef<HTMLButtonElement>(null);
-	// Focus returns to the trigger. When the action removed it with its item, Base UI would fall back
-	// to an element focused earlier, so focus is left for the page to place.
-	const returnFocusToTrigger = () => triggerRef.current?.isConnected === true;
+	const returnFocusTo = opener?.returnFocusTo ?? triggerRef;
+	// Focus returns to the trigger, or to the opener's element. When the action removed it with its
+	// item, Base UI would fall back to an element focused earlier, so focus is left for the page to
+	// place.
+	const returnFocus = () => {
+		const element = returnFocusTo.current;
+		return element?.isConnected === true ? element : false;
+	};
 
 	return (
-		<AlertDialog {...dialogProps}>
-			<AlertDialogTrigger
-				ref={triggerRef}
-				render={<Button variant={variant === 'destructive' ? 'destructive' : 'outline'} />}
-			>
-				{trigger}
-			</AlertDialogTrigger>
-			<AlertDialogContent finalFocus={returnFocusToTrigger}>
+		<AlertDialog {...dialogProps} handle={opener?.handle}>
+			{opener === undefined && (
+				<AlertDialogTrigger
+					ref={triggerRef}
+					render={<Button variant={variant === 'destructive' ? 'destructive' : 'outline'} />}
+				>
+					{trigger}
+				</AlertDialogTrigger>
+			)}
+			<AlertDialogContent finalFocus={returnFocus}>
 				<ConfirmActionForm {...formProps} action={confirm} variant={variant} />
 			</AlertDialogContent>
 		</AlertDialog>
 	);
 }
 
-export { ConfirmActionDialog };
+export { ConfirmActionDialog, useConfirmActionDialogOpener };

@@ -15,7 +15,14 @@ import {
 } from '@/domain/member/member';
 import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
 import { memberColumns, toInsertColumns, toMember } from '@/infrastructure/db/member-mapper';
-import { passkeys, sessions, users, verifications } from '@/infrastructure/db/schema';
+import {
+	favorites,
+	passkeys,
+	recipeDrafts,
+	sessions,
+	users,
+	verifications,
+} from '@/infrastructure/db/schema';
 import { lockForTransaction } from '@/infrastructure/db/transaction-lock';
 
 // Ends with the id, so members created at the same moment keep one order.
@@ -148,6 +155,8 @@ export class DrizzleMemberRepository implements MemberRepository {
 
 			await tx.delete(sessions).where(eq(sessions.userId, id));
 			await tx.delete(passkeys).where(eq(passkeys.userId, id));
+			await tx.delete(favorites).where(eq(favorites.memberId, id));
+			await tx.delete(recipeDrafts).where(eq(recipeDrafts.memberId, id));
 			await tx
 				.delete(verifications)
 				.where(eq(verifications.identifier, signInCodeIdentifier(current.email)));

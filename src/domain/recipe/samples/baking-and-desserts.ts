@@ -141,6 +141,7 @@ export const sampleJalapenoCornbread: RecipeContentInput = {
 					unit: 'tablespoon',
 					item: 'baking powder',
 				},
+				{ text: '1 teaspoon salt', amount: { min: 1 }, unit: 'teaspoon', item: 'salt' },
 				{ text: '1½ cups buttermilk', amount: { min: 1.5 }, unit: 'cups', item: 'buttermilk' },
 				{ text: '2 eggs', amount: { min: 2 }, item: 'eggs' },
 				{
@@ -162,7 +163,7 @@ export const sampleJalapenoCornbread: RecipeContentInput = {
 		{
 			steps: [
 				{ text: 'Heat the oven to 425°F with a buttered cast iron skillet inside.' },
-				{ text: 'Whisk the cornmeal, flour, baking powder, and a teaspoon of salt.' },
+				{ text: 'Whisk the cornmeal, flour, baking powder, and salt.' },
 				{ text: 'Stir in the buttermilk and eggs, then fold in the jalapeños and cheddar.' },
 				{ text: 'Pour into the hot skillet and bake 22 to 25 minutes until golden and set.' },
 			],
@@ -266,6 +267,12 @@ export const sampleOatmealRaisinCookies: RecipeContentInput = {
 				{ text: '3 cups rolled oats', amount: { min: 3 }, unit: 'cups', item: 'rolled oats' },
 				{ text: '1 cup raisins', amount: { min: 1 }, unit: 'cup', item: 'raisins' },
 				{ text: '1 teaspoon cinnamon', amount: { min: 1 }, unit: 'teaspoon', item: 'cinnamon' },
+				{
+					text: '½ teaspoon baking soda',
+					amount: { min: 0.5 },
+					unit: 'teaspoon',
+					item: 'baking soda',
+				},
 			],
 		},
 	],
@@ -276,7 +283,7 @@ export const sampleOatmealRaisinCookies: RecipeContentInput = {
 					text: 'Heat the oven to 350°F. Beat the butter and brown sugar until fluffy, then beat in the eggs.',
 				},
 				{
-					text: 'Stir in the flour, cinnamon, and a half teaspoon of baking soda, then the oats and raisins.',
+					text: 'Stir in the flour, cinnamon, and baking soda, then the oats and raisins.',
 				},
 				{
 					text: 'Drop rounded spoonfuls onto lined sheets and bake 10 to 12 minutes until the edges are set.',
@@ -312,6 +319,13 @@ export const sampleBrownButterChocolateChipCookies: RecipeContentInput = {
 					unit: 'cups',
 					item: 'all-purpose flour',
 				},
+				{ text: '1 teaspoon salt', amount: { min: 1 }, unit: 'teaspoon', item: 'salt' },
+				{
+					text: '½ teaspoon baking soda',
+					amount: { min: 0.5 },
+					unit: 'teaspoon',
+					item: 'baking soda',
+				},
 				{
 					text: '8 ounces chocolate, chopped',
 					amount: { min: 8 },
@@ -329,7 +343,7 @@ export const sampleBrownButterChocolateChipCookies: RecipeContentInput = {
 					text: 'Melt the butter in a pan and cook, swirling, until it smells nutty and flecks turn amber. Cool 15 minutes.',
 				},
 				{
-					text: 'Whisk the brown butter with the sugar, egg, and yolk. Stir in the flour, a teaspoon of salt, and a half teaspoon of baking soda.',
+					text: 'Whisk the brown butter with the sugar, egg, and yolk. Stir in the flour, salt, and baking soda.',
 				},
 				{ text: 'Fold in the chocolate and scoop onto lined sheets.' },
 				{ text: 'Bake at 350°F for 10 to 12 minutes, until the edges are golden.' },
@@ -434,6 +448,7 @@ export const sampleOvernightCinnamonRolls: RecipeContentInput = {
 					unit: 'teaspoons',
 					item: 'instant yeast',
 				},
+				{ text: '1 teaspoon salt', amount: { min: 1 }, unit: 'teaspoon', item: 'salt' },
 				{ text: '1 cup warm milk', amount: { min: 1 }, unit: 'cup', item: 'warm milk' },
 				{
 					text: '½ cup butter, softened',
@@ -456,7 +471,7 @@ export const sampleOvernightCinnamonRolls: RecipeContentInput = {
 		{
 			steps: [
 				{
-					text: 'Mix the flour, yeast, warm milk, half the butter, and a teaspoon of salt, then knead until smooth.',
+					text: 'Mix the flour, yeast, warm milk, half the butter, and the salt, then knead until smooth.',
 				},
 				{ text: 'Let the dough rise an hour, then roll it into a large rectangle.' },
 				{
@@ -495,6 +510,13 @@ export const sampleZucchiniBread: RecipeContentInput = {
 					unit: 'cups',
 					item: 'all-purpose flour',
 				},
+				{
+					text: '1 teaspoon baking soda',
+					amount: { min: 1 },
+					unit: 'teaspoon',
+					item: 'baking soda',
+				},
+				{ text: '1 teaspoon cinnamon', amount: { min: 1 }, unit: 'teaspoon', item: 'cinnamon' },
 				{ text: '1 cup chopped walnuts', amount: { min: 1 }, unit: 'cup', item: 'chopped walnuts' },
 			],
 		},
@@ -505,7 +527,7 @@ export const sampleZucchiniBread: RecipeContentInput = {
 				{ text: 'Heat the oven to 350°F and grease a loaf pan.' },
 				{ text: 'Beat the eggs, sugar, and oil, then stir in the zucchini.' },
 				{
-					text: 'Fold in the flour, a teaspoon each of baking soda and cinnamon, and the walnuts.',
+					text: 'Fold in the flour, baking soda, cinnamon, and walnuts.',
 				},
 				{ text: 'Bake 55 to 60 minutes until a skewer comes out clean.' },
 			],

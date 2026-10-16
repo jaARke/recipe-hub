@@ -1,0 +1,60 @@
+'use client';
+
+import * as React from 'react';
+
+// A saved draft by its id, with its title as saved, if it has one.
+export type HeldDraft = {
+	id: string;
+	title: string | undefined;
+	// When the form last saved it on this page, and when it then goes, which the page's list of drafts,
+	// rendered before, can't show; absent while the draft is as the page opened it.
+	saved?: { savedAt: Date; expiresAt: Date };
+};
+
+type HeldDraftContextValue = {
+	draft: HeldDraft | undefined;
+	hold: (draft: HeldDraft) => void;
+	release: (id: string) => void;
+};
+
+const HeldDraftContext = React.createContext<HeldDraftContextValue | null>(null);
+
+// Shares the saved draft the page's recipe form holds with the rest of the page, such as the menu
+// beside its heading that deletes it and the list of drafts that shows it: the draft the page opened,
+// then the one the form last saved, until it is deleted. Keyed with the form, so another draft starts
+// it afresh.
+function HeldDraftProvider({
+	opened,
+	children,
+}: {
+	opened: HeldDraft | undefined;
+	children: React.ReactNode;
+}) {
+	const [draft, hold] = React.useState(opened);
+	const value = React.useMemo(
+		() => ({
+			draft,
+			hold,
+			release: (id: string) => hold((held) => (held?.id === id ? undefined : held)),
+		}),
+		[draft]
+	);
+	return <HeldDraftContext.Provider value={value}>{children}</HeldDraftContext.Provider>;
+}
+
+// The saved draft the page's form holds, if any.
+function useHeldDraft(): HeldDraft | undefined {
+	return React.useContext(HeldDraftContext)?.draft;
+}
+
+// Tells the page which saved draft its form now holds; a page that shares none has nothing to tell.
+function useHoldDraft(): ((draft: HeldDraft) => void) | undefined {
+	return React.useContext(HeldDraftContext)?.hold;
+}
+
+// Tells the page a saved draft was deleted, so it lets go of it if its form holds it.
+function useReleaseDraft(): ((id: string) => void) | undefined {
+	return React.useContext(HeldDraftContext)?.release;
+}
+
+export { HeldDraftProvider, useHeldDraft, useHoldDraft, useReleaseDraft };

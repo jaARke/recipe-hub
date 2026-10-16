@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, arrayOverlaps, eq, ne, sql } from 'drizzle-orm';
+import { and, arrayOverlaps, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import { ImportUnavailableError } from '@/application/ingestion/errors';
 import type {
@@ -164,6 +164,18 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 					.where(eq(oldRecipeSlugs.slug, slug))
 			);
 		return row === undefined ? null : toRecipe(row);
+	}
+
+	async findByIds(ids: readonly RecipeId[]): Promise<Recipe[]> {
+		if (ids.length === 0) {
+			return [];
+		}
+
+		const rows = await this.db
+			.select(recipeColumns)
+			.from(recipes)
+			.where(inArray(recipes.id, [...ids]));
+		return rows.map(toRecipe);
 	}
 
 	async list(page: RecipePage): Promise<Recipe[]> {

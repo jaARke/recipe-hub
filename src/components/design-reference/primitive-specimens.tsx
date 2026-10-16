@@ -2,6 +2,7 @@ import {
 	BadgeSpecimen,
 	ButtonSpecimen,
 	PaginationSpecimen,
+	ToggleSpecimen,
 } from '@/components/design-reference/action-specimens';
 import { AlertDialogSpecimen } from '@/components/design-reference/alert-dialog-specimen';
 import { ComboboxSpecimen } from '@/components/design-reference/combobox-specimen';
@@ -22,7 +23,9 @@ import {
 	InputGroupSpecimen,
 	InputSpecimen,
 	LabelSpecimen,
+	NumberFieldSpecimen,
 	SelectSpecimen,
+	SwitchSpecimen,
 	TextareaSpecimen,
 } from '@/components/design-reference/form-specimens';
 import {
@@ -42,18 +45,21 @@ import { ToastSpecimen } from '@/components/design-reference/toast-specimen';
 // One entry per file in src/components/ui.
 const primitives = [
 	{ id: 'button', title: 'Button', Content: ButtonSpecimen },
+	{ id: 'toggle', title: 'Toggle', Content: ToggleSpecimen },
 	{ id: 'badge', title: 'Badge', Content: BadgeSpecimen },
 	{ id: 'avatar', title: 'Avatar', Content: AvatarSpecimen },
 	{ id: 'pagination', title: 'Pagination', Content: PaginationSpecimen },
 	{ id: 'card', title: 'Card', Content: CardSpecimen },
 	{ id: 'input', title: 'Input', Content: InputSpecimen },
 	{ id: 'input-group', title: 'Input group', Content: InputGroupSpecimen },
+	{ id: 'number-field', title: 'Number field', Content: NumberFieldSpecimen },
 	{ id: 'textarea', title: 'Textarea', Content: TextareaSpecimen },
 	{ id: 'label', title: 'Label', Content: LabelSpecimen },
 	{ id: 'field', title: 'Field', Content: FieldSpecimen },
 	{ id: 'select', title: 'Select', Content: SelectSpecimen },
 	{ id: 'combobox', title: 'Combobox', Content: ComboboxSpecimen },
 	{ id: 'checkbox', title: 'Checkbox', Content: CheckboxSpecimen },
+	{ id: 'switch', title: 'Switch', Content: SwitchSpecimen },
 	{ id: 'attachment', title: 'Attachment', Content: AttachmentSpecimen },
 	{ id: 'tabs', title: 'Tabs', Content: TabsSpecimen },
 	{ id: 'collapsible', title: 'Collapsible', Content: CollapsibleSpecimen },

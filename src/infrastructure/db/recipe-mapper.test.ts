@@ -8,7 +8,12 @@ const longTitle = 'a'.repeat(settings.recipeLimits.maxTitleLength + 1);
 const longTag = 'a'.repeat(settings.recipeLimits.maxTagLength + 1);
 const dishPhotos = Array.from(
 	{ length: settings.photos.maxDishPhotosPerRecipe + 1 },
-	(_, index) => ({ role: 'dish', pathname: `dish/production/photo-${index}.jpg` }) as const
+	(_, index) =>
+		({
+			role: 'dish',
+			pathname: `dish/production/photo-${index}.jpg`,
+			size: { width: 2400, height: 1800 },
+		}) as const
 );
 
 // A recipe saved before its limits were lowered: past the title's, a tag's, and the dish photos'.
@@ -42,6 +47,31 @@ describe('toRecipe', () => {
 					{
 						path: `images.${settings.photos.maxDishPhotosPerRecipe}`,
 						message: `Use ${settings.photos.maxDishPhotosPerRecipe} photos or fewer.`,
+					},
+				],
+			})
+		);
+	});
+
+	it('reads a recipe whose images were stored before sizes were recorded, whose next save asks for each', () => {
+		const images = [
+			{ role: 'dish', pathname: 'dish/production/plated.jpg' },
+			{ role: 'scan', pathname: 'scan/production/card.jpg' },
+		] as const;
+
+		const recipe = toRecipe({ ...row, content: { ...sampleChickenSoup, images }, tags: ['Soup'] });
+
+		expect(recipe.images).toEqual(images);
+		expect(() => parseRecipeContent(recipe)).toThrow(
+			expect.objectContaining({
+				problems: [
+					{
+						path: 'images.0.size',
+						message: 'We couldn’t read this photo’s size. Remove it and add it again.',
+					},
+					{
+						path: 'images.1.size',
+						message: 'We couldn’t read this photo’s size. Remove it and add it again.',
 					},
 				],
 			})

@@ -1,8 +1,10 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HeaderMember } from '@/components/layout/header-member';
 import { SiteMenu } from '@/components/layout/site-menu';
+import { stubTabNavigation } from '@/components/recipe/testing/tab-navigation';
+import { writeTabStorage } from '@/lib/browser-storage';
 
 const location = vi.hoisted(() => ({ pathname: '/' }));
 
@@ -14,6 +16,11 @@ vi.mock('next/navigation', () => ({
 
 beforeEach(() => {
 	location.pathname = '/';
+});
+
+afterEach(() => {
+	vi.unstubAllGlobals();
+	sessionStorage.clear();
 });
 
 const member: HeaderMember = { displayName: 'Sam', role: 'member' };
@@ -32,26 +39,31 @@ function itemNames(group: HTMLElement, role: 'menuitem' | 'menuitemradio' = 'men
 }
 
 describe('SiteMenu', () => {
-	it('offers a signed-out visitor the site, sign-in, and the theme', async () => {
+	it('offers a signed-out visitor the site, sign-in, privacy, and the theme', async () => {
 		const menu = await openMenu(Promise.resolve(null));
 
 		const account = await within(menu).findByRole('group', { name: 'Account' });
-		expect(itemNames(account)).toEqual(['Sign in', 'Request access']);
+		expect(itemNames(account)).toEqual(['Sign in', 'Request access', 'Privacy']);
+		expect(within(account).getByRole('menuitem', { name: 'Privacy' }).getAttribute('href')).toBe(
+			'/privacy'
+		);
 		expect(itemNames(within(menu).getByRole('group', { name: 'Navigation' }))).toEqual([
 			'Browse',
+			'Favorites',
 			'Add recipe',
 		]);
 		const theme = within(menu).getByRole('group', { name: 'Theme' });
 		expect(itemNames(theme, 'menuitemradio')).toEqual(['Light', 'Dark', 'System']);
 	});
 
-	it("keeps a member's account group to the account itself", async () => {
+	it("keeps a member's account group to the account and privacy, with Sign out last", async () => {
 		const menu = await openMenu(Promise.resolve(member));
 
 		const account = await within(menu).findByRole('group', { name: 'Signed in as Sam' });
-		expect(itemNames(account)).toEqual(['Account', 'Sign out']);
+		expect(itemNames(account)).toEqual(['Account', 'Privacy', 'Sign out']);
 		expect(itemNames(within(menu).getByRole('group', { name: 'Navigation' }))).toEqual([
 			'Browse',
+			'Favorites',
 			'Add recipe',
 		]);
 	});
@@ -60,9 +72,10 @@ describe('SiteMenu', () => {
 		const menu = await openMenu(Promise.resolve(admin));
 
 		const account = await within(menu).findByRole('group', { name: 'Signed in as Avery' });
-		expect(itemNames(account)).toEqual(['Account', 'Sign out']);
+		expect(itemNames(account)).toEqual(['Account', 'Privacy', 'Sign out']);
 		expect(itemNames(within(menu).getByRole('group', { name: 'Navigation' }))).toEqual([
 			'Browse',
+			'Favorites',
 			'Add recipe',
 			'Admin',
 		]);
@@ -73,6 +86,7 @@ describe('SiteMenu', () => {
 
 		expect(itemNames(within(menu).getByRole('group', { name: 'Navigation' }))).toEqual([
 			'Browse',
+			'Favorites',
 			'Add recipe',
 		]);
 		expect(within(menu).queryByRole('menuitem', { name: 'Sign in' })).toBeNull();
@@ -102,6 +116,21 @@ describe('SiteMenu', () => {
 		).toBeNull();
 		expect(
 			(await within(menu).findByRole('menuitem', { name: 'Admin' })).getAttribute('aria-current')
+		).toBeNull();
+	});
+
+	it('marks Favorites as the section of a recipe opened from Favorites', async () => {
+		location.pathname = '/recipes/lemon-bars';
+		const favoritesUrl = `${window.location.origin}/favorites?page=2`;
+		stubTabNavigation([favoritesUrl, `${window.location.origin}/recipes/lemon-bars`]);
+		writeTabStorage('opened-from:/recipes/lemon-bars', favoritesUrl);
+		const menu = await openMenu(Promise.resolve(null));
+
+		expect(
+			within(menu).getByRole('menuitem', { name: 'Favorites' }).getAttribute('aria-current')
+		).toBe('true');
+		expect(
+			within(menu).getByRole('menuitem', { name: 'Browse' }).getAttribute('aria-current')
 		).toBeNull();
 	});
 });

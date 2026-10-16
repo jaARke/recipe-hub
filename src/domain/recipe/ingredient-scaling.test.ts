@@ -144,7 +144,7 @@ describe('scaleIngredientLine', () => {
 		});
 	});
 
-	it.each(['Salt to taste', 'half-and-half'])(
+	it.each(['Salt to taste', 'half-and-half', 'Half and half', 'half & half'])(
 		'leaves "%s", with nothing to scale, unchanged and unmarked',
 		(text) => {
 			const line = parseIngredientLine(text);
@@ -152,20 +152,36 @@ describe('scaleIngredientLine', () => {
 		}
 	);
 
-	it.each(['a few sprigs thyme', 'a little olive oil', 'a couple of carrots', 'an onion'])(
-		'marks "%s", which opens with an amount it cannot read, with the original',
+	it.each([
+		'a few sprigs thyme',
+		'a little olive oil',
+		'a couple of carrots',
+		'an onion',
+		'half a lemon',
+		'Juice of 1 lemon',
+		'Zest of one lemon',
+		'twelve to fifteen apples',
+	])('marks the whole of "%s", which gives an amount it read none of, as unscaled', (text) => {
+		expect(scaleIngredientLine(parseIngredientLine(text), 2)).toStrictEqual({
+			line: { text, item: text },
+			unscaled: 'whole',
+		});
+	});
+
+	it.each(['12 to fifteen apples', '2 or more eggs', '1 cup to 1 1/2 cups milk'])(
+		'leaves "%s", a range whose end it cannot read, as written and marks the whole unscaled',
 		(text) => {
 			expect(scaleIngredientLine(parseIngredientLine(text), 2)).toStrictEqual({
 				line: { text, item: text },
-				asWritten: text,
+				unscaled: 'whole',
 			});
 		}
 	);
 
-	it('scales what it read in "1 egg plus 1 yolk" and shows the original', () => {
+	it('scales what it read in "1 egg plus 1 yolk" and marks the rest unscaled', () => {
 		expect(scaleIngredientLine(parseIngredientLine('1 egg plus 1 yolk'), 2)).toStrictEqual({
 			line: { text: '1 egg plus 1 yolk', amount: { min: 2 }, item: 'egg plus 1 yolk' },
-			asWritten: '1 egg plus 1 yolk',
+			unscaled: 'part',
 		});
 	});
 
@@ -281,11 +297,53 @@ describe('scaleIngredientLine', () => {
 			2,
 			{ amount: { min: 2 }, unit: 'cups', item: 'plus one-half cup flour' },
 		],
-		['Juice of 1 lemon', 2, { item: 'Juice of 1 lemon' }],
-	])('marks "%s", whose unread text holds a number, with the original', (text, factor, parts) => {
+		[
+			'1 cup flour plus a tablespoon',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour plus a tablespoon' },
+		],
+		[
+			'2 eggs plus one, beaten',
+			2,
+			{ amount: { min: 4 }, item: 'eggs plus one', preparation: 'beaten' },
+		],
+		[
+			'1 cup flour plus half a lemon',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour plus half a lemon' },
+		],
+		['2 limes plus a half lime', 2, { amount: { min: 4 }, item: 'limes plus a half lime' }],
+	])('marks part of "%s", whose unread text holds a number, as unscaled', (text, factor, parts) => {
 		expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
 			line: { text, ...parts },
-			asWritten: text,
+			unscaled: 'part',
 		});
 	});
+
+	it.each<[string, number, ScaledParts]>([
+		[
+			'1 can artichoke quarters',
+			2,
+			{ amount: { min: 2 }, unit: 'cans', item: 'artichoke quarters' },
+		],
+		['1 cup half and half', 2, { amount: { min: 2 }, unit: 'cups', item: 'half and half' }],
+		['1 lemon, cut in half', 2, { amount: { min: 2 }, item: 'lemons', preparation: 'cut in half' }],
+		[
+			'2 tablespoons five-spice powder',
+			2,
+			{ amount: { min: 0.25 }, unit: 'cup', item: 'five-spice powder' },
+		],
+		[
+			'1 cup flour, divided into thirds',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour', preparation: 'divided into thirds' },
+		],
+	])(
+		'scales "%s", whose number words name rather than count, by %s without a mark',
+		(text, factor, parts) => {
+			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+				line: { text, ...parts },
+			});
+		}
+	);
 });

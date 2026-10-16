@@ -1,44 +1,14 @@
 'use client';
 
-import { TriangleAlertIcon } from 'lucide-react';
-import Link from 'next/link';
-import { PageContainer } from '@/components/layout/page-container';
-import { Button, buttonVariants } from '@/components/ui/button';
-import {
-	Empty,
-	EmptyContent,
-	EmptyDescription,
-	EmptyHeader,
-	EmptyMedia,
-	EmptyTitle,
-} from '@/components/ui/empty';
+import { MainContent } from '@/components/layout/main-content';
+import { PageErrorState } from '@/components/layout/page-error-state';
 
-export default function ErrorPage({ retry }: { retry: () => void }) {
+// Catches what the (site) error page cannot: a failure of the (site) layout itself, and a page
+// outside it. Either way no main landmark is left for the skip link, so this brings its own.
+export default function RootErrorPage({ retry }: { retry: () => void }) {
 	return (
-		<PageContainer width="wide" className="py-12 sm:py-16">
-			<Empty>
-				<EmptyHeader>
-					<EmptyMedia variant="icon">
-						<TriangleAlertIcon aria-hidden="true" />
-					</EmptyMedia>
-					{/* EmptyTitle renders a div, so the role makes it this page's heading. */}
-					<EmptyTitle role="heading" aria-level={1}>
-						Something went wrong
-					</EmptyTitle>
-					<EmptyDescription>
-						This page couldn’t load. Try again, or go back to the recipes.
-					</EmptyDescription>
-				</EmptyHeader>
-				<EmptyContent>
-					<div className="flex flex-wrap justify-center gap-2">
-						<Button onClick={() => retry()}>Try again</Button>
-						{/* Base UI's Button must not render links, so the link takes the button's look directly. */}
-						<Link href="/" className={buttonVariants({ variant: 'outline' })}>
-							Back to recipes
-						</Link>
-					</div>
-				</EmptyContent>
-			</Empty>
-		</PageContainer>
+		<MainContent>
+			<PageErrorState onRetry={retry} />
+		</MainContent>
 	);
 }

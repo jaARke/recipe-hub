@@ -35,11 +35,20 @@ const lineEndPunctuation = ';,.';
 // One quantity as written: a fraction or mixed number, a vulgar fraction, a decimal, or a whole number.
 const quantitySource = String.raw`(?:\d+(?:\s+\d+)?\s*[/⁄]\s*\d+|\d*\s*${vulgarFractions}|\d*\.\d+|\d+)`;
 
+// The ways the library joins a range's two quantities: a dash, or "to" or "or".
+const rangeDash = String.raw`[-\u2013\u2014]`;
+const rangeWord = '(?:to|or)';
+
 // A quantity, or a range of two joined the way the library joins them.
 const amountPattern = new RegExp(
-	String.raw`^${quantitySource}(?:(?:\s*[-\u2013\u2014]\s*|\s+(?:to|or)\s+)${quantitySource})?$`,
+	String.raw`^${quantitySource}(?:(?:\s*${rangeDash}\s*|\s+${rangeWord}\s+)${quantitySource})?$`,
 	'iu'
 );
+
+// The words after the amount, or after its unit, join it to a range's end the library did not read,
+// so the amount is only the range's start: "12 to fifteen apples", "2 or more eggs", "1 cup to 1 1/2
+// cups milk".
+const unreadRangeEnd = new RegExp(String.raw`^(?:${rangeDash}|${rangeWord}(?=\s))`, 'iu');
 
 // On old recipe cards "1-1/2" is a mixed number, since a range cannot fall from 1 to 1/2.
 const hyphenatedMixedNumber = /^[1-9]\d*[-\u2013]\d+[/⁄]\d+$/u;
@@ -126,6 +135,7 @@ function readMeasure(line: string): Measure | undefined {
 		amount === undefined ||
 		!amountPattern.test(amountText) ||
 		continuedNumber.test(reading.charAt(amountText.length)) ||
+		unreadRangeEnd.test(description) ||
 		// The words' numerals run on into the line's, as in "a 1/2 cup".
 		(words !== undefined && amountText !== words.numerals)
 	) {

@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
 // The safe range of each value in src/lib/settings.ts and the rules between them. next.config.ts
-// parses the settings against it when the dev server or a build starts; client code never imports it,
-// so zod stays out of the browser.
+// parses the settings against it when the dev server or a build starts, and the tests do too; only
+// they need the ranges, so dependency-cruiser keeps the schema out of every page's code.
 
 // Neon keeps a daily snapshot for 35 days.
 const neonSnapshotLifetimeDays = 35;
@@ -37,6 +37,9 @@ export const settingsSchema = z
 			maxUnsavedImports: z.int().positive(),
 			importDraftLifetimeDays: z.int().positive(),
 		}),
+		drafts: z.object({
+			savedDraftLifetimeDays: z.int().positive(),
+		}),
 		ai: z.object({
 			pageModelId: modelIdSchema,
 			scanModelId: modelIdSchema,
@@ -51,6 +54,12 @@ export const settingsSchema = z
 			// Longer than a day, the age at which Better Auth renews a session; browsers keep a cookie
 			// for 400 days at most.
 			sessionLifetimeDays: z.int().min(2).max(400),
+		}),
+		favorites: z.object({
+			// One cookie holds the device's favorites, and browsers keep a cookie only up to 4,096 bytes
+			// with its name and attributes. An id takes 37 bytes, a uuid and its separator, so 100 take
+			// about 3,700 and leave room for the rest.
+			maxPerDevice: z.int().positive().max(100),
 		}),
 		retention: z.object({
 			removedImageLifetimeDays: z

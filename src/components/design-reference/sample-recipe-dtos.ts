@@ -1,4 +1,5 @@
-import type { UnsavedImportDto } from '@/application/ingestion/recipe-import-dtos';
+import { savedDraftIdSchema } from '@/application/drafts/saved-draft';
+import type { DraftSummaryDto } from '@/application/drafts/saved-draft-dtos';
 import type { HighlightedText, RecipeSearchFacets } from '@/application/ports/recipe-search';
 import {
 	toPublicRecipeDto,
@@ -97,7 +98,11 @@ export const sampleRecipeDetail = toPublicRecipeDto(
 			...sampleBiscuits.images,
 			...sampleRecipe(sampleChickenSoup).images,
 			...sampleRecipe(sampleSundayPotRoast).images,
-			...sampleRecipe(sampleTomatoSalad).images.map(({ role, pathname }) => ({ role, pathname })),
+			...sampleRecipe(sampleTomatoSalad).images.map(({ role, pathname, size }) => ({
+				role,
+				pathname,
+				size,
+			})),
 		],
 	},
 	sampleContributor
@@ -199,24 +204,47 @@ export const sampleSearchPage: RecipeSearchPage = {
 // When the drafts list renders, which each sample import's age counts back from.
 export const sampleImportsNow = new Date('2026-10-12T18:00:00.000Z');
 
-// A member's imports they haven't saved, newest first: one just read from photos with no title
-// found, one from a link this afternoon, and one from photos two days ago.
-export const sampleUnsavedImports: readonly UnsavedImportDto[] = [
+// A member's drafts, newest first: an import just read from photos with no title found, a draft
+// they saved this afternoon, one from a link, and one from photos two days ago. Each is deleted a
+// lifetime after it was saved or imported.
+export const sampleDrafts: readonly DraftSummaryDto[] = [
 	{
+		kind: 'import',
 		id: recipeImportIdSchema.parse('0199d2a0-1b2c-7d3e-8f40-000000000003'),
 		mode: 'photo',
-		createdAt: new Date('2026-10-12T17:59:30.000Z'),
+		importedAt: new Date('2026-10-12T17:59:30.000Z'),
+		expiresAt: new Date('2026-10-19T17:59:30.000Z'),
 	},
 	{
+		kind: 'saved',
+		id: savedDraftIdSchema.parse('0199d2a0-1b2c-7d3e-8f40-000000000004'),
+		title: 'Grandma’s pound cake',
+		savedAt: new Date('2026-10-12T16:30:00.000Z'),
+		expiresAt: new Date('2026-11-11T16:30:00.000Z'),
+	},
+	{
+		kind: 'import',
 		id: recipeImportIdSchema.parse('0199d2a0-1b2c-7d3e-8f40-000000000002'),
 		mode: 'url',
 		title: 'Sheet-pan gnocchi with sausage and peppers',
-		createdAt: new Date('2026-10-12T15:10:00.000Z'),
+		importedAt: new Date('2026-10-12T15:10:00.000Z'),
+		expiresAt: new Date('2026-10-19T15:10:00.000Z'),
 	},
 	{
+		kind: 'import',
 		id: recipeImportIdSchema.parse('0199d2a0-1b2c-7d3e-8f40-000000000001'),
 		mode: 'photo',
 		title: 'Lemon bars',
-		createdAt: new Date('2026-10-10T12:00:00.000Z'),
+		importedAt: new Date('2026-10-10T12:00:00.000Z'),
+		expiresAt: new Date('2026-10-17T12:00:00.000Z'),
+	},
+	// Saved from a link import's review, which has since gone, so it says where it came from itself.
+	{
+		kind: 'saved',
+		id: savedDraftIdSchema.parse('0199d2a0-1b2c-7d3e-8f40-000000000005'),
+		mode: 'url',
+		title: 'Buttermilk biscuits',
+		savedAt: new Date('2026-10-02T09:15:00.000Z'),
+		expiresAt: new Date('2026-11-01T09:15:00.000Z'),
 	},
 ];

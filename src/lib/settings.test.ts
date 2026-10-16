@@ -51,6 +51,12 @@ describe('settingsSchema', () => {
 		expect(refusedPaths({ ...settings, accounts })).toEqual(['accounts.sessionLifetimeDays']);
 	});
 
+	it('refuses more favorites on a device than its cookie holds', () => {
+		const favorites = { ...settings.favorites, maxPerDevice: 101 };
+
+		expect(refusedPaths({ ...settings, favorites })).toEqual(['favorites.maxPerDevice']);
+	});
+
 	it('refuses more recipes on a page than one listing query returns', () => {
 		const display = { ...settings.display, recipesPerPage: 101 };
 

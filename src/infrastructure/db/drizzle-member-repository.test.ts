@@ -11,9 +11,11 @@ import { memberIdSchema, removedMemberEmail, type MemberId } from '@/domain/memb
 import { recipeContentSchema } from '@/domain/recipe/recipe';
 import { sampleChickenSoup } from '@/domain/recipe/samples/sample-recipes';
 import { createTestAuth, testHost } from '@/infrastructure/auth/testing/test-auth';
+import { DrizzleFavoriteRepository } from '@/infrastructure/db/drizzle-favorite-repository';
 import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
+import { DrizzleSavedDraftRepository } from '@/infrastructure/db/drizzle-saved-draft-repository';
 import {
 	invites,
 	passkeys,
@@ -115,6 +117,9 @@ async function signInRowCounts(id: MemberId, email: string) {
 describeMemberRepositoryContract(() => ({
 	members: repository,
 	invites: new DrizzleInviteRepository(db),
+	favorites: new DrizzleFavoriteRepository(db),
+	recipes: new DrizzleRecipeRepository(db),
+	drafts: new DrizzleSavedDraftRepository(db),
 }));
 
 describe('create', () => {

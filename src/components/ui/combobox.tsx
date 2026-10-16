@@ -45,17 +45,22 @@ function ComboboxClear({ className, ...props }: ComboboxPrimitive.Clear.Props) {
 	);
 }
 
+// Each icon button the input shows takes its accessible name, such as "Show courses" or "Clear course".
+type ComboboxInputButtonProps = (
+	{ showTrigger?: true; triggerLabel: string } | { showTrigger: false; triggerLabel?: string }
+) &
+	({ showClear: true; clearLabel: string } | { showClear?: false; clearLabel?: string });
+
 function ComboboxInput({
 	className,
 	children,
 	disabled = false,
 	showTrigger = true,
+	triggerLabel,
 	showClear = false,
+	clearLabel,
 	...props
-}: ComboboxPrimitive.Input.Props & {
-	showTrigger?: boolean;
-	showClear?: boolean;
-}) {
+}: ComboboxPrimitive.Input.Props & ComboboxInputButtonProps) {
 	return (
 		<InputGroup className={cn('w-auto', className)}>
 			<ComboboxPrimitive.Input render={<InputGroupInput disabled={disabled} />} {...props} />
@@ -68,9 +73,10 @@ function ComboboxInput({
 						data-slot="input-group-button"
 						className="group-has-data-[slot=combobox-clear]/input-group:hidden data-pressed:bg-transparent"
 						disabled={disabled}
+						aria-label={triggerLabel}
 					/>
 				)}
-				{showClear && <ComboboxClear disabled={disabled} />}
+				{showClear && <ComboboxClear disabled={disabled} aria-label={clearLabel} />}
 			</InputGroupAddon>
 			{children}
 		</InputGroup>
@@ -208,22 +214,23 @@ function ComboboxChips({
 	);
 }
 
+// The remove button's accessible name, such as "Remove Dessert", whenever the button shows.
+type ComboboxChipRemoveProps =
+	{ showRemove?: true; removeLabel: string } | { showRemove: false; removeLabel?: string };
+
 function ComboboxChip({
 	className,
 	children,
 	showRemove = true,
 	removeLabel,
 	...props
-}: ComboboxPrimitive.Chip.Props & {
-	showRemove?: boolean;
-	// The remove button's accessible name, such as "Remove Dessert".
-	removeLabel?: string;
-}) {
+}: ComboboxPrimitive.Chip.Props & ComboboxChipRemoveProps) {
 	return (
 		<ComboboxPrimitive.Chip
 			data-slot="combobox-chip"
 			className={cn(
-				'flex h-[calc(--spacing(5.5))] w-fit items-center justify-center gap-1 rounded-sm bg-muted px-1.5 text-xs font-medium whitespace-nowrap text-foreground has-disabled:pointer-events-none has-disabled:cursor-not-allowed has-disabled:opacity-50 has-data-[slot=combobox-chip-remove]:pr-0',
+				// A chosen value is user text, so it wraps within a narrow screen rather than running off it.
+				'flex min-h-[calc(--spacing(5.5))] w-fit items-center justify-center gap-1 rounded-sm bg-muted px-1.5 text-xs font-medium wrap-anywhere text-foreground has-disabled:pointer-events-none has-disabled:cursor-not-allowed has-disabled:opacity-50 has-data-[slot=combobox-chip-remove]:pr-0',
 				className
 			)}
 			{...props}
@@ -232,7 +239,8 @@ function ComboboxChip({
 			{showRemove && (
 				<ComboboxPrimitive.ChipRemove
 					render={<Button variant="ghost" size="icon-xs" />}
-					className="-ml-1 opacity-50 hover:opacity-100"
+					// Overhangs the chip by a pixel each way, so a one-line chip keeps its height.
+					className="-my-px -ml-1 opacity-50 hover:opacity-100"
 					data-slot="combobox-chip-remove"
 					aria-label={removeLabel}
 				>

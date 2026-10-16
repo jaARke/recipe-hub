@@ -1,6 +1,7 @@
 import { adminPath } from '@/components/auth/auth-paths';
 import {
 	contributePath,
+	favoritesPath,
 	recipeListPath,
 	recipePagesPath,
 	recipeSearchPath,
@@ -17,6 +18,7 @@ export type NavItem = {
 // sign-in, which the proxy sends it to and which says why.
 export const navItems: readonly NavItem[] = [
 	{ href: recipeListPath, label: 'Browse', otherPaths: [recipePagesPath, recipeSearchPath] },
+	{ href: favoritesPath, label: 'Favorites' },
 	{ href: contributePath, label: 'Add recipe' },
 ];
 
@@ -29,10 +31,13 @@ function isAtOrBelow(pathname: string, path: string): boolean {
 }
 
 // A section link's aria-current, as GOV.UK's service navigation sets it: "page" on the section's own
-// page and "true" anywhere else in the section. Without a pathname, no link is current.
+// page and "true" anywhere else in the section. A recipe opened from a list is in that list's
+// section, given listPathname, the list's pathname, so one opened from Favorites marks Favorites.
+// Without a pathname, no link is current.
 export function navItemCurrent(
 	item: NavItem,
-	pathname: string | undefined
+	pathname: string | undefined,
+	listPathname?: string
 ): 'page' | 'true' | undefined {
 	if (pathname === undefined) {
 		return undefined;
@@ -40,6 +45,7 @@ export function navItemCurrent(
 	if (pathname === item.href) {
 		return 'page';
 	}
+	const sectionPathname = listPathname ?? pathname;
 	const sectionPaths = [item.href, ...(item.otherPaths ?? [])];
-	return sectionPaths.some((path) => isAtOrBelow(pathname, path)) ? 'true' : undefined;
+	return sectionPaths.some((path) => isAtOrBelow(sectionPathname, path)) ? 'true' : undefined;
 }

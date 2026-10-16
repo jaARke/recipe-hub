@@ -23,6 +23,13 @@ import {
 } from '@/components/ui/input-group';
 import { Label } from '@/components/ui/label';
 import {
+	NumberField,
+	NumberFieldDecrement,
+	NumberFieldGroup,
+	NumberFieldIncrement,
+	NumberFieldInput,
+} from '@/components/ui/number-field';
+import {
 	Select,
 	SelectContent,
 	SelectGroup,
@@ -32,6 +39,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { noStepsMessage } from '@/domain/recipe/instruction';
 
@@ -124,6 +132,44 @@ function InputGroupSpecimen() {
 						</InputGroupAddon>
 					</InputGroup>
 					<FieldError id="input-group-invalid-error">Enter at least 1 minute.</FieldError>
+				</Field>
+			</FieldGroup>
+		</Specimen>
+	);
+}
+
+// A recipe's servings stepper steps by one, a count it makes by half the count, and batches by half.
+const numberFieldSamples = [
+	{ id: 'number-field-servings', label: 'Servings', value: 6, step: 1, min: 1, max: 48 },
+	{ id: 'number-field-makes', label: 'Cookies', value: 24, step: 12, min: 12, max: 192 },
+	{ id: 'number-field-batches', label: 'Batches', value: 1, step: 0.5, min: 0.5, max: 8 },
+] as const;
+
+function NumberFieldSpecimen() {
+	return (
+		<Specimen label="Servings by one, cookies by 12, batches by half, and disabled, as before hydration">
+			<FieldGroup className="grid gap-6 sm:grid-cols-2">
+				{numberFieldSamples.map(({ id, label, value, step, min, max }) => (
+					<Field key={id}>
+						<FieldLabel htmlFor={id}>{label}</FieldLabel>
+						<NumberField id={id} defaultValue={value} step={step} min={min} max={max}>
+							<NumberFieldGroup>
+								<NumberFieldDecrement />
+								<NumberFieldInput />
+								<NumberFieldIncrement />
+							</NumberFieldGroup>
+						</NumberField>
+					</Field>
+				))}
+				<Field data-disabled="true">
+					<FieldLabel htmlFor="number-field-disabled">Disabled</FieldLabel>
+					<NumberField id="number-field-disabled" defaultValue={6} disabled>
+						<NumberFieldGroup>
+							<NumberFieldDecrement />
+							<NumberFieldInput />
+							<NumberFieldIncrement />
+						</NumberFieldGroup>
+					</NumberField>
 				</Field>
 			</FieldGroup>
 		</Specimen>
@@ -371,12 +417,53 @@ function CheckboxSpecimen() {
 	);
 }
 
+const switchSizes = ['default', 'sm'] as const;
+
+function SwitchSpecimen() {
+	return (
+		<div className="flex flex-col gap-6">
+			<Specimen label="Off, on, disabled, and disabled on, at each size: default, then sm">
+				<div className="flex flex-col gap-6">
+					{switchSizes.map((size) => (
+						<FieldGroup key={size} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+							<Field orientation="horizontal">
+								<Switch id={`switch-${size}-off`} size={size} />
+								<FieldLabel htmlFor={`switch-${size}-off`}>Off</FieldLabel>
+							</Field>
+							<Field orientation="horizontal">
+								<Switch id={`switch-${size}-on`} size={size} defaultChecked />
+								<FieldLabel htmlFor={`switch-${size}-on`}>On</FieldLabel>
+							</Field>
+							<Field orientation="horizontal" data-disabled="true">
+								<Switch id={`switch-${size}-disabled`} size={size} disabled />
+								<FieldLabel htmlFor={`switch-${size}-disabled`}>Disabled</FieldLabel>
+							</Field>
+							<Field orientation="horizontal" data-disabled="true">
+								<Switch id={`switch-${size}-disabled-on`} size={size} defaultChecked disabled />
+								<FieldLabel htmlFor={`switch-${size}-disabled-on`}>Disabled and on</FieldLabel>
+							</Field>
+						</FieldGroup>
+					))}
+				</div>
+			</Specimen>
+			<Specimen label="Inside its label: the label’s text is the target too">
+				<Label className="text-base">
+					<Switch />
+					Show photos
+				</Label>
+			</Specimen>
+		</div>
+	);
+}
+
 export {
 	CheckboxSpecimen,
 	FieldSpecimen,
 	InputGroupSpecimen,
 	InputSpecimen,
 	LabelSpecimen,
+	NumberFieldSpecimen,
 	SelectSpecimen,
+	SwitchSpecimen,
 	TextareaSpecimen,
 };

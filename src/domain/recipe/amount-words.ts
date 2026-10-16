@@ -6,8 +6,9 @@
 // the unit table reads ("a pinch of salt"), which the parser checks, so "a few", "a little", "a
 // couple", and "an onion" read nothing. Left out on purpose: numbers past twelve and compounds such
 // as "twenty-four", which recipes write in numerals; "halves", which names pieces ("pecan halves")
-// more often than an amount; and words past the start of a line ("plus two tablespoons"), which the
-// scaler marks instead. Hand-written, since words-to-numbers reads every "a" as 1,
+// more often than an amount; "half and half", which names the cream however it is written; and words
+// past the start of a line ("plus two tablespoons"), which the scaler marks instead. Hand-written,
+// since words-to-numbers reads every "a" as 1,
 // @insomnia-dev/words-to-numbers reads whole numbers only, and compromise misreads "one-half" and
 // would add 143 KB to the recipe form.
 
@@ -66,13 +67,13 @@ const singleFractionWords = [
 	'fourth',
 ] as const satisfies readonly (keyof typeof fractionWords)[];
 
-export const amountArticles = ['a', 'an'] as const;
+const amountArticles = ['a', 'an'] as const;
+
+// The words that spell out a whole number.
+export const wholeNumberWords: readonly string[] = Object.keys(wholeNumbers);
 
 // Every word that spells out a number or a part of one.
-export const numberWords: readonly string[] = [
-	...Object.keys(wholeNumbers),
-	...Object.keys(fractionWords),
-];
+export const numberWords: readonly string[] = [...wholeNumberWords, ...Object.keys(fractionWords)];
 
 function anyWord(words: readonly string[]): string {
 	return String.raw`(?:${words.join('|')})(?!\p{L})`;
@@ -108,6 +109,9 @@ const mixedNumberStart = new RegExp(String.raw`^(${wholeWord}|\d+)\s+and\s+`, 'i
 const articleAlone = new RegExp(String.raw`^${article}${quantityEnd}`, 'iu');
 
 const rangeSeparator = /^\s+(?:to|or)\s+/iu;
+
+// The cream, written with spaces or an ampersand rather than hyphens: "Half and half", "half & half".
+const halfAndHalf = /^half\s+(?:and|&)\s+half(?!\p{L})/iu;
 
 function valueIn(table: Readonly<Record<string, number>>, word: string): number {
 	const value = table[word.toLowerCase()];
@@ -191,6 +195,10 @@ function rewritten(amount: AmountWords): AmountWords | undefined {
 // The amount in words that opens the text, or nothing where it opens with none. A range whose end it
 // cannot read, as in "twelve to fifteen", is none.
 export function readAmountWords(text: string): AmountWords | undefined {
+	if (halfAndHalf.test(text)) {
+		return undefined;
+	}
+
 	const first = readRangeEnd(text);
 	if (first === undefined) {
 		const alone = articleAlone.exec(text)?.[0];

@@ -2,18 +2,20 @@ import 'server-only';
 import { toPublicMemberDto, type PublicMemberDto } from '@/application/members/member-dtos';
 import type { Member } from '@/domain/member/member';
 import { totalMinutes } from '@/domain/recipe/duration';
+import { sourceUrlSchema } from '@/domain/recipe/provenance';
 import type { Recipe, RecipeContent, RecipeId } from '@/domain/recipe/recipe';
 import { coverImage, dishImages, scanImages, type RecipeImage } from '@/domain/recipe/recipe-image';
 import type { RecipeYield } from '@/domain/recipe/recipe-yield';
 
-// What anyone may see: the contributor's public name, no provenance beyond the source URL, and no
-// scans.
+// What anyone may see: the contributor's public name and no provenance beyond the source URL.
 export type PublicRecipeDto = Omit<RecipeContent, 'images'> & {
 	id: RecipeId;
 	slug: string;
 	contributor: PublicMemberDto;
-	// Dish photos only; scans are for members.
+	// Dish photos only, so a cover, a share card, or JSON-LD can never show a scan.
 	images: RecipeImage[];
+	// The pages of the recipe as first written, shown in a section of their own.
+	scans: RecipeImage[];
 	sourceUrl?: string;
 	createdAt: Date;
 	updatedAt: Date;
@@ -47,10 +49,9 @@ export type EditableRecipeDto = RecipeContent & {
 	respellableTags: string[];
 };
 
-// What a signed-in member sees beside the public recipe: whether they may edit it, and its scans.
+// What a signed-in member sees beside the public recipe: whether they may edit it.
 export type RecipeMemberViewDto = {
 	canEdit: boolean;
-	scans: RecipeImage[];
 };
 
 // Returned by writes, so callers can redirect to the recipe and invalidate its cache tags.
@@ -92,6 +93,16 @@ export type ImageSweepCounts = {
 	expiredCount: number;
 };
 
+// The page an import read, or a source entered as a web address, which links as an import's does.
+function publicSourceUrl({ provenance, source }: Recipe): string | undefined {
+	if (provenance.entryMode === 'url') {
+		return provenance.sourceUrl;
+	}
+
+	const result = sourceUrlSchema.safeParse(source);
+	return result.success ? result.data : undefined;
+}
+
 export function toPublicRecipeDto(recipe: Recipe, contributor: Member): PublicRecipeDto {
 	return {
 		id: recipe.id,
@@ -107,7 +118,8 @@ export function toPublicRecipeDto(recipe: Recipe, contributor: Member): PublicRe
 		instructionSections: recipe.instructionSections,
 		tags: recipe.tags,
 		images: dishImages(recipe.images),
-		sourceUrl: recipe.provenance.entryMode === 'url' ? recipe.provenance.sourceUrl : undefined,
+		scans: scanImages(recipe.images),
+		sourceUrl: publicSourceUrl(recipe),
 		createdAt: recipe.createdAt,
 		updatedAt: recipe.updatedAt,
 	};
@@ -132,8 +144,8 @@ export function toEditableRecipeDto(recipe: Recipe, respellableTags: string[]): 
 	};
 }
 
-export function toRecipeMemberViewDto(recipe: Recipe, canEdit: boolean): RecipeMemberViewDto {
-	return { canEdit, scans: scanImages(recipe.images) };
+export function toRecipeMemberViewDto(canEdit: boolean): RecipeMemberViewDto {
+	return { canEdit };
 }
 
 export function toRecipeSummaryDto(recipe: Recipe): RecipeSummaryDto {

@@ -2,6 +2,7 @@ import 'server-only';
 import { cacheLife, cacheTag } from 'next/cache';
 import type { RecipeSort } from '@/application/ports/recipe-repository';
 import type { PublicRecipeDto, RecipeSummaryPage } from '@/application/recipes/recipe-dtos';
+import { defaultListSort } from '@/components/recipe/recipe-list-params';
 import { getRecipeService } from '@/composition/services';
 import type { MemberId } from '@/domain/member/member';
 import { settings } from '@/lib/settings';
@@ -43,6 +44,13 @@ export async function getCachedRecipePage(
 		offset: (page - 1) * settings.display.recipesPerPage,
 		sort,
 	});
+}
+
+// The recipes a recipe's pages prerender for, its page and its cooking view: the list's first page.
+export async function recipeStaticParams(): Promise<{ slug: string }[]> {
+	const { recipes } = await getCachedRecipePage(1, defaultListSort);
+	// A param is required but production starts empty; this one fails the slug schema and prerenders a 404.
+	return recipes.length > 0 ? recipes.map(({ slug }) => ({ slug })) : [{ slug: '__placeholder__' }];
 }
 
 // Every tag label in use, which the recipe form suggests and filters in the browser.

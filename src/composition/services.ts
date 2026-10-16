@@ -1,12 +1,14 @@
 import 'server-only';
 import { waitUntil } from '@vercel/functions';
 import { checkBotId } from 'botid/server';
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { after, connection } from 'next/server';
 import { cache } from 'react';
 import { AccessRequestService } from '@/application/access/access-request-service';
 import { AccountService } from '@/application/access/account-service';
 import { InviteService } from '@/application/access/invite-service';
+import { SavedDraftService } from '@/application/drafts/saved-draft-service';
+import { FavoriteService } from '@/application/favorites/favorite-service';
 import { RecipeImportService } from '@/application/ingestion/recipe-import-service';
 import { MemberService } from '@/application/members/member-service';
 import type { ActorProvider } from '@/application/ports/actor-provider';
@@ -18,14 +20,17 @@ import { AiPageRecipeExtractor } from '@/infrastructure/ai/ai-page-recipe-extrac
 import { AiScanRecipeExtractor } from '@/infrastructure/ai/ai-scan-recipe-extractor';
 import { createAuth, type Auth } from '@/infrastructure/auth/better-auth';
 import { BetterAuthActorProvider } from '@/infrastructure/auth/better-auth-actor-provider';
+import { CookieDeviceFavorites } from '@/infrastructure/cookies/cookie-device-favorites';
 import { db } from '@/infrastructure/db/client';
 import { DrizzleAccessRequestRepository } from '@/infrastructure/db/drizzle-access-request-repository';
+import { DrizzleFavoriteRepository } from '@/infrastructure/db/drizzle-favorite-repository';
 import { DrizzleImageMoveLock } from '@/infrastructure/db/drizzle-image-move-lock';
 import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { DrizzleRecipeSearch } from '@/infrastructure/db/drizzle-recipe-search';
+import { DrizzleSavedDraftRepository } from '@/infrastructure/db/drizzle-saved-draft-repository';
 import { ResendEmailSender } from '@/infrastructure/email/resend-email-sender';
 import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
 import { BlobUploadHandler } from '@/infrastructure/storage/blob-upload-handler';
@@ -89,6 +94,12 @@ async function requestHeaders(): Promise<Headers> {
 	return headers();
 }
 
+// Reading the device's favorites is request work too, so it waits for the request in the same way.
+async function requestCookies() {
+	await connection();
+	return cookies();
+}
+
 const sessionActors = new BetterAuthActorProvider(getAuth, requestHeaders);
 
 // Every service resolves the actor, so a page that calls several reads the session once. React's
@@ -100,6 +111,7 @@ export function getRecipeService(): RecipeService {
 	return new RecipeService(
 		new DrizzleRecipeRepository(db),
 		new DrizzleRecipeImportRepository(db),
+		new DrizzleSavedDraftRepository(db),
 		new DrizzleMemberRepository(db),
 		images,
 		actors,
@@ -115,6 +127,7 @@ export function getRecipeImageService(): RecipeImageService {
 	return new RecipeImageService(
 		new DrizzleRecipeRepository(db),
 		new DrizzleRecipeImportRepository(db),
+		new DrizzleSavedDraftRepository(db),
 		images,
 		actors,
 		imageFolders,
@@ -127,10 +140,22 @@ export function getRecipeImportService(): RecipeImportService {
 	return new RecipeImportService(
 		new DrizzleRecipeRepository(db),
 		new DrizzleRecipeImportRepository(db),
+		new DrizzleSavedDraftRepository(db),
 		new GuardedWebPageFetcher({ siteUrl }),
 		new JsonLdPageRecipeExtractor(),
 		new AiPageRecipeExtractor(settings.ai.pageModelId),
 		new AiScanRecipeExtractor(settings.ai.scanModelId),
+		images,
+		actors,
+		imageFolders
+	);
+}
+
+export function getSavedDraftService(): SavedDraftService {
+	return new SavedDraftService(
+		new DrizzleSavedDraftRepository(db),
+		new DrizzleRecipeImportRepository(db),
+		new DrizzleRecipeRepository(db),
 		images,
 		actors,
 		imageFolders
@@ -160,6 +185,17 @@ export function getInviteService(): InviteService {
 
 export function getMemberService(): MemberService {
 	return new MemberService(new DrizzleMemberRepository(db), actors, env.ADMIN_EMAIL);
+}
+
+// The favorites cookie is Secure where Better Auth's session cookie is: in production builds, which
+// every deployment serves over HTTPS.
+export function getFavoriteService(): FavoriteService {
+	return new FavoriteService(
+		new DrizzleFavoriteRepository(db),
+		new CookieDeviceFavorites({ cookies: requestCookies, secure: env.NODE_ENV === 'production' }),
+		new DrizzleRecipeRepository(db),
+		actors
+	);
 }
 
 // Better Auth's endpoint, which the Route Handler at /api/auth/[...all] mounts.

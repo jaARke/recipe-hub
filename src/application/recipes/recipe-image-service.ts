@@ -5,6 +5,7 @@ import type { ImageMoveLock, LockAttempt } from '@/application/ports/image-move-
 import type { ImageStore, StoredImage } from '@/application/ports/image-store';
 import type { RecipeImportRepository } from '@/application/ports/recipe-import-repository';
 import type { RecipeRepository } from '@/application/ports/recipe-repository';
+import type { SavedDraftRepository } from '@/application/ports/saved-draft-repository';
 import type { TaskScheduler } from '@/application/ports/task-scheduler';
 import { InvalidImageUploadError } from '@/application/recipes/errors';
 import type { ImageFolders } from '@/application/recipes/image-folders';
@@ -20,12 +21,7 @@ import {
 	unusedImageCutoff,
 } from '@/domain/recipe/image-retention';
 import type { RecipeId } from '@/domain/recipe/recipe';
-import {
-	isPublicImagePathname,
-	isRecipeImageContentType,
-	isScanImagePathname,
-	type RecipeImageRole,
-} from '@/domain/recipe/recipe-image';
+import { isRecipeImageContentType, type RecipeImageRole } from '@/domain/recipe/recipe-image';
 import { getLogger } from '@/lib/logger';
 
 // The browser re-encodes every photo as a JPEG before uploading it.
@@ -76,6 +72,7 @@ function warnImagesNotRemoved(recipeId: RecipeId, pathnames: string[], err: unkn
 export class RecipeImageService {
 	private readonly recipes: RecipeRepository;
 	private readonly imports: RecipeImportRepository;
+	private readonly drafts: SavedDraftRepository;
 	private readonly images: ImageStore;
 	private readonly actors: ActorProvider;
 	private readonly folders: ImageFolders;
@@ -85,6 +82,7 @@ export class RecipeImageService {
 	constructor(
 		recipes: RecipeRepository,
 		imports: RecipeImportRepository,
+		drafts: SavedDraftRepository,
 		images: ImageStore,
 		actors: ActorProvider,
 		folders: ImageFolders,
@@ -93,6 +91,7 @@ export class RecipeImageService {
 	) {
 		this.recipes = recipes;
 		this.imports = imports;
+		this.drafts = drafts;
 		this.images = images;
 		this.actors = actors;
 		this.folders = folders;
@@ -100,19 +99,10 @@ export class RecipeImageService {
 		this.scheduleTask = scheduleTask;
 	}
 
-	// Never asks for the actor, so responses can be cached.
+	// A dish photo or a scan, which anyone may see, from a folder this environment reads. Never asks for
+	// the actor, so responses can be cached.
 	async getPublicImage(pathname: string): Promise<StoredImage | null> {
-		if (!isPublicImagePathname(pathname) || !this.folders.isReadable(pathname)) {
-			return null;
-		}
-
-		return this.findServedImage(pathname);
-	}
-
-	// Scans are for members, so a signed-out visitor learns nothing about which ones exist.
-	async getMemberImage(pathname: string): Promise<StoredImage | null> {
-		requireMember(await this.actors.currentActor());
-		if (!isScanImagePathname(pathname) || !this.folders.isReadable(pathname)) {
+		if (!this.folders.isReadable(pathname)) {
 			return null;
 		}
 
@@ -139,8 +129,8 @@ export class RecipeImageService {
 		return { contentType: uploadContentType, maximumSizeInBytes: maxUploadSizeInBytes };
 	}
 
-	// Sweeps once the response is sent, so the write that calls it never waits. Every recipe and import
-	// write calls it, so cleanup follows activity rather than a schedule. An edit or delete passes the
+	// Sweeps once the response is sent, so the write that calls it never waits. Every recipe, import,
+	// and saved draft write calls it, so cleanup follows activity rather than a schedule. An edit or delete passes the
 	// images it let go, which the task removes before it sweeps.
 	scheduleSweep(released?: ReleasedImages): void {
 		this.scheduleTask(async () => {
@@ -200,10 +190,17 @@ export class RecipeImageService {
 
 	// After the write commits, so a failure leaves an unused image rather than a recipe naming a missing
 	// one; a failure is logged, and the sweep carries on. An image another recipe still lists or an
-	// unexpired draft names is kept, as importing the same scans twice makes drafts share them.
+	// unexpired import or saved draft names is kept, as importing the same scans twice makes drafts
+	// share them.
 	private async removeReleasedImages(recipeId: RecipeId, pathnames: string[]): Promise<void> {
 		try {
-			const inUse = await imagesInUse(pathnames, this.recipes, this.imports, new Date());
+			const inUse = await imagesInUse(
+				pathnames,
+				this.recipes,
+				this.imports,
+				this.drafts,
+				new Date()
+			);
 			const removedPathnames = pathnames.filter((pathname) => !inUse.has(pathname));
 			const keptPathnames = pathnames.filter((pathname) => inUse.has(pathname));
 			if (removedPathnames.length > 0) {
@@ -235,6 +232,7 @@ export class RecipeImageService {
 			[...removed.map(({ pathname }) => pathname), ...uploaded],
 			this.recipes,
 			this.imports,
+			this.drafts,
 			now
 		);
 		const expiredBefore = removedImageCutoff(now);

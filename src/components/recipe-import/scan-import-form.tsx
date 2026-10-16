@@ -7,7 +7,10 @@ import { useFormAction } from '@/components/forms/use-form-action';
 import { PhotoField } from '@/components/recipe-form/photo-field';
 import { uploadPhoto, type PhotoUploader } from '@/components/recipe-form/photo-upload';
 import { hasPhotosInProgress } from '@/components/recipe-form/recipe-form-values';
-import { recipeImportFieldNames } from '@/components/recipe-import/recipe-import-forms';
+import {
+	recipeImportFieldNames,
+	scanFieldValue,
+} from '@/components/recipe-import/recipe-import-forms';
 import { RecipeImportSubmit } from '@/components/recipe-import/recipe-import-submit';
 import {
 	editScanImport,
@@ -55,14 +58,19 @@ function ScanImportForm({ action, uploadFolder, uploader = uploadPhoto }: ScanIm
 	return (
 		<form {...formProps} className="flex flex-col gap-4">
 			<FormErrorAlert message={state.status === 'error' ? state.message : undefined} />
-			{submission.pathnames.map((pathname) => (
-				<input key={pathname} type="hidden" name={recipeImportFieldNames.scans} value={pathname} />
+			{submission.scans.map((scan) => (
+				<input
+					key={scan.pathname}
+					type="hidden"
+					name={recipeImportFieldNames.scans}
+					value={scanFieldValue(scan)}
+				/>
 			))}
 			<PhotoField
 				idPrefix={photosId}
 				role="scan"
 				legend="Original recipe"
-				description={`Photos of the recipe as it was written, up to ${settings.photos.maxScansPerImport} pages in order, such as both sides of a recipe card. They stay with the recipe, and only members can see them.`}
+				description={`Photos of the recipe as it was written, up to ${settings.photos.maxScansPerImport} pages in order, such as both sides of a recipe card. They stay with the recipe, and anyone can see them.`}
 				limit={settings.photos.maxScansPerImport}
 				photos={values.photos.scan}
 				nextId={values.nextId}

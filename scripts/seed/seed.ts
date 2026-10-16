@@ -16,6 +16,7 @@ import { pinFullSslVerification } from '@/infrastructure/db/connection-string';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
+import { DrizzleSavedDraftRepository } from '@/infrastructure/db/drizzle-saved-draft-repository';
 import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
 import { seedImageEnvironment } from '@/lib/image-paths';
 import { getLogger } from '@/lib/logger';
@@ -136,6 +137,7 @@ if (env.VERCEL_ENV === 'production') {
 				new RecipeService(
 					new DrizzleRecipeRepository(db),
 					new DrizzleRecipeImportRepository(db),
+					new DrizzleSavedDraftRepository(db),
 					members,
 					images,
 					new SeedActorProvider(contributor),

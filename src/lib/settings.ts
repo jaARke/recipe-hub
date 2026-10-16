@@ -20,12 +20,17 @@ export const settings: z.output<typeof settingsSchema> = {
 		// Imports a member may start in any rolling 24 hours, so one account cannot spend the AI budget
 		// alone. Admins have no limit.
 		maxImportsPerDay: 50,
-		// The unsaved drafts listed beside the import forms, newest first: the ones a member is likely
-		// still reviewing.
+		// The drafts listed beside the import forms, saved drafts and imports' drafts together, newest
+		// first: the ones a member is likely still working on.
 		maxUnsavedImports: 10,
 		// How long a member has to review an import's draft and save it as a recipe; then the draft and
 		// its source URL are cleared.
 		importDraftLifetimeDays: 7,
+	},
+	drafts: {
+		// How long a draft a member saves from the recipe form is kept after its last save: time to
+		// finish a recipe over a few weekends.
+		savedDraftLifetimeDays: 30,
 	},
 	ai: {
 		// The AI Gateway models that read a page's text and photos of a written recipe, chosen by
@@ -46,6 +51,11 @@ export const settings: z.output<typeof settingsSchema> = {
 		// How long a session lasts without a visit; each day's first visit renews it, so a member who
 		// cooks from the site now and then stays signed in.
 		sessionLifetimeDays: 180,
+	},
+	favorites: {
+		// The most favorites a signed-out reader's device keeps: as many as its one cookie holds. A
+		// member's account keeps any number.
+		maxPerDevice: 100,
 	},
 	retention: {
 		// How long a removed photo or scan is kept before it is deleted for good: past Neon's 35-day

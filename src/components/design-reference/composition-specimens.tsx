@@ -1,33 +1,35 @@
-import type { UnsavedImportDto } from '@/application/ingestion/recipe-import-dtos';
+import type { DraftSummaryDto } from '@/application/drafts/saved-draft-dtos';
 import {
 	ReferenceSubsection,
 	ReferenceSubsectionNav,
 	Specimen,
 } from '@/components/design-reference/reference-section';
+import { SampleFavoriteToggle } from '@/components/design-reference/sample-favorite-toggle';
 import {
 	sampleCatalogFacets,
 	sampleContributor,
+	sampleDrafts,
 	sampleImportsNow,
 	sampleRecipeDetail,
 	sampleRecipeSummaries,
 	sampleSearchPage,
-	sampleUnsavedImports,
 } from '@/components/design-reference/sample-recipe-dtos';
-import { SampleRecipeForm } from '@/components/design-reference/sample-recipe-form';
+import { SampleRecipeEntryTabs } from '@/components/design-reference/sample-recipe-entry-tabs';
 import {
-	SampleScanImportForm,
-	SampleUrlImportForm,
-} from '@/components/design-reference/sample-recipe-import';
+	SampleEditingPage,
+	type SampleEditingSubject,
+} from '@/components/design-reference/sample-recipe-form';
 import { PageContainer } from '@/components/layout/page-container';
 import type { EditedRecipe } from '@/components/recipe-form/recipe-form-fields';
 import {
 	recipeFormValues,
 	type RecipeFormValues,
 } from '@/components/recipe-form/recipe-form-values';
-import { RecipeEntryTabs } from '@/components/recipe-import/recipe-entry-tabs';
 import { RecipeImportSubmit } from '@/components/recipe-import/recipe-import-submit';
+import { RecipeActions } from '@/components/recipe/recipe-actions';
 import { RecipeCard } from '@/components/recipe/recipe-card';
-import { RecipeDetail } from '@/components/recipe/recipe-detail';
+import { RecipeDetail, RecipeDetailSkeleton } from '@/components/recipe/recipe-detail';
+import { RecipeFilmstrip } from '@/components/recipe/recipe-filmstrip';
 import { RecipeGrid, RecipeGridSkeleton } from '@/components/recipe/recipe-grid';
 import { RecipeEditLink } from '@/components/recipe/recipe-member-view';
 import { RecipePagination } from '@/components/recipe/recipe-pagination';
@@ -45,6 +47,7 @@ import type { Problem } from '@/domain/problem';
 import { parseRecipeContent } from '@/domain/recipe/recipe';
 import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
 import { sampleSundayPotRoast } from '@/domain/recipe/samples/sample-recipes';
+import { slugify } from '@/domain/recipe/slug';
 
 const sampleSearchState: RecipeSearchState = {
 	text: 'butter',
@@ -141,31 +144,62 @@ const sampleDraft: { content: RecipeDraftContent; problems: Problem[] } = {
 	],
 };
 
-// The recipe form's starting values, as its pages build them. The review adds stand-in pages of the
-// original as the member's uploads, since a draft's own scans need sign-in.
+// A draft saved with only part of the recipe, opened from Drafts.
+const sampleSavedDraft = {
+	id: '0199d2a0-1b2c-7d3e-8f40-000000000004',
+	title: 'Grandma’s pound cake',
+	savedAt: new Date('2026-10-12T16:30:00.000Z'),
+};
+
+const sampleSavedDraftContent: RecipeDraftContent = {
+	title: sampleSavedDraft.title,
+	source: 'Grandma June',
+	ingredientSections: [
+		{ lines: [{ text: '1 pound butter, softened' }, { text: '3 cups sugar' }, { text: '6 eggs' }] },
+	],
+};
+
+// The recipe form's pages, each with its heading's menu and its starting values as the page builds
+// them. The review adds stand-in pages of the original as the member's uploads, since no store holds
+// a sample draft's scans.
 const recipeFormSamples: readonly {
 	label: string;
+	subject: SampleEditingSubject;
 	initial: RecipeFormValues;
-	editing?: EditedRecipe;
 	standInScans?: boolean;
 }[] = [
-	{ label: 'Adding a recipe', initial: recipeFormValues() },
+	{ label: 'Adding a recipe', subject: { page: 'add' }, initial: recipeFormValues() },
+	{
+		label: 'Adding a recipe from a saved draft',
+		subject: { page: 'add', draft: sampleSavedDraft },
+		initial: recipeFormValues(sampleSavedDraftContent),
+	},
 	{
 		label: 'Editing a recipe whose lists start with a heading',
+		subject: {
+			page: 'edit',
+			recipe: sampleEditedRecipe,
+			slug: slugify(sampleSundayPotRoast.title),
+			title: sampleSundayPotRoast.title,
+		},
 		initial: recipeFormValues(parseRecipeContent(sampleSundayPotRoast)),
-		editing: sampleEditedRecipe,
 	},
 	{
 		label: 'Reviewing an import, with its notes to check',
+		subject: {
+			page: 'review',
+			importId: '0199d2a0-1b2c-7d3e-8f40-000000000005',
+			title: sampleDraft.content.title,
+		},
 		initial: recipeFormValues(sampleDraft.content, sampleDraft.problems),
 		standInScans: true,
 	},
 ];
 
 // The entry tabs with the member's drafts, and with none, whose tab then shows no count.
-const entryDraftSamples: readonly { label: string; imports: readonly UnsavedImportDto[] }[] = [
-	{ label: 'With drafts', imports: sampleUnsavedImports },
-	{ label: 'With no drafts', imports: [] },
+const entryDraftSamples: readonly { label: string; drafts: readonly DraftSummaryDto[] }[] = [
+	{ label: 'With drafts', drafts: sampleDrafts },
+	{ label: 'With no drafts', drafts: [] },
 ];
 
 // One entry per composition, browsing first and contributing last.
@@ -194,8 +228,29 @@ const subsections = [
 		id: 'recipe-detail',
 		title: 'Recipe detail',
 		description:
-			'Reading width, with ingredients and steps in text-lg. The cover and the row of other photos each open a viewer of every photo, and the pencil beside the title, for the contributor and admins, opens the edit page. Its headings start at h4 here, under this page’s own.',
+			'Reading width, with ingredients and steps in text-lg. Under the title and its credit, a ruled block holds a row of labelled cells for the times and yield, one for who added the recipe, when, and when it was edited if on a later day, and one for the tags; a row or cell with nothing to show is left out. The recipe’s actions follow, then the dish photos in a filmstrip, here a row of four, the description, and the original recipe’s pages in a filmstrip of their own, each image whole in its own shape and opening the viewer at itself. The pencil beside the title, for the contributor and admins, opens the edit page. Its headings start at h4 here, under this page’s own.',
 		Content: RecipeDetailSpecimen,
+	},
+	{
+		id: 'recipe-detail-loading',
+		title: 'Recipe detail, loading',
+		description:
+			'Skeletons hold the header’s place as most recipes fill it, every row of the ruled block included, while a recipe that was not prerendered loads.',
+		Content: RecipeDetailSkeletonSpecimen,
+	},
+	{
+		id: 'recipe-filmstrip',
+		title: 'Photo filmstrip and viewer',
+		description:
+			'A recipe’s dish photos, and the pages of its original, show whole in their own shapes. One image runs across the column, narrowed where it would stand taller than 576px or 70% of the screen; several sit in a row at one height, 240px on phones and 320px from sm for photos and 208px and 288px for pages, that scrolls sideways and snaps to each image, a wide one narrowed to 82% of the column so the next always peeks in. A mouse gets arrows at the row’s ends, and the printout leaves the images out. A photo stored before sizes were recorded takes a 3:2 box and shows whole inside it. Each image opens the viewer at itself: full screen in the page’s paper or ink, with where you are, the zoom, a page’s Full size, and Close along the top; Previous and Next at the sides from sm and under the image on phones; the description, announced with the image’s place as it changes; and a strip of every image in its own shape, a very wide one cropped. The image zooms by a pinch, by the wheel with Ctrl or Cmd or a trackpad’s pinch, toward the pointer, by a double tap or click to 250% at that point and back, and by the buttons or + and −, with 0 to fit; zoomed, a drag, a trackpad’s scroll, or the arrow keys pan it, and only while it’s whole does a swipe or Left and Right move to the next image. Moving to another image shows it whole.',
+		Content: RecipeFilmstripSpecimen,
+	},
+	{
+		id: 'recipe-actions',
+		title: 'Recipe actions',
+		description:
+			'One group under a recipe’s details, 44 px tall under a finger. Start cooking opens the cooking view. The favorite toggle keeps its label and name while its heart fills red and its surface shows pressed, and its box is held while it loads; here a stand-in that saves nothing. More actions opens a menu: Share opens the device’s share sheet, and shows only where the browser has one, which desktop Firefox lacks; Copy link copies the link and says so; Print prints the recipe with its link in place of these actions, without the header or the photos. Links name the host the page is on, so a preview shares its own pages; here they name the sample recipe, which has no page.',
+		Content: RecipeActionsSpecimen,
 	},
 	{
 		id: 'empty-state',
@@ -234,14 +289,14 @@ const subsections = [
 		id: 'recipe-form',
 		title: 'Recipe form',
 		description:
-			'For adding and editing a recipe, and for reviewing an import. An import’s notes sit under what they’re about, and an intro counts them and starts on the first; on the review page it takes focus. Editing a field clears its note, and so does Looks right, which moves on to the next note and says how many are left; an empty title or list must be filled instead. A scan’s [illegible] or [?] left in the text is noted too, and marked in the line’s preview, until it’s edited away. Saving with anything left to check asks first, with Show me and Save anyway; notes survive a failed save, whose errors a summary at the top lists and links to. Ingredients and steps are each one list of growing fields, with headings as rows among the lines: Enter adds a line below, Backspace in an empty one removes it, and a pasted list splits into lines and headings, each announced. A row’s menu moves it up or down, across headings, changes it between a line and a heading, or removes it, and a removed heading’s lines join the ones above; each ingredient shows how it will read. Tags show as chips and suggest the labels in use, still taking new ones, and editing can respell a tag no other recipe uses (here, Slow cooked on the pot roast). Chosen photos are resized and upload at once, and pages of the original recipe move up and down. From lg, a form with pages of the original holds them beside it, in view as the form scrolls, a page at a time with Zoom and Full size; below lg, View original opens the viewer. Here uploads are simulated, the review is of an anise cakes card from the National Archives, whose two pages show as uploads, and saving checks the recipe as the site does but saves nothing.',
+			'For adding and editing a recipe, and for reviewing an import. An import’s notes sit under what they’re about, and an intro counts them and starts on the first; on the review page it takes focus. Editing a field clears its note, and so does Looks right, which moves on to the next note and says how many are left; an empty title or list must be filled instead. A scan’s [illegible] or [?] left in the text is noted too, and marked in the line’s preview, until it’s edited away. Saving with anything left to check asks first, with Show me and Save anyway; notes survive a failed save, whose errors a summary at the top lists and links to. Ingredients and steps are each one list of growing fields, with headings as rows among the lines: Enter adds a line below, Backspace in an empty one removes it, and a pasted list splits into lines and headings, each announced. A row’s menu moves it up or down, across headings, changes it between a line and a heading, or removes it, and a removed heading’s lines join the ones above; each ingredient shows how it will read. Tags show as chips and suggest the labels in use, still taking new ones, and editing can respell a tag no other recipe uses (here, Slow cooked on the pot roast). Chosen photos are resized and upload at once, and pages of the original recipe move up and down. From lg, a form with pages of the original holds them to the right of its fields, in view as the form scrolls, a page at a time, zooming as the viewer’s images do, with the zoom’s buttons and Full size above it and a strip of the pages below, so Save sits under the fields; below lg, View original opens the viewer. Adding a recipe and reviewing an import offer Save as draft beside Save (Save draft on phones), which saves whatever is there and says when in the action bar. The page’s heading holds a menu of what can be done to what it edits, each Delete confirmed in a dialog: View recipe and Delete recipe when editing, and Delete draft on an import’s review or once the form holds a saved draft, opened or just saved; a new recipe has none. Here uploads are simulated, the review is of an anise cakes card from the National Archives, whose two pages show as uploads, saving checks the recipe as the site does but saves nothing, a draft is saved nowhere, and nothing is deleted.',
 		Content: RecipeFormSpecimen,
 	},
 	{
 		id: 'recipe-entry',
 		title: 'Adding a recipe',
 		description:
-			'Three ways in, one tab each, and a fourth for the member’s unsaved drafts, counted in its label; hidden tabs keep what was entered. A link or photos of the pages, which upload as they’re chosen, are read into a draft that opens in the recipe form for review. Reading takes up to a minute or two, so the form shows what it’s reading and for how long, announcing the stage once and not each second. Here each import waits four seconds and then shows its error, since nothing is imported.',
+			'Three ways in, one tab each, and a fourth for the member’s drafts, counted in its label: the drafts they saved and the imports they haven’t, newest first, each a link to where it continues with when it was saved and when it goes, and a menu holding Delete draft; hidden tabs keep what was entered. A link or photos of the pages, which upload as they’re chosen, are read into a draft that opens in the recipe form for review. Reading takes up to a minute or two, so the form shows what it’s reading and for how long, announcing the stage once and not each second. Here each import waits four seconds and then shows its error, since nothing is imported.',
 		Content: RecipeEntrySpecimen,
 	},
 ] as const;
@@ -279,8 +334,64 @@ function RecipeDetailSpecimen() {
 					recipe={sampleRecipeDetail}
 					headingLevel={4}
 					titleAction={<RecipeEditLink slug={sampleRecipeDetail.slug} />}
+					favoriteToggle={<SampleFavoriteToggle recipeId={sampleRecipeDetail.id} />}
 				/>
 			</PageContainer>
+		</Specimen>
+	);
+}
+
+function RecipeDetailSkeletonSpecimen() {
+	return (
+		<Specimen className="px-0 py-10 sm:py-14">
+			<PageContainer width="reading">
+				<RecipeDetailSkeleton />
+			</PageContainer>
+		</Specimen>
+	);
+}
+
+// The seed's first photo alone, and the next two as a photo stored before sizes were recorded beside
+// one with its size.
+const sampleLonePhoto = sampleRecipeDetail.images.slice(0, 1);
+const sampleUnsizedAndSizedPhotos = sampleRecipeDetail.images
+	.slice(1, 3)
+	.map(({ role, pathname, alt, size }, index) =>
+		index === 0 ? { role, pathname, alt } : { role, pathname, alt, size }
+	);
+
+function RecipeFilmstripSpecimen() {
+	return (
+		<div className="flex flex-col gap-6">
+			<Specimen label="One photo" className="px-0 py-10 sm:py-14">
+				<PageContainer width="reading">
+					<RecipeFilmstrip role="dish" title={sampleRecipeDetail.title} images={sampleLonePhoto} />
+				</PageContainer>
+			</Specimen>
+			<Specimen
+				label="A photo stored before sizes were recorded, beside one with its size"
+				className="px-0 py-10 sm:py-14"
+			>
+				<PageContainer width="reading">
+					<RecipeFilmstrip
+						role="dish"
+						title={sampleRecipeDetail.title}
+						images={sampleUnsizedAndSizedPhotos}
+					/>
+				</PageContainer>
+			</Specimen>
+		</div>
+	);
+}
+
+function RecipeActionsSpecimen() {
+	return (
+		<Specimen>
+			<RecipeActions
+				slug={sampleRecipeDetail.slug}
+				title={sampleRecipeDetail.title}
+				favoriteToggle={<SampleFavoriteToggle recipeId={sampleRecipeDetail.id} />}
+			/>
 		</Specimen>
 	);
 }
@@ -336,13 +447,13 @@ function NoResultsSpecimen() {
 }
 
 function RecipeFormSpecimen() {
-	return recipeFormSamples.map(({ label, initial, editing, standInScans }) => (
+	return recipeFormSamples.map(({ label, subject, initial, standInScans }) => (
 		<Specimen key={label} label={label} className="px-0 py-10 sm:py-14">
-			<PageContainer width="readingOrWide">
-				<SampleRecipeForm
+			<PageContainer width="readingOrWide" className="flex flex-col gap-8">
+				<SampleEditingPage
+					subject={subject}
 					initial={initial}
 					tagLabels={sampleTagLabels}
-					editing={editing}
 					standInScans={standInScans}
 				/>
 			</PageContainer>
@@ -353,19 +464,13 @@ function RecipeFormSpecimen() {
 function RecipeEntrySpecimen() {
 	return (
 		<>
-			{entryDraftSamples.map(({ label, imports }) => (
+			{entryDraftSamples.map(({ label, drafts }) => (
 				<Specimen key={label} label={label} className="px-0 py-10 sm:py-14">
 					<PageContainer width="readingOrWide">
-						<RecipeEntryTabs
-							forms={{
-								manual: (
-									<SampleRecipeForm initial={recipeFormValues()} tagLabels={sampleTagLabels} />
-								),
-								url: <SampleUrlImportForm />,
-								photo: <SampleScanImportForm />,
-							}}
-							unsavedImports={imports}
+						<SampleRecipeEntryTabs
+							drafts={drafts}
 							now={sampleImportsNow}
+							tagLabels={sampleTagLabels}
 						/>
 					</PageContainer>
 				</Specimen>

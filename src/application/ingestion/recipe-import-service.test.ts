@@ -10,7 +10,10 @@ import {
 	ImportTimedOutError,
 	InvalidImportError,
 } from '@/application/ingestion/errors';
-import { RecipeImportService } from '@/application/ingestion/recipe-import-service';
+import {
+	RecipeImportService,
+	type ScanUpload,
+} from '@/application/ingestion/recipe-import-service';
 import type { Actor, MemberActor } from '@/application/ports/actor-provider';
 import type { Extraction } from '@/application/ports/recipe-extractors';
 import type { WebPage } from '@/application/ports/web-page-fetcher';
@@ -25,6 +28,7 @@ import { FixedWebPageFetcher } from '@/application/testing/fixed-web-page-fetche
 import { InMemoryImageStore } from '@/application/testing/in-memory-image-store';
 import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
+import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
 import {
 	importDraftFromExtractedRecipe,
 	type ExtractedRecipe,
@@ -86,8 +90,8 @@ const readCard: Extraction = { recipe: card, model: 'example/vision-model', cost
 
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 const backOfCard = new Uint8Array([0xff, 0xd8, 0xff, 0x02, 0xd9]);
-const scanUpload = 'scan/development/0b6e2f4a-9c1d-4e8b-a7f3-5d2c1b0a9e8f.jpg';
-const secondScanUpload = 'scan/development/3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b.jpg';
+const scanPathname = 'scan/development/0b6e2f4a-9c1d-4e8b-a7f3-5d2c1b0a9e8f.jpg';
+const secondScanPathname = 'scan/development/3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b.jpg';
 const unstoredScanMessage = 'This photo didn’t upload. Remove it and add it again.';
 
 type ImportFakes = {
@@ -97,12 +101,20 @@ type ImportFakes = {
 	scanReader?: FixedScanRecipeExtractor;
 };
 
-function newScanUpload(): string {
+// A portrait page as the browser draws one.
+const pageSize = { width: 2304, height: 3072 };
+
+function newScanPathname(): string {
 	return `${folders.uploadFolder('scan')}${crypto.randomUUID()}.jpg`;
 }
 
+// The pages as the browser sends them, each drawn at the page size.
+function uploadsOf(pathnames: readonly string[]): ScanUpload[] {
+	return pathnames.map((pathname) => ({ pathname, size: pageSize }));
+}
+
 function scanImages(pathnames: readonly string[]): RecipeImage[] {
-	return pathnames.map((pathname) => ({ role: 'scan', pathname }));
+	return pathnames.map((pathname) => ({ role: 'scan', pathname, size: pageSize }));
 }
 
 // One store of imports, with a service per actor. By default the page has no structured data and
@@ -110,6 +122,7 @@ function scanImages(pathnames: readonly string[]): RecipeImage[] {
 function createImports(fakes: ImportFakes = {}) {
 	const recipes = new InMemoryRecipeRepository();
 	const imports = new InMemoryRecipeImportRepository(recipes);
+	const drafts = new InMemorySavedDraftRepository();
 	const images = new InMemoryImageStore(folders);
 	const pages = fakes.pages ?? new FixedWebPageFetcher(page);
 	const structuredData = fakes.structuredData ?? new FixedPageRecipeExtractor(null);
@@ -121,6 +134,7 @@ function createImports(fakes: ImportFakes = {}) {
 		new RecipeImportService(
 			recipes,
 			imports,
+			drafts,
 			pages,
 			structuredData,
 			pageReader,
@@ -172,6 +186,7 @@ function createImports(fakes: ImportFakes = {}) {
 	return {
 		recipes,
 		imports,
+		drafts,
 		images,
 		pages,
 		structuredData,
@@ -505,6 +520,33 @@ describe('expired drafts', () => {
 		expect(await imports.findById(recent)).toMatchObject({ sourceUrl: url });
 		expect(logged('Expired import drafts cleared')).toMatchObject({ importCount: 1 });
 	});
+
+	it('deletes saved drafts past their lifetime before starting an import', async () => {
+		const { drafts, serviceFor } = createImports();
+		const member = memberActor();
+		const saved = async () => {
+			const draft = await drafts.create({
+				memberId: member.memberId,
+				values: {},
+				imagePathnames: [],
+			});
+			if (draft === null) {
+				throw new Error('The draft was refused');
+			}
+			return draft.id;
+		};
+		const expired = await saved();
+		const recent = await saved();
+		const lifetime = settings.drafts.savedDraftLifetimeDays;
+		drafts.backdate(expired, new Date(Date.now() - daysInMilliseconds(lifetime + 0.01)));
+		drafts.backdate(recent, new Date(Date.now() - daysInMilliseconds(lifetime - 0.01)));
+
+		await serviceFor(member).importFromUrl(url);
+
+		expect(await drafts.findById(expired)).toBeNull();
+		expect(await drafts.findById(recent)).not.toBeNull();
+		expect(logged('Expired saved drafts deleted')).toMatchObject({ draftCount: 1 });
+	});
 });
 
 describe('interrupted imports', () => {
@@ -548,12 +590,12 @@ describe('import deadline', () => {
 
 	it('fails a photo import whose scans never arrive after 110 seconds, before starting it', async () => {
 		const { images, storeScans, scanReader, serviceFor, lastImport } = createImports();
-		await storeScans([scanUpload]);
+		await storeScans([scanPathname]);
 		images.stallReads();
 		const reads = vi.spyOn(images, 'get');
 		const member = memberActor();
 
-		const failure = failureOf(serviceFor(member).importFromScans([scanUpload]));
+		const failure = failureOf(serviceFor(member).importFromScans(uploadsOf([scanPathname])));
 		const settled = vi.fn();
 		failure.then(settled);
 		await vi.advanceTimersByTimeAsync(110_000 - 1);
@@ -656,11 +698,11 @@ describe('import deadline', () => {
 describe('importFromScans', () => {
 	it('refuses an anonymous visitor without reading the store', async () => {
 		const { images, storeScans, serviceFor } = createImports();
-		await storeScans([scanUpload]);
+		await storeScans([scanPathname]);
 
-		await expect(serviceFor(anonymousActor()).importFromScans([scanUpload])).rejects.toThrow(
-			SignInRequiredError
-		);
+		await expect(
+			serviceFor(anonymousActor()).importFromScans(uploadsOf([scanPathname]))
+		).rejects.toThrow(SignInRequiredError);
 		expect(images.wasRead).toBe(false);
 	});
 
@@ -668,13 +710,13 @@ describe('importFromScans', () => {
 		['no photos', [], 'Add at least one photo.'],
 		[
 			'more photos than an import reads',
-			Array.from({ length: settings.photos.maxScansPerImport + 1 }, newScanUpload),
+			Array.from({ length: settings.photos.maxScansPerImport + 1 }, newScanPathname),
 			`Use ${settings.photos.maxScansPerImport} photos or fewer.`,
 		],
 	])('refuses %s with a problem on the list', async (_, pathnames, message) => {
 		const { images, scanReader, serviceFor } = createImports();
 
-		const error = await failureOf(serviceFor(memberActor()).importFromScans(pathnames));
+		const error = await failureOf(serviceFor(memberActor()).importFromScans(uploadsOf(pathnames)));
 
 		expect(error).toBeInstanceOf(InvalidImportError);
 		expect((error as InvalidImportError).problems).toEqual([{ path: 'scans', message }]);
@@ -693,7 +735,7 @@ describe('importFromScans', () => {
 			const { images, serviceFor } = createImports();
 
 			const error = await failureOf(
-				serviceFor(memberActor()).importFromScans([scanUpload, pathname])
+				serviceFor(memberActor()).importFromScans(uploadsOf([scanPathname, pathname]))
 			);
 
 			expect((error as InvalidImportError).problems).toEqual([
@@ -707,7 +749,9 @@ describe('importFromScans', () => {
 		const { serviceFor } = createImports();
 
 		const error = await failureOf(
-			serviceFor(memberActor()).importFromScans([scanUpload, secondScanUpload, scanUpload])
+			serviceFor(memberActor()).importFromScans(
+				uploadsOf([scanPathname, secondScanPathname, scanPathname])
+			)
 		);
 
 		expect((error as InvalidImportError).problems).toEqual([
@@ -715,24 +759,43 @@ describe('importFromScans', () => {
 		]);
 	});
 
+	it('refuses a photo sent without its size, or past the longest side, without reading the store', async () => {
+		const { images, storeScans, serviceFor } = createImports();
+		const oversized = newScanPathname();
+		await storeScans([scanPathname, secondScanPathname, oversized]);
+
+		const error = await failureOf(
+			serviceFor(memberActor()).importFromScans([
+				{ pathname: scanPathname, size: pageSize },
+				{ pathname: secondScanPathname },
+				{ pathname: oversized, size: { width: 4032, height: 3024 } },
+			])
+		);
+
+		expect((error as InvalidImportError).problems).toEqual([
+			{
+				path: 'scans.1',
+				message: 'We couldn’t read this photo’s size. Remove it and add it again.',
+			},
+			{ path: 'scans.2', message: 'This photo is too large. Remove it and add it again.' },
+		]);
+		expect(images.wasRead).toBe(false);
+	});
+
 	it('refuses uploads that never finished, that are not JPEGs, or that are too large', async () => {
 		const { images, storeScans, scanReader, serviceFor } = createImports();
-		const notJpeg = newScanUpload();
-		const tooLarge = newScanUpload();
-		const largest = newScanUpload();
-		await storeScans([scanUpload]);
+		const notJpeg = newScanPathname();
+		const tooLarge = newScanPathname();
+		const largest = newScanPathname();
+		await storeScans([scanPathname]);
 		await images.put(notJpeg, jpeg, 'image/png');
 		await storeScans([tooLarge], new Uint8Array(3_750_001));
 		await storeScans([largest], new Uint8Array(3_750_000));
 
 		const error = await failureOf(
-			serviceFor(memberActor()).importFromScans([
-				scanUpload,
-				secondScanUpload,
-				notJpeg,
-				tooLarge,
-				largest,
-			])
+			serviceFor(memberActor()).importFromScans(
+				uploadsOf([scanPathname, secondScanPathname, notJpeg, tooLarge, largest])
+			)
 		);
 
 		expect((error as InvalidImportError).problems).toEqual([
@@ -748,11 +811,11 @@ describe('importFromScans', () => {
 
 	it("refuses scans another member's recipe or draft names as never uploaded, without reading the store", async () => {
 		const { images, storeScans, nameScans, scanReader, serviceFor } = createImports();
-		await storeScans([scanUpload, secondScanUpload]);
-		await nameScans(memberActor(), scanUpload, secondScanUpload);
+		await storeScans([scanPathname, secondScanPathname]);
+		await nameScans(memberActor(), scanPathname, secondScanPathname);
 
 		const error = await failureOf(
-			serviceFor(memberActor()).importFromScans([scanUpload, secondScanUpload])
+			serviceFor(memberActor()).importFromScans(uploadsOf([scanPathname, secondScanPathname]))
 		);
 
 		expect((error as InvalidImportError).problems).toEqual([
@@ -766,10 +829,10 @@ describe('importFromScans', () => {
 	it("imports the member's own scans again, from their recipe or a draft", async () => {
 		const { storeScans, nameScans, scanReader, serviceFor, lastImport } = createImports();
 		const owner = memberActor();
-		await storeScans([scanUpload, secondScanUpload]);
-		await nameScans(owner, scanUpload, secondScanUpload);
+		await storeScans([scanPathname, secondScanPathname]);
+		await nameScans(owner, scanPathname, secondScanPathname);
 
-		await serviceFor(owner).importFromScans([scanUpload, secondScanUpload]);
+		await serviceFor(owner).importFromScans(uploadsOf([scanPathname, secondScanPathname]));
 
 		expect(scanReader.readScanSets[0]).toHaveLength(2);
 		expect(await lastImport()).toMatchObject({ status: 'succeeded' });
@@ -777,10 +840,10 @@ describe('importFromScans', () => {
 
 	it('reads every photo in one call, in order, and keeps them on the draft as scans', async () => {
 		const { images, scanReader, serviceFor, lastImport } = createImports();
-		await images.put(scanUpload, jpeg, 'image/jpeg');
-		await images.put(secondScanUpload, backOfCard, 'image/jpeg');
+		await images.put(scanPathname, jpeg, 'image/jpeg');
+		await images.put(secondScanPathname, backOfCard, 'image/jpeg');
 
-		await serviceFor(memberActor()).importFromScans([scanUpload, secondScanUpload]);
+		await serviceFor(memberActor()).importFromScans(uploadsOf([scanPathname, secondScanPathname]));
 
 		expect(scanReader.readScanSets).toEqual([
 			[
@@ -790,7 +853,7 @@ describe('importFromScans', () => {
 		]);
 		const expected = importDraftFromExtractedRecipe(
 			card,
-			scanImages([scanUpload, secondScanUpload])
+			scanImages([scanPathname, secondScanPathname])
 		);
 		const recipeImport = await lastImport();
 		expect(recipeImport).toMatchObject({
@@ -806,19 +869,19 @@ describe('importFromScans', () => {
 	it('reads the photos for the member, by their id alone', async () => {
 		const { storeScans, scanReader, serviceFor } = createImports();
 		const member = memberActor();
-		await storeScans([scanUpload]);
+		await storeScans([scanPathname]);
 
-		await serviceFor(member).importFromScans([scanUpload]);
+		await serviceFor(member).importFromScans(uploadsOf([scanPathname]));
 
 		expect(scanReader.receivedRequesters).toEqual([{ memberId: member.memberId }]);
 	});
 
 	it('takes as many photos as an import reads', async () => {
 		const { storeScans, scanReader, serviceFor } = createImports();
-		const pathnames = Array.from({ length: settings.photos.maxScansPerImport }, newScanUpload);
+		const pathnames = Array.from({ length: settings.photos.maxScansPerImport }, newScanPathname);
 		await storeScans(pathnames);
 
-		await serviceFor(memberActor()).importFromScans(pathnames);
+		await serviceFor(memberActor()).importFromScans(uploadsOf(pathnames));
 
 		expect(scanReader.readScanSets[0]).toHaveLength(settings.photos.maxScansPerImport);
 	});
@@ -827,11 +890,11 @@ describe('importFromScans', () => {
 		const { storeScans, serviceFor, lastImport } = createImports({
 			scanReader: new FixedScanRecipeExtractor(emptyReading),
 		});
-		await storeScans([scanUpload]);
+		await storeScans([scanPathname]);
 
-		await expect(serviceFor(memberActor()).importFromScans([scanUpload])).rejects.toThrow(
-			ImportNoRecipeError
-		);
+		await expect(
+			serviceFor(memberActor()).importFromScans(uploadsOf([scanPathname]))
+		).rejects.toThrow(ImportNoRecipeError);
 		expect(await lastImport()).toMatchObject({
 			mode: 'photo',
 			status: 'failed',
@@ -845,9 +908,11 @@ describe('importFromScans', () => {
 		const { storeScans, serviceFor, lastImport } = createImports({
 			scanReader: new FixedScanRecipeExtractor(error),
 		});
-		await storeScans([scanUpload]);
+		await storeScans([scanPathname]);
 
-		await expect(serviceFor(memberActor()).importFromScans([scanUpload])).rejects.toBe(error);
+		await expect(serviceFor(memberActor()).importFromScans(uploadsOf([scanPathname]))).rejects.toBe(
+			error
+		);
 		expect(await lastImport()).toMatchObject({ status: 'failed', failure: 'import.paused' });
 	});
 });
@@ -883,9 +948,9 @@ describe('getImportReview', () => {
 
 	it('returns a photo import without a source URL', async () => {
 		const { storeScans, serviceFor } = createImports();
-		await storeScans([scanUpload]);
+		await storeScans([scanPathname]);
 		const service = serviceFor(memberActor());
-		const { id } = await service.importFromScans([scanUpload]);
+		const { id } = await service.importFromScans(uploadsOf([scanPathname]));
 
 		const review = await service.getImportReview(id);
 
@@ -947,57 +1012,6 @@ describe('getImportReview', () => {
 
 		expect(await service.getImportReview(expired)).toBeNull();
 		expect(await service.getImportReview(cleared)).toBeNull();
-	});
-});
-
-describe('listUnsavedImports', () => {
-	it('refuses an anonymous visitor', async () => {
-		const { serviceFor } = createImports();
-
-		await expect(serviceFor(anonymousActor()).listUnsavedImports()).rejects.toThrow(
-			SignInRequiredError
-		);
-	});
-
-	it("lists the member's reviewable drafts, newest first", async () => {
-		const { recipes, storeScans, serviceFor, backdate } = createImports();
-		await storeScans([scanUpload]);
-		const member = memberActor();
-		const service = serviceFor(member);
-		const first = (await service.importFromUrl(url)).id;
-		const photo = (await service.importFromScans([scanUpload])).id;
-		const saved = (await service.importFromUrl(url)).id;
-		const expired = (await service.importFromUrl(url)).id;
-		await serviceFor(memberActor()).importFromUrl(url);
-		await recipes.create({
-			content: parseRecipeContent(sampleTomatoSalad),
-			provenance: { entryMode: 'manual' },
-			importId: saved,
-			contributorId: member.memberId,
-			slugBase: 'tomato-salad',
-		});
-		backdate(expired, 7.01);
-
-		const unsaved = await service.listUnsavedImports();
-
-		expect(unsaved).toEqual([
-			{ id: photo, mode: 'photo', title: 'Lemon bars', createdAt: expect.any(Date) },
-			{ id: first, mode: 'url', title: 'Fresh lemonade', createdAt: expect.any(Date) },
-		]);
-	});
-
-	it('lists only the newest, up to its limit', async () => {
-		const { serviceFor } = createImports();
-		// An admin, whose imports no daily limit cuts short of filling the list.
-		const service = serviceFor(adminActor());
-		const ids: RecipeImportId[] = [];
-		for (let count = 0; count <= settings.imports.maxUnsavedImports; count += 1) {
-			ids.push((await service.importFromUrl(url)).id);
-		}
-
-		const unsaved = await service.listUnsavedImports();
-
-		expect(unsaved.map(({ id }) => id)).toEqual(ids.slice(1).reverse());
 	});
 });
 

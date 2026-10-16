@@ -165,20 +165,41 @@ describe('recipeContentFromForm', () => {
 		]);
 	});
 
-	it('keeps each image’s role and order, and omits blank alt text', () => {
+	it('keeps each image’s role, order, and size, and omits blank alt text', () => {
+		const landscape = { width: 2400, height: 1800 };
+		const portrait = { width: 2304, height: 3072 };
 		expect(
 			contentFrom({
 				images: [
-					{ role: 'dish', pathname: 'dish/development/a.jpg', alt: 'A slice of pie' },
-					{ role: 'dish', pathname: 'dish/development/b.jpg', alt: ' ' },
-					{ role: 'scan', pathname: 'scan/development/c.jpg' },
+					{
+						role: 'dish',
+						pathname: 'dish/development/a.jpg',
+						size: landscape,
+						alt: 'A slice of pie',
+					},
+					{ role: 'dish', pathname: 'dish/development/b.jpg', size: landscape, alt: ' ' },
+					{ role: 'scan', pathname: 'scan/development/c.jpg', size: portrait },
 				],
 			}).images
 		).toEqual([
-			{ role: 'dish', pathname: 'dish/development/a.jpg', alt: 'A slice of pie' },
-			{ role: 'dish', pathname: 'dish/development/b.jpg' },
-			{ role: 'scan', pathname: 'scan/development/c.jpg' },
+			{
+				role: 'dish',
+				pathname: 'dish/development/a.jpg',
+				size: landscape,
+				alt: 'A slice of pie',
+			},
+			{ role: 'dish', pathname: 'dish/development/b.jpg', size: landscape },
+			{ role: 'scan', pathname: 'scan/development/c.jpg', size: portrait },
 		]);
+	});
+
+	it('refuses a size the form never sends', () => {
+		const json = JSON.stringify({
+			...minimalPayload,
+			images: [{ role: 'dish', pathname: 'dish/development/a.jpg', size: { width: '2400' } }],
+		});
+
+		expect(problemsFrom(() => recipeContentFromForm(json))).toEqual(unreadablePayload);
 	});
 
 	it.each(sampleRecipeContents.map((content) => [content.title, content]))(

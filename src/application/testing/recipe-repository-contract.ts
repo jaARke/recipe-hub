@@ -38,6 +38,9 @@ export type RecipeRepositoryFixture = {
 
 const missingId = recipeIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e');
 
+// The size the browser draws a landscape photo at, which every image written to a recipe has.
+const photoSize = { width: 2400, height: 1800 };
+
 // A title whose 60-character slug loses its last word to fit a candidate's suffix, and a title whose
 // slug is that truncated second candidate.
 const truncatedStem = 'a'.repeat(50);
@@ -112,8 +115,13 @@ export function describeRecipeRepositoryContract(fixture: () => RecipeRepository
 				{
 					...sampleChickenSoup,
 					images: [
-						{ role: 'dish', pathname: 'dish/soup.jpg', alt: 'A bowl of chicken soup' },
-						{ role: 'scan', pathname: 'scan/soup-card.jpg' },
+						{
+							role: 'dish',
+							pathname: 'dish/soup.jpg',
+							alt: 'A bowl of chicken soup',
+							size: photoSize,
+						},
+						{ role: 'scan', pathname: 'scan/soup-card.jpg', size: photoSize },
 					],
 				},
 				{ provenance }
@@ -229,6 +237,24 @@ export function describeRecipeRepositoryContract(fixture: () => RecipeRepository
 			await create(sampleLemonIceboxPie);
 
 			expect(await fixture().repository.findStoredById(missingId)).toBeNull();
+		});
+	});
+
+	describe('findByIds', () => {
+		it('finds each recipe asked for once, leaving out ids no recipe has', async () => {
+			const soup = await create(sampleChickenSoup);
+			const pie = await create(sampleLemonIceboxPie);
+			await create(sampleTomatoSalad);
+
+			const found = await fixture().repository.findByIds([pie.id, missingId, soup.id, pie.id]);
+
+			expect(found.toSorted((a, b) => a.title.localeCompare(b.title))).toEqual([pie, soup]);
+		});
+
+		it('finds nothing for no ids', async () => {
+			await create(sampleChickenSoup);
+
+			expect(await fixture().repository.findByIds([])).toEqual([]);
 		});
 	});
 
@@ -440,7 +466,7 @@ export function describeRecipeRepositoryContract(fixture: () => RecipeRepository
 
 		it('returns the slug and images the recipe had when deleted, after an edit since it was read', async () => {
 			const created = await create({ ...sampleChickenSoup, images: [] });
-			const photo: RecipeImage = { role: 'dish', pathname: 'dish/salad.jpg' };
+			const photo: RecipeImage = { role: 'dish', pathname: 'dish/salad.jpg', size: photoSize };
 			const retitled = await retitle(created, { ...sampleTomatoSalad, images: [photo] });
 
 			const deleted = await fixture().repository.delete(created.id);
@@ -544,9 +570,17 @@ export function describeRecipeRepositoryContract(fixture: () => RecipeRepository
 	});
 
 	describe('findImagesInUse', () => {
-		const soupPhoto: RecipeImage = { role: 'dish', pathname: 'dish/soup.jpg' };
-		const sharedPhoto: RecipeImage = { role: 'dish', pathname: 'dish/shared.jpg' };
-		const saladScan: RecipeImage = { role: 'scan', pathname: 'scan/salad-card.jpg' };
+		const soupPhoto: RecipeImage = { role: 'dish', pathname: 'dish/soup.jpg', size: photoSize };
+		const sharedPhoto: RecipeImage = {
+			role: 'dish',
+			pathname: 'dish/shared.jpg',
+			size: photoSize,
+		};
+		const saladScan: RecipeImage = {
+			role: 'scan',
+			pathname: 'scan/salad-card.jpg',
+			size: photoSize,
+		};
 
 		it('finds the given pathnames that some recipe lists, under either role', async () => {
 			await create({ ...sampleChickenSoup, images: [soupPhoto, sharedPhoto] });

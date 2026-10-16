@@ -23,7 +23,7 @@ function AccountDetails({ displayName, email, renameAction }: AccountDetailsProp
 				<FieldGroup>
 					<dl className="flex flex-col gap-2">
 						<dt className="text-sm font-medium">Email</dt>
-						<dd>{email}</dd>
+						<dd className="wrap-anywhere">{email}</dd>
 						<dd className="text-sm text-muted-foreground">
 							Sign-in codes are sent to this address.
 						</dd>

@@ -2,7 +2,12 @@
 
 import { ChevronDownIcon } from 'lucide-react';
 import Link from 'next/link';
-import { accountPath, requestAccessPath, signInPath } from '@/components/auth/auth-paths';
+import {
+	accountPath,
+	privacyPath,
+	requestAccessPath,
+	signInPath,
+} from '@/components/auth/auth-paths';
 import { useSignOut } from '@/components/auth/use-sign-out';
 import type { HeaderMember } from '@/components/layout/header-member';
 import { recipeListPath } from '@/components/recipe/recipe-paths';
@@ -19,8 +24,14 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 
+// What the site stores, after the account's own items and before Sign out, which stays last and
+// apart.
+function PrivacyMenuItem() {
+	return <DropdownMenuItem render={<Link href={privacyPath} />}>Privacy</DropdownMenuItem>;
+}
+
 // The account part of a menu, shared by the phone menu and the account menu. It holds only the
-// account: the site's pages are in the navigation.
+// account and what the site stores: the site's pages are in the navigation.
 function AccountMenuItems({ member }: { member: HeaderMember | null }) {
 	const { signOut } = useSignOut();
 
@@ -31,6 +42,7 @@ function AccountMenuItems({ member }: { member: HeaderMember | null }) {
 				<DropdownMenuItem render={<Link href={requestAccessPath} />}>
 					Request access
 				</DropdownMenuItem>
+				<PrivacyMenuItem />
 			</DropdownMenuGroup>
 		);
 	}
@@ -39,6 +51,7 @@ function AccountMenuItems({ member }: { member: HeaderMember | null }) {
 		<DropdownMenuGroup>
 			<DropdownMenuLabel>Signed in as {member.displayName}</DropdownMenuLabel>
 			<DropdownMenuItem render={<Link href={accountPath} />}>Account</DropdownMenuItem>
+			<PrivacyMenuItem />
 			<DropdownMenuSeparator />
 			<DropdownMenuItem onClick={() => signOut({ destination: recipeListPath })}>
 				Sign out
@@ -53,6 +66,7 @@ function AccountMenuItemsSkeleton() {
 		<div aria-hidden="true" className="flex flex-col gap-3 px-2 py-2.5">
 			<Skeleton className="h-3 w-28" />
 			<Skeleton className="h-3 w-20" />
+			<Skeleton className="h-3 w-16" />
 		</div>
 	);
 }

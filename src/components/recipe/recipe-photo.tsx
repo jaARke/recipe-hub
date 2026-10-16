@@ -15,14 +15,9 @@ type RecipePhotoProps = Pick<ImageProps, 'preload' | 'loading'> & {
 	// The rendered width at each breakpoint, so the browser picks the right size from the srcset.
 	sizes: string;
 	fit?: keyof typeof photoFitClasses;
-	// Sets the box's aspect ratio.
+	// Sizes the box, such as by its aspect ratio.
 	className: string;
 };
-
-type RecipeScanImageProps = Pick<
-	RecipePhotoProps,
-	'pathname' | 'alt' | 'loading' | 'fit' | 'className'
->;
 
 // Each box is a span, so a photo can sit inside a button.
 function RecipePhoto({
@@ -49,27 +44,4 @@ function RecipePhoto({
 	);
 }
 
-// A scan, shown whole unless a thumbnail crops it. The image optimizer would cache a members-only scan
-// publicly, so it gets the original.
-function RecipeScanImage({
-	pathname,
-	alt,
-	loading,
-	fit = 'contain',
-	className,
-}: RecipeScanImageProps) {
-	return (
-		<span className={cn('block overflow-hidden bg-muted', className)}>
-			{/* eslint-disable-next-line @next/next/no-img-element */}
-			<img
-				src={recipeImageSrc(pathname)}
-				alt={alt}
-				loading={loading}
-				decoding="async"
-				className={cn('size-full', photoFitClasses[fit])}
-			/>
-		</span>
-	);
-}
-
-export { photoFitClasses, RecipePhoto, RecipeScanImage, type RecipePhotoProps };
+export { photoFitClasses, RecipePhoto, type RecipePhotoProps };

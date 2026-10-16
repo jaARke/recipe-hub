@@ -11,7 +11,6 @@ import {
 import { dangerouslyDeleteBySrcImage, dangerouslyDeleteByTag } from '@vercel/functions';
 import type { ImageStore, RemovedImage, StoredImage } from '@/application/ports/image-store';
 import type { ImageFolders } from '@/application/recipes/image-folders';
-import { isPublicImagePathname } from '@/domain/recipe/recipe-image';
 import { imageCacheMaxAgeSeconds, imageCacheTag, imageRouteSrc } from '@/lib/image-paths';
 
 // A removed image moves here under its pathname, so each environment's removed images sit in its own
@@ -55,14 +54,13 @@ function batches(pathnames: readonly string[]): string[][] {
 	return result;
 }
 
-// Dish photos are cached by Vercel's CDN and image optimizer. Outside a Vercel request, as in a script
-// or the dev server, the purges do nothing.
+// Dish photos and scans alike are cached by Vercel's CDN and image optimizer. Outside a Vercel
+// request, as in a script or the dev server, the purges do nothing.
 async function purgeCaches(pathnames: readonly string[]): Promise<void> {
-	const dishPhotos = pathnames.filter(isPublicImagePathname);
-	if (dishPhotos.length > 0) {
+	if (pathnames.length > 0) {
 		await Promise.all([
-			dangerouslyDeleteByTag(dishPhotos.map(imageCacheTag)),
-			dangerouslyDeleteBySrcImage(dishPhotos.map(imageRouteSrc)),
+			dangerouslyDeleteByTag(pathnames.map(imageCacheTag)),
+			dangerouslyDeleteBySrcImage(pathnames.map(imageRouteSrc)),
 		]);
 	}
 }

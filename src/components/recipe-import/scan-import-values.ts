@@ -1,7 +1,9 @@
+import type { ScanUpload } from '@/application/ingestion/recipe-import-service';
 import type { FieldErrors } from '@/components/forms/form-state';
 import {
 	editPhotos,
 	storedPathname,
+	storedPhoto,
 	type PhotoEdit,
 	type RecipeFormPhotoValues,
 } from '@/components/recipe-form/recipe-form-values';
@@ -22,7 +24,7 @@ export type PageTargets = ReadonlyMap<string, number>;
 
 // The pages as sent, in order, and where each page's problems show.
 export type ScanImportSubmission = {
-	pathnames: string[];
+	scans: ScanUpload[];
 	targets: PageTargets;
 };
 
@@ -33,17 +35,17 @@ export const emptyScanImport: ScanImportValues = { photos: { dish: [], scan: [] 
 
 // Only stored pages are sent; one still uploading, or one that failed, has nothing to read.
 export function scanImportSubmission(values: ScanImportValues): ScanImportSubmission {
-	const pathnames: string[] = [];
+	const scans: ScanUpload[] = [];
 	const targets = new Map<string, number>();
 	for (const photo of values.photos.scan) {
-		const pathname = storedPathname(photo);
-		if (pathname === undefined) {
+		const scan = storedPhoto(photo);
+		if (scan === undefined) {
 			continue;
 		}
-		targets.set(`${recipeImportFieldNames.scans}.${pathnames.length}`, photo.id);
-		pathnames.push(pathname);
+		targets.set(`${recipeImportFieldNames.scans}.${scans.length}`, photo.id);
+		scans.push(scan);
 	}
-	return { pathnames, targets };
+	return { scans, targets };
 }
 
 // What the browser knows an import would be refused for, as a problem with the pages together: no

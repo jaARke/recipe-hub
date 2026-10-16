@@ -2,7 +2,7 @@ import { cn } from 'cn';
 import { Specimen, SpecimenLabel } from '@/components/design-reference/reference-section';
 import { sampleRecipeDetail } from '@/components/design-reference/sample-recipe-dtos';
 import { TokenValue } from '@/components/design-reference/token-value';
-import { RecipeMetaRow, recipeTextStyles } from '@/components/recipe/recipe-detail';
+import { recipeTextStyles } from '@/components/recipe/recipe-text-styles';
 
 type FontFamily = {
 	utility: string;
@@ -42,9 +42,9 @@ const fontFamilies: readonly FontFamily[] = [
 	{
 		utility: 'font-mono',
 		family: 'JetBrains Mono',
-		usage: 'Times, yields, and other metadata.',
+		usage: 'Times and yields on cards, step numbers, and other counts.',
 		sampleClassName: 'font-mono text-xs tracking-wide uppercase',
-		sample: 'Prep 15 min · Cook 35 min · Serves 6',
+		sample: '50 min · Serves 6',
 	},
 ];
 
@@ -75,6 +75,9 @@ const hierarchy: readonly HierarchyRole[] = [
 		className: recipeTextStyles.supporting,
 		sample: 'From Grandpa Lou',
 	},
+	{ role: 'Cell label', className: recipeTextStyles.cellLabel, sample: 'Cook' },
+	{ role: 'Time or yield', className: recipeTextStyles.factValue, sample: '3 hr 20 min' },
+	{ role: 'Cell value', className: recipeTextStyles.cellValue, sample: 'October 12, 2026' },
 ];
 
 function TypographySpecimens() {
@@ -133,9 +136,6 @@ function TypographySpecimens() {
 			</Specimen>
 			<Specimen label="Body text at reading width: text-lg, max-w-2xl">
 				<p className="max-w-2xl text-lg">{sampleRecipeDetail.notes}</p>
-			</Specimen>
-			<Specimen label={`Metadata: ${recipeTextStyles.meta}`}>
-				<RecipeMetaRow recipe={sampleRecipeDetail} />
 			</Specimen>
 		</div>
 	);

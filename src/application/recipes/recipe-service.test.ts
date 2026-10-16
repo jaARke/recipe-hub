@@ -13,11 +13,14 @@ import { ImageFolders } from '@/application/recipes/image-folders';
 import { RecipeService, type CreateRecipeInput } from '@/application/recipes/recipe-service';
 import { actorFor, adminActor, anonymousActor, memberActor } from '@/application/testing/actors';
 import { FixedActorProvider } from '@/application/testing/fixed-actor-provider';
+import { InMemoryFavoriteRepository } from '@/application/testing/in-memory-favorite-repository';
 import { InMemoryImageStore } from '@/application/testing/in-memory-image-store';
 import { InMemoryInviteRepository } from '@/application/testing/in-memory-invite-repository';
 import { InMemoryMemberRepository } from '@/application/testing/in-memory-member-repository';
 import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
+import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
+import type { Provenance } from '@/domain/recipe/provenance';
 import {
 	recipeContentSchema,
 	type RecipeContentInput,
@@ -46,17 +49,32 @@ const anyVersion = '2026-10-12T00:00:00.000Z';
 // The samples' photos are the seed's, so the catalog writes images where the seed does.
 const folders = new ImageFolders('seed');
 
+// The size the browser draws a landscape photo at, which every image written to a recipe has.
+const photoSize = { width: 2400, height: 1800 };
 const dishPhoto: RecipeImage = {
 	role: 'dish',
 	pathname: 'dish/seed/soup.jpg',
 	alt: 'A bowl of soup',
+	size: photoSize,
 };
-const secondDishPhoto: RecipeImage = { role: 'dish', pathname: 'dish/seed/soup-pot.jpg' };
-const scan: RecipeImage = { role: 'scan', pathname: 'scan/seed/soup-card.jpg' };
+const secondDishPhoto: RecipeImage = {
+	role: 'dish',
+	pathname: 'dish/seed/soup-pot.jpg',
+	size: photoSize,
+};
+const scan: RecipeImage = { role: 'scan', pathname: 'scan/seed/soup-card.jpg', size: photoSize };
 // Stored by another environment, as production's photos are for a preview's copied recipes.
-const productionPhoto: RecipeImage = { role: 'dish', pathname: 'dish/production/soup.jpg' };
+const productionPhoto: RecipeImage = {
+	role: 'dish',
+	pathname: 'dish/production/soup.jpg',
+	size: photoSize,
+};
 // In this environment's folder, but its upload never finished.
-const unfinishedPhoto: RecipeImage = { role: 'dish', pathname: 'dish/seed/half-sent.jpg' };
+const unfinishedPhoto: RecipeImage = {
+	role: 'dish',
+	pathname: 'dish/seed/half-sent.jpg',
+	size: photoSize,
+};
 
 const unstoredImageMessage = 'This photo didn’t upload. Remove it and add it again.';
 
@@ -79,6 +97,13 @@ const importResults: Record<RecipeImportMode, ImportSuccess> = {
 	},
 };
 
+// What a draft saved from the URL import's review keeps of the import.
+const urlImportProvenance: Provenance = {
+	entryMode: 'url',
+	sourceUrl: 'https://example.com/soup',
+	aiModel: 'example/model',
+};
+
 function manualEntry(content: RecipeContentInput): CreateRecipeInput {
 	return { content };
 }
@@ -87,7 +112,12 @@ function manualEntry(content: RecipeContentInput): CreateRecipeInput {
 async function createCatalog() {
 	const recipes = new InMemoryRecipeRepository();
 	const imports = new InMemoryRecipeImportRepository(recipes);
-	const members = new InMemoryMemberRepository(new InMemoryInviteRepository());
+	const drafts = new InMemorySavedDraftRepository();
+	const members = new InMemoryMemberRepository(
+		new InMemoryInviteRepository(),
+		new InMemoryFavoriteRepository(recipes),
+		drafts
+	);
 	const images = new InMemoryImageStore(folders);
 	const storedImages = [
 		...sampleRecipeContents.flatMap((content) => content.images),
@@ -101,7 +131,15 @@ async function createCatalog() {
 	}
 
 	const serviceFor = (actor: Actor) =>
-		new RecipeService(recipes, imports, members, images, new FixedActorProvider(actor), folders);
+		new RecipeService(
+			recipes,
+			imports,
+			drafts,
+			members,
+			images,
+			new FixedActorProvider(actor),
+			folders
+		);
 	// The version an editor that loaded the recipe just now sends back with its save.
 	const versionOf = async (id: RecipeId) => {
 		const recipe = await recipes.findById(id);
@@ -133,12 +171,34 @@ async function createCatalog() {
 		await imports.recordSuccess(id, importResults[mode]);
 		return id;
 	};
+	// A draft the member saved from the recipe form, naming the images, and from an import's review,
+	// keeping its provenance.
+	const saveDraft = async (
+		actor: MemberActor,
+		imagePathnames: string[] = [],
+		importId?: RecipeImportId,
+		provenance?: Provenance
+	) => {
+		const draft = await drafts.create({
+			memberId: actor.memberId,
+			...(importId !== undefined && { importId }),
+			...(provenance !== undefined && { provenance }),
+			values: {},
+			imagePathnames,
+		});
+		if (draft === null) {
+			throw new Error('The draft was refused');
+		}
+		return draft.id;
+	};
 	return {
 		recipes,
 		imports,
+		drafts,
 		members,
 		images,
 		serviceFor,
+		saveDraft,
 		addMember,
 		versionOf,
 		startImport,
@@ -191,12 +251,13 @@ afterEach(() => {
 
 describe('public reads', () => {
 	it('never ask who is calling, so pages can cache them', async () => {
-		const { recipes, imports, members, images, serviceFor, addMember } = await createCatalog();
+		const { recipes, imports, drafts, members, images, serviceFor, addMember } =
+			await createCatalog();
 		const ref = await serviceFor(await addMember('Ada')).createRecipe(
 			manualEntry(sampleTomatoSalad)
 		);
 		const actors = new FixedActorProvider(memberActor());
-		const reader = new RecipeService(recipes, imports, members, images, actors, folders);
+		const reader = new RecipeService(recipes, imports, drafts, members, images, actors, folders);
 
 		await reader.getRecipe(ref.slug);
 		await reader.listRecipes({ limit: 10, offset: 0, sort: 'newest' });
@@ -207,7 +268,7 @@ describe('public reads', () => {
 });
 
 describe('getRecipe', () => {
-	it("shows dish photos, the source URL, and the contributor's name, but no scans or entry details", async () => {
+	it("shows dish photos and scans apart, the source URL, and the contributor's name, but no entry details", async () => {
 		const { serviceFor, addMember, importDraft } = await createCatalog();
 		const author = await addMember('Ada');
 		const ref = await serviceFor(author).createRecipe(
@@ -221,6 +282,7 @@ describe('getRecipe', () => {
 			slug: 'weeknight-chicken-soup',
 			title: 'Weeknight chicken soup',
 			images: [dishPhoto],
+			scans: [scan],
 			sourceUrl: 'https://example.com/soup',
 		});
 		expect(recipe?.contributor).toEqual({ id: author.memberId, displayName: 'Ada' });
@@ -228,6 +290,57 @@ describe('getRecipe', () => {
 		expect(recipe).not.toHaveProperty('provenance');
 		expect(recipe).not.toHaveProperty('entryMode');
 		expect(recipe).not.toHaveProperty('aiModel');
+	});
+
+	it.each(['manual', 'photo'] as const)(
+		'links a source entered as a web address on a recipe entered by %s, as an import’s page links',
+		async (mode) => {
+			const { serviceFor, addMember, importDraft } = await createCatalog();
+			const author = await addMember('Ada');
+			const content = { ...sampleChickenSoup, source: 'http://example.com/soup' };
+			const ref = await serviceFor(author).createRecipe(
+				mode === 'manual'
+					? manualEntry(content)
+					: fromImport(await importDraft(author, mode), content)
+			);
+
+			expect(await serviceFor(anonymousActor()).getRecipe(ref.slug)).toMatchObject({
+				source: 'http://example.com/soup',
+				sourceUrl: 'http://example.com/soup',
+			});
+		}
+	);
+
+	it.each([
+		'Grandma Rose',
+		'example.com/soup',
+		'ftp://example.com/soup',
+		'From https://example.com/soup',
+	])('links no source that is not a web address alone: %s', async (source) => {
+		const { serviceFor, addMember } = await createCatalog();
+		const ref = await serviceFor(await addMember('Ada')).createRecipe(
+			manualEntry({ ...sampleChickenSoup, source })
+		);
+
+		const recipe = await serviceFor(anonymousActor()).getRecipe(ref.slug);
+
+		expect(recipe?.source).toBe(source);
+		expect(recipe?.sourceUrl).toBeUndefined();
+	});
+
+	it('links the page an import read, whatever web address its source names', async () => {
+		const { serviceFor, addMember, importDraft } = await createCatalog();
+		const author = await addMember('Ada');
+		const ref = await serviceFor(author).createRecipe(
+			fromImport(await importDraft(author), {
+				...sampleChickenSoup,
+				source: 'https://example.com/grandma',
+			})
+		);
+
+		expect((await serviceFor(anonymousActor()).getRecipe(ref.slug))?.sourceUrl).toBe(
+			'https://example.com/soup'
+		);
 	});
 
 	it('returns null when no recipe has the slug', async () => {
@@ -336,7 +449,7 @@ describe('getRecipeMemberView', () => {
 		['the contributor', true],
 		['an admin', true],
 		['another member', false],
-	] as const)('lists the scans and lets %s edit: %s', async (viewer, canEdit) => {
+	] as const)('lets %s edit: %s', async (viewer, canEdit) => {
 		const { serviceFor, addMember } = await createCatalog();
 		const author = await addMember('Ada');
 		const ref = await serviceFor(author).createRecipe(
@@ -345,10 +458,7 @@ describe('getRecipeMemberView', () => {
 		const actor =
 			viewer === 'the contributor' ? author : viewer === 'an admin' ? adminActor() : memberActor();
 
-		expect(await serviceFor(actor).getRecipeMemberView(ref.slug)).toEqual({
-			canEdit,
-			scans: [scan],
-		});
+		expect(await serviceFor(actor).getRecipeMemberView(ref.slug)).toEqual({ canEdit });
 	});
 
 	it('returns null when no recipe has the slug', async () => {
@@ -544,6 +654,38 @@ describe('createRecipe', () => {
 		);
 	});
 
+	it("refuses a photo another member's saved draft names, as never uploaded", async () => {
+		const { serviceFor, addMember, saveDraft } = await createCatalog();
+		await saveDraft(await addMember('Ada'), [secondDishPhoto.pathname]);
+		const member = serviceFor(await addMember('Lou'));
+
+		await expect(
+			member.createRecipe(manualEntry({ ...sampleTomatoSalad, images: [secondDishPhoto] }))
+		).rejects.toThrow(
+			expect.objectContaining({
+				code: 'recipe.invalid',
+				problems: [{ path: 'images.0.pathname', message: unstoredImageMessage }],
+			})
+		);
+	});
+
+	it('deletes the draft the recipe was saved from, and never another member’s', async () => {
+		const { drafts, serviceFor, addMember, saveDraft } = await createCatalog();
+		const author = await addMember('Ada');
+		const other = await addMember('Lou');
+		const draftId = await saveDraft(author, [secondDishPhoto.pathname]);
+		const othersDraftId = await saveDraft(other);
+
+		await serviceFor(author).createRecipe({
+			content: { ...sampleTomatoSalad, images: [secondDishPhoto] },
+			draftId,
+		});
+		await serviceFor(author).createRecipe({ content: sampleChickenSoup, draftId: othersDraftId });
+
+		expect(await drafts.findById(draftId)).toBeNull();
+		expect(await drafts.findById(othersDraftId)).not.toBeNull();
+	});
+
 	it("reuses the member's own photos and scans from their recipes and drafts", async () => {
 		const { serviceFor, addMember, importDraft } = await createCatalog();
 		const owner = await addMember('Ada');
@@ -679,6 +821,17 @@ describe('createRecipe from an import', () => {
 		});
 		expect(recipeImport).not.toHaveProperty('draft');
 		expect(recipeImport).not.toHaveProperty('sourceUrl');
+	});
+
+	it("deletes the draft that continued the import's review", async () => {
+		const author = memberActor();
+		const { drafts, serviceFor, importDraft, saveDraft } = await createCatalog();
+		const importId = await importDraft(author);
+		const draftId = await saveDraft(author, [], importId);
+
+		await serviceFor(author).createRecipe(fromImport(importId));
+
+		expect(await drafts.findById(draftId)).toBeNull();
 	});
 
 	it('refuses a second save from the import', async () => {
@@ -819,6 +972,53 @@ describe('createRecipe from an import', () => {
 				err: expect.objectContaining({ message: 'The database could not be reached' }),
 			}),
 		]);
+	});
+});
+
+describe('createRecipe from a saved draft', () => {
+	it("takes the provenance the member's draft kept once the import's review is gone, and credits its page", async () => {
+		const { recipes, imports, drafts, serviceFor, addMember, importDraft, saveDraft } =
+			await createCatalog();
+		const author = await addMember('Ada');
+		const importId = await importDraft(author);
+		const draftId = await saveDraft(author, [], importId, urlImportProvenance);
+		await imports.clearDraft(importId);
+
+		const ref = await serviceFor(author).createRecipe({ content: sampleChickenSoup, draftId });
+
+		expect((await recipes.findById(ref.id))?.provenance).toEqual(urlImportProvenance);
+		expect((await serviceFor(author).getRecipe(ref.slug))?.sourceUrl).toBe(
+			'https://example.com/soup'
+		);
+		expect(await drafts.findById(draftId)).toBeNull();
+		expect(logLines(consoleInfo)).toEqual([
+			{
+				level: 'info',
+				logger: 'recipes',
+				message: 'Recipe created',
+				recipeId: ref.id,
+				memberId: author.memberId,
+				entryMode: 'url',
+			},
+		]);
+	});
+
+	it.each<{ name: string; draftId: (ids: { theirs: string }) => string }>([
+		{ name: "another member's draft", draftId: ({ theirs }) => theirs },
+		{ name: 'an id no draft has', draftId: () => missingId },
+		{ name: 'a malformed id', draftId: () => malformedId },
+	])('saves manual entry from $name', async ({ draftId }) => {
+		const author = memberActor();
+		const other = memberActor();
+		const { recipes, serviceFor, importDraft, saveDraft } = await createCatalog();
+		const theirs = await saveDraft(other, [], await importDraft(other), urlImportProvenance);
+
+		const ref = await serviceFor(author).createRecipe({
+			content: sampleChickenSoup,
+			draftId: draftId({ theirs }),
+		});
+
+		expect((await recipes.findById(ref.id))?.provenance).toEqual({ entryMode: 'manual' });
 	});
 });
 
@@ -993,7 +1193,11 @@ describe('updateRecipe', () => {
 		const { images, serviceFor, addMember, versionOf, author, recipe } =
 			await catalogWithStoredImages([dishPhoto]);
 		const admin = serviceFor(adminActor());
-		const adminPhoto: RecipeImage = { role: 'dish', pathname: 'dish/seed/salad.jpg' };
+		const adminPhoto: RecipeImage = {
+			role: 'dish',
+			pathname: 'dish/seed/salad.jpg',
+			size: photoSize,
+		};
 		await images.put(adminPhoto.pathname, jpeg, 'image/jpeg');
 		await admin.createRecipe(manualEntry({ ...sampleTomatoSalad, images: [adminPhoto] }));
 		await serviceFor(author).createRecipe(

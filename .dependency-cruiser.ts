@@ -102,7 +102,7 @@ const config: IConfiguration = {
 		{
 			name: 'settings-schema-only-in-settings',
 			comment:
-				'The schema brings zod, so only the settings, by type, and their test import it; next.config.ts parses with it.',
+				'Only startup and the tests check the ranges, so only the settings, by type, and their test import the schema, keeping it out of every page; next.config.ts parses with it.',
 			severity: 'error',
 			from: { pathNot: '^src/lib/settings(\\.test)?\\.ts$' },
 			to: { path: '^src/lib/settings-schema\\.ts$' },
@@ -120,6 +120,26 @@ const config: IConfiguration = {
 			severity: 'error',
 			from: { pathNot: TEST_SUPPORT },
 			to: { path: `${NODE_MODULES}vitest/` },
+		},
+		{
+			name: 'image-viewer-body-only-in-the-viewer',
+			comment:
+				"The image viewer's body brings the zoom and the carousel, which no page needs until the viewer opens, so only the viewer imports it.",
+			severity: 'error',
+			from: { pathNot: ['^src/components/recipe/recipe-image-viewer\\.tsx$', TESTS] },
+			to: { path: '^src/components/recipe/recipe-image-viewer-body\\.tsx$' },
+		},
+		{
+			name: 'image-viewer-body-on-demand',
+			comment:
+				"The viewer imports its body by import() or for its types only, keeping it out of every recipe page's first load.",
+			severity: 'error',
+			from: { path: '^src/components/recipe/recipe-image-viewer\\.tsx$' },
+			to: {
+				path: '^src/components/recipe/recipe-image-viewer-body\\.tsx$',
+				dynamic: false,
+				dependencyTypesNot: ['type-only'],
+			},
 		},
 	],
 	required: [

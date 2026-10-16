@@ -1,5 +1,6 @@
 import type { RecipeFormRowText } from '@/components/recipe-form/recipe-form-values';
 import { withoutListMarkers } from '@/domain/recipe/list-markers';
+import { sentenceCase } from '@/domain/text';
 
 // Labels, pasted lists, and announcements for the form's lists of ingredients and steps, each one
 // flat list of rows: lines, and headings over the lines after them. Photo fields announce their
@@ -20,10 +21,6 @@ export type ListRowNames = {
 // Longer text is cut, so an announcement stays short.
 const maxItemNameLength = 40;
 
-function capitalized(text: string): string {
-	return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
-}
-
 // Such as "3 ingredients" or "1 heading".
 function counted(count: number, noun: string): string {
 	return `${count} ${noun}${count === 1 ? '' : 's'}`;
@@ -41,10 +38,10 @@ export function listRowNames(rows: readonly RecipeFormRowText[], noun: string): 
 			lines = 0;
 			const text = row.text.trim();
 			headingName = text === '' ? `heading ${headings}` : text;
-			return { label: `${capitalized(noun)} heading ${headings}`, number: headings, headingName };
+			return { label: `${sentenceCase(noun)} heading ${headings}`, number: headings, headingName };
 		}
 		lines += 1;
-		const label = `${capitalized(noun)} ${lines}`;
+		const label = `${sentenceCase(noun)} ${lines}`;
 		return {
 			label: headingName === undefined ? label : `${label}, ${headingName}`,
 			number: lines,

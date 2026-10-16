@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { toFormError } from '@/app/_lib/form-errors';
+import { SavedDraftEditConflictError } from '@/application/drafts/errors';
+import { DeviceFavoritesFullError } from '@/application/favorites/errors';
 import {
 	ImportFailedError,
 	ImportNoRecipeError,
@@ -59,6 +61,15 @@ describe('toFormError', () => {
 		});
 	});
 
+	it('says a draft was saved elsewhere since the form loaded it, so the save was refused', () => {
+		expect(toFormError(new SavedDraftEditConflictError())).toEqual({
+			status: 'error',
+			message:
+				'This draft was saved somewhere else after you opened it here. Copy anything you want to keep, then reload the page to see that version.',
+			fieldErrors: {},
+		});
+	});
+
 	it.each([
 		{
 			error: new MemberNotFoundError(),
@@ -79,6 +90,10 @@ describe('toFormError', () => {
 		{
 			error: new InvalidImageUploadError(),
 			message: 'This photo didn’t upload. Remove it and add it again.',
+		},
+		{
+			error: new DeviceFavoritesFullError(),
+			message: `You’ve reached the limit of ${settings.favorites.maxPerDevice} favorites on this device. Remove one to add another.`,
 		},
 		{
 			error: new ImportUnavailableError(),

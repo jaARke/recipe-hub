@@ -55,6 +55,8 @@ export interface RecipeRepository {
 	findStoredById(id: RecipeId): Promise<StoredRecipe | null>;
 	// Also finds a recipe by an old slug; the recipe returned carries its current slug.
 	findBySlug(slug: string): Promise<Recipe | null>;
+	// In no particular order, each once, leaving out ids no recipe has.
+	findByIds(ids: readonly RecipeId[]): Promise<Recipe[]>;
 	list(page: RecipePage): Promise<Recipe[]>;
 	count(): Promise<number>;
 	// Never takes a slug another recipe holds, current or old, even when creates and renames race.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	favoriteListHref,
 	parseOptionParam,
 	parsePageParam,
 	parseRecipeListParams,
@@ -82,5 +83,12 @@ describe('recipeListHref', () => {
 		);
 
 		expect(parseRecipeListParams(params)).toEqual(state);
+	});
+});
+
+describe('favoriteListHref', () => {
+	it('links the first page bare and a later one by its number', () => {
+		expect(favoriteListHref(1)).toBe('/favorites');
+		expect(favoriteListHref(3)).toBe('/favorites?page=3');
 	});
 });

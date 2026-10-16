@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { RecipeCardSkeleton } from '@/components/recipe/recipe-card';
+import { RecipeListLinks } from '@/components/recipe/recipe-list-links';
 
 // The desktop grid's first row, which is above the fold.
 const firstRowCardCount = 3;
@@ -7,8 +8,13 @@ const firstRowCardCount = 3;
 // Two rows on desktop, enough to fill the first screen while recipes load.
 const skeletonCardCount = 6;
 
+// Browse's and Favorites' cards, each recording the page as where its recipe is opened from.
 function RecipeGrid({ children }: { children: React.ReactNode }) {
-	return <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{children}</ul>;
+	return (
+		<RecipeListLinks>
+			<ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{children}</ul>
+		</RecipeListLinks>
+	);
 }
 
 function RecipeGridSkeleton() {

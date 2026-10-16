@@ -35,7 +35,18 @@ const buttonVariantClasses = cva(
 					'size-8 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-md',
 				'icon-lg': 'size-10',
 			},
+			// User text, such as an active filter, wraps within a narrow screen rather than running off it.
+			wrap: {
+				true: 'h-auto whitespace-normal wrap-anywhere',
+			},
 		},
+		// A wrapping button is its size's height on one line and grows by its padding from there.
+		compoundVariants: [
+			{ wrap: true, size: 'xs', className: 'min-h-6 py-0.5' },
+			{ wrap: true, size: 'sm', className: 'min-h-8 py-1' },
+			{ wrap: true, size: 'default', className: 'min-h-9 py-1.5' },
+			{ wrap: true, size: 'lg', className: 'min-h-10 py-2' },
+		],
 		defaultVariants: {
 			variant: 'default',
 			size: 'default',
@@ -53,12 +64,13 @@ function Button({
 	className,
 	variant = 'default',
 	size = 'default',
+	wrap,
 	...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariantClasses>) {
 	return (
 		<ButtonPrimitive
 			data-slot="button"
-			className={buttonVariants({ variant, size, className })}
+			className={buttonVariants({ variant, size, wrap, className })}
 			{...props}
 		/>
 	);

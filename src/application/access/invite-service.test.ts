@@ -13,8 +13,11 @@ import { actorFor, anonymousActor, memberActor } from '@/application/testing/act
 import { FixedActorProvider } from '@/application/testing/fixed-actor-provider';
 import { InMemoryAccessRequestRepository } from '@/application/testing/in-memory-access-request-repository';
 import { InMemoryEmailSender } from '@/application/testing/in-memory-email-sender';
+import { InMemoryFavoriteRepository } from '@/application/testing/in-memory-favorite-repository';
 import { InMemoryInviteRepository } from '@/application/testing/in-memory-invite-repository';
 import { InMemoryMemberRepository } from '@/application/testing/in-memory-member-repository';
+import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
+import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
 import { daysInMilliseconds } from '@/lib/dates';
 import { settings } from '@/lib/settings';
 
@@ -37,7 +40,11 @@ const refusedActors = [
 function createInvites() {
 	const invites = new InMemoryInviteRepository();
 	const requests = new InMemoryAccessRequestRepository();
-	const members = new InMemoryMemberRepository(invites);
+	const members = new InMemoryMemberRepository(
+		invites,
+		new InMemoryFavoriteRepository(new InMemoryRecipeRepository()),
+		new InMemorySavedDraftRepository()
+	);
 	const emails = new InMemoryEmailSender();
 	const serviceFor = (actor: Actor) =>
 		new InviteService(invites, requests, members, emails, new FixedActorProvider(actor), appUrl);

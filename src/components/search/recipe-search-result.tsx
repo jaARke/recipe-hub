@@ -2,6 +2,7 @@ import Link from 'next/link';
 import * as React from 'react';
 import type { RecipeSearchResultDto } from '@/application/search/recipe-search-dtos';
 import { describedBy } from '@/components/forms/described-by';
+import { RecipeListLinks } from '@/components/recipe/recipe-list-links';
 import { recipePath } from '@/components/recipe/recipe-paths';
 import {
 	RecipeCover,
@@ -18,8 +19,13 @@ const resultPhotoSizes = '(min-width: 640px) 160px, 96px';
 // The first results, which are above the fold on a desktop.
 const firstResultCount = 3;
 
+// Each result records the page, query and filters included, as where its recipe is opened from.
 function RecipeSearchResultList({ children }: { children: React.ReactNode }) {
-	return <ul className="divide-y">{children}</ul>;
+	return (
+		<RecipeListLinks>
+			<ul className="divide-y">{children}</ul>
+		</RecipeListLinks>
+	);
 }
 
 // Level 5 nests a result under the design reference's own headings.

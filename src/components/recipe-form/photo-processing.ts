@@ -1,24 +1,25 @@
 import { maxImportScanSizeInBytes } from '@/domain/recipe/import-limits';
-import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
+import {
+	maxImageSideInPixels,
+	type ImageSize,
+	type RecipeImageRole,
+} from '@/domain/recipe/recipe-image';
 import { AppError } from '@/lib/errors';
 
-type PhotoSize = {
-	width: number;
-	height: number;
-};
-
-export type NormalizedPhoto = PhotoSize & {
+// The JPEG to upload, and the size it was drawn at, which the recipe stores with it.
+export type NormalizedPhoto = {
 	file: File;
+	size: ImageSize;
 };
 
 // A JPEG and the size it was drawn at.
-type EncodedPhoto = PhotoSize & {
+type EncodedPhoto = ImageSize & {
 	jpeg: Blob;
 };
 
 // Draws the photo at a size, and encodes what it drew last at a JPEG quality.
 type PhotoCanvas = {
-	draw: (size: PhotoSize) => Promise<void>;
+	draw: (size: ImageSize) => Promise<void>;
 	encode: (quality: number) => Promise<Blob>;
 };
 
@@ -36,12 +37,12 @@ type PhotoTarget = {
 };
 
 // Scans are larger, leaving headroom above the input sizes of the AI vision models that read them,
-// and stay within the size an import reads. A scan no quality fits shrinks a quarter at a time,
-// down to 1600 px, which still reads handwriting.
+// and stay within the size an import reads; their long edge is the longest side a recipe accepts. A
+// scan no quality fits shrinks a quarter at a time, down to 1600 px, which still reads handwriting.
 const photoTargets: Record<RecipeImageRole, PhotoTarget> = {
 	dish: { longEdge: 2400, quality: 0.85 },
 	scan: {
-		longEdge: 3072,
+		longEdge: maxImageSideInPixels,
 		quality: 0.9,
 		byteBudget: {
 			maxBytes: maxImportScanSizeInBytes,
@@ -64,7 +65,7 @@ export class UnreadablePhotoError extends AppError {
 }
 
 // Scaled to fit the long edge, never enlarged, and at least one pixel on each side.
-function fittedSize(size: PhotoSize, longEdge: number): PhotoSize {
+function fittedSize(size: ImageSize, longEdge: number): ImageSize {
 	const scale = Math.min(1, longEdge / Math.max(size.width, size.height));
 	return {
 		width: Math.max(1, Math.round(size.width * scale)),
@@ -73,7 +74,7 @@ function fittedSize(size: PhotoSize, longEdge: number): PhotoSize {
 }
 
 // The size a photo of the role is drawn at first.
-export function normalizedPhotoSize(natural: PhotoSize, role: RecipeImageRole): PhotoSize {
+export function normalizedPhotoSize(natural: ImageSize, role: RecipeImageRole): ImageSize {
 	return fittedSize(natural, photoTargets[role].longEdge);
 }
 
@@ -114,7 +115,7 @@ function canvasJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
 // role's byte budget, as PhotoTarget describes, drawing it again only at a new size.
 export async function encodeWithinBudget(
 	role: RecipeImageRole,
-	natural: PhotoSize,
+	natural: ImageSize,
 	canvas: PhotoCanvas
 ): Promise<EncodedPhoto> {
 	const { quality, byteBudget } = photoTargets[role];
@@ -151,7 +152,7 @@ export async function encodeWithinBudget(
 async function drawPhoto(
 	context: CanvasRenderingContext2D,
 	image: HTMLImageElement,
-	size: PhotoSize
+	size: ImageSize
 ): Promise<void> {
 	const bitmap = await createImageBitmap(image, {
 		resizeWidth: size.width,
@@ -204,7 +205,7 @@ export async function normalizePhoto(file: File, role: RecipeImageRole): Promise
 	try {
 		const image = await decodePhoto(url);
 		const { jpeg, ...size } = await resizedJpeg(image, role);
-		return { file: new File([jpeg], jpegFileName(file.name), { type: 'image/jpeg' }), ...size };
+		return { file: new File([jpeg], jpegFileName(file.name), { type: 'image/jpeg' }), size };
 	} finally {
 		URL.revokeObjectURL(url);
 	}

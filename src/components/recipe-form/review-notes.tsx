@@ -56,13 +56,17 @@ function ReviewNotesIntro({
 	);
 }
 
-// Beside Save in the form's action bar while anything is left to check: how many, and Next, which
-// goes to the next note. Its count isn't announced as it changes, as the intro's isn't.
+// At the right of the form's action bar while anything is left to check: how many, and Next, which
+// goes to the next note. Its count isn't announced as it changes, as the intro's isn't. Phones show
+// "3 left", so the row fits beside Save; Next's description stays "3 to check".
 function ReviewNotesNext({ id, count, onNext }: { id: string; count: number; onNext: () => void }) {
 	return (
 		<div className="flex shrink-0 items-center gap-3">
 			<p id={id} className="text-sm text-muted-foreground">
-				{count} to check
+				{count} <span className="max-sm:sr-only">to check</span>
+				<span aria-hidden="true" className="sm:hidden">
+					left
+				</span>
 			</p>
 			<Button type="button" variant="outline" aria-describedby={id} onClick={onNext}>
 				Next

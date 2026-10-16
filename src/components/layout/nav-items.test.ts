@@ -27,6 +27,30 @@ describe('navItemCurrent', () => {
 		expect(navItemCurrent(browse, '/search')).toBe('true');
 	});
 
+	it('marks Favorites, not Browse, as the section on a recipe opened from Favorites', () => {
+		expect(navItemCurrent(navItem('Favorites'), '/recipes/sunday-pot-roast', '/favorites')).toBe(
+			'true'
+		);
+		expect(
+			navItemCurrent(navItem('Browse'), '/recipes/sunday-pot-roast', '/favorites')
+		).toBeUndefined();
+	});
+
+	it('marks Browse as the section on a recipe opened from Browse or from search', () => {
+		for (const listPathname of ['/', '/search']) {
+			expect(navItemCurrent(navItem('Browse'), '/recipes/sunday-pot-roast', listPathname)).toBe(
+				'true'
+			);
+			expect(
+				navItemCurrent(navItem('Favorites'), '/recipes/sunday-pot-roast', listPathname)
+			).toBeUndefined();
+		}
+	});
+
+	it('marks Favorites as the page on /favorites', () => {
+		expect(navItemCurrent(navItem('Favorites'), '/favorites')).toBe('page');
+	});
+
 	it('marks Add recipe as the page on /contribute and the section on an import', () => {
 		const addRecipe = navItem('Add recipe');
 
@@ -41,6 +65,8 @@ describe('navItemCurrent', () => {
 	it('leaves a section unmarked on pages outside it', () => {
 		expect(navItemCurrent(navItem('Browse'), '/account')).toBeUndefined();
 		expect(navItemCurrent(navItem('Browse'), '/contribute')).toBeUndefined();
+		expect(navItemCurrent(navItem('Browse'), '/favorites')).toBeUndefined();
+		expect(navItemCurrent(navItem('Favorites'), '/recipes/sunday-pot-roast')).toBeUndefined();
 		expect(navItemCurrent(navItem('Add recipe'), '/')).toBeUndefined();
 		expect(navItemCurrent(adminNavItem, '/search')).toBeUndefined();
 	});
@@ -49,6 +75,7 @@ describe('navItemCurrent', () => {
 		expect(navItemCurrent(navItem('Browse'), '/searches')).toBeUndefined();
 		expect(navItemCurrent(navItem('Browse'), '/recipes-old')).toBeUndefined();
 		expect(navItemCurrent(navItem('Add recipe'), '/contributors')).toBeUndefined();
+		expect(navItemCurrent(navItem('Favorites'), '/favorites-old')).toBeUndefined();
 		expect(navItemCurrent(adminNavItem, '/administrators')).toBeUndefined();
 	});
 
