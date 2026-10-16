@@ -12,7 +12,12 @@ import type {
 } from '@/application/ports/recipe-repository';
 import { RecipeEditConflictError } from '@/application/recipes/errors';
 import type { MemberId } from '@/domain/member/member';
-import type { Recipe, RecipeContent, RecipeId } from '@/domain/recipe/recipe';
+import {
+	recipeIdSchema,
+	type Recipe,
+	type RecipeContent,
+	type RecipeId,
+} from '@/domain/recipe/recipe';
 import { slugCandidate } from '@/domain/recipe/slug';
 import { tagKey } from '@/domain/recipe/tag-normalization';
 import { boundedTransaction } from '@/infrastructure/db/bounded-transaction';
@@ -177,6 +182,14 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 			.from(recipes)
 			.where(inArray(recipes.id, [...ids]));
 		return rows.map(toRecipe);
+	}
+
+	async listIds(): Promise<RecipeId[]> {
+		const rows = await this.db
+			.select({ id: recipes.id })
+			.from(recipes)
+			.orderBy(...recipeOrders.newest);
+		return rows.map(({ id }) => recipeIdSchema.parse(id));
 	}
 
 	async list(page: RecipePage): Promise<Recipe[]> {

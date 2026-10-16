@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import type {
-	RecipePage,
 	RecipeRepository,
 	StoredRecipe,
 	UpdatedRecipe,
@@ -95,9 +94,9 @@ class ChangedDuringRunRepository extends InMemoryRecipeRepository {
 		this.change = change;
 	}
 
-	async list(page: RecipePage): Promise<Recipe[]> {
+	async listIds(): Promise<RecipeId[]> {
 		await this.beforeRead();
-		return super.list(page);
+		return super.listIds();
 	}
 
 	async findStoredById(id: RecipeId): Promise<StoredRecipe | null> {
@@ -110,13 +109,6 @@ class ChangedDuringRunRepository extends InMemoryRecipeRepository {
 		if (this.reads === 3) {
 			await this.change(this);
 		}
-	}
-}
-
-// Counts none, as a count taken just before recipes were added would.
-class UndercountingRepository extends InMemoryRecipeRepository {
-	async count(): Promise<number> {
-		return 0;
 	}
 }
 
@@ -370,16 +362,6 @@ describe('reparseIngredients', () => {
 		const { oldest } = await addStaleThenHundred(recipes);
 
 		const result = await reparseIngredients(recipes, { write: true });
-
-		expect(result.checked).toBe(101);
-		expect(result.recipes.map(({ id }) => id)).toEqual([oldest.id]);
-	});
-
-	it('lists every recipe when more exist than were counted', async () => {
-		const recipes = new UndercountingRepository();
-		const { oldest } = await addStaleThenHundred(recipes);
-
-		const result = await reparseIngredients(recipes, { write: false });
 
 		expect(result.checked).toBe(101);
 		expect(result.recipes.map(({ id }) => id)).toEqual([oldest.id]);

@@ -57,6 +57,8 @@ export interface RecipeRepository {
 	findBySlug(slug: string): Promise<Recipe | null>;
 	// In no particular order, each once, leaving out ids no recipe has.
 	findByIds(ids: readonly RecipeId[]): Promise<Recipe[]>;
+	// Every recipe's id and nothing else, newest first, for a run that reads the recipes one at a time.
+	listIds(): Promise<RecipeId[]>;
 	list(page: RecipePage): Promise<Recipe[]>;
 	count(): Promise<number>;
 	// Never takes a slug another recipe holds, current or old, even when creates and renames race.
