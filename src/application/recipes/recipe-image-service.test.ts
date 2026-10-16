@@ -30,6 +30,9 @@ const scanUpload = 'scan/development/0b6e2f4a-9c1d-4e8b-a7f3-5d2c1b0a9e8f.jpg';
 const folders = new ImageFolders('development', ['production', 'seed']);
 // How long the test lock lets a removal wait before it gives up.
 const moveLockWaitMs = 10_000;
+// Why the in-memory store leaves an image a test made unmovable, or its caches unpurged.
+const unmovableReason = 'Error: The image could not be copied';
+const unpurgeableReason = 'Error: The cache purge failed';
 
 let consoleInfo: MockInstance<typeof console.info>;
 let consoleWarn: MockInstance<typeof console.warn>;
@@ -207,7 +210,14 @@ async function attach(recipes: InMemoryRecipeRepository, image: RecipeImage) {
 function sweptCounts(counts: Partial<ImageSweepCounts>) {
 	return {
 		status: 'ran',
-		result: { restoredCount: 0, deletedCount: 0, removedCount: 0, expiredCount: 0, ...counts },
+		result: {
+			restoredCount: 0,
+			deletedCount: 0,
+			removedCount: 0,
+			expiredCount: 0,
+			failedCount: 0,
+			...counts,
+		},
 	};
 }
 
@@ -379,6 +389,10 @@ describe('authorizeUpload', () => {
 });
 
 describe('sweepImages', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
 	it("removes this environment's uploads that nothing has named for a day, and nothing else", async () => {
 		const { images, service, listed, drafted, saved, unused, others } = await createSweep();
 		const fresh = 'dish/development/fresh.jpg';
@@ -440,9 +454,9 @@ describe('sweepImages', () => {
 		const { images, recipes, service, unused } = await createSweep();
 		// The save lands after the sweep found the upload unused and before it removes it.
 		const remove = images.remove.bind(images);
-		vi.spyOn(images, 'remove').mockImplementationOnce(async (pathnames) => {
+		vi.spyOn(images, 'remove').mockImplementationOnce(async (pathnames, signal) => {
 			await attach(recipes, { role: 'dish', pathname: unused, size: photoSize });
-			await remove(pathnames);
+			return remove(pathnames, signal);
 		});
 
 		expect(await service.sweepImages()).toEqual(sweptCounts({ removedCount: 1 }));
@@ -471,12 +485,80 @@ describe('sweepImages', () => {
 				deletedCount: 1,
 				removedCount: 1,
 				expiredCount: 0,
+				failedCount: 0,
 				restoredPathnames: [listed],
 				deletedPathnames: [longRemoved],
 				removedPathnames: [unused],
 				expiredPathnames: [],
+				failedImages: [],
+				unpurgedImages: [],
 			},
 		]);
+	});
+
+	it('records each image a step could not move, with why, and moves the rest', async () => {
+		const { images, service, listed, drafted, unused } = await createSweep();
+		const otherUnused = 'dish/development/other-unused.jpg';
+		await images.put(otherUnused, jpeg, 'image/jpeg');
+		images.backdateUpload(otherUnused, pastLifetime(settings.retention.unusedImageLifetimeDays));
+		await images.remove([listed, drafted]);
+		images.failMovesOf(drafted);
+		images.failMovesOf(unused);
+
+		expect(await service.sweepImages()).toEqual(
+			sweptCounts({ restoredCount: 1, removedCount: 1, failedCount: 2 })
+		);
+		expect(await images.has(listed)).toBe(true);
+		expect(await images.hasRemoved(drafted)).toBe(true);
+		expect(await images.has(unused)).toBe(true);
+		expect(await images.hasRemoved(otherUnused)).toBe(true);
+		expect(logLines(consoleInfo)).toEqual([
+			expect.objectContaining({
+				message: 'Images swept',
+				restoredPathnames: [listed],
+				removedPathnames: [otherUnused],
+				failedImages: [
+					{ step: 'restore', pathname: drafted, reason: unmovableReason },
+					{ step: 'remove', pathname: unused, reason: unmovableReason },
+				],
+			}),
+		]);
+		expect(consoleWarn).not.toHaveBeenCalled();
+	});
+
+	it('counts an image whose caches were not purged once it moved as moved, and names it with why', async () => {
+		const { images, service, unused } = await createSweep();
+		images.failPurgesOf(unused);
+
+		expect(await service.sweepImages()).toEqual(sweptCounts({ removedCount: 1 }));
+		expect(await images.hasRemoved(unused)).toBe(true);
+		expect(logLines(consoleInfo)).toEqual([
+			expect.objectContaining({
+				message: 'Images swept',
+				removedPathnames: [unused],
+				failedImages: [],
+				unpurgedImages: [{ step: 'remove', pathname: unused, reason: unpurgeableReason }],
+			}),
+		]);
+	});
+
+	it("ends at the image move's time limit when the store never answers, naming the limit", async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		const { images, lock, service } = await createSweep();
+		images.stallMoves();
+		const removes = vi.spyOn(images, 'remove');
+
+		const sweep = service.sweepImages();
+		const settled = vi.fn();
+		sweep.catch(settled);
+		await vi.advanceTimersByTimeAsync(60_000 - 1);
+		expect(settled).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1);
+
+		await expect(sweep).rejects.toThrow('The image move timed out after 60 seconds');
+		expect(removes.mock.lastCall?.[1]?.aborted).toBe(true);
+		expect(lock.isHeld).toBe(false);
+		expect(consoleWarn).not.toHaveBeenCalled();
 	});
 
 	it('logs a step that fails and carries on with the others, leaving it for the next sweep', async () => {
@@ -751,13 +833,14 @@ describe('scheduleSweep with the images an edit or delete let go', () => {
 		const moves: string[] = [];
 		let otherMove: Promise<void> | undefined;
 		const remove = images.remove.bind(images);
-		vi.spyOn(images, 'remove').mockImplementationOnce(async (pathnames) => {
+		vi.spyOn(images, 'remove').mockImplementationOnce(async (pathnames, signal) => {
 			// Another move asks for the lock while the removal runs.
 			otherMove = lock.run(async () => {
 				moves.push('other move');
 			});
-			await remove(pathnames);
+			const outcome = await remove(pathnames, signal);
 			moves.push('removal');
+			return outcome;
 		});
 		const listRemoved = images.listRemoved.bind(images);
 		vi.spyOn(images, 'listRemoved').mockImplementation(async () => {
@@ -770,6 +853,40 @@ describe('scheduleSweep with the images an edit or delete let go', () => {
 		await otherMove;
 
 		expect(moves).toEqual(['removal', 'sweep', 'other move']);
+	});
+
+	it('removes the rest when one fails to move or to have its caches purged, naming each with why', async () => {
+		const { images, service, tasks } = await createRemoval();
+		const stuck = 'dish/development/stuck.jpg';
+		const cached = 'dish/development/cached.jpg';
+		await images.put(stuck, jpeg, 'image/jpeg');
+		await images.put(cached, jpeg, 'image/jpeg');
+		images.failMovesOf(stuck);
+		images.failPurgesOf(cached);
+
+		service.scheduleSweep({
+			recipeId,
+			images: [
+				releasedImage,
+				{ role: 'dish', pathname: stuck, size: photoSize },
+				{ role: 'dish', pathname: cached, size: photoSize },
+			],
+		});
+		await tasks[0]?.();
+
+		expect(await images.hasRemoved(released)).toBe(true);
+		expect(await images.has(stuck)).toBe(true);
+		expect(await images.hasRemoved(cached)).toBe(true);
+		expect(logLines(consoleInfo)).toContainEqual({
+			level: 'info',
+			logger: 'images',
+			message: 'Recipe images removed',
+			recipeId,
+			pathnames: [released, cached],
+			failedImages: [{ pathname: stuck, reason: unmovableReason }],
+			unpurgedImages: [{ pathname: cached, reason: unpurgeableReason }],
+		});
+		expect(consoleWarn).not.toHaveBeenCalled();
 	});
 
 	it('leaves them for a later sweep and logs a warning when the lock stays held past its wait', async () => {

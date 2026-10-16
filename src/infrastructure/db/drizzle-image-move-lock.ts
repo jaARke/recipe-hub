@@ -8,9 +8,10 @@ import { deadlineAfter, settleWithin } from '@/lib/deadline';
 // environment's database.
 const imageMoveLockKey = 'recipe-hub:image-moves';
 
-// A sweep holds the lock through seconds of Blob calls, and a write's removal waits for it in a
-// background task after the response: long enough for a sweep to finish, short enough that a stuck
-// one never keeps that task's function alive for long.
+// How long a write's removal, in a background task after the response, waits for another image move
+// to let go of the lock. A move may hold it up to its 60-second time limit, so a removal that waits
+// this long gives up and leaves its images for a later sweep rather than keep that task's function
+// waiting.
 const lockWaitTimeoutMs = 10_000;
 
 // How long a waiting removal pauses before it asks for the lock again.
@@ -28,7 +29,9 @@ function pause(milliseconds: number): Promise<void> {
 
 // A transaction-scoped lock, since the pooler can hand a session lock and its unlock to different
 // server connections. The transaction holds one connection for the whole task and ends on every
-// path, which releases the lock; the task's own queries run on other connections. A waiter asks
+// path, which releases the lock; the task's own queries run on other connections. It sits idle while
+// the task runs, and Neon ends a transaction idle for 5 minutes, so it relies on the image move's
+// time limit of 60 seconds (imageMoveTimeLimitMs in RecipeImageService) to end first. A waiter asks
 // again after each pause rather than waiting in Postgres, so it holds no connection while it waits,
 // and waiters never take the connections the holder's task needs.
 export class DrizzleImageMoveLock implements ImageMoveLock {

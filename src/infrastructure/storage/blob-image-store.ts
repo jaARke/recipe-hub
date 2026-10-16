@@ -9,7 +9,13 @@ import {
 	put as putBlob,
 } from '@vercel/blob';
 import { dangerouslyDeleteBySrcImage, dangerouslyDeleteByTag } from '@vercel/functions';
-import type { ImageStore, RemovedImage, StoredImage } from '@/application/ports/image-store';
+import type {
+	FailedImage,
+	ImageMoveOutcome,
+	ImageStore,
+	RemovedImage,
+	StoredImage,
+} from '@/application/ports/image-store';
 import type { ImageFolders } from '@/application/recipes/image-folders';
 import { deadlineAfter, settleWithin } from '@/lib/deadline';
 import { imageCacheMaxAgeSeconds, imageCacheTag, imageRouteSrc } from '@/lib/image-paths';
@@ -21,11 +27,24 @@ const trashFolder = 'trash/';
 // Vercel's example of deleting a store's blobs deletes 100 a request.
 const deleteBatchSize = 100;
 
-// Each Blob call gives up after this long, its retries included: the SDK retries a failed request with
-// backoff from a second, so a call this slow has met an outage rather than a slow answer.
-const blobCallTimeLimitMs = 15_000;
+// Vercel's purge documentation allows 16 tags a call, and a source image is purged as its tag.
+const purgeBatchSize = 16;
 
-type BlobCall = 'get' | 'head' | 'put' | 'copy' | 'list' | 'delete';
+// Each Blob call gives up after this long, its retries included: the SDK retries a failed request with
+// backoff from a second, so a call this slow has met an outage rather than a slow answer. A cache
+// purge is held to the same bound.
+const callTimeLimitMs = 15_000;
+
+// Each call the store makes, as its time-out error names it.
+type StoreCall =
+	| 'Blob get'
+	| 'Blob head'
+	| 'Blob put'
+	| 'Blob copy'
+	| 'Blob list'
+	| 'Blob delete'
+	| 'Cache purge by tag'
+	| 'Cache purge by source image';
 
 type BlobImageStoreOptions = {
 	storeId: string;
@@ -39,9 +58,23 @@ type ListedBlob = {
 	uploadedAt: Date;
 };
 
+// An image's move, named by the pathname it has outside the trash.
 type Move = {
+	pathname: string;
 	from: string;
 	to: string;
+};
+
+// What a move did: the images it moved, or found already gone, and those it left in place.
+type MoveOutcome = {
+	moved: string[];
+	failed: FailedImage[];
+};
+
+// What purging did: the images whose cached copies it purged, and those it could not.
+type PurgeOutcome = {
+	purged: string[];
+	failed: FailedImage[];
 };
 
 function trashPathname(pathname: string): string {
@@ -53,13 +86,15 @@ function pathnameBeforeTrash(trashedPathname: string): string {
 	return trashedPathname.slice(trashFolder.length);
 }
 
-// Calls Blob, giving up once the call's time limit passes or the caller's signal aborts, and aborting
-// the request then. A read that answered in time streams its body under the caller's signal alone.
+// Calls Blob or the cache, giving up once the call's time limit passes or the caller's signal aborts,
+// and aborting a Blob request then; a purge takes no signal. Once the caller's signal has aborted, no
+// call starts. A read that answered in time streams its body under the caller's signal alone.
 async function withinTimeLimit<T>(
-	call: BlobCall,
+	call: StoreCall,
 	request: (abortSignal: AbortSignal) => Promise<T>,
 	cancellation?: AbortSignal
 ): Promise<T> {
+	cancellation?.throwIfAborted();
 	const abandoned = new AbortController();
 	const abortSignal =
 		cancellation === undefined
@@ -68,8 +103,8 @@ async function withinTimeLimit<T>(
 	try {
 		return await settleWithin(
 			request(abortSignal),
-			{ deadline: deadlineAfter(blobCallTimeLimitMs), cancellation },
-			() => new Error(`Blob ${call} timed out after ${blobCallTimeLimitMs / 1000} seconds`)
+			{ deadline: deadlineAfter(callTimeLimitMs), cancellation },
+			() => new Error(`${call} timed out after ${callTimeLimitMs / 1000} seconds`)
 		);
 	} catch (error) {
 		abandoned.abort(error);
@@ -77,23 +112,56 @@ async function withinTimeLimit<T>(
 	}
 }
 
-function batches(pathnames: readonly string[]): string[][] {
+// The images an error left undone, each with why: the error's name and message, which name a pathname
+// at most, never an image's content. A signal that aborted stops the work instead.
+function failuresOf(
+	pathnames: readonly string[],
+	error: unknown,
+	signal?: AbortSignal
+): FailedImage[] {
+	if (signal?.aborted) {
+		throw error;
+	}
+
+	return pathnames.map((pathname) => ({ pathname, reason: String(error) }));
+}
+
+function batches(pathnames: readonly string[], size: number): string[][] {
 	const result: string[][] = [];
-	for (let start = 0; start < pathnames.length; start += deleteBatchSize) {
-		result.push(pathnames.slice(start, start + deleteBatchSize));
+	for (let start = 0; start < pathnames.length; start += size) {
+		result.push(pathnames.slice(start, start + size));
 	}
 	return result;
 }
 
-// Dish photos and scans alike are cached by Vercel's CDN and image optimizer. Outside a Vercel
+// Dish photos and scans alike are cached by Vercel's CDN and image optimizer. Each batch is purged on
+// its own, so one whose purge fails is returned and the rest are still purged. Outside a Vercel
 // request, as in a script or the dev server, the purges do nothing.
-async function purgeCaches(pathnames: readonly string[]): Promise<void> {
-	if (pathnames.length > 0) {
-		await Promise.all([
-			dangerouslyDeleteByTag(pathnames.map(imageCacheTag)),
-			dangerouslyDeleteBySrcImage(pathnames.map(imageRouteSrc)),
-		]);
+async function purgeCaches(
+	pathnames: readonly string[],
+	signal?: AbortSignal
+): Promise<PurgeOutcome> {
+	const outcome: PurgeOutcome = { purged: [], failed: [] };
+	for (const batch of batches(pathnames, purgeBatchSize)) {
+		try {
+			await Promise.all([
+				withinTimeLimit(
+					'Cache purge by tag',
+					() => dangerouslyDeleteByTag(batch.map(imageCacheTag)),
+					signal
+				),
+				withinTimeLimit(
+					'Cache purge by source image',
+					() => dangerouslyDeleteBySrcImage(batch.map(imageRouteSrc)),
+					signal
+				),
+			]);
+			outcome.purged.push(...batch);
+		} catch (error) {
+			outcome.failed.push(...failuresOf(batch, error, signal));
+		}
 	}
+	return outcome;
 }
 
 // The SDK reads and refreshes Vercel's OIDC token itself; a token passed in is never refreshed.
@@ -110,7 +178,7 @@ export class BlobImageStore implements ImageStore {
 	async get(pathname: string, signal?: AbortSignal): Promise<StoredImage | null> {
 		// Past Blob's cache, so an image removed moments ago is not served and cached for another year.
 		const result = await withinTimeLimit(
-			'get',
+			'Blob get',
 			(abortSignal) =>
 				getBlob(pathname, {
 					access: 'private',
@@ -138,7 +206,7 @@ export class BlobImageStore implements ImageStore {
 
 	async has(pathname: string): Promise<boolean> {
 		try {
-			await withinTimeLimit('head', (abortSignal) =>
+			await withinTimeLimit('Blob head', (abortSignal) =>
 				headBlob(pathname, { storeId: this.storeId, abortSignal })
 			);
 			return true;
@@ -151,7 +219,7 @@ export class BlobImageStore implements ImageStore {
 	}
 
 	async put(pathname: string, body: Uint8Array, contentType: string): Promise<void> {
-		await withinTimeLimit('put', (abortSignal) =>
+		await withinTimeLimit('Blob put', (abortSignal) =>
 			putBlob(pathname, Buffer.from(body), {
 				access: 'private',
 				storeId: this.storeId,
@@ -164,17 +232,22 @@ export class BlobImageStore implements ImageStore {
 		);
 	}
 
-	// Purged first too, so a purge that fails leaves the image in place for the sweep to remove again,
-	// and after the move for anything cached in between.
-	async remove(pathnames: readonly string[]): Promise<void> {
+	// Purged first too, so an image whose purge fails stays in place for the sweep to remove again, and
+	// after the move for anything cached in between; a purge that fails then is reported against the
+	// images it covered, which have moved.
+	async remove(pathnames: readonly string[], signal?: AbortSignal): Promise<ImageMoveOutcome> {
 		this.assertInFolders(pathnames);
-		await purgeCaches(pathnames);
-		await this.move(pathnames.map((pathname) => ({ from: pathname, to: trashPathname(pathname) })));
-		await purgeCaches(pathnames);
+		const before = await purgeCaches(pathnames, signal);
+		const { moved, failed } = await this.move(
+			before.purged.map((pathname) => ({ pathname, from: pathname, to: trashPathname(pathname) })),
+			signal
+		);
+		const after = await purgeCaches(moved, signal);
+		return { failed: [...before.failed, ...failed], unpurged: after.failed };
 	}
 
-	async listUploadedBefore(cutoff: Date): Promise<string[]> {
-		const blobs = await this.list(this.folders.environmentFolders());
+	async listUploadedBefore(cutoff: Date, signal?: AbortSignal): Promise<string[]> {
+		const blobs = await this.list(this.folders.environmentFolders(), signal);
 		return blobs
 			.filter(({ pathname, uploadedAt }) => this.folders.contains(pathname) && uploadedAt < cutoff)
 			.map(({ pathname }) => pathname);
@@ -182,8 +255,8 @@ export class BlobImageStore implements ImageStore {
 
 	// The SDK stores a copy through the same request as an upload, so a removed image's uploadedAt is
 	// when it was removed.
-	async listRemoved(): Promise<RemovedImage[]> {
-		const blobs = await this.list(this.folders.environmentFolders().map(trashPathname));
+	async listRemoved(signal?: AbortSignal): Promise<RemovedImage[]> {
+		const blobs = await this.list(this.folders.environmentFolders().map(trashPathname), signal);
 		return blobs
 			.map(({ pathname, uploadedAt }) => ({
 				pathname: pathnameBeforeTrash(pathname),
@@ -197,25 +270,29 @@ export class BlobImageStore implements ImageStore {
 	}
 
 	// A restored photo may have been asked for while it was removed, so its caches are purged again.
-	async restore(pathnames: readonly string[]): Promise<void> {
+	async restore(pathnames: readonly string[], signal?: AbortSignal): Promise<ImageMoveOutcome> {
 		this.assertInFolders(pathnames);
-		await this.move(pathnames.map((pathname) => ({ from: trashPathname(pathname), to: pathname })));
-		await purgeCaches(pathnames);
+		const { moved, failed } = await this.move(
+			pathnames.map((pathname) => ({ pathname, from: trashPathname(pathname), to: pathname })),
+			signal
+		);
+		const after = await purgeCaches(moved, signal);
+		return { failed, unpurged: after.failed };
 	}
 
-	async deleteRemoved(pathnames: readonly string[]): Promise<void> {
+	async deleteRemoved(pathnames: readonly string[], signal?: AbortSignal): Promise<void> {
 		this.assertInFolders(pathnames);
-		await this.delete(pathnames.map(trashPathname));
+		await this.delete(pathnames.map(trashPathname), signal);
 	}
 
 	// A removed image's uploadedAt is when it was removed, so each copy goes by its own date. Nothing is
 	// purged: production, which expires these folders, never serves them, and a preview's cached copies
 	// are test data behind its deployment's protection that leave with its deployments.
-	async deleteExpired(cutoff: Date): Promise<string[]> {
+	async deleteExpired(cutoff: Date, signal?: AbortSignal): Promise<string[]> {
 		const folders = this.folders.expiringFolders();
 		const [stored, removed] = await Promise.all([
-			this.list(folders),
-			this.list(folders.map(trashPathname)),
+			this.list(folders, signal),
+			this.list(folders.map(trashPathname), signal),
 		]);
 		const isExpired = ({ pathname, uploadedAt }: ListedBlob) =>
 			this.folders.isExpiring(pathname) && uploadedAt < cutoff;
@@ -224,7 +301,7 @@ export class BlobImageStore implements ImageStore {
 			.map(({ pathname, uploadedAt }) => ({ pathname: pathnameBeforeTrash(pathname), uploadedAt }))
 			.filter(isExpired)
 			.map(({ pathname }) => pathname);
-		await this.delete([...storedPathnames, ...removedPathnames.map(trashPathname)]);
+		await this.delete([...storedPathnames, ...removedPathnames.map(trashPathname)], signal);
 		return [...storedPathnames, ...removedPathnames];
 	}
 
@@ -234,29 +311,41 @@ export class BlobImageStore implements ImageStore {
 		}
 	}
 
-	// Copies every image before deleting any original, so a failed move loses nothing.
-	private async move(moves: readonly Move[]): Promise<void> {
-		for (const { from, to } of moves) {
-			await this.copy(from, to);
+	// One image at a time, each copied before its own original is deleted, so an image that fails is
+	// left in place, at both pathnames at worst, and the rest still move. A signal that aborts stops
+	// the move rather than failing the image at hand.
+	private async move(moves: readonly Move[], signal?: AbortSignal): Promise<MoveOutcome> {
+		const outcome: MoveOutcome = { moved: [], failed: [] };
+		for (const { pathname, from, to } of moves) {
+			try {
+				await this.copy(from, to, signal);
+				await this.delete([from], signal);
+				outcome.moved.push(pathname);
+			} catch (error) {
+				outcome.failed.push(...failuresOf([pathname], error, signal));
+			}
 		}
-		await this.delete(moves.map(({ from }) => from));
+		return outcome;
 	}
 
 	// A copy takes neither the cache lifetime nor the content type of its source: the type comes from
 	// the pathname's extension, as every upload is a .jpg. An interrupted move leaves the image at both
 	// pathnames, so a copy may overwrite the same image, since pathnames are never reused. An image
 	// already gone is skipped.
-	private async copy(from: string, to: string): Promise<void> {
+	private async copy(from: string, to: string, signal?: AbortSignal): Promise<void> {
 		try {
-			await withinTimeLimit('copy', (abortSignal) =>
-				copyBlob(from, to, {
-					access: 'private',
-					storeId: this.storeId,
-					addRandomSuffix: false,
-					allowOverwrite: true,
-					cacheControlMaxAge: imageCacheMaxAgeSeconds,
-					abortSignal,
-				})
+			await withinTimeLimit(
+				'Blob copy',
+				(abortSignal) =>
+					copyBlob(from, to, {
+						access: 'private',
+						storeId: this.storeId,
+						addRandomSuffix: false,
+						allowOverwrite: true,
+						cacheControlMaxAge: imageCacheMaxAgeSeconds,
+						abortSignal,
+					}),
+				signal
 			);
 		} catch (error) {
 			if (!(error instanceof BlobNotFoundError)) {
@@ -266,13 +355,15 @@ export class BlobImageStore implements ImageStore {
 	}
 
 	// Each folder by its prefix, page by page, so nothing outside the folders is ever listed.
-	private async list(prefixes: readonly string[]): Promise<ListedBlob[]> {
+	private async list(prefixes: readonly string[], signal?: AbortSignal): Promise<ListedBlob[]> {
 		const blobs: ListedBlob[] = [];
 		for (const prefix of prefixes) {
 			let cursor: string | undefined;
 			do {
-				const page = await withinTimeLimit('list', (abortSignal) =>
-					listBlobs({ prefix, cursor, storeId: this.storeId, abortSignal })
+				const page = await withinTimeLimit(
+					'Blob list',
+					(abortSignal) => listBlobs({ prefix, cursor, storeId: this.storeId, abortSignal }),
+					signal
 				);
 				blobs.push(...page.blobs.map(({ pathname, uploadedAt }) => ({ pathname, uploadedAt })));
 				cursor = page.hasMore ? page.cursor : undefined;
@@ -281,10 +372,12 @@ export class BlobImageStore implements ImageStore {
 		return blobs;
 	}
 
-	private async delete(pathnames: readonly string[]): Promise<void> {
-		for (const batch of batches(pathnames)) {
-			await withinTimeLimit('delete', (abortSignal) =>
-				deleteBlobs(batch, { storeId: this.storeId, abortSignal })
+	private async delete(pathnames: readonly string[], signal?: AbortSignal): Promise<void> {
+		for (const batch of batches(pathnames, deleteBatchSize)) {
+			await withinTimeLimit(
+				'Blob delete',
+				(abortSignal) => deleteBlobs(batch, { storeId: this.storeId, abortSignal }),
+				signal
 			);
 		}
 	}

@@ -84,13 +84,15 @@ export type ImageUploadGrant = {
 	maximumSizeInBytes: number;
 };
 
-// How many images one sweep restored, deleted for good, and removed, and how many in expiring
-// environments' folders it deleted for good.
+// How many images one sweep restored, deleted for good, and removed, how many in expiring
+// environments' folders it deleted for good, and how many it left in place, for the next sweep to try
+// again.
 export type ImageSweepCounts = {
 	restoredCount: number;
 	deletedCount: number;
 	removedCount: number;
 	expiredCount: number;
+	failedCount: number;
 };
 
 // The page an import read, or a source entered as a web address, which links as an import's does.

@@ -2,7 +2,12 @@ import 'server-only';
 import { requireMember } from '@/application/authorization';
 import type { ActorProvider } from '@/application/ports/actor-provider';
 import type { ImageMoveLock, LockAttempt } from '@/application/ports/image-move-lock';
-import type { ImageStore, StoredImage } from '@/application/ports/image-store';
+import type {
+	FailedImage,
+	ImageMoveOutcome,
+	ImageStore,
+	StoredImage,
+} from '@/application/ports/image-store';
 import type { RecipeImportRepository } from '@/application/ports/recipe-import-repository';
 import type { RecipeRepository } from '@/application/ports/recipe-repository';
 import type { SavedDraftRepository } from '@/application/ports/saved-draft-repository';
@@ -22,7 +27,8 @@ import {
 } from '@/domain/recipe/image-retention';
 import type { RecipeId } from '@/domain/recipe/recipe';
 import { isRecipeImageContentType, type RecipeImageRole } from '@/domain/recipe/recipe-image';
-import { getLogger } from '@/lib/logger';
+import { deadlineAfter, settleWithin } from '@/lib/deadline';
+import { getLogger, type LogFields } from '@/lib/logger';
 
 // The browser re-encodes every photo as a JPEG before uploading it.
 const uploadContentType = 'image/jpeg';
@@ -30,36 +36,92 @@ const uploadContentType = 'image/jpeg';
 // Re-encoded photos are 0.4 to 2.2 MB, and the CDN caches streamed responses only up to 20 MB.
 const maxUploadSizeInBytes = 8 * 1024 * 1024;
 
+// Bounds an image move from when it holds the lock: a sweep, or a write's removal and the sweep after
+// it. The cleanup cron keeps time to log and answer within its maxDuration of 120 seconds, a write's
+// background task stays within its function's time, and the lock's transaction, idle meanwhile, ends
+// long before Neon ends one idle for 5 minutes.
+const imageMoveTimeLimitMs = 60 * 1000;
+
 const logger = getLogger('images');
 
 type ImageSweepStep = 'restore' | 'delete' | 'remove' | 'expire';
 
-// A step that fails is logged and left for the next sweep, which finds the same images again.
+// An image a sweep step failed on, with why.
+type FailedSweepImage = FailedImage & { step: ImageSweepStep };
+
+// What a sweep step did: the images it handled, those it left where they were, and those it moved
+// whose cached copies it could not purge.
+type SweepStepOutcome = {
+	pathnames: string[];
+	failedImages: FailedSweepImage[];
+	unpurgedImages: FailedSweepImage[];
+};
+
+const noFailures: ImageMoveOutcome = { failed: [], unpurged: [] };
+
+function imageMoveTimedOut(): Error {
+	return new Error(`The image move timed out after ${imageMoveTimeLimitMs / 1000} seconds`);
+}
+
+// Runs one step of an image move within its deadline, and none once the deadline has passed.
+async function withinImageMove<T>(deadline: AbortSignal, step: () => Promise<T>): Promise<T> {
+	if (deadline.aborted) {
+		throw imageMoveTimedOut();
+	}
+
+	return settleWithin(step(), { deadline }, imageMoveTimedOut);
+}
+
+// The images a move handled: all it was given but those it left in place.
+function movedPathnames(pathnames: string[], failed: FailedImage[]): string[] {
+	const failedPathnames = new Set(failed.map(({ pathname }) => pathname));
+	return pathnames.filter((pathname) => !failedPathnames.has(pathname));
+}
+
+// A step that fails is logged and left for the next sweep, which finds the same images again; the
+// deadline passing ends the sweep instead.
+function sweepStepFailed(deadline: AbortSignal, err: unknown, fields: LogFields): void {
+	if (deadline.aborted) {
+		throw err;
+	}
+
+	logger.warn('Image sweep step failed', { ...fields, err });
+}
+
+// An image that fails alone is recorded with why, and the rest carry on.
 async function sweepStep(
 	step: ImageSweepStep,
 	pathnames: string[],
-	run: (pathnames: string[]) => Promise<void>
-): Promise<string[]> {
+	run: (pathnames: string[], signal: AbortSignal) => Promise<ImageMoveOutcome>,
+	deadline: AbortSignal
+): Promise<SweepStepOutcome> {
 	if (pathnames.length === 0) {
-		return [];
+		return { pathnames: [], failedImages: [], unpurgedImages: [] };
 	}
 
 	try {
-		await run(pathnames);
-		return pathnames;
+		const { failed, unpurged } = await withinImageMove(deadline, () => run(pathnames, deadline));
+		return {
+			pathnames: movedPathnames(pathnames, failed),
+			failedImages: failed.map((image) => ({ step, ...image })),
+			unpurgedImages: unpurged.map((image) => ({ step, ...image })),
+		};
 	} catch (err) {
-		logger.warn('Image sweep step failed', { step, pathnames, err });
-		return [];
+		sweepStepFailed(deadline, err, { step, pathnames });
+		return { pathnames: [], failedImages: [], unpurgedImages: [] };
 	}
 }
 
 // The store finds expired images as it deletes them, so a failure is logged without pathnames, and
 // the next sweep finds whatever is left.
-async function expireStep(run: () => Promise<string[]>): Promise<string[]> {
+async function expireStep(
+	run: (signal: AbortSignal) => Promise<string[]>,
+	deadline: AbortSignal
+): Promise<string[]> {
 	try {
-		return await run();
+		return await withinImageMove(deadline, () => run(deadline));
 	} catch (err) {
-		logger.warn('Image sweep step failed', { step: 'expire' satisfies ImageSweepStep, err });
+		sweepStepFailed(deadline, err, { step: 'expire' satisfies ImageSweepStep });
 		return [];
 	}
 }
@@ -154,7 +216,9 @@ export class RecipeImageService {
 	// A system use case with no actor. Skipped while another image move runs: a running sweep covers
 	// it, as does a write's removal that sweeps in the same hold, and the next sweep finds the rest.
 	async sweepImages(): Promise<LockAttempt<ImageSweepCounts>> {
-		const attempt = await this.moveLock.tryRun(() => this.sweep());
+		const attempt = await this.moveLock.tryRun(() =>
+			this.sweep(deadlineAfter(imageMoveTimeLimitMs))
+		);
 		if (attempt.status === 'skipped') {
 			logger.info('Image sweep skipped while another image move runs');
 		}
@@ -189,9 +253,10 @@ export class RecipeImageService {
 		try {
 			await this.moveLock.run(async () => {
 				held = true;
-				await this.removeReleasedImages(recipeId, pathnames);
+				const deadline = deadlineAfter(imageMoveTimeLimitMs);
+				await this.removeReleasedImages(recipeId, pathnames, deadline);
 				if (this.sweepsAfterWrites) {
-					await this.sweep();
+					await this.sweep(deadline);
 				}
 			});
 		} catch (err) {
@@ -203,28 +268,32 @@ export class RecipeImageService {
 	}
 
 	// After the write commits, so a failure leaves an unused image rather than a recipe naming a missing
-	// one; a failure is logged, and the sweep carries on. An image another recipe still lists or an
-	// unexpired import or saved draft names is kept, as importing the same scans twice makes drafts
-	// share them.
-	private async removeReleasedImages(recipeId: RecipeId, pathnames: string[]): Promise<void> {
+	// one; a failure is logged, and the sweep carries on. An image that fails to move alone, or whose
+	// caches were not purged once it moved, is named with why, and the rest are removed. An image
+	// another recipe still lists or an unexpired import or saved draft names is kept, as importing the
+	// same scans twice makes drafts share them.
+	private async removeReleasedImages(
+		recipeId: RecipeId,
+		pathnames: string[],
+		deadline: AbortSignal
+	): Promise<void> {
 		try {
-			const inUse = await imagesInUse(
-				pathnames,
-				this.recipes,
-				this.imports,
-				this.drafts,
-				new Date()
+			const inUse = await withinImageMove(deadline, () =>
+				imagesInUse(pathnames, this.recipes, this.imports, this.drafts, new Date())
 			);
-			const removedPathnames = pathnames.filter((pathname) => !inUse.has(pathname));
+			const unusedPathnames = pathnames.filter((pathname) => !inUse.has(pathname));
 			const keptPathnames = pathnames.filter((pathname) => inUse.has(pathname));
-			if (removedPathnames.length > 0) {
-				await this.images.remove(removedPathnames);
-			}
+			const { failed, unpurged } =
+				unusedPathnames.length > 0
+					? await withinImageMove(deadline, () => this.images.remove(unusedPathnames, deadline))
+					: noFailures;
 
 			logger.info('Recipe images removed', {
 				recipeId,
-				pathnames: removedPathnames,
+				pathnames: movedPathnames(unusedPathnames, failed),
 				...(keptPathnames.length > 0 && { keptPathnames }),
+				...(failed.length > 0 && { failedImages: failed }),
+				...(unpurged.length > 0 && { unpurgedImages: unpurged }),
 			});
 		} catch (err) {
 			warnImagesNotRemoved(recipeId, pathnames, err);
@@ -235,55 +304,73 @@ export class RecipeImageService {
 	// or a save attaches an image an earlier sweep was removing; deletes for good those removed long
 	// enough ago; removes uploads that nothing has named for a day; then deletes old images in the
 	// expiring environments' folders. In that order, so an image both stored and removed, as an
-	// interrupted removal leaves it, ends up removed.
-	private async sweep(): Promise<ImageSweepCounts> {
+	// interrupted removal leaves it, ends up removed. Each step runs within the image move's deadline,
+	// which also stops every store call, and the deadline passing ends the sweep.
+	private async sweep(deadline: AbortSignal): Promise<ImageSweepCounts> {
 		const now = new Date();
-		const [removed, uploaded] = await Promise.all([
-			this.images.listRemoved(),
-			this.images.listUploadedBefore(unusedImageCutoff(now)),
-		]);
-		const inUse = await imagesInUse(
-			[...removed.map(({ pathname }) => pathname), ...uploaded],
-			this.recipes,
-			this.imports,
-			this.drafts,
-			now
+		const [removed, uploaded] = await withinImageMove(deadline, () =>
+			Promise.all([
+				this.images.listRemoved(deadline),
+				this.images.listUploadedBefore(unusedImageCutoff(now), deadline),
+			])
+		);
+		const inUse = await withinImageMove(deadline, () =>
+			imagesInUse(
+				[...removed.map(({ pathname }) => pathname), ...uploaded],
+				this.recipes,
+				this.imports,
+				this.drafts,
+				now
+			)
 		);
 		const expiredBefore = removedImageCutoff(now);
 
-		const restoredPathnames = await sweepStep(
+		const restored = await sweepStep(
 			'restore',
 			removed.filter(({ pathname }) => inUse.has(pathname)).map(({ pathname }) => pathname),
-			(pathnames) => this.images.restore(pathnames)
+			(pathnames, signal) => this.images.restore(pathnames, signal),
+			deadline
 		);
-		const deletedPathnames = await sweepStep(
+		// Deletes fail together, never one image alone.
+		const deleted = await sweepStep(
 			'delete',
 			removed
 				.filter(({ pathname, removedAt }) => !inUse.has(pathname) && removedAt < expiredBefore)
 				.map(({ pathname }) => pathname),
-			(pathnames) => this.images.deleteRemoved(pathnames)
+			async (pathnames, signal) => {
+				await this.images.deleteRemoved(pathnames, signal);
+				return noFailures;
+			},
+			deadline
 		);
-		const removedPathnames = await sweepStep(
+		const removedUploads = await sweepStep(
 			'remove',
 			uploaded.filter((pathname) => !inUse.has(pathname)),
-			(pathnames) => this.images.remove(pathnames)
+			(pathnames, signal) => this.images.remove(pathnames, signal),
+			deadline
 		);
-		const expiredPathnames = await expireStep(() =>
-			this.images.deleteExpired(expiringImageCutoff(now))
+		const expiredPathnames = await expireStep(
+			(signal) => this.images.deleteExpired(expiringImageCutoff(now), signal),
+			deadline
 		);
 
+		const steps = [restored, deleted, removedUploads];
+		const failedImages = steps.flatMap((outcome) => outcome.failedImages);
 		const counts: ImageSweepCounts = {
-			restoredCount: restoredPathnames.length,
-			deletedCount: deletedPathnames.length,
-			removedCount: removedPathnames.length,
+			restoredCount: restored.pathnames.length,
+			deletedCount: deleted.pathnames.length,
+			removedCount: removedUploads.pathnames.length,
 			expiredCount: expiredPathnames.length,
+			failedCount: failedImages.length,
 		};
 		logger.info('Images swept', {
 			...counts,
-			restoredPathnames,
-			deletedPathnames,
-			removedPathnames,
+			restoredPathnames: restored.pathnames,
+			deletedPathnames: deleted.pathnames,
+			removedPathnames: removedUploads.pathnames,
 			expiredPathnames,
+			failedImages,
+			unpurgedImages: steps.flatMap((outcome) => outcome.unpurgedImages),
 		});
 		return counts;
 	}

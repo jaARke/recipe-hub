@@ -201,7 +201,13 @@ const fullReport: CleanupReport = {
 	invites: { deletedCount: 2 },
 	sessions: { deletedCount: 1 },
 	verifications: { deletedCount: 2 },
-	imageSweep: { restoredCount: 0, deletedCount: 0, removedCount: 1, expiredCount: 0 },
+	imageSweep: {
+		restoredCount: 0,
+		deletedCount: 0,
+		removedCount: 1,
+		expiredCount: 0,
+		failedCount: 0,
+	},
 };
 
 describe('runCleanup', () => {
@@ -247,7 +253,13 @@ describe('runCleanup', () => {
 			invites: { deletedCount: 0 },
 			sessions: { deletedCount: 0 },
 			verifications: { deletedCount: 0 },
-			imageSweep: { restoredCount: 0, deletedCount: 0, removedCount: 0, expiredCount: 0 },
+			imageSweep: {
+				restoredCount: 0,
+				deletedCount: 0,
+				removedCount: 0,
+				expiredCount: 0,
+				failedCount: 0,
+			},
 		});
 	});
 
