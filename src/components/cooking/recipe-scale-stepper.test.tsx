@@ -14,7 +14,7 @@ const serves4To6: RecipeYield = { kind: 'servings', amount: { min: 4, max: 6 } }
 
 // The stepper beside the yield it scales the recipe to.
 function ScaledRecipe({ recipeYield }: { recipeYield: RecipeYield | undefined }) {
-	const scale = useRecipeScale(recipeYield);
+	const scale = useRecipeScale(cookingPathname, recipeYield);
 	return (
 		<>
 			<p data-testid="yield">{formatScaledYield(recipeYield, scale.factor)}</p>

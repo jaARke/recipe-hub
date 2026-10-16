@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import { parseCookingStepParam, withCookingStepParam } from '@/components/cooking/cooking-screens';
-import { useOnKeptPageHide } from '@/components/forms/use-on-kept-page-hide';
 import { hrefWithParams } from '@/components/recipe/recipe-paths';
 import {
 	parseRecipeScaleParam,
@@ -51,23 +50,17 @@ function readNoQuery(): string {
 	return '';
 }
 
-// Next keeps the view, hidden, behind the page Back leads to, whose URL is not the view's: a hidden
-// view keeps the query it showed, even if it renders again, until it shows again.
-function useCookingQuery(): URLSearchParams {
-	const hidden = React.useRef(false);
+// Next keeps the view, hidden, behind the page Back leads to, and the browser shows that page's
+// address before the view hides: the view takes the query only while the address is its own, and
+// keeps the one it showed until it shows again.
+function useCookingQuery(pathname: string): URLSearchParams {
 	const shownQuery = React.useRef('');
-	useOnKeptPageHide(() => {
-		hidden.current = true;
-	});
-	React.useLayoutEffect(() => {
-		hidden.current = false;
-	}, []);
 	const readShownQuery = React.useCallback(() => {
-		if (!hidden.current) {
+		if (location.pathname === pathname) {
 			shownQuery.current = readQuery();
 		}
 		return shownQuery.current;
-	}, []);
+	}, [pathname]);
 
 	const query = React.useSyncExternalStore(subscribe, readShownQuery, readNoQuery);
 	return React.useMemo(() => new URLSearchParams(query), [query]);
@@ -90,20 +83,27 @@ function replaceCookingQuery(change: (params: URLSearchParams) => URLSearchParam
 	}
 }
 
-// The index of the screen shown, of the recipe's count, and how to show another.
-export function useCookingScreenIndex(screenCount: number): [number, (index: number) => void] {
-	const index = parseCookingStepParam(useCookingQuery(), screenCount);
+// The index of the screen shown, of the recipe's count, and how to show another, in the view at
+// pathname.
+export function useCookingScreenIndex(
+	pathname: string,
+	screenCount: number
+): [number, (index: number) => void] {
+	const index = parseCookingStepParam(useCookingQuery(pathname), screenCount);
 	const setIndex = React.useCallback((next: number) => {
 		replaceCookingQuery((params) => withCookingStepParam(params, next));
 	}, []);
 	return [index, setIndex];
 }
 
-// The servings stepper's value for the recipe, which the checklist, the steps' note, and the printout
-// follow.
-export function useRecipeScale(recipeYield: RecipeYield | undefined): RecipeScale {
+// The servings stepper's value for the recipe, in the view at pathname, which the checklist, the
+// steps' note, and the printout follow.
+export function useRecipeScale(
+	pathname: string,
+	recipeYield: RecipeYield | undefined
+): RecipeScale {
 	const stepper = React.useMemo(() => scaleStepperFor(recipeYield), [recipeYield]);
-	const value = parseRecipeScaleParam(useCookingQuery(), stepper);
+	const value = parseRecipeScaleParam(useCookingQuery(pathname), stepper);
 
 	return React.useMemo<RecipeScale>(
 		() => ({

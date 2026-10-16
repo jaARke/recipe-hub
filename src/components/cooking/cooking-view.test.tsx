@@ -360,12 +360,13 @@ describe('CookingView', () => {
 		await user.click(ingredients);
 		await screen.findByRole('dialog', { name: 'Ingredients' });
 
-		// Back to the recipe's page, whose address the browser shows before the view hides.
+		// Back to the recipe's page, whose address the browser shows, and announces, before the view
+		// hides.
 		history.replaceState(null, '', '/recipes/sunday-pot-roast');
-		await page.hide();
 		await act(async () => {
 			window.dispatchEvent(new PopStateEvent('popstate'));
 		});
+		await page.hide();
 		const hiddenHeading = within(screen.getByRole('main', { hidden: true })).getByRole('heading', {
 			level: 1,
 			hidden: true,
@@ -411,6 +412,7 @@ describe('CookingView', () => {
 	});
 
 	it('cooks a recipe without sections, yield, or notes, in batches, through its one step', async () => {
+		history.replaceState(null, '', '/recipes/garden-salad/cook');
 		const user = userEvent.setup();
 		render(<CookingView recipe={salad} />);
 
@@ -428,7 +430,7 @@ describe('CookingView', () => {
 	});
 
 	it('scales a recipe that makes something under its own parameter', async () => {
-		visit('?makes=36');
+		history.replaceState(null, '', '/recipes/garden-salad/cook?makes=36');
 		render(
 			<CookingView
 				recipe={{ ...salad, yield: { kind: 'makes', amount: { min: 24 }, unit: 'biscuits' } }}
