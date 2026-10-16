@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	guardProductionDatabase,
 	productionDatabaseGuardEnvSchema,
-} from '@/infrastructure/db/connection-string';
+} from '@/lib/production-database-guard';
 
 const productionEndpointId = 'ep-quiet-butterfly-w2qres1h';
 
@@ -76,7 +76,7 @@ describe('guardProductionDatabase', () => {
 
 	it("refuses a preview that does not name production's endpoint", () => {
 		expect(() => guardProductionDatabase(previewDirectUrl, { VERCEL_ENV: 'preview' })).toThrow(
-			"NEON_PRODUCTION_ENDPOINT_ID must be set on Preview, naming production's Neon endpoint, so a preview's build can refuse production's database"
+			"NEON_PRODUCTION_ENDPOINT_ID must be set on Preview, naming production's Neon endpoint, so a preview can refuse production's database"
 		);
 	});
 

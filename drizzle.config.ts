@@ -1,11 +1,11 @@
 import { loadEnvConfig } from '@next/env';
 import { defineConfig } from 'drizzle-kit';
 import { z } from 'zod';
+import { pinFullSslVerification } from './src/infrastructure/db/connection-string';
 import {
 	guardProductionDatabase,
-	pinFullSslVerification,
 	productionDatabaseGuardEnvSchema,
-} from './src/infrastructure/db/connection-string';
+} from './src/lib/production-database-guard';
 
 loadEnvConfig(process.cwd());
 

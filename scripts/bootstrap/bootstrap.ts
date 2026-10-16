@@ -4,13 +4,13 @@ import { Pool } from 'pg';
 import { z } from 'zod';
 import { MemberService } from '@/application/members/member-service';
 import type { Actor, ActorProvider } from '@/application/ports/actor-provider';
-import {
-	guardProductionDatabase,
-	pinFullSslVerification,
-	productionDatabaseGuardEnvSchema,
-} from '@/infrastructure/db/connection-string';
+import { pinFullSslVerification } from '@/infrastructure/db/connection-string';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { getLogger } from '@/lib/logger';
+import {
+	guardProductionDatabase,
+	productionDatabaseGuardEnvSchema,
+} from '@/lib/production-database-guard';
 
 const logger = getLogger('bootstrap');
 

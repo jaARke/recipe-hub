@@ -7,6 +7,7 @@ import { pinFullSslVerification } from '@/infrastructure/db/connection-string';
 import { printQueryErrorsWithoutParameters } from '@/infrastructure/db/query-errors';
 import { env } from '@/lib/env';
 import { getLogger } from '@/lib/logger';
+import { guardProductionDatabase } from '@/lib/production-database-guard';
 
 const logger = getLogger('db');
 
@@ -21,8 +22,15 @@ const queryTimeoutMs = statementTimeoutMs + 5_000;
 
 printQueryErrorsWithoutParameters();
 
+const connectionString = pinFullSslVerification(env.DATABASE_URL);
+
+// As the module loads, before any pool exists, as each build step checks its own connection: a
+// preview's build then fails before it renders, and a running preview fails every query rather than
+// reach production.
+guardProductionDatabase(connectionString, env);
+
 const pool = new Pool({
-	connectionString: pinFullSslVerification(env.DATABASE_URL),
+	connectionString,
 	// Short, so idle connections close before a Fluid compute instance suspends.
 	idleTimeoutMillis: 5000,
 	connectionTimeoutMillis: connectionTimeoutMs,

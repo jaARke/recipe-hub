@@ -8,11 +8,7 @@ import type { MemberRepository, NewMember } from '@/application/ports/member-rep
 import { ImageFolders } from '@/application/recipes/image-folders';
 import { RecipeService } from '@/application/recipes/recipe-service';
 import type { Member } from '@/domain/member/member';
-import {
-	guardProductionDatabase,
-	pinFullSslVerification,
-	productionDatabaseGuardEnvSchema,
-} from '@/infrastructure/db/connection-string';
+import { pinFullSslVerification } from '@/infrastructure/db/connection-string';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
@@ -21,6 +17,10 @@ import { rateLimits, sessions, verifications } from '@/infrastructure/db/schema'
 import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
 import { seedImageEnvironment } from '@/lib/image-paths';
 import { getLogger } from '@/lib/logger';
+import {
+	guardProductionDatabase,
+	productionDatabaseGuardEnvSchema,
+} from '@/lib/production-database-guard';
 import { seedSamples } from './seed-samples';
 
 // Every sample's contributor. No one signs in as it: its address can never receive a code.

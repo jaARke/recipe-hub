@@ -7,12 +7,13 @@ import {
 	previewImageEnvironmentPrefix,
 	productionImageEnvironment,
 } from '@/lib/image-paths';
+import { productionDatabaseGuardEnvSchema } from '@/lib/production-database-guard';
 
 const envSchema = z
 	.object({
 		NODE_ENV: z.enum(['development', 'production', 'test']),
-		// Set by Vercel on deployments; absent when running Next.js directly.
-		VERCEL_ENV: z.enum(['development', 'preview', 'production']).optional(),
+		// VERCEL_ENV, and production's Neon endpoint, which the app's pool refuses outside production.
+		...productionDatabaseGuardEnvSchema.shape,
 		// Set by Vercel on every deployment, previews included: the production host, without a scheme.
 		VERCEL_PROJECT_PRODUCTION_URL: z.hostname().optional(),
 		// Set by Vercel on every deployment: that deployment's own host, without a scheme.
