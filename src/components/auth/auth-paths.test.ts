@@ -1,10 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { joinedInviteHref, safeNextPath, signInHref } from '@/components/auth/auth-paths';
+import {
+	joinedInviteHref,
+	requestedPageHref,
+	safeNextPath,
+	signInHref,
+} from '@/components/auth/auth-paths';
 
 describe('signInHref', () => {
 	it('names the page to return to', () => {
 		expect(signInHref('/account')).toBe('/sign-in?next=%2Faccount');
 		expect(signInHref('/admin?tab=open')).toBe('/sign-in?next=%2Fadmin%3Ftab%3Dopen');
+	});
+});
+
+describe('requestedPageHref', () => {
+	it('keeps the query as requested, repeated parameters included', () => {
+		expect(requestedPageHref('/contribute', { draft: 'd1', tab: 'manual' })).toBe(
+			'/contribute?draft=d1&tab=manual'
+		);
+		expect(requestedPageHref('/admin', { tab: ['invites', 'members'] })).toBe(
+			'/admin?tab=invites&tab=members'
+		);
+		expect(requestedPageHref('/admin', { note: 'a&b c' })).toBe('/admin?note=a%26b+c');
+	});
+
+	it('leaves out the query when there is none', () => {
+		expect(requestedPageHref('/admin', {})).toBe('/admin');
+		expect(requestedPageHref('/admin', { tab: undefined })).toBe('/admin');
 	});
 });
 

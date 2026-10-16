@@ -1,4 +1,6 @@
 import type { CompletedInviteDto } from '@/application/access/access-dtos';
+import type { RouteSearchParams } from '@/components/recipe/recipe-list-params';
+import { hrefWithParams } from '@/components/recipe/recipe-paths';
 import { invitePath } from '@/lib/auth-paths';
 
 export const signInPath = '/sign-in';
@@ -23,6 +25,18 @@ const placeholderOrigin = 'https://next.invalid';
 
 export function signInHref(next: string): string {
 	return `${signInPath}?${new URLSearchParams({ [nextParamName]: next })}`;
+}
+
+// A page with the query it was requested with, repeated parameters included, so a page's own
+// redirect to sign in returns to it as the proxy's does.
+export function requestedPageHref(path: string, searchParams: RouteSearchParams): string {
+	const params = new URLSearchParams();
+	for (const [name, values] of Object.entries(searchParams)) {
+		for (const value of [values ?? []].flat()) {
+			params.append(name, value);
+		}
+	}
+	return hrefWithParams(path, params);
 }
 
 // The invite page loaded again for the member a code signed in, saying whether the invite created
