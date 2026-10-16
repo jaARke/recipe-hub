@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
+import { connection } from 'next/server';
 import { Suspense } from 'react';
 import { getCachedTagLabels } from '@/app/_lib/recipe-cache';
 import { loadFormMember } from '@/app/(site)/(contribute)/_lib/load-form-member';
@@ -76,8 +77,10 @@ async function ContributeForMember({
 	searchParams,
 }: Pick<PageProps<'/contribute'>, 'searchParams'>) {
 	const params = await searchParams;
-	// Reading the query waited for the request, so this is the request's time, not a prerender's. Taken
-	// before the drafts are listed, so changes kept for an import started meanwhile are never pruned.
+	// The request's time, not a prerender's: with partial prefetching the query resolves while the
+	// shell still prerenders, so the time waits for the request itself. Taken before the drafts are
+	// listed, so changes kept for an import started meanwhile are never pruned.
+	await connection();
 	const now = new Date();
 	// The query names the draft and the tab, so signing in again returns to them.
 	const pageHref = requestedPageHref(contributePath, params);
