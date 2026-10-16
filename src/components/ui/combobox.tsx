@@ -5,6 +5,7 @@ import { Combobox as ComboboxPrimitive } from '@base-ui/react/combobox';
 import { cn } from 'cn';
 import { CheckIcon, ChevronDownIcon, XIcon } from 'lucide-react';
 import * as React from 'react';
+import { useOnKeptPageHide } from '@/components/forms/use-on-kept-page-hide';
 import { Button } from '@/components/ui/button';
 import {
 	InputGroup,
@@ -13,7 +14,16 @@ import {
 	InputGroupInput,
 } from '@/components/ui/input-group';
 
-const Combobox = ComboboxPrimitive.Root;
+function Combobox<Value, Multiple extends boolean | undefined = false, Item = Value>(
+	props: ComboboxPrimitive.Root.Props<Value, Multiple, Item>
+) {
+	// Closes as its page hides, so a return through history doesn't find it open.
+	const ownActions = React.useRef<ComboboxPrimitive.Root.Actions>(null);
+	const actionsRef = props.actionsRef ?? ownActions;
+	useOnKeptPageHide(() => actionsRef.current?.close());
+
+	return <ComboboxPrimitive.Root {...props} actionsRef={actionsRef} />;
+}
 
 function ComboboxValue({ ...props }: ComboboxPrimitive.Value.Props) {
 	return <ComboboxPrimitive.Value data-slot="combobox-value" {...props} />;

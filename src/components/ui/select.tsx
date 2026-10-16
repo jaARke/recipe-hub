@@ -4,8 +4,18 @@ import { Select as SelectPrimitive } from '@base-ui/react/select';
 import { cn } from 'cn';
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
 import * as React from 'react';
+import { useOnKeptPageHide } from '@/components/forms/use-on-kept-page-hide';
 
-const Select = SelectPrimitive.Root;
+function Select<Value, Multiple extends boolean | undefined = false>(
+	props: SelectPrimitive.Root.Props<Value, Multiple>
+) {
+	// Closes as its page hides, so a return through history doesn't find it open.
+	const ownActions = React.useRef<SelectPrimitive.Root.Actions>(null);
+	const actionsRef = props.actionsRef ?? ownActions;
+	useOnKeptPageHide(() => actionsRef.current?.close());
+
+	return <SelectPrimitive.Root {...props} actionsRef={actionsRef} />;
+}
 
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
 	return (

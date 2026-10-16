@@ -4,9 +4,15 @@ import { Menu as MenuPrimitive } from '@base-ui/react/menu';
 import { cn } from 'cn';
 import { CheckIcon, ChevronRightIcon } from 'lucide-react';
 import * as React from 'react';
+import { useOnKeptPageHide } from '@/components/forms/use-on-kept-page-hide';
 
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
-	return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
+	// Closes as its page hides, so a return through history doesn't find it open.
+	const ownActions = React.useRef<MenuPrimitive.Root.Actions>(null);
+	const actionsRef = props.actionsRef ?? ownActions;
+	useOnKeptPageHide(() => actionsRef.current?.close());
+
+	return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} actionsRef={actionsRef} />;
 }
 
 function DropdownMenuPortal({ ...props }: MenuPrimitive.Portal.Props) {
