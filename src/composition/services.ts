@@ -44,6 +44,7 @@ import {
 	expiringImageEnvironmentPrefixes,
 	imageEnvironment,
 	readableImageEnvironments,
+	secureCookies,
 	siteUrl,
 	sweepsImagesAfterWrites,
 } from '@/lib/env';
@@ -79,6 +80,7 @@ function getAuth(): Auth {
 		secret: env.BETTER_AUTH_SECRET,
 		allowedHosts: deploymentHosts,
 		productionHost: env.VERCEL_ENV === 'production' ? siteUrl.hostname : undefined,
+		secureCookies,
 		accounts: new AccountService(
 			new DrizzleMemberRepository(db),
 			new DrizzleInviteRepository(db),
@@ -207,7 +209,7 @@ export function getMemberService(): MemberService {
 export function getFavoriteService(): FavoriteService {
 	return new FavoriteService(
 		new DrizzleFavoriteRepository(db),
-		new CookieDeviceFavorites({ cookies: requestCookies, secure: env.NODE_ENV === 'production' }),
+		new CookieDeviceFavorites({ cookies: requestCookies, secure: secureCookies }),
 		new DrizzleRecipeRepository(db),
 		actors
 	);

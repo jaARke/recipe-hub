@@ -22,6 +22,7 @@ import {
 	users,
 	verifications,
 } from '@/infrastructure/db/schema';
+import { authCookiePrefix } from '@/lib/auth-cookies';
 import { authBasePath, signInCodeRequestPath } from '@/lib/auth-paths';
 import { withoutQueryParameters } from '@/lib/errors';
 import { getLogger } from '@/lib/logger';
@@ -70,6 +71,8 @@ export type AuthOptions = {
 	allowedHosts: string[];
 	// Production's host, which passkeys are bound to there; elsewhere they bind to the request's host.
 	productionHost?: string;
+	// Whether cookies travel over HTTPS alone, where each auth cookie's name takes the __Host- prefix.
+	secureCookies: boolean;
 	accounts: AuthAccountHooks;
 	// Keeps work Better Auth starts after responding, such as sending a code, alive until it ends.
 	runInBackground: (task: Promise<unknown>) => void;
@@ -142,6 +145,11 @@ export function createAuth(options: AuthOptions) {
 			// Postgres fills ids with uuidv7().
 			database: { generateId: 'uuid' },
 			backgroundTasks: { handler: options.runInBackground },
+			// Names every cookie Better Auth and its plugins set, the passkey challenge's included. Its
+			// own __Secure- prefix, which it would add by NODE_ENV ahead of __Host-, stays off.
+			cookiePrefix: authCookiePrefix(options.secureCookies),
+			useSecureCookies: false,
+			defaultCookieAttributes: { secure: options.secureCookies },
 		},
 		user: {
 			fields: { name: 'displayName' },

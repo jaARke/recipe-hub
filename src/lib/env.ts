@@ -57,6 +57,10 @@ const envSchema = z
 
 export const env = envSchema.parse(process.env);
 
+// Whether the app's cookies are Secure: on a production build, as every Vercel deployment serves
+// over HTTPS, and not on the dev server over http.
+export const secureCookies = env.NODE_ENV === 'production';
+
 // The base for absolute URLs in metadata: production on every deployment, else the dev server.
 export const siteUrl = new URL(
 	env.VERCEL_PROJECT_PRODUCTION_URL === undefined

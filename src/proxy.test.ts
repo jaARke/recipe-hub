@@ -12,14 +12,30 @@ describe('proxy', () => {
 		);
 	});
 
-	it('lets a request with a session cookie through', () => {
+	it.each([
+		{ where: 'an HTTPS deployment', name: '__Host-better-auth.session_token' },
+		{ where: 'the dev server', name: 'better-auth.session_token' },
+	])('lets a request with the session cookie $where sets through', ({ name }) => {
 		const response = proxy(
 			new NextRequest('https://recipes.example.com/account', {
-				headers: { cookie: '__Secure-better-auth.session_token=token.signature' },
+				headers: { cookie: `favorites=recipe-id; ${name}=token.signature` },
 			})
 		);
 
 		expect(response.headers.get('location')).toBeNull();
 		expect(response.headers.get('x-middleware-next')).toBe('1');
+	});
+
+	it('sends a visitor whose cookies hold no session to sign in', () => {
+		const response = proxy(
+			new NextRequest('https://recipes.example.com/account', {
+				headers: { cookie: 'favorites=recipe-id; __Host-better-auth.better-auth-passkey=token' },
+			})
+		);
+
+		expect(response.status).toBe(307);
+		expect(response.headers.get('location')).toBe(
+			'https://recipes.example.com/sign-in?next=%2Faccount'
+		);
 	});
 });
