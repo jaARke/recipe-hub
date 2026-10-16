@@ -2,11 +2,12 @@
 
 import { useRef, useState } from 'react';
 import type { FormAction } from '@/components/forms/form-state';
+import { useOnKeptPageHide } from '@/components/forms/use-on-kept-page-hide';
 
 // The open state of a dialog whose form runs an action, as props for its root, and the action for
-// its form. The dialog closes once the action succeeds and stays open while it runs: its form
-// unmounts with the popup, so a dialog closed and opened again mid-request could send the request
-// twice, and the first answer would have nowhere to show.
+// its form. The dialog closes once the action succeeds, or as its page hides, but stays open while
+// the action runs: its form unmounts with the popup, so a dialog closed and opened again mid-request
+// could send the request twice, and the first answer would have nowhere to show.
 export function useActionDialog(action: FormAction, onSuccess: () => void) {
 	const [open, setOpen] = useState(false);
 	const running = useRef(false);
@@ -30,6 +31,8 @@ export function useActionDialog(action: FormAction, onSuccess: () => void) {
 			setOpen(nextOpen);
 		}
 	}
+
+	useOnKeptPageHide(() => changeOpen(false));
 
 	return [{ open, onOpenChange: changeOpen }, runAction] as const;
 }

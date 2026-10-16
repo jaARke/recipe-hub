@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import {
 	RecipeImageViewer,
 	RecipeImageViewerTrigger,
@@ -38,13 +39,12 @@ afterEach(async () => {
 	vi.restoreAllMocks();
 });
 
-function renderPhotoViewer(
+function photoViewer(
 	Viewer: typeof RecipeImageViewer,
 	Trigger: typeof RecipeImageViewerTrigger,
 	images: readonly ShownImage[] = photos
 ) {
-	undoLayout = stubViewerLayout();
-	render(
+	return (
 		<Viewer role="dish" title="Weeknight chicken soup" images={images}>
 			{images.map((photo, index) => (
 				<Trigger key={photo.pathname} index={index} className="w-24">
@@ -53,6 +53,15 @@ function renderPhotoViewer(
 			))}
 		</Viewer>
 	);
+}
+
+function renderPhotoViewer(
+	Viewer: typeof RecipeImageViewer,
+	Trigger: typeof RecipeImageViewerTrigger,
+	images: readonly ShownImage[] = photos
+) {
+	undoLayout = stubViewerLayout();
+	render(photoViewer(Viewer, Trigger, images));
 }
 
 async function openViewer(pressed = 'View photo 1 of 3: Soup in a bowl') {
@@ -227,6 +236,24 @@ describe('RecipeImageViewer', () => {
 		expect(document.activeElement).toBe(
 			screen.getByRole('button', { name: 'View photo 2 of 3: Bread on a board' })
 		);
+	});
+
+	it('closes as its page hides, and opens again at the image pressed next', async () => {
+		const user = userEvent.setup();
+		undoLayout = stubViewerLayout();
+		const page = renderKeptPage(photoViewer(RecipeImageViewer, RecipeImageViewerTrigger));
+		const trigger = screen.getByRole('button', { name: 'View photo 2 of 3: Bread on a board' });
+
+		await user.click(trigger);
+		const viewer = await screen.findByRole('dialog', { name: 'Weeknight chicken soup' });
+		await within(viewer).findByRole('region', { name: 'Photos' });
+		await page.hide();
+		await page.show();
+
+		expect(trigger.getAttribute('aria-expanded')).toBe('false');
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		await user.click(screen.getByRole('button', { name: 'View photo 3 of 3: Salad' }));
+		expect(caption(await screen.findByRole('dialog'))).toBe('Photo 3 of 3. Salad');
 	});
 
 	it('zooms with + and −, about the frame’s middle, and fits with 0', async () => {

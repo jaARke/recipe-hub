@@ -60,8 +60,8 @@ function renderForm(
 	renderFormFrom(recipeFormValues(content, problems), action);
 }
 
-function renderFormFrom(initial: RecipeFormValues, action: FormAction = refuse) {
-	render(
+function recipeForm(initial: RecipeFormValues, action: FormAction = refuse) {
+	return (
 		<RecipeForm
 			initial={initial}
 			action={action}
@@ -71,6 +71,10 @@ function renderFormFrom(initial: RecipeFormValues, action: FormAction = refuse) 
 			submitLabel="Save recipe"
 		/>
 	);
+}
+
+function renderFormFrom(initial: RecipeFormValues, action: FormAction = refuse) {
+	render(recipeForm(initial, action));
 }
 
 // The note holding this text, which is what takes focus.
@@ -184,6 +188,20 @@ describe('RecipeForm’s review notes', () => {
 
 		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
 		await waitFor(() => expect(document.activeElement).toBe(noteWith('Check the title.')));
+		expect(action).not.toHaveBeenCalled();
+	});
+
+	it('closes the warning about notes as its page hides, and saves nothing', async () => {
+		const action = vi.fn(refuse);
+		const user = userEvent.setup();
+		const page = renderKeptPage(recipeForm(recipeFormValues(lemonBars, threeNotes), action));
+
+		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+		expect(await screen.findByRole('alertdialog')).toBeDefined();
+		await page.hide();
+		await page.show();
+
+		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
 		expect(action).not.toHaveBeenCalled();
 	});
 

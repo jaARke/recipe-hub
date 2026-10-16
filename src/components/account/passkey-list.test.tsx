@@ -1,8 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PasskeyList } from '@/components/account/passkey-list';
-import type { FormAction } from '@/components/forms/form-state';
+import type { FormAction, FormState } from '@/components/forms/form-state';
 import { toast } from '@/components/ui/toast';
 
 const passkeys = [{ id: 'passkey-1', name: 'Work laptop', createdAt: null }];
@@ -79,7 +79,8 @@ describe('PasskeyList', () => {
 	});
 
 	it('keeps the rename dialog open while the name saves, so it cannot be sent twice', async () => {
-		const rename = vi.fn<FormAction>(() => new Promise(() => {}));
+		const { promise, resolve } = Promise.withResolvers<FormState>();
+		const rename = vi.fn<FormAction>(() => promise);
 		const user = userEvent.setup();
 		render(<PasskeyList passkeys={passkeys} renamePasskey={rename} removePasskey={succeed} />);
 
@@ -92,6 +93,8 @@ describe('PasskeyList', () => {
 		expect(trigger.getAttribute('aria-expanded')).toBe('true');
 		await user.click(screen.getByRole('button', { name: /Saving name$/ }));
 		expect(rename).toHaveBeenCalledOnce();
+		// Ended, since React holds back every later transition, a later test's among them, until it ends.
+		await act(async () => resolve({ status: 'success' }));
 	});
 
 	it('closes the removal dialog once the passkey is removed', async () => {

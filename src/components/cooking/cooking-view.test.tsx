@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cookingChecksKey } from '@/components/cooking/cooking-checks';
 import type { CookingRecipe } from '@/components/cooking/cooking-screens';
 import { CookingView } from '@/components/cooking/cooking-view';
+import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import { parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import { recipeIdSchema } from '@/domain/recipe/recipe';
 
@@ -335,6 +336,20 @@ describe('CookingView', () => {
 		expect(checkboxNames(true)).toEqual([]);
 		expect(sessionStorage.getItem(cookingChecksKey(potRoast))).toBeNull();
 		expect(screen.queryByText(/^Picked up/)).toBeNull();
+	});
+
+	it('closes Steps as its page hides, so a return through history finds it closed', async () => {
+		const user = userEvent.setup();
+		const page = renderKeptPage(<CookingView recipe={potRoast} />);
+		const trigger = screen.getByRole('button', { name: 'Steps' });
+
+		await user.click(trigger);
+		expect(await screen.findByRole('dialog', { name: 'Steps' })).toBeDefined();
+		await page.hide();
+		await page.show();
+
+		expect(trigger.getAttribute('aria-expanded')).toBe('false');
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 	});
 
 	it('starts over from Steps, focusing Gather’s heading as the dialog closes', async () => {
