@@ -93,11 +93,16 @@ describe('browser storage', () => {
 		vi.stubGlobal('localStorage', memoryStorage());
 		writeBrowserStorage('recipe-form:soup', 'old');
 		writeBrowserStorage('recipe-form:pie', 'new');
+		writeBrowserStorage('recipe-form:tart', 'new');
 		writeBrowserStorage('theme', 'old');
 
-		removeBrowserStorageWhere('recipe-form:', (value) => value === 'old');
+		removeBrowserStorageWhere(
+			'recipe-form:',
+			(value, key) => value === 'old' || key === 'recipe-form:tart'
+		);
 
 		expect(readBrowserStorage('recipe-form:soup')).toBeUndefined();
+		expect(readBrowserStorage('recipe-form:tart')).toBeUndefined();
 		expect(readBrowserStorage('recipe-form:pie')).toBe('new');
 		expect(readBrowserStorage('theme')).toBe('old');
 	});

@@ -28,6 +28,7 @@ import {
 import { recipeFormValues } from '@/components/recipe-form/recipe-form-values';
 import { HeldDraftMenu } from '@/components/recipe-form/subject-menus';
 import { DraftProvenanceLine } from '@/components/recipe-import/draft-provenance-line';
+import { reviewableImportIds } from '@/components/recipe-import/listed-drafts';
 import {
 	parseRecipeEntryTab,
 	parseSavedDraftParam,
@@ -75,6 +76,9 @@ async function ContributeForMember({
 	searchParams,
 }: Pick<PageProps<'/contribute'>, 'searchParams'>) {
 	const params = await searchParams;
+	// Reading the query waited for the request, so this is the request's time, not a prerender's. Taken
+	// before the drafts are listed, so changes kept for an import started meanwhile are never pruned.
+	const now = new Date();
 	// The query names the draft and the tab, so signing in again returns to them.
 	const pageHref = requestedPageHref(contributePath, params);
 	const drafts = await loadDrafts(pageHref);
@@ -123,7 +127,10 @@ async function ContributeForMember({
 							action={createRecipe}
 							uploadFolders={uploadFolders}
 							tagLabels={tagLabels}
-							autosave={{ memberId: member.id }}
+							autosave={{
+								memberId: member.id,
+								existing: { knownAt: now, importIds: reviewableImportIds(drafts) },
+							}}
 							drafts={{
 								save: saveDraft,
 								opened:
@@ -137,8 +144,7 @@ async function ContributeForMember({
 					photo: <ScanImportForm action={importFromScans} uploadFolder={uploadFolders.scan} />,
 				}}
 				drafts={drafts}
-				// Reading the session waited for the request, so this is the request's time, not a prerender's.
-				now={new Date()}
+				now={now}
 				memberId={member.id}
 				deleteDraft={deleteDraft}
 			/>

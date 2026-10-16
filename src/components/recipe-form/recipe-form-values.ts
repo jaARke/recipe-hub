@@ -558,48 +558,45 @@ export function recipeFormValues(
 	};
 }
 
-// The payload the form sends, its lists as sections: each heading starts one, and the lines before
-// the first heading form one without a heading. Blank rows and blank optional text are left out, so
-// a blank heading's lines join the lines above it; a heading with no lines stays, so the domain flags
-// it.
+// One of a list's sections as the form sends it: the heading that starts it, if any, and its lines.
+type ListSection = { heading?: RecipeFormRow; items: RecipeFormRow[] };
+
+// A list's sections as the form sends them: each heading starts one, and the lines before the first
+// heading form one without a heading. Blank rows are left out, so a blank heading's lines join the
+// lines above it; a heading with no lines stays, so the domain flags it.
+function listSections(list: RecipeFormList): ListSection[] {
+	const sections: ListSection[] = [];
+	for (const row of list.rows) {
+		if (isBlank(row.text)) {
+			continue;
+		}
+		const last = sections.at(-1);
+		if (row.kind === 'heading') {
+			sections.push({ heading: row, items: [] });
+		} else if (last === undefined) {
+			sections.push({ items: [row] });
+		} else {
+			last.items.push(row);
+		}
+	}
+	return sections;
+}
+
+// The payload the form sends, its lists as sections, with blank optional text left out.
 export function recipeFormSubmission(values: RecipeFormValues): RecipeFormSubmission {
 	const targets = new Map<string, ProblemTarget>();
 
-	const submittedSections = (list: RecipeFormListName) => {
-		const sections: { heading?: string; texts: string[] }[] = [];
-		let heading: RecipeFormRow | undefined;
-		let items: RecipeFormRow[] = [];
-		const addSection = () => {
-			if (heading === undefined && items.length === 0) {
-				return;
-			}
+	const submittedSections = (list: RecipeFormListName) =>
+		listSections(values[list]).map(({ heading, items }, index) => {
 			addSectionTargets(
 				targets,
 				list,
-				sections.length,
+				index,
 				heading?.id,
 				items.map((item) => item.id)
 			);
-			sections.push({
-				heading: heading?.text.trim(),
-				texts: items.map((item) => item.text.trim()),
-			});
-		};
-		for (const row of values[list].rows) {
-			if (isBlank(row.text)) {
-				continue;
-			}
-			if (row.kind === 'heading') {
-				addSection();
-				heading = row;
-				items = [];
-			} else {
-				items.push(row);
-			}
-		}
-		addSection();
-		return sections;
-	};
+			return { heading: heading?.text.trim(), texts: items.map((item) => item.text.trim()) };
+		});
 
 	const images: RecipeFormPayload['images'] = [];
 	for (const role of photoRoles) {
@@ -751,13 +748,33 @@ export function recipeFormProblems(values: RecipeFormValues): RecipeFormProblem[
 	);
 }
 
+// The paths a save's problem with empty required content takes: a field's own, and for a list without
+// lines, each of its sections, which then hold only headings, as the domain finds each without lines,
+// or the list's own where it has none.
+function requiredPaths(values: RecipeFormValues, content: RequiredContent): string[] {
+	switch (content) {
+		case 'title':
+			return [content];
+		case 'ingredientSections':
+		case 'instructionSections': {
+			const sections = listSections(values[content]);
+			return sections.length === 0
+				? [content]
+				: sections.map((_, index) => `${content}.${index}.${itemKeys[content]}`);
+		}
+	}
+}
+
 // What the browser knows a save would be refused for: each place the recipe needs filled in that is
-// empty, with the message the server gives, keyed by the path of the problem.
+// empty, with the message the server gives, keyed by the path of the problem it gives, so each shows
+// where a save made before hydration shows it.
 export function recipeFormRequiredErrors(values: RecipeFormValues): FieldErrors {
 	const fieldErrors: FieldErrors = {};
 	for (const { emptyRequired } of recipeFormPlaces(values)) {
 		if (emptyRequired !== undefined) {
-			fieldErrors[emptyRequired] = missingContentMessages[emptyRequired];
+			for (const path of requiredPaths(values, emptyRequired)) {
+				fieldErrors[path] = missingContentMessages[emptyRequired];
+			}
 		}
 	}
 	return fieldErrors;

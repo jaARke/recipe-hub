@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { fieldErrorsFrom } from '@/components/forms/field-errors';
+import type { FieldErrors } from '@/components/forms/form-state';
+import { recipeContentFromForm } from '@/components/recipe-form/recipe-form-content';
 import {
 	editRecipeForm,
 	hasPhotosInProgress,
@@ -14,6 +17,7 @@ import {
 	type RecipeFormRowText,
 	type RecipeFormValues,
 } from '@/components/recipe-form/recipe-form-values';
+import { InvalidRecipeError } from '@/domain/recipe/errors';
 import { importDraftFromExtractedRecipe } from '@/domain/recipe/extracted-recipe';
 import { parseAmountText, parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import { parseRecipeContent } from '@/domain/recipe/recipe';
@@ -839,13 +843,73 @@ describe('recipeFormRequiredErrors', () => {
 
 		expect(recipeFormRequiredErrors(withHeading)).toEqual({
 			title: 'Enter a title.',
-			ingredientSections: 'Add at least one ingredient.',
+			'ingredientSections.0.lines': 'Add at least one ingredient.',
 			instructionSections: 'Add at least one step.',
 		});
 	});
 
 	it('finds nothing in a recipe with a title, an ingredient, and a step', () => {
 		expect(recipeFormRequiredErrors(lemonBarsForm())).toEqual({});
+	});
+
+	// What the server answers a save of the form with: the problems the domain finds in what it sends.
+	function serverFieldErrors(values: RecipeFormValues): FieldErrors {
+		const sent = JSON.stringify(recipeFormSubmission(values).payload);
+		try {
+			parseRecipeContent(recipeContentFromForm(sent));
+		} catch (error) {
+			if (error instanceof InvalidRecipeError) {
+				return fieldErrorsFrom(error.problems);
+			}
+			throw error;
+		}
+		return {};
+	}
+
+	it('puts a list of headings alone at each heading’s section, as the server does', () => {
+		// The lemon bars' headings without their lines, with a blank heading between them, which the
+		// form leaves out of what it sends.
+		const headingsAlone = edited(
+			lemonBarsForm(),
+			...[1, 2, 4].map((rowId): RecipeFormEdit => ({
+				type: 'removeRow',
+				list: 'ingredientSections',
+				rowId,
+			})),
+			{ type: 'addRow', list: 'ingredientSections', kind: 'heading', afterRowId: 0 }
+		);
+		const atEachSection = {
+			'ingredientSections.0.lines': 'Add at least one ingredient.',
+			'ingredientSections.1.lines': 'Add at least one ingredient.',
+		};
+
+		expect(recipeFormRequiredErrors(headingsAlone)).toEqual(atEachSection);
+		expect(serverFieldErrors(headingsAlone)).toEqual(atEachSection);
+
+		const checked = editRecipeForm(headingsAlone, {
+			type: 'attachErrors',
+			fieldErrors: recipeFormRequiredErrors(headingsAlone),
+			targets: recipeFormSubmission(headingsAlone).targets,
+		});
+		expect(checked.ingredientSections.error).toBeUndefined();
+		expect(recipeFormProblems(checked)).toEqual([
+			{
+				message: 'Add at least one ingredient.',
+				target: { kind: 'section', list: 'ingredientSections', index: 0, id: 0 },
+			},
+			{
+				message: 'Add at least one ingredient.',
+				target: { kind: 'section', list: 'ingredientSections', index: 2, id: 3 },
+			},
+		]);
+	});
+
+	it('puts an empty list’s message at the list, as the server does', () => {
+		const empty = { ...lemonBarsForm(), instructionSections: { rows: [] } };
+		const atList = { instructionSections: 'Add at least one step.' };
+
+		expect(recipeFormRequiredErrors(empty)).toEqual(atList);
+		expect(serverFieldErrors(empty)).toEqual(atList);
 	});
 });
 

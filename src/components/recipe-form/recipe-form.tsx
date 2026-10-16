@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from 'cn';
-import { HistoryIcon, ScanTextIcon } from 'lucide-react';
+import { HistoryIcon, InfoIcon, ScanTextIcon } from 'lucide-react';
 import { unstable_rethrow } from 'next/navigation';
 import * as React from 'react';
 import { flushSync } from 'react-dom';
@@ -41,6 +41,7 @@ import {
 import { uploadPhoto, type PhotoUploader } from '@/components/recipe-form/photo-upload';
 import {
 	recipeFormSubject,
+	type ExistingRecipeFormSubjects,
 	type RecipeFormSubject,
 } from '@/components/recipe-form/recipe-form-autosave';
 import {
@@ -217,8 +218,8 @@ type RecipeFormProps = {
 	// review's intro takes focus as the page loads.
 	importId?: string;
 	// Keeps unsaved changes in this browser for the member signed in, and brings them back as the form
-	// loads again.
-	autosave?: { memberId: string };
+	// loads again. What the page knows still exists of what the member's forms edit prunes the rest.
+	autosave?: { memberId: string; existing?: ExistingRecipeFormSubjects };
 	// Absent when editing a published recipe, which has no draft.
 	drafts?: RecipeFormDrafts;
 	submitLabel: string;
@@ -298,11 +299,14 @@ function RecipeForm({
 	const autosaved = useRecipeFormAutosave({
 		memberId: autosave?.memberId,
 		subject,
+		existing: autosave?.existing,
 		baseline,
 		values,
 		unchanged,
 		dispatch,
 		onRestore: (restoredAt) => announce(`${restoredTitle(restoredAt)}.`),
+		onOutdated: (outdatedAt) =>
+			announce(`${outdatedTitle(outdatedAt)}. ${outdatedDescription(subject)}`),
 	});
 	const [draftPending, startDraftSave] = React.useTransition();
 	const [draftStatus, setDraftStatus] = useTransientState<DraftStatus>();
@@ -645,6 +649,12 @@ function RecipeForm({
 					onDiscard={discardChanges}
 				/>
 			)}
+			{autosaved.outdatedAt !== undefined && (
+				<OutdatedChangesNotice
+					outdatedAt={autosaved.outdatedAt}
+					description={outdatedDescription(subject)}
+				/>
+			)}
 			{/* About the whole form, such as an edit conflict; the summary lists a save's problems. */}
 			<FormErrorAlert message={state.status === 'error' ? state.message : undefined} />
 			<ProblemSummary problems={problems} />
@@ -916,6 +926,19 @@ function restoredTitle(restoredAt: Date): string {
 	return `Restored changes made in this browser on ${formatDayAndTime(restoredAt)}`;
 }
 
+// Such as "Changes made in this browser on October 14 at 3:12 PM were for an earlier version".
+function outdatedTitle(outdatedAt: Date): string {
+	return `Changes made in this browser on ${formatDayAndTime(outdatedAt)} were for an earlier version`;
+}
+
+// Why changes kept in this browser were for an earlier version: the recipe changed, or the draft was
+// saved somewhere else. A new recipe has no versions.
+function outdatedDescription(subject: RecipeFormSubject): string {
+	return subject.kind === 'recipe'
+		? 'This recipe changed after you made them, so they weren’t restored.'
+		: 'This draft was saved somewhere else after you made them, so they weren’t restored.';
+}
+
 // What the action bar says of the last draft save, if anything.
 function draftStatusMessage(
 	status: DraftStatus | undefined,
@@ -960,6 +983,26 @@ function RestoredChangesNotice({
 			>
 				Discard
 			</Button>
+		</Alert>
+	);
+}
+
+// Heads the form in the restored changes' notice's place once it drops changes kept in this browser
+// for an earlier version of what it edits, and stays while the form does; their entry goes as they
+// drop, so the next load says nothing. Dropping them is announced, so nothing reads this out as it
+// appears.
+function OutdatedChangesNotice({
+	outdatedAt,
+	description,
+}: {
+	outdatedAt: Date;
+	description: string;
+}) {
+	return (
+		<Alert role={undefined} aria-live={undefined}>
+			<InfoIcon aria-hidden="true" />
+			<AlertTitle>{outdatedTitle(outdatedAt)}</AlertTitle>
+			<AlertDescription>{description}</AlertDescription>
 		</Alert>
 	);
 }

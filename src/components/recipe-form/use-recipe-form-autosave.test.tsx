@@ -25,6 +25,7 @@ function TitleForm() {
 		unchanged: showSameRecipeForm(recipeFormSnapshot(values), recipeFormSnapshot(initial)),
 		dispatch,
 		onRestore: () => {},
+		onOutdated: () => {},
 	});
 	return (
 		<>

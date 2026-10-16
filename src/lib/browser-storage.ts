@@ -38,17 +38,17 @@ export function memberBrowserStorageKey(name: string): string {
 	return `${memberKeyPrefix}${name}`;
 }
 
-// Removes each entry under the prefix whose value the check finds stale, such as one past its
-// lifetime for a page this device never opens again.
+// Removes each entry under the prefix that the check finds stale by its value and key, such as one
+// past its lifetime for a page this device never opens again.
 export function removeBrowserStorageWhere(
 	prefix: string,
-	isStale: (value: string) => boolean
+	isStale: (value: string, key: string) => boolean
 ): void {
 	attempt('localStorage', (storage) => {
 		const keys = Array.from({ length: storage.length }, (_, index) => storage.key(index));
 		for (const key of keys) {
 			const value = key?.startsWith(prefix) === true ? storage.getItem(key) : null;
-			if (key !== null && value !== null && isStale(value)) {
+			if (key !== null && value !== null && isStale(value, key)) {
 				storage.removeItem(key);
 			}
 		}

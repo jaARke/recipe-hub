@@ -7,7 +7,10 @@ import type { FormAction, FormState } from '@/components/forms/form-state';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import { HeldDraftProvider } from '@/components/recipe-form/held-draft';
 import { RecipeForm, type RecipeFormDrafts } from '@/components/recipe-form/recipe-form';
-import type { AutosavedRecipeForm } from '@/components/recipe-form/recipe-form-autosave';
+import type {
+	AutosavedRecipeForm,
+	ExistingRecipeFormSubjects,
+} from '@/components/recipe-form/recipe-form-autosave';
 import type { EditedRecipe, SavedDraftResult } from '@/components/recipe-form/recipe-form-fields';
 import {
 	recipeFormSnapshot,
@@ -653,6 +656,37 @@ describe('RecipeForm’s lists', () => {
 			'Add at least one ingredient.'
 		);
 	});
+
+	it('asks for a line under each heading of a list holding only headings, where the server does', async () => {
+		const action = vi.fn(refuse);
+		const user = userEvent.setup();
+		renderForm(
+			{
+				...lemonBars,
+				ingredientSections: [
+					{ heading: 'For the crust', lines: [] },
+					{ heading: 'For the glaze', lines: [] },
+				],
+			},
+			[],
+			action
+		);
+
+		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+
+		expect(screen.getByText('Fix 2 things to save')).toBeDefined();
+		const link = screen.getByRole('link', {
+			name: 'Ingredients, For the glaze: Add at least one ingredient.',
+		});
+		expect(link.getAttribute('href')).toBe(`#${textbox('Ingredient heading 2').id}`);
+		expect(
+			screen.getByRole('link', { name: 'Ingredients, For the crust: Add at least one ingredient.' })
+		).toBeDefined();
+		expect(
+			screen.queryByRole('link', { name: 'Ingredients: Add at least one ingredient.' })
+		).toBeNull();
+		expect(action).not.toHaveBeenCalled();
+	});
 });
 
 describe('RecipeForm’s undo', () => {
@@ -753,6 +787,7 @@ type AutosavedFormProps = {
 	importId?: string;
 	drafts?: RecipeFormDrafts;
 	member?: string;
+	existing?: ExistingRecipeFormSubjects;
 };
 
 function AutosavedForm({
@@ -762,6 +797,7 @@ function AutosavedForm({
 	importId: reviewed,
 	drafts,
 	member = memberId,
+	existing,
 }: AutosavedFormProps) {
 	return (
 		<RecipeForm
@@ -772,7 +808,7 @@ function AutosavedForm({
 			uploader={vi.fn()}
 			editing={editing}
 			importId={reviewed}
-			autosave={{ memberId: member }}
+			autosave={{ memberId: member, existing }}
 			drafts={drafts}
 			submitLabel="Save recipe"
 		/>
@@ -791,6 +827,9 @@ function title(): HTMLInputElement {
 // The notice for changes restored from this browser, which says when they were made; its
 // announcement ends with a period.
 const restoredNotice = /^Restored changes made in this browser on .*M$/;
+
+// The notice for changes kept in this browser for an earlier version, which are dropped.
+const outdatedNotice = /^Changes made in this browser on .*M were for an earlier version$/;
 
 describe('RecipeForm’s autosave', () => {
 	const blankText = {
@@ -1013,8 +1052,9 @@ describe('RecipeForm’s autosave', () => {
 		]);
 	});
 
-	it('brings an edit back only to the version of the recipe it was made on', async () => {
+	it('brings an edit back only to the version of the recipe it was made on, and says so once', async () => {
 		const user = userEvent.setup();
+		const recipeKey = `member:recipe-form:${memberId}:recipe:${recipeId}`;
 		const editing = (version: string) => ({ id: recipeId, version, respellableTags: [] });
 		const first = render(
 			<AutosavedForm
@@ -1023,11 +1063,27 @@ describe('RecipeForm’s autosave', () => {
 			/>
 		);
 		await user.type(title(), ' squares');
-		expect(
-			JSON.parse(localStorage.getItem(`member:recipe-form:${memberId}:recipe:${recipeId}`) ?? '{}')
-				.version
-		).toBe('2026-10-14T12:00:00.000Z');
+		const kept = JSON.parse(localStorage.getItem(recipeKey) ?? '{}') as AutosavedRecipeForm;
+		expect(kept.version).toBe('2026-10-14T12:00:00.000Z');
 		first.unmount();
+
+		// Another tab saved the recipe since.
+		const reloaded = render(
+			<AutosavedForm
+				initial={recipeFormValues(lemonBars)}
+				editing={editing('2026-10-15T09:30:00.000Z')}
+			/>
+		);
+
+		const notice = `Changes made in this browser on ${formatDayAndTime(new Date(kept.writtenAt))} were for an earlier version`;
+		const description = 'This recipe changed after you made them, so they weren’t restored.';
+		expect(await screen.findByText(notice)).toBeDefined();
+		expect(screen.getByText(description)).toBeDefined();
+		expect(screen.getByText(`${notice}. ${description}`).closest('[role="status"]')).not.toBeNull();
+		expect(title().value).toBe('Lemon bars');
+		expect(screen.queryByText(restoredNotice)).toBeNull();
+		expect(localStorage.getItem(recipeKey)).toBeNull();
+		reloaded.unmount();
 
 		render(
 			<AutosavedForm
@@ -1036,9 +1092,29 @@ describe('RecipeForm’s autosave', () => {
 			/>
 		);
 
-		expect(title().value).toBe('Lemon bars');
+		await waitFor(() => expect(title().value).toBe('Lemon bars'));
+		expect(screen.queryByText(outdatedNotice)).toBeNull();
+	});
+
+	it('says nothing of changes for an earlier version that the form now shows', async () => {
+		const edited = recipeFormValues({ ...lemonBars, title: 'Lemon squares' });
+		localStorage.setItem(
+			`member:recipe-form:${memberId}:recipe:${recipeId}`,
+			JSON.stringify({ ...JSON.parse(entryFor(recipeFormSnapshot(edited))), version: 'a' })
+		);
+
+		render(
+			<AutosavedForm
+				initial={edited}
+				editing={{ id: recipeId, version: 'b', respellableTags: [] }}
+			/>
+		);
+
+		await waitFor(() =>
+			expect(localStorage.getItem(`member:recipe-form:${memberId}:recipe:${recipeId}`)).toBeNull()
+		);
+		expect(screen.queryByText(outdatedNotice)).toBeNull();
 		expect(screen.queryByText(restoredNotice)).toBeNull();
-		expect(localStorage.getItem(`member:recipe-form:${memberId}:recipe:${recipeId}`)).toBeNull();
 	});
 
 	it.each([
@@ -1083,6 +1159,12 @@ describe('RecipeForm’s autosave', () => {
 			await waitFor(() => expect(localStorage.getItem(entryKey)).toBeNull());
 			expect(title().value).toBe('Lemon bars');
 			expect(screen.queryByText(restoredNotice)).toBeNull();
+			expect(screen.getByText(outdatedNotice)).toBeDefined();
+			expect(
+				screen.getByText(
+					'This draft was saved somewhere else after you made them, so they weren’t restored.'
+				)
+			).toBeDefined();
 		}
 	);
 
@@ -1264,6 +1346,31 @@ describe('RecipeForm’s autosave', () => {
 		expect(localStorage.getItem('member:recipe-form:new')).toBeNull();
 		expect(localStorage.getItem(othersRecent)).not.toBeNull();
 		expect(title().value).toBe('');
+	});
+
+	it('removes the member’s entries for imports and recipes the page knows are gone, as a form loads', async () => {
+		const reviewedImportId = '6d2b9f4a-8e1c-4b7d-a3f5-1c9e7d2b6a85';
+		const newRecipeId = '0b6f3c7e-3c1a-4d8e-9a57-2f1d6b8e4c11';
+		const knownAt = new Date();
+		const before = new Date(knownAt.getTime() - 60 * 1000);
+		const goneImport = `member:recipe-form:${memberId}:import:${importId}`;
+		const goneRecipe = `member:recipe-form:${memberId}:recipe:${recipeId}`;
+		const keptImport = `member:recipe-form:${memberId}:import:${reviewedImportId}`;
+		const othersRecipe = `member:recipe-form:${otherMemberId}:recipe:${recipeId}`;
+		// A recipe the page never knew of, edited in another tab since.
+		const writtenSince = `member:recipe-form:${memberId}:recipe:${newRecipeId}`;
+		for (const key of [goneImport, goneRecipe, keptImport, othersRecipe]) {
+			localStorage.setItem(key, entryFor(storedNewRecipe, before));
+		}
+		localStorage.setItem(writtenSince, entryFor(storedNewRecipe, knownAt));
+
+		render(<AutosavedForm existing={{ knownAt, importIds: [reviewedImportId], recipeIds: [] }} />);
+
+		await waitFor(() => expect(localStorage.getItem(goneImport)).toBeNull());
+		expect(localStorage.getItem(goneRecipe)).toBeNull();
+		for (const key of [keptImport, othersRecipe, writtenSince]) {
+			expect(localStorage.getItem(key)).not.toBeNull();
+		}
 	});
 
 	it('works as without it where the browser blocks storage', async () => {
