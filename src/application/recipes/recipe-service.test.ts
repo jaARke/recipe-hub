@@ -20,6 +20,7 @@ import { InMemoryMemberRepository } from '@/application/testing/in-memory-member
 import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
 import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
+import type { Provenance } from '@/domain/recipe/provenance';
 import {
 	recipeContentSchema,
 	type RecipeContentInput,
@@ -79,6 +80,13 @@ const importResults: Record<RecipeImportMode, ImportSuccess> = {
 		aiModel: 'example/vision-model',
 		costUsd: 0.012,
 	},
+};
+
+// What a draft saved from the URL import's review keeps of the import.
+const urlImportProvenance: Provenance = {
+	entryMode: 'url',
+	sourceUrl: 'https://example.com/soup',
+	aiModel: 'example/model',
 };
 
 function manualEntry(content: RecipeContentInput): CreateRecipeInput {
@@ -148,15 +156,18 @@ async function createCatalog() {
 		await imports.recordSuccess(id, importResults[mode]);
 		return id;
 	};
-	// A draft the member saved from the recipe form, naming the images.
+	// A draft the member saved from the recipe form, naming the images, and from an import's review,
+	// keeping its provenance.
 	const saveDraft = async (
 		actor: MemberActor,
 		imagePathnames: string[] = [],
-		importId?: RecipeImportId
+		importId?: RecipeImportId,
+		provenance?: Provenance
 	) => {
 		const draft = await drafts.create({
 			memberId: actor.memberId,
 			...(importId !== undefined && { importId }),
+			...(provenance !== undefined && { provenance }),
 			values: {},
 			imagePathnames,
 		});
@@ -946,6 +957,53 @@ describe('createRecipe from an import', () => {
 				err: expect.objectContaining({ message: 'The database could not be reached' }),
 			}),
 		]);
+	});
+});
+
+describe('createRecipe from a saved draft', () => {
+	it("takes the provenance the member's draft kept once the import's review is gone, and credits its page", async () => {
+		const { recipes, imports, drafts, serviceFor, addMember, importDraft, saveDraft } =
+			await createCatalog();
+		const author = await addMember('Ada');
+		const importId = await importDraft(author);
+		const draftId = await saveDraft(author, [], importId, urlImportProvenance);
+		await imports.clearDraft(importId);
+
+		const ref = await serviceFor(author).createRecipe({ content: sampleChickenSoup, draftId });
+
+		expect((await recipes.findById(ref.id))?.provenance).toEqual(urlImportProvenance);
+		expect((await serviceFor(author).getRecipe(ref.slug))?.sourceUrl).toBe(
+			'https://example.com/soup'
+		);
+		expect(await drafts.findById(draftId)).toBeNull();
+		expect(logLines(consoleInfo)).toEqual([
+			{
+				level: 'info',
+				logger: 'recipes',
+				message: 'Recipe created',
+				recipeId: ref.id,
+				memberId: author.memberId,
+				entryMode: 'url',
+			},
+		]);
+	});
+
+	it.each<{ name: string; draftId: (ids: { theirs: string }) => string }>([
+		{ name: "another member's draft", draftId: ({ theirs }) => theirs },
+		{ name: 'an id no draft has', draftId: () => missingId },
+		{ name: 'a malformed id', draftId: () => malformedId },
+	])('saves manual entry from $name', async ({ draftId }) => {
+		const author = memberActor();
+		const other = memberActor();
+		const { recipes, serviceFor, importDraft, saveDraft } = await createCatalog();
+		const theirs = await saveDraft(other, [], await importDraft(other), urlImportProvenance);
+
+		const ref = await serviceFor(author).createRecipe({
+			content: sampleChickenSoup,
+			draftId: draftId({ theirs }),
+		});
+
+		expect((await recipes.findById(ref.id))?.provenance).toEqual({ entryMode: 'manual' });
 	});
 });
 

@@ -29,7 +29,7 @@ export class InMemorySavedDraftRepository implements SavedDraftRepository {
 	private readonly drafts = new Map<SavedDraftId, SavedDraft>();
 
 	async create(draft: NewSavedDraft): Promise<SavedDraft | null> {
-		const { memberId, importId, ...contents } = draft;
+		const { memberId, importId, provenance, ...contents } = draft;
 		const continued = importId === undefined ? undefined : this.findWithImport(importId);
 		if (continued !== undefined) {
 			if (continued.memberId !== memberId) {
@@ -41,6 +41,7 @@ export class InMemorySavedDraftRepository implements SavedDraftRepository {
 						id: continued.id,
 						memberId,
 						importId,
+						...(provenance !== undefined && { provenance }),
 						createdAt: continued.createdAt,
 						updatedAt: new Date(),
 					},
@@ -56,6 +57,7 @@ export class InMemorySavedDraftRepository implements SavedDraftRepository {
 					id: savedDraftIdSchema.parse(crypto.randomUUID()),
 					memberId,
 					...(importId !== undefined && { importId }),
+					...(provenance !== undefined && { provenance }),
 					createdAt,
 					updatedAt: createdAt,
 				},
@@ -76,6 +78,7 @@ export class InMemorySavedDraftRepository implements SavedDraftRepository {
 					id: stored.id,
 					memberId: stored.memberId,
 					...(stored.importId !== undefined && { importId: stored.importId }),
+					...(stored.provenance !== undefined && { provenance: stored.provenance }),
 					createdAt: stored.createdAt,
 					updatedAt: new Date(),
 				},
@@ -99,9 +102,10 @@ export class InMemorySavedDraftRepository implements SavedDraftRepository {
 			.reverse()
 			.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
 			.slice(0, limit)
-			.map(({ id, importId, title, updatedAt }) => ({
+			.map(({ id, importId, provenance, title, updatedAt }) => ({
 				id,
 				...(importId !== undefined && { importId }),
+				...(provenance !== undefined && { provenance }),
 				...(title !== undefined && { title }),
 				updatedAt,
 			}));

@@ -11,8 +11,13 @@ import { InMemoryImageStore } from '@/application/testing/in-memory-image-store'
 import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
 import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
+import type { Provenance } from '@/domain/recipe/provenance';
 import { recipeContentSchema } from '@/domain/recipe/recipe';
-import type { RecipeImportId, RecipeImportMode } from '@/domain/recipe/recipe-import';
+import {
+	importDraftCutoff,
+	type RecipeImportId,
+	type RecipeImportMode,
+} from '@/domain/recipe/recipe-import';
 import { sampleChickenSoup } from '@/domain/recipe/samples/sample-recipes';
 import { daysInMilliseconds } from '@/lib/dates';
 import { settings } from '@/lib/settings';
@@ -78,12 +83,27 @@ async function createDrafts() {
 				problems: [],
 			},
 			...(mode === 'url' && { sourceUrl: 'https://example.com/soup' }),
+			aiModel: 'example/model',
 		});
 		return started.id;
 	};
 	const backdateImport = (id: RecipeImportId, days: number) => imports.backdate(id, daysAgo(days));
 	const backdateDraft = (id: SavedDraftId, days: number) => drafts.backdate(id, daysAgo(days));
-	return { recipes, imports, drafts, serviceFor, importDraft, backdateImport, backdateDraft };
+	// The import's review gone, as the cleanup leaves it: its draft and source URL cleared.
+	const expireImport = async (id: RecipeImportId) => {
+		backdateImport(id, settings.imports.importDraftLifetimeDays + 0.01);
+		await imports.clearDraftsCreatedBefore(importDraftCutoff(new Date()));
+	};
+	return {
+		recipes,
+		imports,
+		drafts,
+		serviceFor,
+		importDraft,
+		backdateImport,
+		backdateDraft,
+		expireImport,
+	};
 }
 
 function logLines(spy: MockInstance<(...args: unknown[]) => void>): unknown[] {
@@ -200,6 +220,37 @@ describe('saveDraft', () => {
 		});
 	});
 
+	it.each<{ mode: RecipeImportMode; provenance: Provenance }>([
+		{
+			mode: 'url',
+			provenance: {
+				entryMode: 'url',
+				sourceUrl: 'https://example.com/soup',
+				aiModel: 'example/model',
+			},
+		},
+		{ mode: 'photo', provenance: { entryMode: 'photo', aiModel: 'example/model' } },
+	])(
+		'keeps the provenance of the $mode import whose review it saves',
+		async ({ mode, provenance }) => {
+			const member = memberActor();
+			const { drafts, serviceFor, importDraft } = await createDrafts();
+			const importId = await importDraft(member, mode);
+
+			const saved = await serviceFor(member).saveDraft({ ...lemonBars, importId });
+
+			expect((await drafts.findById(saved.id))?.provenance).toEqual(provenance);
+		}
+	);
+
+	it('keeps no provenance for a draft saved without an import', async () => {
+		const { drafts, serviceFor } = await createDrafts();
+
+		const saved = await serviceFor(memberActor()).saveDraft(lemonBars);
+
+		expect(await drafts.findById(saved.id)).not.toHaveProperty('provenance');
+	});
+
 	it.each<{ name: string; unavailable: (ids: { importId: RecipeImportId }) => Promise<string> }>([
 		{ name: 'another member’s import', unavailable: async ({ importId }) => importId },
 		{ name: 'a malformed import id', unavailable: async () => 'not-an-import-id' },
@@ -306,6 +357,28 @@ describe('getDraft', () => {
 		expect(await service.getImportDraft(expired)).toMatchObject({ id: expiredDraft.id });
 	});
 
+	it("says where a draft saved from an import's review came from once the review is gone", async () => {
+		const member = memberActor();
+		const { serviceFor, importDraft, expireImport } = await createDrafts();
+		const service = serviceFor(member);
+		const importId = await importDraft(member);
+		const saved = await service.saveDraft({ ...lemonBars, importId });
+		await expireImport(importId);
+
+		// Saved again where it now opens, the add page, which names the draft and no import.
+		const resaved = await service.saveDraft({ ...lemonBars, draftId: saved.id });
+
+		expect(resaved.id).toBe(saved.id);
+		expect(await service.getDraft(saved.id)).toEqual({
+			id: saved.id,
+			mode: 'url',
+			sourceUrl: 'https://example.com/soup',
+			values: lemonBars.values,
+			savedAt: resaved.savedAt,
+			expiresAt: new Date(resaved.savedAt.getTime() + daysInMilliseconds(lifetime)),
+		});
+	});
+
 	it("finds no draft for another member's import", async () => {
 		const owner = memberActor();
 		const { serviceFor, importDraft } = await createDrafts();
@@ -399,6 +472,7 @@ describe('listDrafts', () => {
 				kind: 'saved',
 				id: continuing.id,
 				continuesImportId: continued,
+				mode: 'url',
 				title: 'Lemon bars',
 				savedAt: continuing.savedAt,
 				expiresAt: new Date(continuing.savedAt.getTime() + daysInMilliseconds(lifetime)),
@@ -423,6 +497,26 @@ describe('listDrafts', () => {
 			(imported?.kind === 'import' ? imported.importedAt.getTime() : 0) +
 				daysInMilliseconds(settings.imports.importDraftLifetimeDays)
 		);
+	});
+
+	it("lists a draft saved from an import's review by how the import read it, once the review is gone", async () => {
+		const member = memberActor();
+		const { serviceFor, importDraft, expireImport } = await createDrafts();
+		const service = serviceFor(member);
+		const importId = await importDraft(member, 'photo');
+		const saved = await service.saveDraft({ ...lemonBars, importId });
+		await expireImport(importId);
+
+		expect(await service.listDrafts()).toEqual([
+			{
+				kind: 'saved',
+				id: saved.id,
+				mode: 'photo',
+				title: 'Lemon bars',
+				savedAt: saved.savedAt,
+				expiresAt: new Date(saved.savedAt.getTime() + daysInMilliseconds(lifetime)),
+			},
+		]);
 	});
 
 	it('lists only the newest of both, up to its limit', async () => {

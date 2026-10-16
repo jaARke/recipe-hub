@@ -40,6 +40,7 @@ import {
 import { assertCanModifyRecipe, canModifyRecipe } from '@/application/recipes/recipe-policy';
 import type { MemberId } from '@/domain/member/member';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
+import type { Provenance } from '@/domain/recipe/provenance';
 import {
 	parseRecipeContent,
 	recipeIdSchema,
@@ -69,11 +70,13 @@ export type CreateRecipeInput = {
 	content: RecipeContentInput;
 	// The import the member reviewed, whose provenance the recipe takes; absent for manual entry.
 	importId?: string;
-	// The draft the member saved the recipe from, which goes once the recipe is saved.
+	// The draft the member saved the recipe from, which goes once the recipe is saved. With no import
+	// named, the recipe takes the provenance the draft kept from an import whose review is gone.
 	draftId?: string;
 };
 
-// Where a new recipe came from: manual entry, or an import it is saved from.
+// Where a new recipe came from: manual entry, an import it is saved from, or a draft that kept an
+// import's provenance.
 type RecipeOrigin = Pick<NewRecipe, 'provenance' | 'importId'>;
 
 export class RecipeService {
@@ -162,11 +165,12 @@ export class RecipeService {
 	}
 
 	// Writes resolve the actor first, so an anonymous caller learns nothing about which recipes exist.
-	// The browser never names the provenance: a recipe saved from an import takes the import's.
+	// The browser never names the provenance: a recipe saved from an import takes the import's, and
+	// one saved from the member's draft of an import takes what the draft kept.
 	async createRecipe(input: CreateRecipeInput): Promise<RecipeRef> {
 		const actor = requireMember(await this.actors.currentActor());
 		// Checked before the content, since no edit to the content can save an unavailable import.
-		const origin = await this.recipeOrigin(input.importId, actor.memberId);
+		const origin = await this.recipeOrigin(input, actor.memberId);
 		const content = parseRecipeContent(input.content);
 		await this.assertImagesAttachable(content.images, [], actor.memberId);
 
@@ -269,14 +273,16 @@ export class RecipeService {
 		};
 	}
 
-	// Without an import id, the recipe was entered by hand. Import ids arrive from forms, so a malformed
-	// one names no import. The import must be the member's and its draft still reviewable.
+	// Without an import id, the recipe takes the provenance its draft kept, or was entered by hand.
+	// Import ids arrive from forms, so a malformed one names no import. The import must be the
+	// member's and its draft still reviewable.
 	private async recipeOrigin(
-		importId: string | undefined,
+		{ importId, draftId }: Pick<CreateRecipeInput, 'importId' | 'draftId'>,
 		memberId: MemberId
 	): Promise<RecipeOrigin> {
 		if (importId === undefined) {
-			return { provenance: { entryMode: 'manual' } };
+			const provenance = await this.savedDraftProvenance(draftId, memberId);
+			return { provenance: provenance ?? { entryMode: 'manual' } };
 		}
 
 		const parsed = recipeImportIdSchema.safeParse(importId);
@@ -288,6 +294,18 @@ export class RecipeService {
 		}
 
 		return { provenance: draft.provenance, importId: recipeImport.id };
+	}
+
+	// The provenance the member's draft kept from the import it was saved from, if any. Ids arrive
+	// from forms, so a malformed one, or one naming another member's draft, gives none. A draft that
+	// expired while its form was open still gives its own, since the recipe was written from it.
+	private async savedDraftProvenance(
+		draftId: string | undefined,
+		memberId: MemberId
+	): Promise<Provenance | undefined> {
+		const parsed = savedDraftIdSchema.safeParse(draftId);
+		const draft = parsed.success ? await this.drafts.findById(parsed.data) : null;
+		return draft?.memberId === memberId ? draft.provenance : undefined;
 	}
 
 	// Slugs arrive from URLs, so a malformed slug names no recipe.

@@ -1,6 +1,7 @@
 import 'server-only';
 import type { SavedDraftId } from '@/application/drafts/saved-draft';
 import type { MemberId } from '@/domain/member/member';
+import type { Provenance } from '@/domain/recipe/provenance';
 import type { RecipeImportId } from '@/domain/recipe/recipe-import';
 
 // What a save writes: the form's values, with what the list of drafts and the image sweep read from
@@ -17,12 +18,15 @@ export type NewSavedDraft = SavedDraftContents & {
 	memberId: MemberId;
 	// The import whose review the draft continues.
 	importId?: RecipeImportId;
+	// That import's provenance, which the draft keeps after the import's own source URL is cleared.
+	provenance?: Provenance;
 };
 
 export type SavedDraft = {
 	id: SavedDraftId;
 	memberId: MemberId;
 	importId?: RecipeImportId;
+	provenance?: Provenance;
 	title?: string;
 	values: unknown;
 	imagePathnames: string[];
@@ -32,7 +36,10 @@ export type SavedDraft = {
 };
 
 // A draft as the member's list of drafts shows it, without its values.
-export type SavedDraftSummary = Pick<SavedDraft, 'id' | 'importId' | 'title' | 'updatedAt'>;
+export type SavedDraftSummary = Pick<
+	SavedDraft,
+	'id' | 'importId' | 'provenance' | 'title' | 'updatedAt'
+>;
 
 // The drafts members save from the recipe form. Each is kept until it is deleted; readers pass the
 // time before which a draft has expired, and ignore those last saved before it. Removing a member
@@ -41,7 +48,8 @@ export interface SavedDraftRepository {
 	// Stores a new draft. An import has at most one: a draft that continues it takes the place of the
 	// import's earlier one, keeping its id, or returns null when that one is another member's.
 	create(draft: NewSavedDraft): Promise<SavedDraft | null>;
-	// Replaces the draft's contents and marks it saved now. Returns null when no draft has this id.
+	// Replaces the draft's contents, keeping its import and provenance, and marks it saved now.
+	// Returns null when no draft has this id.
 	update(id: SavedDraftId, contents: SavedDraftContents): Promise<SavedDraft | null>;
 	findById(id: SavedDraftId): Promise<SavedDraft | null>;
 	// The draft that continues the import, if any.

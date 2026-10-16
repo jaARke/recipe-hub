@@ -106,6 +106,12 @@ export default function PrivacyPage() {
 						{settings.imports.importDraftLifetimeDays} days.
 					</li>
 					<li>
+						A draft you save from an import’s review keeps the address of the page the recipe was
+						read from, so the recipe you save from it can credit that page. The address is kept as
+						long as the draft: until you save the recipe or delete the draft, or{' '}
+						{dayCount(settings.drafts.savedDraftLifetimeDays)} after your last save.
+					</li>
+					<li>
 						A record of each import is kept: who started it, when, which AI model read it, and what
 						it cost.
 					</li>

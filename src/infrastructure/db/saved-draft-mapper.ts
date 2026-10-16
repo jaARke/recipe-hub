@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { savedDraftIdSchema } from '@/application/drafts/saved-draft';
 import type { SavedDraft, SavedDraftSummary } from '@/application/ports/saved-draft-repository';
 import { memberIdSchema } from '@/domain/member/member';
+import { provenanceSchema } from '@/domain/recipe/provenance';
 import { recipeImportIdSchema } from '@/domain/recipe/recipe-import';
 import { withoutNulls } from '@/infrastructure/db/nullable-columns';
 import { recipeDrafts } from '@/infrastructure/db/schema';
@@ -12,6 +13,7 @@ export const savedDraftColumns = {
 	id: recipeDrafts.id,
 	memberId: recipeDrafts.memberId,
 	importId: recipeDrafts.importId,
+	provenance: recipeDrafts.provenance,
 	title: recipeDrafts.title,
 	values: recipeDrafts.values,
 	imagePathnames: recipeDrafts.imagePathnames,
@@ -24,6 +26,7 @@ type SavedDraftRow = InferModelFromColumns<typeof savedDraftColumns>;
 export const savedDraftSummaryColumns = {
 	id: recipeDrafts.id,
 	importId: recipeDrafts.importId,
+	provenance: recipeDrafts.provenance,
 	title: recipeDrafts.title,
 	updatedAt: recipeDrafts.updatedAt,
 };
@@ -35,6 +38,7 @@ const savedDraftSchema = z.object({
 	id: savedDraftIdSchema,
 	memberId: memberIdSchema,
 	importId: recipeImportIdSchema.optional(),
+	provenance: provenanceSchema.optional(),
 	title: z.string().optional(),
 	values: z.unknown(),
 	imagePathnames: z.array(z.string()),
@@ -45,6 +49,7 @@ const savedDraftSchema = z.object({
 const savedDraftSummarySchema = savedDraftSchema.pick({
 	id: true,
 	importId: true,
+	provenance: true,
 	title: true,
 	updatedAt: true,
 }) satisfies z.ZodType<SavedDraftSummary>;

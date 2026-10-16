@@ -7,6 +7,7 @@ import type {
 	SavedDraftRepository,
 } from '@/application/ports/saved-draft-repository';
 import type { MemberId } from '@/domain/member/member';
+import type { Provenance } from '@/domain/recipe/provenance';
 import type { RecipeImportId } from '@/domain/recipe/recipe-import';
 
 export type SavedDraftRepositoryFixture = {
@@ -34,6 +35,13 @@ const lemonSquares = {
 	title: 'Lemon squares',
 	values: { text: { title: 'Lemon squares' }, rows: [] },
 	imagePathnames: ['dish/development/squares.jpg'],
+};
+
+// What a draft saved from a URL import's review keeps of the import.
+const fromLink: Provenance = {
+	entryMode: 'url',
+	sourceUrl: 'https://example.com/lemon-bars',
+	aiModel: 'example/model',
 };
 
 // What every SavedDraftRepository guarantees. The caller provides a fresh, empty fixture for each test.
@@ -83,15 +91,38 @@ export function describeSavedDraftRepositoryContract(
 			expect(created.imagePathnames).toEqual([]);
 		});
 
+		it('keeps the provenance of the import a draft continues, and none for one without', async () => {
+			const { drafts, memberId } = fixture();
+			const importId = await startImport();
+
+			const continuing = await create({ importId, provenance: fromLink });
+			const byHand = await create();
+
+			expect(continuing).toEqual({
+				id: expect.any(String),
+				memberId,
+				importId,
+				provenance: fromLink,
+				...lemonBars,
+				createdAt: expect.any(Date),
+				updatedAt: continuing.createdAt,
+			});
+			expect(await drafts.findById(continuing.id)).toEqual(continuing);
+			expect(await drafts.findByImportId(importId)).toEqual(continuing);
+			expect(byHand).not.toHaveProperty('provenance');
+			expect(await drafts.findById(byHand.id)).not.toHaveProperty('provenance');
+		});
+
 		it('keeps one draft for an import, which a new one replaces under the same id', async () => {
 			const { drafts } = fixture();
 			const importId = await startImport();
 			const first = await create({ importId });
 
-			const second = await create({ importId, ...lemonSquares });
+			const second = await create({ importId, provenance: fromLink, ...lemonSquares });
 
 			expect(second).toEqual({
 				...first,
+				provenance: fromLink,
 				...lemonSquares,
 				updatedAt: expect.any(Date),
 			});
@@ -115,7 +146,7 @@ export function describeSavedDraftRepositoryContract(
 		it('replaces the contents and marks the draft saved again, keeping the rest', async () => {
 			const { drafts } = fixture();
 			const importId = await startImport();
-			const created = await create({ importId });
+			const created = await create({ importId, provenance: fromLink });
 			await fixture().backdate(created.id, new Date(Date.now() - hourMs));
 
 			const updated = await drafts.update(created.id, {
@@ -127,6 +158,7 @@ export function describeSavedDraftRepositoryContract(
 				id: created.id,
 				memberId: created.memberId,
 				importId,
+				provenance: fromLink,
 				values: lemonSquares.values,
 				imagePathnames: [],
 				createdAt: created.createdAt,
@@ -156,7 +188,7 @@ export function describeSavedDraftRepositoryContract(
 			const { drafts, memberId, otherMemberId } = fixture();
 			const importId = await startImport();
 			const older = await create({ title: undefined });
-			const newer = await create({ importId });
+			const newer = await create({ importId, provenance: fromLink });
 			const expired = await create();
 			await create({ memberId: otherMemberId });
 			await fixture().backdate(older.id, new Date(Date.now() - 2 * hourMs));
@@ -166,7 +198,13 @@ export function describeSavedDraftRepositoryContract(
 			const listed = await drafts.list(memberId, new Date(Date.now() - 3 * hourMs), 10);
 
 			expect(listed).toEqual([
-				{ id: newer.id, importId, title: 'Lemon bars', updatedAt: expect.any(Date) },
+				{
+					id: newer.id,
+					importId,
+					provenance: fromLink,
+					title: 'Lemon bars',
+					updatedAt: expect.any(Date),
+				},
 				{ id: older.id, updatedAt: expect.any(Date) },
 			]);
 		});

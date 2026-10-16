@@ -22,9 +22,9 @@ import {
 } from '@/components/recipe-form/recipe-form-snapshot';
 import { recipeFormValues } from '@/components/recipe-form/recipe-form-values';
 import { DraftMenu } from '@/components/recipe-form/subject-menus';
+import { DraftProvenanceLine } from '@/components/recipe-import/draft-provenance-line';
 import { draftsTabPath } from '@/components/recipe-import/recipe-entry-paths';
 import { recipeImportPath } from '@/components/recipe-import/recipe-import-paths';
-import { RecipeImportedFrom } from '@/components/recipe/recipe-detail';
 import { contributePath, recipePath } from '@/components/recipe/recipe-paths';
 import { buttonVariants } from '@/components/ui/button';
 import {
@@ -130,11 +130,7 @@ async function ImportReview({ params }: Pick<PageProps<'/contribute/imports/[id]
 					/>
 				}
 			/>
-			{draft.sourceUrl === undefined ? (
-				<p className="text-sm text-muted-foreground">Read from your photos</p>
-			) : (
-				<RecipeImportedFrom sourceUrl={draft.sourceUrl} />
-			)}
+			<DraftProvenanceLine mode={draft.mode} sourceUrl={draft.sourceUrl} />
 			<RecipeForm
 				// The form reads initial once, and another draft's page can reuse it.
 				key={draft.id}

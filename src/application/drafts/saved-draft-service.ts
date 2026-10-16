@@ -20,6 +20,7 @@ import type {
 } from '@/application/ports/recipe-import-repository';
 import type { RecipeRepository } from '@/application/ports/recipe-repository';
 import type {
+	NewSavedDraft,
 	SavedDraft,
 	SavedDraftRepository,
 	SavedDraftSummary,
@@ -27,6 +28,7 @@ import type {
 import { unattachableImageProblems } from '@/application/recipes/attachable-images';
 import type { ImageFolders } from '@/application/recipes/image-folders';
 import type { MemberId } from '@/domain/member/member';
+import type { Provenance } from '@/domain/recipe/provenance';
 import {
 	importDraftCutoff,
 	recipeImportIdSchema,
@@ -52,6 +54,23 @@ export type SaveDraftInput = {
 	// images.2.pathname.
 	imagePathnames: readonly string[];
 };
+
+// The import a draft continues, with the provenance its recipe takes, which the draft keeps.
+type ContinuedImport = Required<Pick<NewSavedDraft, 'importId' | 'provenance'>>;
+
+// Where a draft saved from an import's review came from, as the import's own review says it.
+function importedFrom(
+	provenance: Provenance | undefined
+): Pick<SavedDraftDto, 'mode' | 'sourceUrl'> {
+	switch (provenance?.entryMode) {
+		case 'url':
+			return { mode: 'url', sourceUrl: provenance.sourceUrl };
+		case 'photo':
+			return { mode: 'photo' };
+		default:
+			return {};
+	}
+}
 
 // When an import's draft expires: its lifetime after the import started, as importDraftCutoff
 // counts back.
@@ -131,15 +150,17 @@ export class SavedDraftService {
 	// Saves whatever the form holds, with nothing required: over the member's draft the form opened or
 	// last saved, over an import's one draft for its review, or else as a new draft, as when the draft
 	// was deleted elsewhere. An import's review saves only while the import is the member's and can
-	// still be saved, as its recipe can. Its images are checked as a recipe's are, so a draft keeps
-	// alive only images the member could attach.
+	// still be saved, as its recipe can, and its draft keeps the import's provenance, so it still
+	// credits the import's source once the review is gone. Its images are checked as a recipe's are,
+	// so a draft keeps alive only images the member could attach.
 	async saveDraft(input: SaveDraftInput): Promise<SavedDraftRef> {
 		const actor = requireMember(await this.actors.currentActor());
 		const now = new Date();
-		const importId =
+		const continued =
 			input.importId === undefined
 				? undefined
 				: await this.reviewableImport(input.importId, actor.memberId, now);
+		const importId = continued?.importId;
 		const found =
 			importId === undefined
 				? await this.findDraft(input.draftId)
@@ -173,11 +194,7 @@ export class SavedDraftService {
 				: await this.drafts.update(existing.id, contents);
 		const saved =
 			updated ??
-			(await this.drafts.create({
-				...contents,
-				memberId: actor.memberId,
-				...(importId !== undefined && { importId }),
-			}));
+			(await this.drafts.create({ ...contents, memberId: actor.memberId, ...continued }));
 		if (saved === null) {
 			throw new Error('The import’s draft is another member’s');
 		}
@@ -254,14 +271,13 @@ export class SavedDraftService {
 		importId: RecipeImportId | undefined,
 		memberId: MemberId,
 		now: Date
-	): Promise<RecipeImportId | undefined> {
+	): Promise<ContinuedImport | undefined> {
 		if (importId === undefined) {
 			return undefined;
 		}
 		const recipeImport = await this.imports.findById(importId);
-		return recipeImport?.memberId === memberId && reviewableDraft(recipeImport, now) !== null
-			? importId
-			: undefined;
+		const draft = recipeImport?.memberId === memberId ? reviewableDraft(recipeImport, now) : null;
+		return draft === null ? undefined : { importId, provenance: draft.provenance };
 	}
 
 	// Import ids arrive from forms, so a malformed one names no import. Logged, since the member has to
@@ -270,7 +286,7 @@ export class SavedDraftService {
 		importId: string,
 		memberId: MemberId,
 		now: Date
-	): Promise<RecipeImportId> {
+	): Promise<ContinuedImport> {
 		const parsed = recipeImportIdSchema.safeParse(importId);
 		const continued = parsed.success
 			? await this.continuedImport(parsed.data, memberId, now)
@@ -300,10 +316,11 @@ export class SavedDraftService {
 		memberId: MemberId,
 		now: Date
 	): Promise<SavedDraftDto> {
-		const continuesImportId = await this.continuedImport(draft.importId, memberId, now);
+		const continued = await this.continuedImport(draft.importId, memberId, now);
 		return {
 			id: draft.id,
-			...(continuesImportId !== undefined && { continuesImportId }),
+			...(continued !== undefined && { continuesImportId: continued.importId }),
+			...importedFrom(draft.provenance),
 			values: draft.values,
 			savedAt: draft.updatedAt,
 			expiresAt: savedDraftExpiry(draft.updatedAt),
@@ -315,11 +332,13 @@ export class SavedDraftService {
 		memberId: MemberId,
 		now: Date
 	): Promise<DraftSummaryDto> {
-		const continuesImportId = await this.continuedImport(draft.importId, memberId, now);
+		const continued = await this.continuedImport(draft.importId, memberId, now);
+		const { mode } = importedFrom(draft.provenance);
 		return {
 			kind: 'saved',
 			id: draft.id,
-			...(continuesImportId !== undefined && { continuesImportId }),
+			...(continued !== undefined && { continuesImportId: continued.importId }),
+			...(mode !== undefined && { mode }),
 			...(draft.title !== undefined && { title: draft.title }),
 			savedAt: draft.updatedAt,
 			expiresAt: savedDraftExpiry(draft.updatedAt),

@@ -22,7 +22,8 @@ const importId = '0199d2a0-1b2c-7d3e-8f40-000000000003' as RecipeImportId;
 
 const now = new Date('2026-10-15T18:00:00.000Z');
 
-// A draft saved this morning with no title, one continuing an import, and an import from a link.
+// A draft saved this morning with no title, one continuing an import from a link, and an import
+// from a link.
 const drafts: DraftSummaryDto[] = [
 	{
 		kind: 'saved',
@@ -34,6 +35,7 @@ const drafts: DraftSummaryDto[] = [
 		kind: 'saved',
 		id: continuingId,
 		continuesImportId: continuedImportId,
+		mode: 'url',
 		title: 'Lemon bars',
 		savedAt: new Date('2026-10-14T18:00:00.000Z'),
 		expiresAt: new Date('2026-11-13T18:00:00.000Z'),
@@ -96,6 +98,12 @@ describe('DraftList', () => {
 		).toBe(within(untitled).getByRole('link'));
 		expect(
 			screen.getByRole('link', {
+				name: 'Lemon bars',
+				description: 'From a link Saved yesterday Kept until November 13, 2026',
+			})
+		).toBe(within(continuing).getByRole('link'));
+		expect(
+			screen.getByRole('link', {
 				name: 'Sheet-pan gnocchi',
 				description: 'From a link Imported 2 days ago Kept until October 20, 2026',
 			})
@@ -109,7 +117,32 @@ describe('DraftList', () => {
 			`/contribute/imports/${continuedImportId}`,
 			`/contribute/imports/${importId}`,
 		]);
-		expect(within(continuing).getByRole('link', { name: 'Lemon bars' })).toBeDefined();
+	});
+
+	it('says where a draft saved from an import came from once it opens on its own', () => {
+		render(
+			<DraftList
+				drafts={[
+					{
+						kind: 'saved',
+						id: savedId,
+						mode: 'photo',
+						title: 'Anise cakes',
+						savedAt: new Date('2026-10-15T15:00:00.000Z'),
+						expiresAt: new Date('2026-11-14T15:00:00.000Z'),
+					},
+				]}
+				now={now}
+				memberId={memberId}
+				deleteDraft={vi.fn()}
+			/>
+		);
+
+		const link = screen.getByRole('link', {
+			name: 'Anise cakes',
+			description: 'From photos Saved 3 hours ago Kept until November 14, 2026',
+		});
+		expect(link.getAttribute('href')).toBe(`/contribute?draft=${savedId}`);
 	});
 
 	it('deletes a draft from its row’s menu once asked, with the changes this browser kept for it', async () => {

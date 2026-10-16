@@ -20,7 +20,7 @@ import type { RecipeImportMode } from '@/domain/recipe/recipe-import';
 import { formatDate } from '@/lib/dates';
 import { settings } from '@/lib/settings';
 
-// Where each import's draft came from.
+// Where each import's draft came from, and each draft saved from an import's review.
 const importModeLabels = {
 	url: 'From a link',
 	photo: 'From photos',
@@ -113,7 +113,7 @@ function DraftList({ drafts, now, memberId, deleteDraft }: DraftListProps) {
 							</span>
 							<span className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
 								<span id={ids.kind}>
-									{draft.kind === 'import' ? importModeLabels[draft.mode] : 'Saved draft'}
+									{draft.mode === undefined ? 'Saved draft' : importModeLabels[draft.mode]}
 								</span>
 								<span id={ids.saved}>
 									{draft.kind === 'import' ? 'Imported' : 'Saved'}{' '}

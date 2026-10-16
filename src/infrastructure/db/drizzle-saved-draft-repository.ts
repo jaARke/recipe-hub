@@ -36,13 +36,24 @@ export class DrizzleSavedDraftRepository implements SavedDraftRepository {
 
 	// The import's unique key makes a second draft for it replace the first in the same statement, so
 	// two saves at once leave one draft.
-	async create({ memberId, importId, ...contents }: NewSavedDraft): Promise<SavedDraft | null> {
+	async create({
+		memberId,
+		importId,
+		provenance,
+		...contents
+	}: NewSavedDraft): Promise<SavedDraft | null> {
 		const [row] = await this.db
 			.insert(recipeDrafts)
-			.values({ memberId, importId: importId ?? null, ...contentColumns(contents) })
+			.values({
+				memberId,
+				importId: importId ?? null,
+				provenance: provenance ?? null,
+				...contentColumns(contents),
+			})
 			.onConflictDoUpdate({
 				target: recipeDrafts.importId,
 				set: {
+					provenance: sql`excluded.provenance`,
 					title: sql`excluded.title`,
 					values: sql`excluded.values`,
 					imagePathnames: sql`excluded.image_pathnames`,

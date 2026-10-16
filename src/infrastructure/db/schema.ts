@@ -157,6 +157,9 @@ export const recipeDrafts = pgTable(
 		importId: uuid('import_id')
 			.unique()
 			.references(() => recipeImports.id, { onDelete: 'set null' }),
+		// The provenance of the import the draft continues, which outlasts the import's own source URL;
+		// null for a draft entered by hand. Untyped, as the recipes' is, because the mapper validates it.
+		provenance: jsonb('provenance'),
 		// What the member's list of drafts names it by; null while the recipe has no title.
 		title: text('title'),
 		// The recipe form's values, untyped because only the form reads them, and checks them as it does.

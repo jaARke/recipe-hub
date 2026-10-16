@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { ZodError } from 'zod';
 import type { SavedDraftId } from '@/application/drafts/saved-draft';
 import { describeSavedDraftRepositoryContract } from '@/application/testing/saved-draft-repository-contract';
 import type { MemberId } from '@/domain/member/member';
@@ -53,11 +54,12 @@ describe('create', () => {
 		expect(draft?.id).toMatch(uuidV7);
 	});
 
-	it('keeps the draft without its import once the import is gone', async () => {
+	it('keeps the draft and its provenance without its import once the import is gone', async () => {
 		const started = await imports.start({ memberId, mode: 'url' });
 		const draft = await drafts.create({
 			memberId,
 			importId: started!.id,
+			provenance: { entryMode: 'url', sourceUrl: 'https://example.com/soup' },
 			values: {},
 			imagePathnames: [],
 		});
@@ -67,5 +69,18 @@ describe('create', () => {
 		const found = await drafts.findById(draft!.id);
 		expect(found).not.toHaveProperty('importId');
 		expect(found).toEqual({ ...draft, importId: undefined });
+		expect(found?.provenance).toEqual({ entryMode: 'url', sourceUrl: 'https://example.com/soup' });
+	});
+});
+
+describe('findById', () => {
+	it('throws when the provenance is not a valid one', async () => {
+		const draft = await drafts.create({ memberId, values: {}, imagePathnames: [] });
+		await db
+			.update(recipeDrafts)
+			.set({ provenance: { entryMode: 'url', sourceUrl: 'not a web address' } })
+			.where(eq(recipeDrafts.id, draft!.id));
+
+		await expect(drafts.findById(draft!.id)).rejects.toThrow(ZodError);
 	});
 });

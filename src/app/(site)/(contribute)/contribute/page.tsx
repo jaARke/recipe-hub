@@ -27,6 +27,7 @@ import {
 } from '@/components/recipe-form/recipe-form-snapshot';
 import { recipeFormValues } from '@/components/recipe-form/recipe-form-values';
 import { HeldDraftMenu } from '@/components/recipe-form/subject-menus';
+import { DraftProvenanceLine } from '@/components/recipe-import/draft-provenance-line';
 import {
 	parseRecipeEntryTab,
 	parseSavedDraftParam,
@@ -105,6 +106,8 @@ async function ContributeForMember({
 				page="add"
 				menu={<HeldDraftMenu memberId={member.id} action={deleteDraft} />}
 			/>
+			{/* A draft saved from an import's review still says where it came from. */}
+			<DraftProvenanceLine mode={opened?.mode} sourceUrl={opened?.sourceUrl} />
 			<RecipeEntryTabs
 				defaultTab={tab}
 				forms={{

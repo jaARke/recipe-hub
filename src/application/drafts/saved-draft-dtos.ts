@@ -7,6 +7,11 @@ export type SavedDraftDto = {
 	id: SavedDraftId;
 	// The import whose review the draft continues, while that review can still be saved.
 	continuesImportId?: RecipeImportId;
+	// How the import the draft was saved from read the recipe, which the draft keeps after the
+	// import's review is gone; absent for a draft entered by hand.
+	mode?: RecipeImportMode;
+	// For a URL import, the page the recipe was read from.
+	sourceUrl?: string;
 	values: unknown;
 	savedAt: Date;
 	expiresAt: Date;
@@ -25,6 +30,8 @@ export type DraftSummaryDto =
 			kind: 'saved';
 			id: SavedDraftId;
 			continuesImportId?: RecipeImportId;
+			// As the draft's SavedDraftDto has it.
+			mode?: RecipeImportMode;
 			title?: string;
 			savedAt: Date;
 			expiresAt: Date;
