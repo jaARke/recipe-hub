@@ -13,7 +13,7 @@ import {
 const courses = ['Soup', 'Bread', 'Salad'];
 
 describe('Combobox', () => {
-	it('closes as its page hides, so a return through history finds it closed', async () => {
+	it('closes as its page hides, kept from drawing as the page shows again', async () => {
 		const user = userEvent.setup();
 		const page = renderKeptPage(
 			<Combobox items={courses}>
@@ -34,6 +34,11 @@ describe('Combobox', () => {
 		await user.click(screen.getByRole('button', { name: 'Show courses' }));
 		expect(await screen.findByRole('listbox')).toBeDefined();
 		await page.hide();
+		expect(
+			document
+				.querySelector('[data-slot="combobox-content"]')
+				?.hasAttribute('data-closed-by-page-hide')
+		).toBe(true);
 		await page.show();
 
 		expect(input.getAttribute('aria-expanded')).toBe('false');

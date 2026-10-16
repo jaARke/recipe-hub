@@ -2,7 +2,6 @@
 
 import { cn } from 'cn';
 import * as React from 'react';
-import { useOnKeptPageHide } from '@/components/forms/use-on-kept-page-hide';
 import type * as RecipeImageViewerBodyModule from '@/components/recipe/recipe-image-viewer-body';
 import { imageViewerLabels, viewImageLabel } from '@/components/recipe/recipe-image-viewer-labels';
 import { RecipeImageViewerTitleBar } from '@/components/recipe/recipe-image-viewer-title-bar';
@@ -135,30 +134,12 @@ function useViewerInitialFocus() {
 function RecipeImageViewer({ role, images, title, children }: RecipeImageViewerProps) {
 	const context = React.useMemo(() => ({ role, images }), [role, images]);
 	const { popupRef, initialFocus, initialFocusRef, onOpenChange } = useViewerInitialFocus();
-	// Controlled, so the viewer closes as its page hides. A controlled dialog with several triggers is
-	// told which one it opened from, whose payload is the image it opens at.
-	const [open, setOpen] = React.useState(false);
-	const [triggerId, setTriggerId] = React.useState<string | null>(null);
-
-	function changeOpen(nextOpen: boolean) {
-		setOpen(nextOpen);
-		onOpenChange(nextOpen);
-	}
-
-	useOnKeptPageHide(() => changeOpen(false));
 
 	React.useEffect(() => whenIdleAfterLoad(preloadRecipeImageViewerBody), []);
 
 	return (
 		<RecipeImageViewerContext.Provider value={context}>
-			<Dialog
-				open={open}
-				triggerId={triggerId}
-				onOpenChange={(nextOpen, { trigger }) => {
-					setTriggerId(trigger?.id ?? null);
-					changeOpen(nextOpen);
-				}}
-			>
+			<Dialog onOpenChange={onOpenChange}>
 				{({ payload }) => {
 					const startIndex = typeof payload === 'number' ? payload : 0;
 					return (

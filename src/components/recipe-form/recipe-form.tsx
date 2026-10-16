@@ -22,7 +22,6 @@ import { TextareaField } from '@/components/forms/textarea-field';
 import { useFieldUndo } from '@/components/forms/use-field-undo';
 import { useFormAction } from '@/components/forms/use-form-action';
 import { useHydrated } from '@/components/forms/use-hydrated';
-import { useOnKeptPageHide } from '@/components/forms/use-on-kept-page-hide';
 import { useTransientState } from '@/components/forms/use-transient-state';
 import { wideContentProps } from '@/components/layout/page-container';
 import { ActionBar } from '@/components/recipe-form/action-bar';
@@ -370,7 +369,6 @@ function RecipeForm({
 	const checks = recipeFormChecks(values);
 	const checksByKey = new Map(checks.map((check) => [problemKey(check.target), check]));
 	const [warningOpen, setWarningOpen] = React.useState(false);
-	useOnKeptPageHide(() => setWarningOpen(false));
 	// Set by "Save anyway", so the save it starts skips the warning.
 	const savingAnyway = React.useRef(false);
 	// The last place focused among the fields, not the original or the action bar, which Next goes on

@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { parseCookingStepParam, withCookingStepParam } from '@/components/cooking/cooking-screens';
+import { useOnKeptPageHide } from '@/components/forms/use-on-kept-page-hide';
 import { hrefWithParams } from '@/components/recipe/recipe-paths';
 import {
 	parseRecipeScaleParam,
@@ -50,8 +51,25 @@ function readNoQuery(): string {
 	return '';
 }
 
+// Next keeps the view, hidden, behind the page Back leads to, whose URL is not the view's: a hidden
+// view keeps the query it showed, even if it renders again, until it shows again.
 function useCookingQuery(): URLSearchParams {
-	const query = React.useSyncExternalStore(subscribe, readQuery, readNoQuery);
+	const hidden = React.useRef(false);
+	const shownQuery = React.useRef('');
+	useOnKeptPageHide(() => {
+		hidden.current = true;
+	});
+	React.useLayoutEffect(() => {
+		hidden.current = false;
+	}, []);
+	const readShownQuery = React.useCallback(() => {
+		if (!hidden.current) {
+			shownQuery.current = readQuery();
+		}
+		return shownQuery.current;
+	}, []);
+
+	const query = React.useSyncExternalStore(subscribe, readShownQuery, readNoQuery);
 	return React.useMemo(() => new URLSearchParams(query), [query]);
 }
 

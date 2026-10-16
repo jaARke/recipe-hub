@@ -16,7 +16,7 @@ const orders = [
 ];
 
 describe('Select', () => {
-	it('closes as its page hides, so a return through history finds it closed', async () => {
+	it('closes as its page hides, kept from drawing as the page shows again', async () => {
 		const user = userEvent.setup();
 		const page = renderKeptPage(
 			<Select items={orders} defaultValue="newest">
@@ -37,6 +37,11 @@ describe('Select', () => {
 		await user.click(trigger);
 		expect(await screen.findByRole('listbox')).toBeDefined();
 		await page.hide();
+		expect(
+			document
+				.querySelector('[data-slot="select-content"]')
+				?.hasAttribute('data-closed-by-page-hide')
+		).toBe(true);
 		await page.show();
 
 		expect(trigger.getAttribute('aria-expanded')).toBe('false');

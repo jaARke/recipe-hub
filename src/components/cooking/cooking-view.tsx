@@ -35,7 +35,6 @@ import {
 } from '@/components/cooking/use-cooking-url';
 import { useScreenWakeLock } from '@/components/cooking/use-screen-wake-lock';
 import { useHydrated } from '@/components/forms/use-hydrated';
-import { useOnKeptPageHide } from '@/components/forms/use-on-kept-page-hide';
 import { MainContent } from '@/components/layout/main-content';
 import { StepsNote } from '@/components/recipe/recipe-ingredients-and-steps';
 import { recipePath } from '@/components/recipe/recipe-paths';
@@ -296,10 +295,6 @@ function CookingSession({ recipe }: { recipe: CookingRecipe }) {
 	const [resumedText, setResumedText] = React.useState(() => cookingResumedText(screens[index]));
 	const [ingredientsOpen, setIngredientsOpen] = React.useState(false);
 	const [stepsOpen, setStepsOpen] = React.useState(false);
-	useOnKeptPageHide(() => {
-		setIngredientsOpen(false);
-		setStepsOpen(false);
-	});
 	const scroller = React.useRef<HTMLDivElement>(null);
 	const heading = React.useRef<HTMLHeadingElement>(null);
 	useScreenWakeLock(true);

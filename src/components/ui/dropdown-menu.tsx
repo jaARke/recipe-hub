@@ -4,15 +4,22 @@ import { Menu as MenuPrimitive } from '@base-ui/react/menu';
 import { cn } from 'cn';
 import { CheckIcon, ChevronRightIcon } from 'lucide-react';
 import * as React from 'react';
-import { useOnKeptPageHide } from '@/components/forms/use-on-kept-page-hide';
+import {
+	KeptPagePopupContext,
+	KeptPagePopupMounted,
+	useKeptPagePopup,
+	useKeptPagePopupProps,
+	useNestedKeptPagePopup,
+} from '@/components/ui/kept-page-popup';
 
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
-	// Closes as its page hides, so a return through history doesn't find it open.
-	const ownActions = React.useRef<MenuPrimitive.Root.Actions>(null);
-	const actionsRef = props.actionsRef ?? ownActions;
-	useOnKeptPageHide(() => actionsRef.current?.close());
-
-	return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} actionsRef={actionsRef} />;
+	// Closes as its page hides, without drawing on return (kept-page-popup.tsx).
+	const keptPage = useKeptPagePopup(props);
+	return (
+		<KeptPagePopupContext value={keptPage.context}>
+			<MenuPrimitive.Root data-slot="dropdown-menu" {...props} {...keptPage.rootProps} />
+		</KeptPagePopupContext>
+	);
 }
 
 function DropdownMenuPortal({ ...props }: MenuPrimitive.Portal.Props) {
@@ -32,8 +39,11 @@ function DropdownMenuContent({
 	...props
 }: MenuPrimitive.Popup.Props &
 	Pick<MenuPrimitive.Positioner.Props, 'align' | 'alignOffset' | 'side' | 'sideOffset'>) {
+	// Undrawn once its page's hiding closed it (kept-page-popup.tsx).
+	const keptPageProps = useKeptPagePopupProps();
 	return (
 		<MenuPrimitive.Portal>
+			<KeptPagePopupMounted />
 			<MenuPrimitive.Positioner
 				className="isolate z-50 outline-none"
 				align={align}
@@ -43,6 +53,7 @@ function DropdownMenuContent({
 			>
 				<MenuPrimitive.Popup
 					data-slot="dropdown-menu-content"
+					{...keptPageProps}
 					className={cn(
 						'z-50 max-h-(--available-height) w-(--anchor-width) min-w-32 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-md bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95',
 						className
@@ -102,7 +113,13 @@ function DropdownMenuItem({
 }
 
 function DropdownMenuSub({ ...props }: MenuPrimitive.SubmenuRoot.Props) {
-	return <MenuPrimitive.SubmenuRoot data-slot="dropdown-menu-sub" {...props} />;
+	// Closes with its menu, taking the menu's mark without tracking a popup of its own (kept-page-popup.tsx).
+	const keptPage = useNestedKeptPagePopup();
+	return (
+		<KeptPagePopupContext value={keptPage}>
+			<MenuPrimitive.SubmenuRoot data-slot="dropdown-menu-sub" {...props} />
+		</KeptPagePopupContext>
+	);
 }
 
 function DropdownMenuSubTrigger({

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -350,6 +350,32 @@ describe('CookingView', () => {
 
 		expect(trigger.getAttribute('aria-expanded')).toBe('false');
 		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+	});
+
+	it('keeps its step while hidden behind a page at another address, and shows it on return', async () => {
+		visit('?step=1');
+		const user = userEvent.setup();
+		const page = renderKeptPage(<CookingView recipe={potRoast} />);
+		const ingredients = screen.getByRole('button', { name: 'Ingredients' });
+		await user.click(ingredients);
+		await screen.findByRole('dialog', { name: 'Ingredients' });
+
+		// Back to the recipe's page, whose address the browser shows before the view hides.
+		history.replaceState(null, '', '/recipes/sunday-pot-roast');
+		await page.hide();
+		await act(async () => {
+			window.dispatchEvent(new PopStateEvent('popstate'));
+		});
+		const hiddenHeading = within(screen.getByRole('main', { hidden: true })).getByRole('heading', {
+			level: 1,
+			hidden: true,
+		});
+		expect(hiddenHeading.getAttribute('aria-label')).toBe('For the roast, step 1 of 3');
+		history.replaceState(null, '', `${cookPathname}?step=1`);
+		await page.show();
+
+		expect(screenHeading().getAttribute('aria-label')).toBe('For the roast, step 1 of 3');
+		expect(ingredients.isConnected).toBe(true);
 	});
 
 	it('starts over from Steps, focusing Gather’s heading as the dialog closes', async () => {
