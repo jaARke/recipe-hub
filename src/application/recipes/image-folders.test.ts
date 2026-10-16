@@ -10,9 +10,8 @@ function deploymentFolders(
 	environment: string,
 	vercelEnvironment: keyof typeof imageEnvironmentAccess
 ): ImageFolders {
-	const { readableEnvironments, expiringEnvironmentPrefixes } =
-		imageEnvironmentAccess[vercelEnvironment];
-	return new ImageFolders(environment, readableEnvironments, expiringEnvironmentPrefixes);
+	const { readableEnvironments, fetchedFromProduction } = imageEnvironmentAccess[vercelEnvironment];
+	return new ImageFolders(environment, readableEnvironments, fetchedFromProduction);
 }
 
 describe('uploadFolder', () => {
@@ -31,19 +30,6 @@ describe('environmentFolders', () => {
 			'dish/production/',
 			'scan/production/',
 		]);
-	});
-});
-
-describe('expiringFolders', () => {
-	it("names each expiring prefix's folder under each role's", () => {
-		expect(new ImageFolders('production', [], ['preview/']).expiringFolders()).toEqual([
-			'dish/preview/',
-			'scan/preview/',
-		]);
-	});
-
-	it('names none by default', () => {
-		expect(new ImageFolders('development').expiringFolders()).toEqual([]);
 	});
 });
 
@@ -76,51 +62,18 @@ describe('contains', () => {
 	});
 });
 
-describe('isExpiring', () => {
-	// Production expires every preview's images.
-	const production = deploymentFolders('production', 'production');
-
-	it.each([
-		'dish/preview/feature-x-1a2b3c4d/photo.jpg',
-		'scan/preview/feature-y-5e6f7a8b/card.jpg',
-		`dish/preview/feature-x-1a2b3c4d/${uuid}.jpg`,
-	])('includes %s', (pathname) => {
-		expect(production.isExpiring(pathname)).toBe(true);
-	});
-
-	it.each([
-		'dish/production/photo.jpg',
-		'scan/production/card.jpg',
-		'dish/seed/buttermilk-biscuits.jpg',
-		'dish/development/photo.jpg',
-		'dish/previewer/photo.jpg',
-		'dish/preview/feature-x/../../production/photo.jpg',
-		'trash/dish/preview/feature-x/photo.jpg',
-		'menus/preview/feature-x/photo.jpg',
-	])('excludes %s', (pathname) => {
-		expect(production.isExpiring(pathname)).toBe(false);
-	});
-
-	it.each([
-		['a preview', deploymentFolders('preview/feature-y-5e6f7a8b', 'preview')],
-		['development', deploymentFolders('development', 'development')],
-	])('includes nothing for %s, which expires no other environment', (_, folders) => {
-		expect(folders.isExpiring('dish/preview/feature-x-1a2b3c4d/photo.jpg')).toBe(false);
-	});
-});
-
 describe('isReadable', () => {
-	// Production reads only its own images. Previews also read production's and the seed's, and
-	// development, whose store holds only its own images and the seed's, also reads the seed's.
+	// Each reads its own images from its store. Previews and development also read the seed's, which
+	// their stores hold too.
 	const production = deploymentFolders('production', 'production');
-	const preview = deploymentFolders('preview/feature-x', 'preview');
+	const preview = deploymentFolders('preview/feature-x-1a2b3c4d', 'preview');
 	const development = deploymentFolders('development', 'development');
 
 	it.each([
 		['production', 'dish/production/soup.jpg', production],
 		['production', 'scan/production/card.jpg', production],
-		['a preview', 'dish/preview/feature-x/soup.jpg', preview],
-		['a preview', 'scan/production/card.jpg', preview],
+		['a preview', 'dish/preview/feature-x-1a2b3c4d/soup.jpg', preview],
+		['a preview', 'scan/preview/feature-x-1a2b3c4d/card.jpg', preview],
 		['a preview', 'dish/seed/buttermilk-biscuits.jpg', preview],
 		['development', 'scan/development/card.jpg', development],
 		['development', 'dish/seed/buttermilk-biscuits.jpg', development],
@@ -130,18 +83,57 @@ describe('isReadable', () => {
 
 	it.each([
 		['production', 'dish/seed/buttermilk-biscuits.jpg', production],
-		['production', 'scan/preview/feature-x/card.jpg', production],
+		['production', 'scan/preview/feature-x-1a2b3c4d/card.jpg', production],
 		['production', 'dish/development/soup.jpg', production],
-		['a preview', 'scan/preview/feature-y/card.jpg', preview],
+		['a preview', 'dish/production/soup.jpg', preview],
+		['a preview', 'scan/production/card.jpg', preview],
+		['a preview', 'scan/preview/feature-y-5e6f7a8b/card.jpg', preview],
 		['a preview', 'dish/development/soup.jpg', preview],
 		['development', 'dish/production/soup.jpg', development],
 		['development', 'scan/production/card.jpg', development],
-		['development', 'dish/preview/feature-x/soup.jpg', development],
+		['development', 'dish/preview/feature-x-1a2b3c4d/soup.jpg', development],
 		['development', 'scan/production/../preview/feature-x/card.jpg', development],
 		['development', 'dish/soup.jpg', development],
 		['development', 'trash/dish/development/soup.jpg', development],
 	])('keeps %s from reading %s', (_, pathname, folders) => {
 		expect(folders.isReadable(pathname)).toBe(false);
+	});
+});
+
+describe('isFetchedFromProduction', () => {
+	// Only previews, whose databases copy production's recipes, show production's images, which they
+	// fetch from production.
+	const production = deploymentFolders('production', 'production');
+	const preview = deploymentFolders('preview/feature-x-1a2b3c4d', 'preview');
+	const development = deploymentFolders('development', 'development');
+
+	it.each(['dish/production/soup.jpg', 'scan/production/card.jpg', `dish/production/${uuid}.jpg`])(
+		'has a preview fetch %s from production',
+		(pathname) => {
+			expect(preview.isFetchedFromProduction(pathname)).toBe(true);
+		}
+	);
+
+	it.each([
+		'dish/preview/feature-x-1a2b3c4d/soup.jpg',
+		'scan/preview/feature-y-5e6f7a8b/card.jpg',
+		'dish/seed/buttermilk-biscuits.jpg',
+		'dish/development/soup.jpg',
+		'dish/productions/soup.jpg',
+		'dish/production/../seed/buttermilk-biscuits.jpg',
+		'trash/dish/production/soup.jpg',
+		'menus/production/soup.jpg',
+		'production/soup.jpg',
+	])('never has a preview fetch %s from production', (pathname) => {
+		expect(preview.isFetchedFromProduction(pathname)).toBe(false);
+	});
+
+	it.each([
+		['production', production],
+		['development', development],
+	])('has %s fetch nothing from production', (_, folders) => {
+		expect(folders.isFetchedFromProduction('dish/production/soup.jpg')).toBe(false);
+		expect(folders.isFetchedFromProduction('scan/production/card.jpg')).toBe(false);
 	});
 });
 

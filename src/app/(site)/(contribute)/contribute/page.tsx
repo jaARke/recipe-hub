@@ -12,7 +12,7 @@ import {
 } from '@/app/(site)/(contribute)/contribute/actions';
 import { SignInRequiredError } from '@/application/authorization';
 import type { DraftSummaryDto, SavedDraftDto } from '@/application/drafts/saved-draft-dtos';
-import { signInHref } from '@/components/auth/auth-paths';
+import { requestedPageHref, signInHref } from '@/components/auth/auth-paths';
 import { PageContainer } from '@/components/layout/page-container';
 import {
 	EditingPageHeading,
@@ -28,6 +28,7 @@ import {
 import { recipeFormValues } from '@/components/recipe-form/recipe-form-values';
 import { HeldDraftMenu } from '@/components/recipe-form/subject-menus';
 import { DraftProvenanceLine } from '@/components/recipe-import/draft-provenance-line';
+import { reviewableImportIds } from '@/components/recipe-import/listed-drafts';
 import {
 	parseRecipeEntryTab,
 	parseSavedDraftParam,
@@ -54,12 +55,12 @@ export const maxDuration = 120;
 
 // The authoritative check: the service refuses a visitor who isn't signed in, and the proxy only
 // looks for a cookie, which can be present but expired.
-async function loadDrafts(): Promise<DraftSummaryDto[]> {
+async function loadDrafts(pageHref: string): Promise<DraftSummaryDto[]> {
 	try {
 		return await getSavedDraftService().listDrafts();
 	} catch (error) {
 		if (error instanceof SignInRequiredError) {
-			redirect(signInHref(contributePath));
+			redirect(signInHref(pageHref));
 		}
 		throw error;
 	}
@@ -75,9 +76,14 @@ async function ContributeForMember({
 	searchParams,
 }: Pick<PageProps<'/contribute'>, 'searchParams'>) {
 	const params = await searchParams;
-	const drafts = await loadDrafts();
+	// Reading the query waited for the request, so this is the request's time, not a prerender's. Taken
+	// before the drafts are listed, so changes kept for an import started meanwhile are never pruned.
+	const now = new Date();
+	// The query names the draft and the tab, so signing in again returns to them.
+	const pageHref = requestedPageHref(contributePath, params);
+	const drafts = await loadDrafts(pageHref);
 	const [member, savedDraft, tagLabels] = await Promise.all([
-		loadFormMember(contributePath),
+		loadFormMember(pageHref),
 		loadSavedDraft(parseSavedDraftParam(params[recipeEntryParamNames.draft])),
 		getCachedTagLabels(),
 	]);
@@ -121,7 +127,10 @@ async function ContributeForMember({
 							action={createRecipe}
 							uploadFolders={uploadFolders}
 							tagLabels={tagLabels}
-							autosave={{ memberId: member.id }}
+							autosave={{
+								memberId: member.id,
+								existing: { knownAt: now, importIds: reviewableImportIds(drafts) },
+							}}
 							drafts={{
 								save: saveDraft,
 								opened:
@@ -135,8 +144,7 @@ async function ContributeForMember({
 					photo: <ScanImportForm action={importFromScans} uploadFolder={uploadFolders.scan} />,
 				}}
 				drafts={drafts}
-				// Reading the session waited for the request, so this is the request's time, not a prerender's.
-				now={new Date()}
+				now={now}
 				memberId={member.id}
 				deleteDraft={deleteDraft}
 			/>

@@ -5,9 +5,21 @@ import { cn } from 'cn';
 import { XIcon } from 'lucide-react';
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
+import {
+	KeptPagePopupContext,
+	KeptPagePopupMounted,
+	useKeptPagePopup,
+	useKeptPagePopupProps,
+} from '@/components/ui/kept-page-popup';
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
-	return <DialogPrimitive.Root data-slot="dialog" {...props} />;
+	// Closes as its page hides, without drawing on return (kept-page-popup.tsx).
+	const keptPage = useKeptPagePopup(props);
+	return (
+		<KeptPagePopupContext value={keptPage.context}>
+			<DialogPrimitive.Root data-slot="dialog" {...props} {...keptPage.rootProps} />
+		</KeptPagePopupContext>
+	);
 }
 
 function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
@@ -23,9 +35,12 @@ function DialogClose({ ...props }: DialogPrimitive.Close.Props) {
 }
 
 function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) {
+	// Undrawn once its page's hiding closed the dialog (kept-page-popup.tsx).
+	const keptPageProps = useKeptPagePopupProps();
 	return (
 		<DialogPrimitive.Backdrop
 			data-slot="dialog-overlay"
+			{...keptPageProps}
 			className={cn(
 				'fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0',
 				className
@@ -43,11 +58,15 @@ function DialogContent({
 }: DialogPrimitive.Popup.Props & {
 	showCloseButton?: boolean;
 }) {
+	// Undrawn once its page's hiding closed the dialog (kept-page-popup.tsx).
+	const keptPageProps = useKeptPagePopupProps();
 	return (
 		<DialogPortal>
+			<KeptPagePopupMounted />
 			<DialogOverlay />
 			<DialogPrimitive.Popup
 				data-slot="dialog-content"
+				{...keptPageProps}
 				className={cn(
 					// Scrolls within a short screen, as the alert dialog does, so its content stays in reach.
 					'fixed top-1/2 left-1/2 z-50 grid max-h-[calc(100%-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-6 overflow-y-auto rounded-xl bg-popover p-6 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-md data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',

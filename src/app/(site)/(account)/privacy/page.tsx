@@ -39,6 +39,10 @@ export default function PrivacyPage() {
 						A declined request is deleted. An approved request is kept as a record of who was
 						invited.
 					</li>
+					<li>
+						An invite that’s never used is kept for {dayCount(settings.accounts.inviteLifetimeDays)}{' '}
+						after it expires or is revoked, then deleted within a day.
+					</li>
 				</ul>
 			</PageSection>
 			<PageSection id="privacy-accounts" title="Accounts">
@@ -48,8 +52,8 @@ export default function PrivacyPage() {
 						Your email address is private. Sign-in codes are sent to it, and admins can see it.
 					</li>
 					<li>
-						A sign-in code is stored encrypted until it’s used, or deleted after{' '}
-						{settings.accounts.signInCodeLifetimeMinutes} minutes.
+						A sign-in code is stored encrypted until it’s used. An unused one stops working after{' '}
+						{settings.accounts.signInCodeLifetimeMinutes} minutes and is deleted within a day.
 					</li>
 					<li>
 						If you add a passkey, the site stores only its public key, which can’t sign you in on
@@ -74,18 +78,19 @@ export default function PrivacyPage() {
 					</li>
 					<li>
 						A draft you save from the recipe form is kept until you save the recipe or delete the
-						draft. A draft you leave is deleted {dayCount(settings.drafts.savedDraftLifetimeDays)}{' '}
-						after your last save.
+						draft. A draft you leave is kept for {dayCount(settings.drafts.savedDraftLifetimeDays)}{' '}
+						after your last save, then deleted within a day.
 					</li>
 					<li>
 						A photo or scan you upload isn’t listed anywhere until the recipe it’s for is saved.
-						Until then it opens only for someone who has its address, and it’s removed{' '}
-						{dayCount(settings.retention.unusedImageLifetimeDays)} after no recipe or draft names
-						it.
+						Until then it opens only for someone who has its address, and once no recipe or draft
+						has named it for {dayCount(settings.retention.unusedImageLifetimeDays)}, it’s removed
+						within a day.
 					</li>
 					<li>
-						A photo or scan that’s removed, or that belongs to a deleted recipe, is deleted for good
-						after {settings.retention.removedImageLifetimeDays} days.
+						A photo or scan that’s removed, or that belongs to a deleted recipe, is kept for{' '}
+						{dayCount(settings.retention.removedImageLifetimeDays)}, then deleted for good within a
+						day.
 					</li>
 				</ul>
 			</PageSection>
@@ -102,14 +107,15 @@ export default function PrivacyPage() {
 						that id, so it can trace misuse to an account without knowing who you are.
 					</li>
 					<li>
-						An import’s draft is kept until you save it as a recipe, or deleted after{' '}
-						{settings.imports.importDraftLifetimeDays} days.
+						An import’s draft is kept until you save it as a recipe. One you don’t save is deleted
+						within a day of turning {dayCount(settings.imports.importDraftLifetimeDays)} old.
 					</li>
 					<li>
 						A draft you save from an import’s review keeps the address of the page the recipe was
 						read from, so the recipe you save from it can credit that page. The address is kept as
-						long as the draft: until you save the recipe or delete the draft, or{' '}
-						{dayCount(settings.drafts.savedDraftLifetimeDays)} after your last save.
+						long as the draft: until you save the recipe or delete the draft, or for{' '}
+						{dayCount(settings.drafts.savedDraftLifetimeDays)} after your last save, then deleted
+						within a day.
 					</li>
 					<li>
 						A record of each import is kept: who started it, when, which AI model read it, and what

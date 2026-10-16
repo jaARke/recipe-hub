@@ -3,6 +3,7 @@ import { storedContent, writtenContent } from '@/domain/recipe/content-limits';
 import {
 	coverImage,
 	dishImages,
+	imagePathnameSchema,
 	imageSizeSchema,
 	maxImageSideInPixels,
 	recipeImageListSchemaFor,
@@ -62,19 +63,17 @@ describe('storedImageSizeSchema', () => {
 });
 
 describe('recipeImageSchema', () => {
-	it('accepts an image stored under its role', () => {
-		expect(
-			recipeImageSchema.safeParse({ role: 'dish', pathname: 'dish/seed/soup.jpg' }).success
-		).toBe(true);
-		expect(
-			recipeImageSchema.safeParse({ role: 'scan', pathname: 'scan/card-front.jpg' }).success
-		).toBe(true);
+	it.each([
+		{ role: 'dish', pathname: 'dish/seed/soup.jpg', size: photoSize },
+		{ role: 'scan', pathname: 'scan/card-front.jpg', size: photoSize },
+	])('accepts %o, stored under its role', (image) => {
+		expect(recipeImageSchema.parse(image)).toEqual(image);
 	});
 
 	it.each([
-		{ role: 'dish', pathname: 'scan/plated.jpg' },
-		{ role: 'scan', pathname: 'dish/card-front.jpg' },
-		{ role: 'dish', pathname: 'plated.jpg' },
+		{ role: 'dish', pathname: 'scan/plated.jpg', size: photoSize },
+		{ role: 'scan', pathname: 'dish/card-front.jpg', size: photoSize },
+		{ role: 'dish', pathname: 'plated.jpg', size: photoSize },
 	])('rejects %o at its pathname', (image) => {
 		const result = recipeImageSchema.safeParse(image);
 		expect(result.error?.issues.map((issue) => issue.path)).toEqual([['pathname']]);
@@ -89,8 +88,36 @@ describe('recipeImageSchema', () => {
 		'/dish/plated.jpg',
 		'dish/',
 	])('rejects the pathname %s, which could leave its folder', (pathname) => {
-		expect(recipeImageSchema.safeParse({ role: 'dish', pathname }).success).toBe(false);
+		const image = { role: 'dish', pathname, size: photoSize };
+		expect(recipeImageSchema.safeParse(image).success).toBe(false);
 	});
+
+	it('refuses an image without its size, at its size', () => {
+		const result = recipeImageSchema.safeParse({ role: 'dish', pathname: 'dish/plated.jpg' });
+
+		expect(result.error?.issues).toEqual([
+			expect.objectContaining({
+				path: ['size'],
+				message: 'We couldn’t read this photo’s size. Remove it and add it again.',
+			}),
+		]);
+	});
+});
+
+describe('imagePathnameSchema', () => {
+	it.each(['dish/production/soup.jpg', 'scan/preview/feature-x/card.v2.jpg', 'plated.jpg'])(
+		'accepts %s, in plain segments',
+		(pathname) => {
+			expect(imagePathnameSchema.safeParse(pathname).success).toBe(true);
+		}
+	);
+
+	it.each(['dish/../scan/card-front.jpg', 'dish/%2e%2e/card.jpg', 'dish//plated.jpg', 'dish/'])(
+		'refuses %s, which could leave its folder',
+		(pathname) => {
+			expect(imagePathnameSchema.safeParse(pathname).success).toBe(false);
+		}
+	);
 });
 
 describe('recipeImageListSchemaFor', () => {

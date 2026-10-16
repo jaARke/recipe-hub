@@ -7,6 +7,9 @@ import { getRecipeService } from '@/composition/services';
 import type { MemberId } from '@/domain/member/member';
 import { settings } from '@/lib/settings';
 
+// Each read is cached remotely (Vercel's Runtime Cache on a deployment), shared by every instance,
+// so a reader reaching a fresh instance doesn't wait for the database to wake.
+
 // The one home for recipe cache tags: Server Actions invalidate these names after a write.
 export const recipeCacheTags = {
 	list: 'recipes',
@@ -21,7 +24,7 @@ export const recipeCacheTags = {
 // slug. Writes invalidate the tags; revalidating a day after caching catches edits made outside
 // the app.
 export async function getCachedRecipe(slug: string): Promise<PublicRecipeDto | null> {
-	'use cache';
+	'use cache: remote';
 	cacheTag(recipeCacheTags.recipe(slug));
 	cacheLife('days');
 	const recipe = await getRecipeService().getRecipe(slug);
@@ -36,7 +39,7 @@ export async function getCachedRecipePage(
 	page: number,
 	sort: RecipeSort
 ): Promise<RecipeSummaryPage> {
-	'use cache';
+	'use cache: remote';
 	cacheTag(recipeCacheTags.list);
 	cacheLife('days');
 	return getRecipeService().listRecipes({
@@ -55,7 +58,7 @@ export async function recipeStaticParams(): Promise<{ slug: string }[]> {
 
 // Every tag label in use, which the recipe form suggests and filters in the browser.
 export async function getCachedTagLabels(): Promise<string[]> {
-	'use cache';
+	'use cache: remote';
 	cacheTag(recipeCacheTags.list);
 	cacheLife('days');
 	return getRecipeService().listTagLabels();

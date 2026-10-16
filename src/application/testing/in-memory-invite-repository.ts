@@ -48,6 +48,19 @@ export class InMemoryInviteRepository implements InviteRepository {
 		return this.replaceOpen(id, now, { revokedAt: now }) !== null;
 	}
 
+	async deleteUnusedClosedBefore(cutoff: Date): Promise<number> {
+		let deleted = 0;
+		for (const { invite } of this.invites.values()) {
+			const closedBefore =
+				(invite.revokedAt !== undefined && invite.revokedAt < cutoff) || invite.expiresAt < cutoff;
+			if (invite.acceptedBy === undefined && closedBefore) {
+				this.invites.delete(invite.id);
+				deleted += 1;
+			}
+		}
+		return deleted;
+	}
+
 	// Stands in for DrizzleInviteRepository's, which a member's removal calls. It does not await, so
 	// the removal stays one uninterrupted step.
 	revokeOpenByEmail(email: string, now: Date): void {

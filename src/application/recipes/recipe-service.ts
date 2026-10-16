@@ -139,6 +139,12 @@ export class RecipeService {
 		return this.recipes.listTagLabels();
 	}
 
+	// Every recipe's id, newest first, by which the edit page lets the browser drop unsaved changes to
+	// a recipe deleted since.
+	async listRecipeIds(): Promise<RecipeId[]> {
+		return this.recipes.listIds();
+	}
+
 	// Members-only reads resolve the actor first too, so an anonymous caller learns nothing.
 	async getRecipeForEditing(slug: string): Promise<EditableRecipeDto | null> {
 		const actor = requireMember(await this.actors.currentActor());

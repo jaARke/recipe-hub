@@ -18,7 +18,8 @@ describe('newPhotoPathname', () => {
 		expect(pathname.slice(folder.length)).toMatch(
 			/^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}\.jpg$/
 		);
-		expect(recipeImageSchema.safeParse({ role, pathname }).success).toBe(true);
+		const size = { width: 2400, height: 1800 };
+		expect(recipeImageSchema.safeParse({ role, pathname, size }).success).toBe(true);
 	});
 
 	it('names each upload differently', () => {

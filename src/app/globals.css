@@ -185,6 +185,12 @@
 	}
 }
 
+/* A popup its page's hiding closed is not drawn as the page shows again, where its closing animation
+   would play (components/ui/kept-page-popup.tsx). Outside the layers, so no display utility wins. */
+[data-closed-by-page-hide][data-closed] {
+	display: none;
+}
+
 /* Printouts keep a margin of their own. Whatever only the screen needs, such as the header, photos,
    and controls, takes the print:hidden utility. */
 @page {

@@ -24,6 +24,7 @@ import {
 	users,
 	verifications,
 } from '@/infrastructure/db/schema';
+import { requireBoundedWrites } from '@/infrastructure/db/testing/bounded-writes';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 
 const backdated = new Date('2026-01-01T00:00:00Z');
@@ -219,6 +220,23 @@ describe('ensureAdmin lock', () => {
 		await expect(
 			db.update(users).set({ role: 'admin' }).where(eq(users.id, member.id))
 		).rejects.toThrow(refused);
+	});
+});
+
+describe('bounded writes', () => {
+	const owner = { email: 'owner@example.com', displayName: 'Admin' };
+
+	it('ensures the admin account in a bounded transaction', async () => {
+		await requireBoundedWrites(db, 'users');
+
+		expect(await repository.ensureAdmin(owner)).toMatchObject({ outcome: 'created' });
+	});
+
+	it('removes a member in a bounded transaction', async () => {
+		const member = await repository.create(ada);
+		await requireBoundedWrites(db, 'users');
+
+		expect(await repository.remove(member.id)).toMatchObject({ id: member.id });
 	});
 });
 

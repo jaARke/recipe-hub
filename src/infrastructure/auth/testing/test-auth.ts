@@ -11,10 +11,12 @@ export const testHost = new URL(testOrigin).host;
 
 // Better Auth on a test database with the real account services. Emails are recorded, work Better
 // Auth runs after answering is kept so a test can wait for it, and BotID finds every request human
-// unless a test passes its own check.
+// unless a test passes its own check. Cookies are not Secure, as on the dev server, unless a test
+// says they are.
 export function createTestAuth(
 	db: TestDatabase,
-	options: Pick<AuthOptions, 'productionHost'> & Partial<Pick<AuthOptions, 'checkBotId'>> = {}
+	options: Pick<AuthOptions, 'productionHost'> &
+		Partial<Pick<AuthOptions, 'checkBotId' | 'secureCookies'>> = {}
 ) {
 	const emails = new InMemoryEmailSender();
 	const background: Promise<unknown>[] = [];
@@ -22,6 +24,7 @@ export function createTestAuth(
 		db,
 		secret: 'recipe-hub-test-secret-0123456789abcdef',
 		allowedHosts: [testHost],
+		secureCookies: false,
 		accounts: new AccountService(
 			new DrizzleMemberRepository(db),
 			new DrizzleInviteRepository(db),

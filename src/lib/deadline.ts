@@ -4,6 +4,12 @@ export type WaitLimits = {
 	cancellation?: AbortSignal;
 };
 
+// What ends a request early: its own time limit, and a cancellation the caller may signal.
+export type RequestLimits = {
+	timeLimitMs: number;
+	cancellation?: AbortSignal;
+};
+
 // A signal that aborts once the time has passed, with the reason AbortSignal.timeout gives. Node runs
 // AbortSignal.timeout on internal timers that fake timers cannot reach, so this one runs on setTimeout,
 // unref'd as Node's is, so a deadline never keeps a process alive. A browser's timer is a number with
@@ -61,5 +67,31 @@ export async function settleWithin<T>(
 		throw firedFirst === undefined ? error : outcome(firedFirst);
 	} finally {
 		listening.abort();
+	}
+}
+
+// Settles as settleWithin does, giving the request a signal that aborts once the wait gives up, so a
+// request left behind stops rather than running on; once the cancellation has fired, none starts. A
+// request that answered in time keeps the cancellation alone, so a body it streams stops only with it.
+export async function requestWithin<T>(
+	request: (signal: AbortSignal) => Promise<T>,
+	{ timeLimitMs, cancellation }: RequestLimits,
+	timedOut: () => Error
+): Promise<T> {
+	cancellation?.throwIfAborted();
+	const abandoned = new AbortController();
+	const signal =
+		cancellation === undefined
+			? abandoned.signal
+			: AbortSignal.any([abandoned.signal, cancellation]);
+	try {
+		return await settleWithin(
+			request(signal),
+			{ deadline: deadlineAfter(timeLimitMs), cancellation },
+			timedOut
+		);
+	} catch (error) {
+		abandoned.abort(error);
+		throw error;
 	}
 }

@@ -204,17 +204,6 @@ function logOutcome(recipe: ReparsedRecipe): void {
 	}
 }
 
-// Every recipe's id as one listing finds them, asked for more recipes than exist, so a recipe added or
-// deleted while the run goes on cannot shift another out of the run, as it would between pages.
-async function snapshotIds(recipes: RecipeRepository): Promise<RecipeId[]> {
-	for (let limit = (await recipes.count()) + 1; ; limit *= 2) {
-		const listed = await recipes.list({ limit, offset: 0, sort: 'newest' });
-		if (listed.length < limit) {
-			return listed.map(({ id }) => id);
-		}
-	}
-}
-
 function countOf(result: ReparseResult, kind: ReparseOutcome['kind']): number {
 	return result.recipes.filter((recipe) => recipe.outcome.kind === kind).length;
 }
@@ -230,7 +219,7 @@ export async function reparseIngredients(
 	const result: ReparseResult = { write: options.write, checked: 0, recipes: [] };
 	// Each recipe is read again just before it is checked, so a member's edit since the snapshot is
 	// re-parsed too. One deleted since then needs nothing; one added since was tidied when it was saved.
-	for (const id of await snapshotIds(recipes)) {
+	for (const id of await recipes.listIds()) {
 		const stored = await recipes.findStoredById(id);
 		if (stored === null) {
 			continue;

@@ -12,6 +12,7 @@ import {
 } from '@/components/forms/field-note';
 import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
 import { FieldProblem } from '@/components/forms/problem-summary';
+import { useFieldUndo } from '@/components/forms/use-field-undo';
 import { ItemActionsMenu, type ItemAction } from '@/components/recipe-form/item-actions-menu';
 import type {
 	ProblemTarget,
@@ -90,7 +91,8 @@ function focusField(id: string, caret: 'start' | 'end') {
 // A list of growing fields, one per row: lines, and headings over the lines after them, as a
 // recipe's ingredients have "For the glaze". Each row's menu moves it, changes its kind, or removes
 // it, with no dragging. Enter adds a line below, Backspace in an empty one removes it, and pasting
-// several lines splits them into rows, each change announced.
+// several lines splits them into rows, each change announced. Undo takes back only what was typed in
+// the focused row.
 function SectionedListField({
 	idPrefix,
 	name,
@@ -110,6 +112,13 @@ function SectionedListField({
 	const { rows } = list;
 	const names = listRowNames(rows, noun);
 	const ids = sectionedListFieldIds(idPrefix);
+	const rowUndo = useFieldUndo(
+		rows.map((row) => ({
+			id: ids.row(row.id),
+			value: row.text,
+			setValue: (text) => dispatch({ type: 'setRowText', list: name, rowId: row.id, text }),
+		}))
+	);
 
 	// Structural edits commit at once with what they announce, so focus can move to what they render.
 	function commit(edit: RecipeFormEdit, said: string) {
@@ -179,6 +188,9 @@ function SectionedListField({
 	// Backspace stops at the line it empties, so clearing one never eats into the rows above, and the
 	// only row stays to type in.
 	function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>, index: number) {
+		if (rowUndo.handleKeyDown(event)) {
+			return;
+		}
 		const row = rows[index];
 		if (
 			row === undefined ||
@@ -288,12 +300,7 @@ function SectionedListField({
 							sectionNote !== undefined && fieldNoteMessageId(ids.sectionNote(row.id))
 						)}
 						onChange={(event) =>
-							dispatch({
-								type: 'setRowText',
-								list: name,
-								rowId: row.id,
-								text: event.target.value,
-							})
+							rowUndo.setTypedValue(ids.row(row.id), event.target.value, event.nativeEvent)
 						}
 						onKeyDown={(event) => handleKeyDown(event, index)}
 						onPaste={(event) => handlePaste(event, row)}

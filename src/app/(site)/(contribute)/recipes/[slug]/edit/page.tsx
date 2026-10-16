@@ -103,9 +103,14 @@ async function RecipeEditor({ params }: Pick<PageProps<'/recipes/[slug]/edit'>, 
 		permanentRedirect(recipeEditPath(recipe.slug));
 	}
 
-	const [member, tagLabels] = await Promise.all([
+	// Loading the recipe read the session, so this is the request's time, not a prerender's. Taken
+	// before the ids are listed, so changes kept for a recipe added meanwhile are never pruned.
+	const now = new Date();
+	// Every recipe's id, so the form's load drops unsaved changes kept for one deleted since.
+	const [member, tagLabels, recipeIds] = await Promise.all([
 		loadFormMember(recipeEditPath(slug)),
 		getCachedTagLabels(),
+		getRecipeService().listRecipeIds(),
 	]);
 	return (
 		<>
@@ -131,7 +136,7 @@ async function RecipeEditor({ params }: Pick<PageProps<'/recipes/[slug]/edit'>, 
 					version: recipe.updatedAt.toISOString(),
 					respellableTags: recipe.respellableTags,
 				}}
-				autosave={{ memberId: member.id }}
+				autosave={{ memberId: member.id, existing: { knownAt: now, recipeIds } }}
 				submitLabel="Save changes"
 			/>
 		</>

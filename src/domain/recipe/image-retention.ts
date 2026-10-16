@@ -10,8 +10,3 @@ export function removedImageCutoff(now: Date): Date {
 export function unusedImageCutoff(now: Date): Date {
 	return new Date(now.getTime() - daysInMilliseconds(settings.retention.unusedImageLifetimeDays));
 }
-
-// Images in expiring environments' folders uploaded or removed before this time are deleted.
-export function expiringImageCutoff(now: Date): Date {
-	return new Date(now.getTime() - daysInMilliseconds(settings.retention.expiringImageLifetimeDays));
-}

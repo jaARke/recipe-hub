@@ -37,7 +37,7 @@ import { useScreenWakeLock } from '@/components/cooking/use-screen-wake-lock';
 import { useHydrated } from '@/components/forms/use-hydrated';
 import { MainContent } from '@/components/layout/main-content';
 import { StepsNote } from '@/components/recipe/recipe-ingredients-and-steps';
-import { recipePath } from '@/components/recipe/recipe-paths';
+import { recipeCookPath, recipePath } from '@/components/recipe/recipe-paths';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { givesAmount } from '@/domain/recipe/ingredient-scaling';
@@ -288,8 +288,9 @@ function CookingSession({ recipe }: { recipe: CookingRecipe }) {
 		() => cookingScreens(recipe.instructionSections),
 		[recipe.instructionSections]
 	);
-	const [index, setIndex] = useCookingScreenIndex(screens.length);
-	const scale = useRecipeScale(recipe.yield);
+	const cookPath = recipeCookPath(recipe.slug);
+	const [index, setIndex] = useCookingScreenIndex(cookPath, screens.length);
+	const scale = useRecipeScale(cookPath, recipe.yield);
 	const checks = useCookingChecks(recipe);
 	// Said when the view opens past Gather, as on a reload mid-cook, until the cook moves.
 	const [resumedText, setResumedText] = React.useState(() => cookingResumedText(screens[index]));

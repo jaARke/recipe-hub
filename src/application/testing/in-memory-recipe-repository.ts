@@ -62,6 +62,10 @@ export class InMemoryRecipeRepository implements RecipeRepository {
 		return [...new Set(ids)].flatMap((id) => this.recipes.get(id) ?? []);
 	}
 
+	async listIds(): Promise<RecipeId[]> {
+		return this.sorted('newest').map(({ id }) => id);
+	}
+
 	async list(page: RecipePage): Promise<Recipe[]> {
 		return this.sorted(page.sort).slice(page.offset, page.offset + page.limit);
 	}

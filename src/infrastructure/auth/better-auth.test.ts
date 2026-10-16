@@ -1,4 +1,3 @@
-import { getSessionCookie } from 'better-auth/cookies';
 import { checkBotId } from 'botid/server';
 import { eq, sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
@@ -18,8 +17,9 @@ import { passkeyRegistrationResponse } from '@/infrastructure/auth/testing/test-
 import { DrizzleAccessRequestRepository } from '@/infrastructure/db/drizzle-access-request-repository';
 import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
-import { passkeys, rateLimits, sessions, users, verifications } from '@/infrastructure/db/schema';
+import { passkeys, rateLimits, sessions, users } from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
+import { sessionCookieNames } from '@/lib/auth-cookies';
 import { settings } from '@/lib/settings';
 
 const clientIp = '198.51.100.7';
@@ -120,6 +120,16 @@ function sessionCookieAttributes(response: Response): string | undefined {
 	return response.headers
 		.getSetCookie()
 		.find((cookie) => cookie.startsWith('better-auth.session_token='));
+}
+
+// The name a Set-Cookie header sets or clears.
+function cookieName(setCookie: string): string {
+	return setCookie.slice(0, setCookie.indexOf('='));
+}
+
+// A Set-Cookie header's attributes, such as "Path=/" and "Secure".
+function cookieAttributes(setCookie: string): string[] {
+	return setCookie.split('; ').slice(1);
 }
 
 function mountedRoutes(): Route[] {
@@ -357,13 +367,28 @@ describe('signing in with a code', () => {
 		expect(session?.user.id).toBe(ada.id);
 	});
 
-	it('sets the session cookie the proxy looks for', async () => {
-		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
+	it.each([
+		{
+			cookies: 'are not Secure, as on the dev server',
+			secureCookies: false,
+			name: 'better-auth.session_token',
+		},
+		{ cookies: 'are Secure', secureCookies: true, name: '__Host-better-auth.session_token' },
+	])(
+		'sets the session cookie the proxy looks for where cookies $cookies',
+		async ({ secureCookies, name }) => {
+			({ auth, emails, backgroundWork } = createTestAuth(db, { secureCookies }));
+			await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
 
-		const response = await signIn('ada@example.com');
+			const response = await signIn('ada@example.com');
+			const [sessionCookie = ''] = response.headers.getSetCookie();
 
-		expect(getSessionCookie(new Headers({ cookie: cookiesFrom(response.headers) }))).not.toBeNull();
-	});
+			expect(response.headers.getSetCookie()).toHaveLength(1);
+			expect(cookieName(sessionCookie)).toBe(name);
+			expect(cookieAttributes(sessionCookie).includes('Secure')).toBe(secureCookies);
+			expect(sessionCookieNames).toContain(name);
+		}
+	);
 
 	it('refuses an account for an address without an open invite', async () => {
 		const response = await request('POST', '/sign-in/email-otp', {
@@ -618,6 +643,67 @@ describe('passkeys', () => {
 	});
 });
 
+describe('secure cookies', () => {
+	beforeEach(() => {
+		({ auth, emails, backgroundWork } = createTestAuth(db, { secureCookies: true }));
+	});
+
+	it('names every cookie with the __Host- prefix, Secure at Path=/ with no Domain', async () => {
+		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
+
+		const signedIn = await signIn('ada@example.com');
+		const passkeyOptions = await request('GET', '/passkey/generate-authenticate-options');
+		const signedOut = await request('POST', '/sign-out', {}, cookiesFrom(signedIn.headers));
+		const setCookies = [signedIn, passkeyOptions, signedOut].flatMap((response) =>
+			response.headers.getSetCookie()
+		);
+
+		expect(new Set(setCookies.map(cookieName))).toEqual(
+			new Set([
+				'__Host-better-auth.session_token',
+				'__Host-better-auth.better-auth-passkey',
+				'__Host-better-auth.session_data',
+				'__Host-better-auth.dont_remember',
+			])
+		);
+		for (const setCookie of setCookies) {
+			expect(cookieAttributes(setCookie)).toEqual(expect.arrayContaining(['Secure', 'Path=/']));
+			expect(cookieAttributes(setCookie)).not.toContainEqual(expect.stringMatching(/^Domain=/i));
+		}
+	});
+
+	it('reads its cookies by those names, to sign in by code and by passkey and to sign out', async () => {
+		const ada = await members.create({
+			email: 'ada@example.com',
+			displayName: 'Ada',
+			role: 'member',
+		});
+		const signedIn = await signIn('ada@example.com');
+		const sessionCookie = cookiesFrom(signedIn.headers);
+
+		const session = await auth.api.getSession({
+			headers: new Headers({ cookie: sessionCookie, host: testHost }),
+		});
+		const registration = await registerPasskey(sessionCookie, anonymousAaguid);
+		const passkeyOptions = await request('GET', '/passkey/generate-authenticate-options');
+		// The plugin reads the challenge before it looks up the credential, so an unknown one shows the
+		// challenge was found.
+		const passkeySignIn = await request(
+			'POST',
+			'/passkey/verify-authentication',
+			{ response: { id: 'unknown-credential' } },
+			cookiesFrom(passkeyOptions.headers)
+		);
+		const signedOut = await request('POST', '/sign-out', {}, sessionCookie);
+
+		expect(session?.user.id).toBe(ada.id);
+		expect(registration.status).toBe(200);
+		expect(await passkeySignIn.json()).toMatchObject({ code: 'PASSKEY_NOT_FOUND' });
+		expect(signedOut.status).toBe(200);
+		expect(await db.$count(sessions)).toBe(0);
+	});
+});
+
 describe('routes', () => {
 	it('answers 404 on every route the flows do not call, parameterized ones included', async () => {
 		const unused = mountedRoutes().filter(({ path }) => !enabledPaths.includes(path));
@@ -696,67 +782,5 @@ describe('logging', () => {
 			message: 'Better Auth reported an error',
 			err: { message: 'CAPTCHA service unavailable', cause: { message: 'No OIDC token' } },
 		});
-	});
-});
-
-describe('pruning expired sessions and verifications', () => {
-	const past = new Date('2020-01-01T00:00:00Z');
-	const future = new Date('2100-01-01T00:00:00Z');
-
-	it('deletes every expired session and verification when a member signs in', async () => {
-		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
-		const grace = await members.create({
-			email: 'grace@example.com',
-			displayName: 'Grace',
-			role: 'member',
-		});
-		await db.insert(sessions).values([
-			{ userId: grace.id, token: 'expired-session', expiresAt: past },
-			{ userId: grace.id, token: 'live-session', expiresAt: future },
-		]);
-		await db.insert(verifications).values([
-			{ identifier: 'expired-challenge', value: '{}', expiresAt: past },
-			{ identifier: 'live-challenge', value: '{}', expiresAt: future },
-		]);
-
-		const response = await signIn('ada@example.com');
-		const { token } = (await response.json()) as { token: string };
-		await backgroundWork();
-
-		const remainingSessions = await db.select({ token: sessions.token }).from(sessions);
-		expect(remainingSessions.map((row) => row.token).toSorted()).toEqual(
-			[token, 'live-session'].toSorted()
-		);
-		expect(await db.select({ identifier: verifications.identifier }).from(verifications)).toEqual([
-			{ identifier: 'live-challenge' },
-		]);
-	});
-
-	it('signs the member in and logs a warning when the deletion fails', async () => {
-		await members.create({ email: 'ada@example.com', displayName: 'Ada', role: 'member' });
-		await db.execute(sql`
-			create function refuse_deletion() returns trigger language plpgsql
-			as $$ begin raise exception 'deletion refused'; end $$
-		`);
-		await db.execute(sql`
-			create trigger refuse_session_deletion before delete on sessions
-			for each statement execute function refuse_deletion()
-		`);
-		const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-		const response = await signIn('ada@example.com');
-		await backgroundWork();
-
-		expect(response.status).toBe(200);
-		const logged = consoleWarn.mock.calls.map(([line]) => JSON.parse(String(line)));
-		expect(logged).toContainEqual(
-			expect.objectContaining({
-				message: 'Expired sessions and verifications could not be deleted',
-				err: expect.objectContaining({
-					// raise_exception, the code the trigger's refusal carries; its message stays out of logs.
-					cause: expect.objectContaining({ code: 'P0001' }),
-				}),
-			})
-		);
 	});
 });

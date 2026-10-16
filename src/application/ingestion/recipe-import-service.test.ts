@@ -501,56 +501,27 @@ describe('import limit', () => {
 	});
 });
 
-describe('expired drafts', () => {
-	it('clears drafts past their lifetime, and their source URLs, before starting an import', async () => {
+describe('clearExpiredDrafts', () => {
+	it('clears drafts past their lifetime, and their source URLs, and counts them', async () => {
 		const { imports, serviceFor, backdate } = createImports();
-		const member = memberActor();
-		const service = serviceFor(member);
+		const service = serviceFor(memberActor());
 		const expired = (await service.importFromUrl(url)).id;
 		const recent = (await service.importFromUrl(url)).id;
 		backdate(expired, settings.imports.importDraftLifetimeDays + 0.01);
 		backdate(recent, settings.imports.importDraftLifetimeDays - 0.01);
 
-		await service.importFromUrl(url);
+		expect(await serviceFor(anonymousActor()).clearExpiredDrafts()).toBe(1);
 
 		const expiredImport = await imports.findById(expired);
 		expect(expiredImport).toMatchObject({ status: 'succeeded', aiModel: 'example/text-model' });
 		expect(expiredImport).not.toHaveProperty('draft');
 		expect(expiredImport).not.toHaveProperty('sourceUrl');
 		expect(await imports.findById(recent)).toMatchObject({ sourceUrl: url });
-		expect(logged('Expired import drafts cleared')).toMatchObject({ importCount: 1 });
-	});
-
-	it('deletes saved drafts past their lifetime before starting an import', async () => {
-		const { drafts, serviceFor } = createImports();
-		const member = memberActor();
-		const saved = async () => {
-			const draft = await drafts.create({
-				memberId: member.memberId,
-				values: {},
-				imagePathnames: [],
-			});
-			if (draft === null) {
-				throw new Error('The draft was refused');
-			}
-			return draft.id;
-		};
-		const expired = await saved();
-		const recent = await saved();
-		const lifetime = settings.drafts.savedDraftLifetimeDays;
-		drafts.backdate(expired, new Date(Date.now() - daysInMilliseconds(lifetime + 0.01)));
-		drafts.backdate(recent, new Date(Date.now() - daysInMilliseconds(lifetime - 0.01)));
-
-		await serviceFor(member).importFromUrl(url);
-
-		expect(await drafts.findById(expired)).toBeNull();
-		expect(await drafts.findById(recent)).not.toBeNull();
-		expect(logged('Expired saved drafts deleted')).toMatchObject({ draftCount: 1 });
 	});
 });
 
-describe('interrupted imports', () => {
-	it('settles imports still running 10 minutes after they started as failed, before starting an import', async () => {
+describe('settleInterruptedImports', () => {
+	it('settles imports still running 10 minutes after they started as failed, and counts them', async () => {
 		const { imports, serviceFor, startImport } = createImports();
 		const member = memberActor();
 		const interrupted = await startImport(member);
@@ -561,7 +532,7 @@ describe('interrupted imports', () => {
 		imports.backdate(othersInterrupted, leaseEnded);
 		imports.backdate(running, new Date(Date.now() - 9 * minuteInMilliseconds));
 
-		await serviceFor(member).importFromUrl(url);
+		expect(await serviceFor(anonymousActor()).settleInterruptedImports()).toBe(2);
 
 		for (const id of [interrupted, othersInterrupted]) {
 			expect(await imports.findById(id)).toMatchObject({
@@ -576,6 +547,31 @@ describe('interrupted imports', () => {
 			message: 'Interrupted imports settled as failed',
 			importCount: 2,
 		});
+	});
+
+	it('logs nothing when no import was interrupted', async () => {
+		const { serviceFor } = createImports();
+
+		expect(await serviceFor(anonymousActor()).settleInterruptedImports()).toBe(0);
+
+		expect(loggedLines()).toEqual([]);
+	});
+});
+
+describe('starting an import', () => {
+	it('clears no expired draft and settles no interrupted import first, leaving them to the cleanup', async () => {
+		const { imports, serviceFor, backdate, startImport } = createImports();
+		const member = memberActor();
+		const service = serviceFor(member);
+		const expired = (await service.importFromUrl(url)).id;
+		backdate(expired, settings.imports.importDraftLifetimeDays + 0.01);
+		const interrupted = await startImport(member);
+		imports.backdate(interrupted, new Date(Date.now() - 10 * minuteInMilliseconds - 1));
+
+		await service.importFromUrl(url);
+
+		expect(await imports.findById(expired)).toMatchObject({ sourceUrl: url });
+		expect(await imports.findById(interrupted)).toMatchObject({ status: 'running' });
 	});
 });
 
@@ -678,6 +674,33 @@ describe('import deadline', () => {
 			memberId: member.memberId,
 			mode: 'url',
 			failure: 'import.timed-out',
+		});
+	});
+
+	it("answers with the import's own failure when recording it fails, logging that and leaving it to the lease", async () => {
+		const pageReader = new FixedPageRecipeExtractor(readLemonade);
+		pageReader.stall();
+		const { imports, serviceFor, lastImport } = createImports({ pageReader });
+		vi.spyOn(imports, 'recordFailure').mockRejectedValue(new Error('Database unreachable'));
+		const member = memberActor();
+
+		const failure = failureOf(serviceFor(member).importFromUrl(url));
+		await vi.advanceTimersByTimeAsync(110_000);
+
+		const error = await failure;
+		expect(error).toBeInstanceOf(ImportTimedOutError);
+		expect((error as ImportTimedOutError).code).toBe('import.timed-out');
+		const recipeImport = await lastImport();
+		expect(recipeImport).toMatchObject({ status: 'running' });
+		expect(logged('Import failure not recorded, so its lease settles it later')).toEqual({
+			level: 'error',
+			logger: 'imports',
+			message: 'Import failure not recorded, so its lease settles it later',
+			importId: recipeImport.id,
+			memberId: member.memberId,
+			mode: 'url',
+			failure: 'import.timed-out',
+			err: expect.objectContaining({ message: 'Database unreachable' }),
 		});
 	});
 

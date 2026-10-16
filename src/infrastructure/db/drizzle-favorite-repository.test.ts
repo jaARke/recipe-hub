@@ -7,6 +7,7 @@ import { DrizzleFavoriteRepository } from '@/infrastructure/db/drizzle-favorite-
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { favorites as favoritesTable } from '@/infrastructure/db/schema';
+import { requireBoundedWrites } from '@/infrastructure/db/testing/bounded-writes';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 
 const unknownMemberId = memberIdSchema.parse('3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b');
@@ -58,5 +59,12 @@ describe('add', () => {
 		expect(await favorites.add(memberId, [soupId])).toBe(0);
 		expect(await favorites.add(unknownMemberId, [soupId])).toBe(0);
 		expect(await db.$count(favoritesTable)).toBe(0);
+	});
+
+	it("adds favorites in a bounded transaction, which bounds the wait for the member's row", async () => {
+		const soupId = await createSoup();
+		await requireBoundedWrites(db, 'favorites');
+
+		expect(await favorites.add(memberId, [soupId])).toBe(1);
 	});
 });

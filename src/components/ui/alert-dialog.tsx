@@ -4,9 +4,21 @@ import { AlertDialog as AlertDialogPrimitive } from '@base-ui/react/alert-dialog
 import { cn } from 'cn';
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
+import {
+	KeptPagePopupContext,
+	KeptPagePopupMounted,
+	useKeptPagePopup,
+	useKeptPagePopupProps,
+} from '@/components/ui/kept-page-popup';
 
 function AlertDialog({ ...props }: AlertDialogPrimitive.Root.Props) {
-	return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />;
+	// Closes as its page hides, without drawing on return (kept-page-popup.tsx).
+	const keptPage = useKeptPagePopup(props);
+	return (
+		<KeptPagePopupContext value={keptPage.context}>
+			<AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} {...keptPage.rootProps} />
+		</KeptPagePopupContext>
+	);
 }
 
 function AlertDialogTrigger({ ...props }: AlertDialogPrimitive.Trigger.Props) {
@@ -18,9 +30,12 @@ function AlertDialogPortal({ ...props }: AlertDialogPrimitive.Portal.Props) {
 }
 
 function AlertDialogOverlay({ className, ...props }: AlertDialogPrimitive.Backdrop.Props) {
+	// Undrawn once its page's hiding closed the dialog (kept-page-popup.tsx).
+	const keptPageProps = useKeptPagePopupProps();
 	return (
 		<AlertDialogPrimitive.Backdrop
 			data-slot="alert-dialog-overlay"
+			{...keptPageProps}
 			className={cn(
 				'fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0',
 				className
@@ -37,11 +52,15 @@ function AlertDialogContent({
 }: AlertDialogPrimitive.Popup.Props & {
 	size?: 'default' | 'sm';
 }) {
+	// Undrawn once its page's hiding closed the dialog (kept-page-popup.tsx).
+	const keptPageProps = useKeptPagePopupProps();
 	return (
 		<AlertDialogPortal>
+			<KeptPagePopupMounted />
 			<AlertDialogOverlay />
 			<AlertDialogPrimitive.Popup
 				data-slot="alert-dialog-content"
+				{...keptPageProps}
 				data-size={size}
 				className={cn(
 					// Scrolls within a short screen, so long text cannot push the buttons out of reach.

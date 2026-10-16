@@ -1,18 +1,19 @@
 import 'server-only';
-import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { branchFolder } from '@/lib/branch-folder';
 import {
 	developmentImageEnvironment,
 	imageEnvironmentAccess,
 	previewImageEnvironmentPrefix,
 	productionImageEnvironment,
 } from '@/lib/image-paths';
+import { productionDatabaseGuardEnvSchema } from '@/lib/production-database-guard';
 
 const envSchema = z
 	.object({
 		NODE_ENV: z.enum(['development', 'production', 'test']),
-		// Set by Vercel on deployments; absent when running Next.js directly.
-		VERCEL_ENV: z.enum(['development', 'preview', 'production']).optional(),
+		// VERCEL_ENV, and production's Neon endpoint, which the app's pool refuses outside production.
+		...productionDatabaseGuardEnvSchema.shape,
 		// Set by Vercel on every deployment, previews included: the production host, without a scheme.
 		VERCEL_PROJECT_PRODUCTION_URL: z.hostname().optional(),
 		// Set by Vercel on every deployment: that deployment's own host, without a scheme.
@@ -39,6 +40,8 @@ const envSchema = z
 		RESEND_API_KEY: z.string().min(1),
 		// The verified sending domain, from the Vercel integration; mail comes from an address on it.
 		RESEND_EMAIL_DOMAIN: z.hostname(),
+		// Vercel sends it as the bearer token of each cron request, which only production receives.
+		CRON_SECRET: z.string().min(32).optional(),
 	})
 	.refine((vars) => vars.VERCEL_ENV !== 'preview' || vars.VERCEL_URL !== undefined, {
 		message: 'Vercel sets VERCEL_URL on every preview deployment',
@@ -47,9 +50,17 @@ const envSchema = z
 	.refine((vars) => vars.VERCEL_ENV !== 'preview' || vars.VERCEL_GIT_COMMIT_REF !== undefined, {
 		message: 'Vercel sets VERCEL_GIT_COMMIT_REF on every Git deployment',
 		path: ['VERCEL_GIT_COMMIT_REF'],
+	})
+	.refine((vars) => vars.VERCEL_ENV !== 'production' || vars.CRON_SECRET !== undefined, {
+		message: "Production's daily cleanup cron authenticates with CRON_SECRET",
+		path: ['CRON_SECRET'],
 	});
 
 export const env = envSchema.parse(process.env);
+
+// Whether the app's cookies are Secure: on a production build, as every Vercel deployment serves
+// over HTTPS, and not on the dev server over http.
+export const secureCookies = env.NODE_ENV === 'production';
 
 // The base for absolute URLs in metadata: production on every deployment, else the dev server.
 export const siteUrl = new URL(
@@ -67,19 +78,8 @@ export const appUrl =
 			? new URL(`https://${env.VERCEL_BRANCH_URL ?? env.VERCEL_URL}`)
 			: new URL('http://localhost:3000');
 
-// A branch as one folder name: readable (lowercase letters and digits, every other run one hyphen),
-// then a hash of the exact name, so feature/x and feature-x differ and no name comes out empty.
-function branchFolder(branch: string): string {
-	const readable = branch
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, '-')
-		.replace(/^-|-$/g, '');
-	const hash = createHash('sha256').update(branch).digest('hex').slice(0, 8);
-	return readable === '' ? hash : `${readable}-${hash}`;
-}
-
 // Where this deployment's images go under each role's folder: production, a preview's branch, or
-// development. Production and previews share a store, so each writes and deletes only in its own.
+// development. Every preview shares the preview store, so each writes and deletes only in its own.
 export const imageEnvironment =
 	env.VERCEL_ENV === 'production'
 		? productionImageEnvironment
@@ -90,8 +90,16 @@ export const imageEnvironment =
 // What this deployment reaches besides its own images. Next.js run directly is local development.
 const imageAccess = imageEnvironmentAccess[env.VERCEL_ENV ?? 'development'];
 
-// The other environments whose images this deployment serves.
+// The other environments in this deployment's store whose images it serves.
 export const readableImageEnvironments = imageAccess.readableEnvironments;
 
-// The prefixes of the other environments whose old images this deployment deletes.
-export const expiringImageEnvironmentPrefixes = imageAccess.expiringEnvironmentPrefixes;
+// The environments whose images this deployment fetches from production's public image route.
+export const imageEnvironmentsFetchedFromProduction = imageAccess.fetchedFromProduction;
+
+// Whether this deployment sweeps its images after each write, as every one without the daily
+// cleanup cron does.
+export const sweepsImagesAfterWrites = imageAccess.sweepsAfterWrites;
+
+// The token the daily cleanup cron's requests carry. Only production has one, since Vercel runs
+// crons only there.
+export const cronSecret = env.VERCEL_ENV === 'production' ? env.CRON_SECRET : undefined;

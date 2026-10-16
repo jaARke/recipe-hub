@@ -1,31 +1,27 @@
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
 import nextEnv from '@next/env';
-import { drizzle } from 'drizzle-orm/node-postgres';
+import { lt } from 'drizzle-orm';
+import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { z } from 'zod';
 import type { Actor, ActorProvider, MemberActor } from '@/application/ports/actor-provider';
-import type { ImageStore } from '@/application/ports/image-store';
 import type { MemberRepository, NewMember } from '@/application/ports/member-repository';
 import { ImageFolders } from '@/application/recipes/image-folders';
 import { RecipeService } from '@/application/recipes/recipe-service';
 import type { Member } from '@/domain/member/member';
-import { sampleRecipeContents } from '@/domain/recipe/samples/sample-recipes';
-import { slugify } from '@/domain/recipe/slug';
 import { pinFullSslVerification } from '@/infrastructure/db/connection-string';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { DrizzleSavedDraftRepository } from '@/infrastructure/db/drizzle-saved-draft-repository';
+import { rateLimits, sessions, verifications } from '@/infrastructure/db/schema';
 import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
 import { seedImageEnvironment } from '@/lib/image-paths';
 import { getLogger } from '@/lib/logger';
-
-// A sample's photo is stored here under the file name its pathname ends with.
-const photosFolder = path.join(import.meta.dirname, 'photos');
-
-// Every seed photo is a JPEG, as scripts/seed/photos/SOURCES.md lists.
-const photoContentType = 'image/jpeg';
+import {
+	guardProductionDatabase,
+	productionDatabaseGuardEnvSchema,
+} from '@/lib/production-database-guard';
+import { seedSamples } from './seed-samples';
 
 // Every sample's contributor. No one signs in as it: its address can never receive a code.
 const sampleContributor: NewMember = {
@@ -43,7 +39,12 @@ class SeedActorProvider implements ActorProvider {
 	private readonly actor: MemberActor;
 
 	constructor(contributor: Member) {
-		this.actor = { kind: 'member', memberId: contributor.id, role: contributor.role };
+		this.actor = {
+			kind: 'member',
+			memberId: contributor.id,
+			role: contributor.role,
+			sessionStartedAt: new Date(),
+		};
 	}
 
 	async currentActor(): Promise<Actor> {
@@ -62,6 +63,23 @@ async function findOrCreateSampleContributor(members: MemberRepository): Promise
 	return created;
 }
 
+// A preview's branch starts as a copy of production, live sessions included. The branch's first seed
+// created the sample contributor, so every sign-in row older than it came from production.
+async function deleteCopiedSignInRows(db: NodePgDatabase, firstSeedAt: Date): Promise<void> {
+	const sessionsDeleted = await db.delete(sessions).where(lt(sessions.createdAt, firstSeedAt));
+	const verificationsDeleted = await db
+		.delete(verifications)
+		.where(lt(verifications.createdAt, firstSeedAt));
+	const rateLimitsDeleted = await db
+		.delete(rateLimits)
+		.where(lt(rateLimits.lastRequest, firstSeedAt.getTime()));
+	logger.info('Copied sign-in rows deleted', {
+		sessions: sessionsDeleted.rowCount,
+		verifications: verificationsDeleted.rowCount,
+		rateLimits: rateLimitsDeleted.rowCount,
+	});
+}
+
 async function withSeedLock(pool: Pool, run: () => Promise<void>): Promise<void> {
 	const client = await pool.connect();
 	try {
@@ -73,40 +91,6 @@ async function withSeedLock(pool: Pool, run: () => Promise<void>): Promise<void>
 	}
 }
 
-async function seed(recipes: RecipeService, images: ImageStore): Promise<void> {
-	let recipesCreated = 0;
-	let recipesSkipped = 0;
-	let photosUploaded = 0;
-
-	// The list shows the newest first, so inserting in reverse keeps the samples' order.
-	for (const content of sampleRecipeContents.toReversed()) {
-		// Photos go first, so a seeded recipe never points at a missing photo. An existing recipe's
-		// missing photos are uploaded too, as for a seeded database given a new store.
-		for (const { pathname } of content.images) {
-			if (await images.has(pathname)) {
-				continue;
-			}
-
-			const body = await readFile(path.join(photosFolder, path.basename(pathname)));
-			await images.put(pathname, body, photoContentType);
-			logger.info('Seed photo uploaded', { pathname });
-			photosUploaded += 1;
-		}
-
-		const slug = slugify(content.title);
-		if ((await recipes.getRecipe(slug)) !== null) {
-			logger.info('Seed recipe skipped', { slug });
-			recipesSkipped += 1;
-			continue;
-		}
-
-		await recipes.createRecipe({ content });
-		recipesCreated += 1;
-	}
-
-	logger.info('Seeding finished', { recipesCreated, recipesSkipped, photosUploaded });
-}
-
 // Imported whole: @next/env is bundled CommonJS, whose named exports Node's ESM loader cannot see.
 nextEnv.loadEnvConfig(process.cwd());
 
@@ -116,8 +100,7 @@ const env = z
 		DATABASE_URL_UNPOOLED: z.url(),
 		// The image store; the Blob SDK reads and refreshes Vercel's OIDC token itself.
 		BLOB_STORE_ID: z.string().min(1),
-		// Set by Vercel on deployments; absent locally.
-		VERCEL_ENV: z.enum(['development', 'preview', 'production']).optional(),
+		...productionDatabaseGuardEnvSchema.shape,
 	})
 	.parse(process.env);
 
@@ -125,15 +108,22 @@ const env = z
 if (env.VERCEL_ENV === 'production') {
 	logger.info('Seeding skipped in production');
 } else {
-	const pool = new Pool({ connectionString: pinFullSslVerification(env.DATABASE_URL_UNPOOLED) });
+	const connectionString = pinFullSslVerification(env.DATABASE_URL_UNPOOLED);
+	guardProductionDatabase(connectionString, env);
+	logger.info('Seeding started', { databaseHost: new URL(connectionString).hostname });
+
+	const pool = new Pool({ connectionString });
 	try {
 		await withSeedLock(pool, async () => {
 			const db = drizzle({ client: pool });
 			const members = new DrizzleMemberRepository(db);
 			const contributor = await findOrCreateSampleContributor(members);
+			if (env.VERCEL_ENV === 'preview') {
+				await deleteCopiedSignInRows(db, contributor.createdAt);
+			}
 			const folders = new ImageFolders(seedImageEnvironment);
 			const images = new BlobImageStore({ storeId: env.BLOB_STORE_ID, folders });
-			await seed(
+			await seedSamples(
 				new RecipeService(
 					new DrizzleRecipeRepository(db),
 					new DrizzleRecipeImportRepository(db),

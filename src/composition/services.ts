@@ -7,6 +7,7 @@ import { cache } from 'react';
 import { AccessRequestService } from '@/application/access/access-request-service';
 import { AccountService } from '@/application/access/account-service';
 import { InviteService } from '@/application/access/invite-service';
+import { CleanupService } from '@/application/cleanup/cleanup-service';
 import { SavedDraftService } from '@/application/drafts/saved-draft-service';
 import { FavoriteService } from '@/application/favorites/favorite-service';
 import { RecipeImportService } from '@/application/ingestion/recipe-import-service';
@@ -31,18 +32,22 @@ import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recip
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { DrizzleRecipeSearch } from '@/infrastructure/db/drizzle-recipe-search';
 import { DrizzleSavedDraftRepository } from '@/infrastructure/db/drizzle-saved-draft-repository';
+import { DrizzleSignInRepository } from '@/infrastructure/db/drizzle-sign-in-repository';
 import { ResendEmailSender } from '@/infrastructure/email/resend-email-sender';
 import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
 import { BlobUploadHandler } from '@/infrastructure/storage/blob-upload-handler';
 import { GuardedWebPageFetcher } from '@/infrastructure/web/guarded-web-page-fetcher';
+import { HttpProductionImages } from '@/infrastructure/web/http-production-images';
 import { JsonLdPageRecipeExtractor } from '@/infrastructure/web/json-ld-page-recipe-extractor';
 import {
 	appUrl,
 	env,
-	expiringImageEnvironmentPrefixes,
 	imageEnvironment,
+	imageEnvironmentsFetchedFromProduction,
 	readableImageEnvironments,
+	secureCookies,
 	siteUrl,
+	sweepsImagesAfterWrites,
 } from '@/lib/env';
 import { settings } from '@/lib/settings';
 
@@ -55,10 +60,13 @@ const emails = new ResendEmailSender({
 const imageFolders = new ImageFolders(
 	imageEnvironment,
 	readableImageEnvironments,
-	expiringImageEnvironmentPrefixes
+	imageEnvironmentsFetchedFromProduction
 );
 
 const images = new BlobImageStore({ storeId: env.BLOB_STORE_ID, folders: imageFolders });
+
+// Asked only on previews: production's and development's folders fetch nothing from production.
+const productionImages = new HttpProductionImages({ siteUrl });
 
 // The hosts a deployment answers on: the one its links name, and its own Vercel hosts.
 const deploymentHosts = [
@@ -76,6 +84,7 @@ function getAuth(): Auth {
 		secret: env.BETTER_AUTH_SECRET,
 		allowedHosts: deploymentHosts,
 		productionHost: env.VERCEL_ENV === 'production' ? siteUrl.hostname : undefined,
+		secureCookies,
 		accounts: new AccountService(
 			new DrizzleMemberRepository(db),
 			new DrizzleInviteRepository(db),
@@ -129,10 +138,12 @@ export function getRecipeImageService(): RecipeImageService {
 		new DrizzleRecipeImportRepository(db),
 		new DrizzleSavedDraftRepository(db),
 		images,
+		productionImages,
 		actors,
 		imageFolders,
 		new DrizzleImageMoveLock(db),
-		after
+		after,
+		sweepsImagesAfterWrites
 	);
 }
 
@@ -159,6 +170,17 @@ export function getSavedDraftService(): SavedDraftService {
 		images,
 		actors,
 		imageFolders
+	);
+}
+
+// The time-based cleanup, which production's daily cron runs.
+export function getCleanupService(): CleanupService {
+	return new CleanupService(
+		getRecipeImportService(),
+		new DrizzleSavedDraftRepository(db),
+		new DrizzleInviteRepository(db),
+		new DrizzleSignInRepository(db),
+		getRecipeImageService()
 	);
 }
 
@@ -192,7 +214,7 @@ export function getMemberService(): MemberService {
 export function getFavoriteService(): FavoriteService {
 	return new FavoriteService(
 		new DrizzleFavoriteRepository(db),
-		new CookieDeviceFavorites({ cookies: requestCookies, secure: env.NODE_ENV === 'production' }),
+		new CookieDeviceFavorites({ cookies: requestCookies, secure: secureCookies }),
 		new DrizzleRecipeRepository(db),
 		actors
 	);

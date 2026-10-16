@@ -21,7 +21,7 @@ import {
 import { requireAdmin, requireMember } from '@/application/authorization';
 import { MemberNotFoundError } from '@/application/members/errors';
 import type { AccessRequestRepository } from '@/application/ports/access-request-repository';
-import type { ActorProvider } from '@/application/ports/actor-provider';
+import type { ActorProvider, MemberActor } from '@/application/ports/actor-provider';
 import {
 	EmailDeliveryError,
 	type EmailMessage,
@@ -39,7 +39,13 @@ import {
 	type Invite,
 } from '@/domain/member/invite';
 import type { Member } from '@/domain/member/member';
+import { invitePath } from '@/lib/auth-paths';
 import { getLogger } from '@/lib/logger';
+
+// Sign-up creates the account a moment before the session it signs in with, in the same request, so
+// an account up to this much older than its session came from the session's own sign-in. Signing in
+// again takes longer, as it starts by signing out and waits for a new emailed code.
+const signUpSessionLagMs = 60 * 1000;
 
 const logger = getLogger('access');
 
@@ -53,7 +59,7 @@ export type IssueInviteInput = {
 
 // The token travels in the fragment, which browsers never send to a server.
 function inviteLink(appUrl: URL, token: string): string {
-	const link = new URL('/invite', appUrl);
+	const link = new URL(invitePath, appUrl);
 	link.hash = token;
 	return link.href;
 }
@@ -72,6 +78,11 @@ function inviteEmail(invite: Invite, inviter: Member, to: string, link: string):
 		replyTo: inviter.email,
 		idempotencyKey: `invite/${invite.id}`,
 	};
+}
+
+// Whether the sign-in that started the actor's session created the member's account.
+function createdInSignIn(member: Member, actor: MemberActor): boolean {
+	return actor.sessionStartedAt.getTime() - member.createdAt.getTime() <= signUpSessionLagMs;
 }
 
 export class InviteService {
@@ -186,17 +197,18 @@ export class InviteService {
 		if (invite === null) {
 			throw new InviteUnavailableError();
 		}
-		if (invite.acceptedBy === actor.memberId) {
-			return { account: 'created' };
-		}
 
 		const member = await this.members.findById(actor.memberId);
 		if (member === null) {
 			throw new MemberNotFoundError();
 		}
-		// Several open invites can be bound to one address, and sign-up uses the newest. An account
-		// made after this invite was issued came from one of them, so it is new to this invitee too.
-		const account = member.createdAt > invite.createdAt ? 'created' : 'existing';
+		// Only the address the link was bound to completes it, so no other member can revoke it.
+		if (invite.email !== member.email) {
+			throw new InviteUnavailableError();
+		}
+		// Several open invites can be bound to one address, and sign-up uses the newest, so an account
+		// this sign-in created is new to this invitee through whichever of their links they complete.
+		const account = createdInSignIn(member, actor) ? 'created' : 'existing';
 		if (await this.invites.revoke(invite.id, new Date())) {
 			logger.info('Invite revoked at sign-in', {
 				inviteId: invite.id,

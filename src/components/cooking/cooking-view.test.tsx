@@ -1,10 +1,11 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cookingChecksKey } from '@/components/cooking/cooking-checks';
 import type { CookingRecipe } from '@/components/cooking/cooking-screens';
 import { CookingView } from '@/components/cooking/cooking-view';
+import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import { parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import { recipeIdSchema } from '@/domain/recipe/recipe';
 
@@ -337,6 +338,47 @@ describe('CookingView', () => {
 		expect(screen.queryByText(/^Picked up/)).toBeNull();
 	});
 
+	it('closes Steps as its page hides, so a return through history finds it closed', async () => {
+		const user = userEvent.setup();
+		const page = renderKeptPage(<CookingView recipe={potRoast} />);
+		const trigger = screen.getByRole('button', { name: 'Steps' });
+
+		await user.click(trigger);
+		expect(await screen.findByRole('dialog', { name: 'Steps' })).toBeDefined();
+		await page.hide();
+		await page.show();
+
+		expect(trigger.getAttribute('aria-expanded')).toBe('false');
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+	});
+
+	it('keeps its step while hidden behind a page at another address, and shows it on return', async () => {
+		visit('?step=1');
+		const user = userEvent.setup();
+		const page = renderKeptPage(<CookingView recipe={potRoast} />);
+		const ingredients = screen.getByRole('button', { name: 'Ingredients' });
+		await user.click(ingredients);
+		await screen.findByRole('dialog', { name: 'Ingredients' });
+
+		// Back to the recipe's page, whose address the browser shows, and announces, before the view
+		// hides.
+		history.replaceState(null, '', '/recipes/sunday-pot-roast');
+		await act(async () => {
+			window.dispatchEvent(new PopStateEvent('popstate'));
+		});
+		await page.hide();
+		const hiddenHeading = within(screen.getByRole('main', { hidden: true })).getByRole('heading', {
+			level: 1,
+			hidden: true,
+		});
+		expect(hiddenHeading.getAttribute('aria-label')).toBe('For the roast, step 1 of 3');
+		history.replaceState(null, '', `${cookPathname}?step=1`);
+		await page.show();
+
+		expect(screenHeading().getAttribute('aria-label')).toBe('For the roast, step 1 of 3');
+		expect(ingredients.isConnected).toBe(true);
+	});
+
 	it('starts over from Steps, focusing Gather’s heading as the dialog closes', async () => {
 		sessionStorage.setItem(cookingChecksKey(potRoast), '["0:1"]');
 		visit('?step=3');
@@ -370,6 +412,7 @@ describe('CookingView', () => {
 	});
 
 	it('cooks a recipe without sections, yield, or notes, in batches, through its one step', async () => {
+		history.replaceState(null, '', '/recipes/garden-salad/cook');
 		const user = userEvent.setup();
 		render(<CookingView recipe={salad} />);
 
@@ -387,7 +430,7 @@ describe('CookingView', () => {
 	});
 
 	it('scales a recipe that makes something under its own parameter', async () => {
-		visit('?makes=36');
+		history.replaceState(null, '', '/recipes/garden-salad/cook?makes=36');
 		render(
 			<CookingView
 				recipe={{ ...salad, yield: { kind: 'makes', amount: { min: 24 }, unit: 'biscuits' } }}

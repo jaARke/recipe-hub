@@ -2,11 +2,10 @@
 
 import { FilePenLineIcon } from 'lucide-react';
 import Link from 'next/link';
-import type { DraftSummaryDto } from '@/application/drafts/saved-draft-dtos';
 import type { FormAction } from '@/components/forms/form-state';
 import type { HeldDraft } from '@/components/recipe-form/held-draft';
-import type { RecipeFormEntrySubject } from '@/components/recipe-form/recipe-form-autosave';
 import { DraftMenu } from '@/components/recipe-form/subject-menus';
+import { draftFormSubject, type ListedDraft } from '@/components/recipe-import/listed-drafts';
 import { savedDraftPath } from '@/components/recipe-import/recipe-entry-paths';
 import { recipeImportPath } from '@/components/recipe-import/recipe-import-paths';
 import { formatTimeAgo } from '@/components/recipe-import/time-ago';
@@ -28,11 +27,6 @@ const importModeLabels = {
 } as const satisfies Record<RecipeImportMode, string>;
 
 const untitled = 'Untitled recipe';
-
-// A draft as the list shows it: as the service listed it, or as the page's form saved it since, by
-// the id the form holds.
-export type ListedDraft =
-	DraftSummaryDto | (Omit<Extract<DraftSummaryDto, { kind: 'saved' }>, 'id'> & { id: string });
 
 // The drafts as the page listed them, with the draft its form holds as it last saved it there, which
 // the list was rendered without: in its place when listed, keeping where it came from, or else
@@ -85,16 +79,6 @@ function draftPath(draft: ListedDraft): string {
 	return draft.continuesImportId === undefined
 		? savedDraftPath(draft.id)
 		: recipeImportPath(draft.continuesImportId);
-}
-
-// The form whose unsaved changes in this browser go with the draft.
-function draftFormSubject(draft: ListedDraft): RecipeFormEntrySubject {
-	if (draft.kind === 'import') {
-		return { kind: 'import', importId: draft.id };
-	}
-	return draft.continuesImportId === undefined
-		? { kind: 'draft', draftId: draft.id }
-		: { kind: 'import', importId: draft.continuesImportId };
 }
 
 type DraftListProps = {

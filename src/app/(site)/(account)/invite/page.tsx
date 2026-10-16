@@ -13,13 +13,14 @@ import { PageContainer } from '@/components/layout/page-container';
 import { PrivacyNote } from '@/components/layout/privacy-note';
 import { parseOptionParam } from '@/components/recipe/recipe-list-params';
 import { getMemberService } from '@/composition/services';
+import { invitePath } from '@/lib/auth-paths';
 import { settings } from '@/lib/settings';
 
 export const metadata: Metadata = {
 	title: 'Accept your invite',
 };
 
-type InviteSearchParams = Pick<PageProps<'/invite'>, 'searchParams'>;
+type InviteSearchParams = Pick<PageProps<typeof invitePath>, 'searchParams'>;
 
 // The token is in the URL's fragment, which only the browser reads, so the flow runs there.
 async function InviteForVisitor({ searchParams }: InviteSearchParams) {
@@ -41,7 +42,7 @@ async function InviteForVisitor({ searchParams }: InviteSearchParams) {
 	);
 }
 
-export default function InvitePage({ searchParams }: PageProps<'/invite'>) {
+export default function InvitePage({ searchParams }: PageProps<typeof invitePath>) {
 	return (
 		<PageContainer width="reading" className="flex flex-col gap-8 py-12 sm:py-16">
 			<h1 className="font-heading text-4xl font-semibold">Accept your invite</h1>

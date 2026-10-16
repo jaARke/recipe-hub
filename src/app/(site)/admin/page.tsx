@@ -16,7 +16,7 @@ import { AdminDashboardSkeleton } from '@/components/admin/admin-dashboard';
 import type { AdminActions } from '@/components/admin/admin-forms';
 import { AdminOnlyEmptyState } from '@/components/admin/admin-only-empty-state';
 import { AdminPageDashboard } from '@/components/admin/admin-page-dashboard';
-import { adminPath, signInHref } from '@/components/auth/auth-paths';
+import { adminPath, requestedPageHref, signInHref } from '@/components/auth/auth-paths';
 import { PageContainer } from '@/components/layout/page-container';
 import {
 	getAccessRequestService,
@@ -43,9 +43,11 @@ type AdminData = {
 	members: MemberDto[];
 };
 
+type AdminSearchParams = Pick<PageProps<'/admin'>, 'searchParams'>;
+
 // The authoritative check: every call authorizes the actor, and the proxy only looks for a cookie.
 // Null for a member who is not an admin.
-async function loadAdminData(): Promise<AdminData | null> {
+async function loadAdminData({ searchParams }: AdminSearchParams): Promise<AdminData | null> {
 	try {
 		const [requests, invites, members] = await Promise.all([
 			getAccessRequestService().listPendingRequests(),
@@ -55,7 +57,8 @@ async function loadAdminData(): Promise<AdminData | null> {
 		return { requests, invites, members };
 	} catch (error) {
 		if (error instanceof SignInRequiredError) {
-			redirect(signInHref(adminPath));
+			// Only this branch reads the query, which holds the open tab, so no other render waits on it.
+			redirect(signInHref(requestedPageHref(adminPath, await searchParams)));
 		}
 		if (error instanceof ForbiddenError) {
 			return null;
@@ -66,8 +69,8 @@ async function loadAdminData(): Promise<AdminData | null> {
 
 // The dashboard reads its tab from the URL inside this boundary, at request time, so the server
 // renders the open tab's panel first.
-async function AdminContent() {
-	const data = await loadAdminData();
+async function AdminContent({ searchParams }: AdminSearchParams) {
+	const data = await loadAdminData({ searchParams });
 	if (data === null) {
 		return <AdminOnlyEmptyState />;
 	}
@@ -75,12 +78,12 @@ async function AdminContent() {
 	return <AdminPageDashboard {...data} actions={adminActions} headingLevel={2} />;
 }
 
-export default function AdminPage() {
+export default function AdminPage({ searchParams }: PageProps<'/admin'>) {
 	return (
 		<PageContainer width="reading" className="flex flex-col gap-8 py-12 sm:py-16">
 			<h1 className="font-heading text-4xl font-semibold">Admin</h1>
 			<Suspense fallback={<AdminDashboardSkeleton />}>
-				<AdminContent />
+				<AdminContent searchParams={searchParams} />
 			</Suspense>
 		</PageContainer>
 	);

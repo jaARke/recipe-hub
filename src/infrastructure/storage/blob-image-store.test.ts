@@ -1,8 +1,37 @@
 import type { IncomingHttpHeaders } from 'node:http';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { get as getBlob, type GetBlobResult } from '@vercel/blob';
+import { dangerouslyDeleteBySrcImage, dangerouslyDeleteByTag } from '@vercel/functions';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
+import { ImageMoveInterruptedError } from '@/application/ports/image-store';
 import { ImageFolders } from '@/application/recipes/image-folders';
+import { RecipeImageService } from '@/application/recipes/recipe-image-service';
+import { anonymousActor } from '@/application/testing/actors';
+import { FixedActorProvider } from '@/application/testing/fixed-actor-provider';
+import { InMemoryImageMoveLock } from '@/application/testing/in-memory-image-move-lock';
+import { InMemoryProductionImages } from '@/application/testing/in-memory-production-images';
+import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
+import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
+import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
+import { stalledCall } from '@/application/testing/stalled-call';
 import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
 import { startFakeBlobApi, type FakeBlobApi } from '@/infrastructure/storage/testing/fake-blob-api';
+
+// A read goes to the store's own host rather than Blob's API, which the fake API cannot play, so a
+// test that reads stands in for the SDK's get.
+vi.mock('@vercel/blob', async (importOriginal) => {
+	const blob = await importOriginal<typeof import('@vercel/blob')>();
+	return { ...blob, get: vi.fn(blob.get) };
+});
+
+// Outside a Vercel request the purges do nothing, so tests see what the store asks of them.
+vi.mock('@vercel/functions', async (importOriginal) => {
+	const functions = await importOriginal<typeof import('@vercel/functions')>();
+	return {
+		...functions,
+		dangerouslyDeleteByTag: vi.fn(functions.dangerouslyDeleteByTag),
+		dangerouslyDeleteBySrcImage: vi.fn(functions.dangerouslyDeleteBySrcImage),
+	};
+});
 
 type ReceivedRequest = {
 	method?: string;
@@ -28,6 +57,11 @@ const recently = new Date('2026-10-12T12:00:00Z');
 let blobApi: FakeBlobApi;
 let blobs: Map<string, StoredBlob>;
 let received: ReceivedRequest[];
+// While set, the fake API never answers, and counts the requests it holds and those the client gives
+// up on.
+let stalled: boolean;
+let unansweredCount: number;
+let abandonedCount: number;
 
 function storeFor(environment: string): BlobImageStore {
 	return new BlobImageStore({ storeId: 'store_test', folders: new ImageFolders(environment) });
@@ -40,12 +74,27 @@ function store(pathnames: readonly string[], uploadedAt: Date = longAgo): void {
 }
 
 // Blob's API lists by prefix a page at a time, copies, and deletes. Copying a pathname whose name
-// says so fails.
+// says so fails, or never answers, and deleting one whose name says so deletes it but never answers,
+// as when Blob's answer is lost.
 beforeEach(async () => {
 	blobs = new Map();
 	received = [];
+	stalled = false;
+	unansweredCount = 0;
+	abandonedCount = 0;
 	blobApi = await startFakeBlobApi((request, body, response) => {
 		const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+		const leaveUnanswered = () => {
+			unansweredCount += 1;
+			response.on('close', () => {
+				abandonedCount += 1;
+			});
+		};
+		if (stalled || url.searchParams.get('fromUrl')?.includes('stalling')) {
+			leaveUnanswered();
+			return;
+		}
+
 		const params = Object.fromEntries(url.searchParams);
 		received.push({
 			method: request.method,
@@ -98,10 +147,15 @@ beforeEach(async () => {
 				});
 			}
 		} else if (request.method === 'POST' && url.pathname === '/delete') {
-			for (const pathname of (JSON.parse(body) as { urls: string[] }).urls) {
+			const { urls } = JSON.parse(body) as { urls: string[] };
+			for (const pathname of urls) {
 				blobs.delete(pathname);
 			}
-			answer(200, {});
+			if (urls.some((pathname) => pathname.includes('unconfirmed'))) {
+				leaveUnanswered();
+			} else {
+				answer(200, {});
+			}
 		} else {
 			answer(404, { error: { code: 'not_found', message: 'No such endpoint' } });
 		}
@@ -110,6 +164,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
 	await blobApi.close();
+	vi.mocked(dangerouslyDeleteByTag).mockClear();
+	vi.mocked(dangerouslyDeleteBySrcImage).mockClear();
 });
 
 describe('listUploadedBefore', () => {
@@ -154,7 +210,7 @@ describe('listRemoved', () => {
 });
 
 describe('remove', () => {
-	it('copies each image into the trash under its pathname, then deletes the originals', async () => {
+	it('moves each image into the trash under its pathname on its own, copied and then its original deleted', async () => {
 		store(['dish/development/a.jpg', 'scan/development/b.jpg']);
 		const before = Date.now();
 
@@ -178,13 +234,18 @@ describe('remove', () => {
 				}),
 			}),
 			expect.objectContaining({
+				method: 'POST',
+				path: '/delete',
+				body: { urls: ['dish/development/a.jpg'] },
+			}),
+			expect.objectContaining({
 				method: 'PUT',
 				params: { pathname: 'trash/scan/development/b.jpg', fromUrl: 'scan/development/b.jpg' },
 			}),
 			expect.objectContaining({
 				method: 'POST',
 				path: '/delete',
-				body: { urls: ['dish/development/a.jpg', 'scan/development/b.jpg'] },
+				body: { urls: ['scan/development/b.jpg'] },
 			}),
 		]);
 	});
@@ -197,15 +258,162 @@ describe('remove', () => {
 		expect([...blobs.keys()]).toEqual(['trash/dish/development/a.jpg']);
 	});
 
-	it('deletes no original when a copy fails', async () => {
-		store(['dish/development/a.jpg', 'dish/development/unreadable.jpg']);
+	it('leaves an image whose copy fails in place and returns it with why, and moves the rest', async () => {
+		store(['dish/development/a.jpg', 'dish/development/unreadable.jpg', 'scan/development/c.jpg']);
 
-		await expect(
-			storeFor('development').remove(['dish/development/a.jpg', 'dish/development/unreadable.jpg'])
-		).rejects.toThrow('The copy failed');
-		expect(blobs.has('dish/development/a.jpg')).toBe(true);
-		expect(blobs.has('dish/development/unreadable.jpg')).toBe(true);
-		expect(received.some(({ path }) => path === '/delete')).toBe(false);
+		expect(
+			await storeFor('development').remove([
+				'dish/development/a.jpg',
+				'dish/development/unreadable.jpg',
+				'scan/development/c.jpg',
+			])
+		).toEqual({
+			failed: [
+				{
+					pathname: 'dish/development/unreadable.jpg',
+					reason: 'Error: Vercel Blob: The copy failed',
+				},
+			],
+			unpurged: [],
+		});
+		expect([...blobs.keys()].sort()).toEqual([
+			'dish/development/unreadable.jpg',
+			'trash/dish/development/a.jpg',
+			'trash/scan/development/c.jpg',
+		]);
+		expect(received.flatMap(({ body }) => (body as { urls?: string[] })?.urls ?? [])).toEqual([
+			'dish/development/a.jpg',
+			'scan/development/c.jpg',
+		]);
+	});
+
+	it('purges 20 dish photos two calls of each kind before the move and two after, 16 a call', async () => {
+		const pathnames = Array.from({ length: 20 }, (_, index) => `dish/development/${index}.jpg`);
+		store(pathnames);
+
+		await storeFor('development').remove(pathnames);
+
+		const tags = pathnames.map((pathname) => `image:${pathname}`);
+		const sources = pathnames.map((pathname) => `/api/images/${pathname}`);
+		expect(vi.mocked(dangerouslyDeleteByTag).mock.calls.map(([tag]) => tag)).toEqual([
+			tags.slice(0, 16),
+			tags.slice(16),
+			tags.slice(0, 16),
+			tags.slice(16),
+		]);
+		expect(vi.mocked(dangerouslyDeleteBySrcImage).mock.calls.map(([source]) => source)).toEqual([
+			sources.slice(0, 16),
+			sources.slice(16),
+			sources.slice(0, 16),
+			sources.slice(16),
+		]);
+	});
+
+	it('leaves the images whose purge fails before the move in place, and moves the rest', async () => {
+		const pathnames = Array.from({ length: 20 }, (_, index) => `dish/development/${index}.jpg`);
+		store(pathnames);
+		vi.mocked(dangerouslyDeleteByTag)
+			.mockResolvedValueOnce(undefined)
+			.mockRejectedValueOnce(new Error('Purge refused'));
+
+		expect(await storeFor('development').remove(pathnames)).toEqual({
+			failed: pathnames.slice(16).map((pathname) => ({ pathname, reason: 'Error: Purge refused' })),
+			unpurged: [],
+		});
+		expect(pathnames.filter((pathname) => blobs.has(pathname))).toEqual(pathnames.slice(16));
+		expect(pathnames.filter((pathname) => blobs.has(`trash/${pathname}`))).toEqual(
+			pathnames.slice(0, 16)
+		);
+	});
+
+	it('reports a purge that fails after the move against the images it covered, which stay moved', async () => {
+		store(['dish/development/a.jpg']);
+		vi.mocked(dangerouslyDeleteByTag)
+			.mockResolvedValueOnce(undefined)
+			.mockRejectedValueOnce(new Error('Purge refused'));
+
+		expect(await storeFor('development').remove(['dish/development/a.jpg'])).toEqual({
+			failed: [],
+			unpurged: [{ pathname: 'dish/development/a.jpg', reason: 'Error: Purge refused' }],
+		});
+		expect([...blobs.keys()]).toEqual(['trash/dish/development/a.jpg']);
+	});
+
+	it("stops at the image at hand, aborting its request, once the caller's signal aborts", async () => {
+		store(['dish/development/a.jpg', 'dish/development/b.jpg']);
+		stalled = true;
+		const caller = new AbortController();
+		const reason = new Error('The sweep ran out of time');
+
+		const removal = storeFor('development').remove(
+			['dish/development/a.jpg', 'dish/development/b.jpg'],
+			caller.signal
+		);
+		await vi.waitFor(() => expect(unansweredCount).toBe(1));
+		caller.abort(reason);
+
+		await expect(removal).rejects.toThrow(ImageMoveInterruptedError);
+		await expect(removal).rejects.toMatchObject({ cause: reason, unpurged: [] });
+		await vi.waitFor(() => expect(abandonedCount).toBe(1));
+		expect(unansweredCount).toBe(1);
+	});
+
+	describe('stopped part way', () => {
+		const moved = 'dish/development/a.jpg';
+		const stalling = 'dish/development/stalling.jpg';
+		const unconfirmed = 'dish/development/unconfirmed.jpg';
+		const untried = 'dish/development/b.jpg';
+
+		const sources = (pathnames: string[]) => pathnames.map((pathname) => `/api/images/${pathname}`);
+
+		// Moves the first image, then stops at the second, whose copy or delete Blob never answers, once
+		// the caller's signal aborts.
+		async function removeUntilStopped(
+			reason: Error,
+			stoppedAt: string = stalling
+		): Promise<unknown> {
+			store([moved, stoppedAt, untried]);
+			const caller = new AbortController();
+			const removal = storeFor('development').remove([moved, stoppedAt, untried], caller.signal);
+			await vi.waitFor(() => expect(unansweredCount).toBe(1));
+			caller.abort(reason);
+			return removal.catch((error: unknown) => error);
+		}
+
+		it('still purges the image it moved, then rejects with the signal as its cause', async () => {
+			const reason = new Error('The sweep ran out of time');
+
+			const failure = await removeUntilStopped(reason);
+
+			expect(failure).toBeInstanceOf(ImageMoveInterruptedError);
+			expect(failure).toMatchObject({ cause: reason, unpurged: [] });
+			expect(vi.mocked(dangerouslyDeleteBySrcImage).mock.calls.map(([source]) => source)).toEqual([
+				sources([moved, stalling, untried]),
+				sources([moved]),
+			]);
+			expect([...blobs.keys()].sort()).toEqual([untried, stalling, `trash/${moved}`]);
+		});
+
+		it('purges an image whose delete it stopped, as Blob may have deleted its original', async () => {
+			const failure = await removeUntilStopped(new Error('The sweep ran out of time'), unconfirmed);
+
+			expect(failure).toBeInstanceOf(ImageMoveInterruptedError);
+			expect(vi.mocked(dangerouslyDeleteBySrcImage).mock.calls.map(([source]) => source)).toEqual([
+				sources([moved, unconfirmed, untried]),
+				sources([moved, unconfirmed]),
+			]);
+			expect([...blobs.keys()].sort()).toEqual([untried, `trash/${moved}`, `trash/${unconfirmed}`]);
+		});
+
+		it('names the image it moved whose purge then failed', async () => {
+			vi.mocked(dangerouslyDeleteByTag)
+				.mockResolvedValueOnce(undefined)
+				.mockRejectedValueOnce(new Error('Purge refused'));
+
+			expect(await removeUntilStopped(new Error('The sweep ran out of time'))).toMatchObject({
+				unpurged: [{ pathname: moved, reason: 'Error: Purge refused' }],
+			});
+		});
 	});
 });
 
@@ -241,53 +449,256 @@ describe('deleteRemoved', () => {
 	});
 });
 
-describe('deleteExpired', () => {
-	it("deletes the expiring folders' images and trash from before the cutoff, and nothing else", async () => {
-		store([
-			'dish/preview/feature-x-1a2b3c4d/a.jpg',
-			'scan/preview/feature-y-5e6f7a8b/b.jpg',
-			'trash/dish/preview/feature-x-1a2b3c4d/c.jpg',
-			'dish/production/d.jpg',
-			'trash/scan/production/e.jpg',
-			'dish/seed/f.jpg',
-			'dish/development/g.jpg',
-		]);
-		store(
-			['dish/preview/feature-x-1a2b3c4d/recent.jpg', 'trash/scan/preview/feature-y-5e6f7a8b/h.jpg'],
-			recently
-		);
-		const production = new BlobImageStore({
-			storeId: 'store_test',
-			folders: new ImageFolders('production', [], ['preview/']),
-		});
+describe('time limits', () => {
+	const pathname = 'dish/development/a.jpg';
+	const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 
-		expect(await production.deleteExpired(cutoff)).toEqual([
-			'dish/preview/feature-x-1a2b3c4d/a.jpg',
-			'scan/preview/feature-y-5e6f7a8b/b.jpg',
-			'dish/preview/feature-x-1a2b3c4d/c.jpg',
-		]);
-		expect([...blobs.keys()].sort()).toEqual([
-			'dish/development/g.jpg',
-			'dish/preview/feature-x-1a2b3c4d/recent.jpg',
-			'dish/production/d.jpg',
-			'dish/seed/f.jpg',
-			'trash/scan/preview/feature-y-5e6f7a8b/h.jpg',
-			'trash/scan/production/e.jpg',
-		]);
-		expect(received.flatMap(({ params }) => params.prefix ?? []).sort()).toEqual([
-			'dish/preview/',
-			'scan/preview/',
-			'trash/dish/preview/',
-			'trash/scan/preview/',
+	// A read Blob answered at once, whose body has yet to stream.
+	const answeredRead: GetBlobResult = {
+		statusCode: 200,
+		stream: new ReadableStream(),
+		headers: new Headers(),
+		blob: {
+			url: `https://test.private.blob.vercel-storage.com/${pathname}`,
+			downloadUrl: `https://test.private.blob.vercel-storage.com/${pathname}?download=1`,
+			pathname,
+			contentType: 'image/jpeg',
+			contentDisposition: 'inline',
+			cacheControl: `public, max-age=${yearInSeconds}`,
+			size: 4,
+			uploadedAt: longAgo,
+			etag: '"etag"',
+		},
+	};
+
+	beforeEach(() => {
+		stalled = true;
+		vi.mocked(getBlob).mockImplementation((_pathname, { abortSignal }) => stalledCall(abortSignal));
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.mocked(getBlob).mockReset();
+	});
+
+	// The SDK's signal for the read the store last asked Blob for.
+	function readSignal(): AbortSignal | undefined {
+		return vi.mocked(getBlob).mock.lastCall?.[1].abortSignal;
+	}
+
+	it.each([
+		['Blob get', (store: BlobImageStore) => store.get(pathname)],
+		['Blob head', (store: BlobImageStore) => store.has(pathname)],
+		['Blob put', (store: BlobImageStore) => store.put(pathname, jpeg, 'image/jpeg')],
+		['Blob list', (store: BlobImageStore) => store.listRemoved()],
+		['Blob delete', (store: BlobImageStore) => store.deleteRemoved([pathname])],
+	])('gives up on a %s that never answers after 15 seconds, naming the call', async (call, run) => {
+		const failure = run(storeFor('development'));
+		const settled = vi.fn();
+		failure.catch(settled);
+		await vi.advanceTimersByTimeAsync(15_000 - 1);
+		expect(settled).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1);
+
+		await expect(failure).rejects.toThrow(`${call} timed out after 15 seconds`);
+	});
+
+	it('gives up on a cache purge that never answers after 15 seconds, leaving its images with why', async () => {
+		vi.mocked(dangerouslyDeleteByTag).mockImplementationOnce(() => stalledCall());
+		const removal = storeFor('development').remove([pathname]);
+		await vi.advanceTimersByTimeAsync(15_000);
+
+		expect(await removal).toEqual({
+			failed: [{ pathname, reason: 'Error: Cache purge by tag timed out after 15 seconds' }],
+			unpurged: [],
+		});
+	});
+
+	it('gives up on a copy Blob never answers after 15 seconds, returning the image with why', async () => {
+		const removal = storeFor('development').remove([pathname]);
+		await vi.advanceTimersByTimeAsync(15_000);
+
+		expect(await removal).toEqual({
+			failed: [{ pathname, reason: 'Error: Blob copy timed out after 15 seconds' }],
+			unpurged: [],
+		});
+	});
+
+	it('gives up on a delete Blob never answers after 15 seconds, returning the image with why and purging it, as Blob may have deleted it', async () => {
+		stalled = false;
+		const unconfirmed = 'dish/development/unconfirmed.jpg';
+		store([pathname, unconfirmed]);
+
+		const removal = storeFor('development').remove([pathname, unconfirmed]);
+		await vi.waitFor(() => expect(unansweredCount).toBe(1));
+		await vi.advanceTimersByTimeAsync(15_000);
+
+		expect(await removal).toEqual({
+			failed: [{ pathname: unconfirmed, reason: 'Error: Blob delete timed out after 15 seconds' }],
+			unpurged: [],
+		});
+		expect(vi.mocked(dangerouslyDeleteBySrcImage).mock.lastCall?.[0]).toEqual([
+			`/api/images/${pathname}`,
+			`/api/images/${unconfirmed}`,
 		]);
 	});
 
-	it('lists and deletes nothing in a deployment that expires no other environment', async () => {
-		store(['dish/preview/feature-y-5e6f7a8b/a.jpg', 'dish/production/b.jpg']);
+	it('gives the purge after the move 20 seconds in all, returning the batches it cut off or never reached with why', async () => {
+		stalled = false;
+		const pathnames = Array.from({ length: 33 }, (_, index) => `dish/development/${index}.jpg`);
+		store(pathnames);
+		const purgeAfterMoveAsked = Promise.withResolvers<void>();
+		// The three batches' purges before the move answer, and the first two's after it never do.
+		vi.mocked(dangerouslyDeleteByTag)
+			.mockResolvedValueOnce(undefined)
+			.mockResolvedValueOnce(undefined)
+			.mockResolvedValueOnce(undefined)
+			.mockImplementationOnce(() => {
+				purgeAfterMoveAsked.resolve();
+				return stalledCall();
+			})
+			.mockImplementationOnce(() => stalledCall());
 
-		expect(await storeFor('preview/feature-x-1a2b3c4d').deleteExpired(cutoff)).toEqual([]);
-		expect(blobs.size).toBe(2);
-		expect(received).toEqual([]);
+		const removal = storeFor('development').remove(pathnames);
+		const settled = vi.fn();
+		removal.then(settled, settled);
+		await purgeAfterMoveAsked.promise;
+		await vi.advanceTimersByTimeAsync(20_000 - 1);
+		expect(settled).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1);
+		expect(settled).toHaveBeenCalled();
+
+		const unpurged = (batch: string[], reason: string) =>
+			batch.map((pathname) => ({ pathname, reason }));
+		expect(await removal).toEqual({
+			failed: [],
+			unpurged: [
+				...unpurged(pathnames.slice(0, 16), 'Error: Cache purge by tag timed out after 15 seconds'),
+				...unpurged(
+					pathnames.slice(16),
+					'Error: The purge after the move timed out after 20 seconds'
+				),
+			],
+		});
+		// The third batch's purge after the move is never asked for.
+		expect(vi.mocked(dangerouslyDeleteByTag)).toHaveBeenCalledTimes(5);
+	});
+
+	it('aborts the request it gives up on', async () => {
+		const read = storeFor('development').get(pathname);
+		const listing = storeFor('development').listRemoved();
+		read.catch(() => undefined);
+		listing.catch(() => undefined);
+		await vi.advanceTimersByTimeAsync(15_000);
+		vi.useRealTimers();
+
+		expect(readSignal()?.aborted).toBe(true);
+		await vi.waitFor(() => expect(abandonedCount).toBe(1));
+	});
+
+	it("streams a read's body under the caller's signal alone once Blob answered in time", async () => {
+		vi.mocked(getBlob).mockResolvedValue(answeredRead);
+		const caller = new AbortController();
+
+		expect(await storeFor('development').get(pathname, caller.signal)).toMatchObject({
+			contentType: 'image/jpeg',
+		});
+		await vi.advanceTimersByTimeAsync(15_000);
+		expect(readSignal()?.aborted).toBe(false);
+		caller.abort();
+		expect(readSignal()?.aborted).toBe(true);
+	});
+});
+
+describe('a sweep through Blob', () => {
+	let consoleInfo: MockInstance<typeof console.info>;
+
+	beforeEach(() => {
+		consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => {});
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	// The development deployment's sweep, with nothing naming any image.
+	function sweepService(): RecipeImageService {
+		const folders = new ImageFolders('development');
+		const recipes = new InMemoryRecipeRepository();
+		return new RecipeImageService(
+			recipes,
+			new InMemoryRecipeImportRepository(recipes),
+			new InMemorySavedDraftRepository(),
+			new BlobImageStore({ storeId: 'store_test', folders }),
+			new InMemoryProductionImages(),
+			new FixedActorProvider(anonymousActor()),
+			folders,
+			new InMemoryImageMoveLock(),
+			() => {},
+			true
+		);
+	}
+
+	function logLines(): unknown[] {
+		return consoleInfo.mock.calls.map(([line]) => JSON.parse(String(line)));
+	}
+
+	it('moves the unused uploads whose copies succeed and names the one that failed in its line', async () => {
+		store(['dish/development/a.jpg', 'dish/development/unreadable.jpg', 'scan/development/c.jpg']);
+
+		expect(await sweepService().sweepImages()).toEqual({
+			status: 'ran',
+			result: {
+				restoredCount: 0,
+				deletedCount: 0,
+				removedCount: 2,
+				failedCount: 1,
+			},
+		});
+		expect([...blobs.keys()].sort()).toEqual([
+			'dish/development/unreadable.jpg',
+			'trash/dish/development/a.jpg',
+			'trash/scan/development/c.jpg',
+		]);
+		expect(logLines()).toEqual([
+			expect.objectContaining({
+				message: 'Images swept',
+				removedCount: 2,
+				failedCount: 1,
+				removedPathnames: ['dish/development/a.jpg', 'scan/development/c.jpg'],
+				failedImages: [
+					{
+						step: 'remove',
+						pathname: 'dish/development/unreadable.jpg',
+						reason: 'Error: Vercel Blob: The copy failed',
+					},
+				],
+				unpurgedImages: [],
+			}),
+		]);
+	});
+
+	it('names an upload whose purge failed after it moved as removed and unpurged in its line', async () => {
+		store(['dish/development/a.jpg']);
+		vi.mocked(dangerouslyDeleteBySrcImage)
+			.mockResolvedValueOnce(undefined)
+			.mockRejectedValueOnce(new Error('Purge refused'));
+
+		expect(await sweepService().sweepImages()).toMatchObject({
+			result: { removedCount: 1, failedCount: 0 },
+		});
+		expect([...blobs.keys()]).toEqual(['trash/dish/development/a.jpg']);
+		expect(logLines()).toEqual([
+			expect.objectContaining({
+				message: 'Images swept',
+				removedPathnames: ['dish/development/a.jpg'],
+				failedImages: [],
+				unpurgedImages: [
+					{ step: 'remove', pathname: 'dish/development/a.jpg', reason: 'Error: Purge refused' },
+				],
+			}),
+		]);
 	});
 });
 

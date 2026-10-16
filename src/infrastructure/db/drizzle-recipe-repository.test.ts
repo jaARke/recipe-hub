@@ -21,6 +21,7 @@ import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repo
 import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { recipes } from '@/infrastructure/db/schema';
+import { requireBoundedWrites } from '@/infrastructure/db/testing/bounded-writes';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 
 const contributor: NewMember = {
@@ -174,6 +175,28 @@ describe('slug allocation', () => {
 				cause: expect.objectContaining({ message: 'slug written without the slug lock' }),
 			})
 		);
+	});
+});
+
+// Postgres bounds every lock wait in the transaction, the slug lock's and the recipe row's alike.
+describe('bounded writes', () => {
+	it('creates, edits, and renames a recipe in a bounded transaction', async () => {
+		const pie = await repository.create(newRecipe(sampleLemonIceboxPie));
+		await requireBoundedWrites(db, 'recipes');
+
+		const created = await repository.create(newRecipe(sampleButtermilkBiscuits));
+		const edited = await repository.update(pie.id, {
+			content: recipeContentSchema.parse(sampleLemonIceboxPie),
+			expectedUpdatedAt: pie.updatedAt,
+		});
+		const renamed = await repository.update(pie.id, {
+			content: recipeContentSchema.parse(sampleChickenSoup),
+			expectedUpdatedAt: edited!.recipe.updatedAt,
+			slugBase: 'weeknight-chicken-soup',
+		});
+
+		expect(created.slug).toBe('buttermilk-biscuits');
+		expect(renamed?.recipe.slug).toBe('weeknight-chicken-soup');
 	});
 });
 

@@ -4,9 +4,10 @@ import type { ImageMoveLock, LockAttempt } from '@/application/ports/image-move-
 const defaultWaitMs = 60_000;
 
 // Held by one task at a time, as the advisory lock is across a deployment's instances. It takes the
-// lock as soon as it is asked, so of two sweeps started together the first runs, and hands it to
-// waiters in the order they asked. A waiter gives up once the wait passes, on setTimeout, so fake
-// timers can pass it.
+// lock as soon as it is asked, so of two sweeps started together the first runs. The port promises
+// waiters no order, and the Drizzle lock's waiters take it at their next try, so a sweep can come
+// first; this one hands it to waiters in the order they asked only so tests run the same way every
+// time. A waiter gives up once the wait passes, on setTimeout, so fake timers can pass it.
 export class InMemoryImageMoveLock implements ImageMoveLock {
 	private readonly waitMs: number;
 	private readonly waiters: (() => void)[] = [];

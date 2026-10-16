@@ -1,9 +1,21 @@
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { InviteService } from '@/application/access/invite-service';
+import type { ActorProvider } from '@/application/ports/actor-provider';
 import type { NewMember } from '@/application/ports/member-repository';
+import { actorFor } from '@/application/testing/actors';
+import { FixedActorProvider } from '@/application/testing/fixed-actor-provider';
+import { InMemoryEmailSender } from '@/application/testing/in-memory-email-sender';
 import type { Auth } from '@/infrastructure/auth/better-auth';
 import { BetterAuthActorProvider } from '@/infrastructure/auth/better-auth-actor-provider';
-import { cookiesFrom, createTestAuth, testHost } from '@/infrastructure/auth/testing/test-auth';
+import {
+	cookiesFrom,
+	createTestAuth,
+	testHost,
+	testOrigin,
+} from '@/infrastructure/auth/testing/test-auth';
+import { DrizzleAccessRequestRepository } from '@/infrastructure/db/drizzle-access-request-repository';
+import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { sessions, users } from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
@@ -53,13 +65,48 @@ async function sessionExpiry(): Promise<Date | undefined> {
 	return row?.expiresAt;
 }
 
+async function sessionStart(): Promise<Date | undefined> {
+	const [row] = await db.select({ createdAt: sessions.createdAt }).from(sessions);
+	return row?.createdAt;
+}
+
+function inviteServiceFor(actors: ActorProvider): InviteService {
+	return new InviteService(
+		new DrizzleInviteRepository(db),
+		new DrizzleAccessRequestRepository(db),
+		members,
+		new InMemoryEmailSender(),
+		actors,
+		new URL(testOrigin)
+	);
+}
+
 describe('currentActor', () => {
-	it('returns the signed-in member with their role', async () => {
+	it("returns the signed-in member with their role and their session's start", async () => {
 		const member = await members.create(jake);
 
 		const actor = await providerFor(await signedInHeaders(jake.email)).currentActor();
 
-		expect(actor).toEqual({ kind: 'member', memberId: member.id, role: 'admin' });
+		expect(actor).toEqual({
+			kind: 'member',
+			memberId: member.id,
+			role: 'admin',
+			sessionStartedAt: await sessionStart(),
+		});
+	});
+
+	it("starts a sign-up's session close enough to its account that the invite reports it new", async () => {
+		const admin = inviteServiceFor(new FixedActorProvider(actorFor(await members.create(jake))));
+		const issued = await admin.issueInvite({ displayName: ada.displayName });
+		const token = new URL(issued.link).hash.slice(1);
+		await admin.bindInviteEmail(token, ada.email);
+
+		// The first code for the invited address creates the account.
+		const headers = await signedInHeaders(ada.email);
+
+		expect(await inviteServiceFor(providerFor(headers)).completeInvite(token)).toEqual({
+			account: 'created',
+		});
 	});
 
 	it('returns an anonymous actor without a session', async () => {

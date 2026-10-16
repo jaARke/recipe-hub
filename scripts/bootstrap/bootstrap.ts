@@ -7,6 +7,10 @@ import type { Actor, ActorProvider } from '@/application/ports/actor-provider';
 import { pinFullSslVerification } from '@/infrastructure/db/connection-string';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { getLogger } from '@/lib/logger';
+import {
+	guardProductionDatabase,
+	productionDatabaseGuardEnvSchema,
+} from '@/lib/production-database-guard';
 
 const logger = getLogger('bootstrap');
 
@@ -26,10 +30,15 @@ const env = z
 		DATABASE_URL_UNPOOLED: z.url(),
 		// The owner's address, whose account the bootstrap makes an admin, creating it if needed.
 		ADMIN_EMAIL: z.email(),
+		...productionDatabaseGuardEnvSchema.shape,
 	})
 	.parse(process.env);
 
-const pool = new Pool({ connectionString: pinFullSslVerification(env.DATABASE_URL_UNPOOLED) });
+const connectionString = pinFullSslVerification(env.DATABASE_URL_UNPOOLED);
+guardProductionDatabase(connectionString, env);
+logger.info('Owner bootstrap started', { databaseHost: new URL(connectionString).hostname });
+
+const pool = new Pool({ connectionString });
 try {
 	const members = new MemberService(
 		new DrizzleMemberRepository(drizzle({ client: pool })),

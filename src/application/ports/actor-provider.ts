@@ -1,9 +1,11 @@
 import 'server-only';
 import type { MemberId, MemberRole } from '@/domain/member/member';
 
-// Who is calling: a signed-out visitor, or a member (accounts exist only for approved members).
+// Who is calling: a signed-out visitor, or a member (accounts exist only for approved members) and
+// when the sign-in that started their session happened.
 export type Actor =
-	{ kind: 'anonymous' } | { kind: 'member'; memberId: MemberId; role: MemberRole };
+	| { kind: 'anonymous' }
+	| { kind: 'member'; memberId: MemberId; role: MemberRole; sessionStartedAt: Date };
 
 export type MemberActor = Extract<Actor, { kind: 'member' }>;
 

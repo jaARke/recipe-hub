@@ -4,6 +4,7 @@ import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import type { FavoritePage, FavoriteRepository } from '@/application/ports/favorite-repository';
 import type { MemberId } from '@/domain/member/member';
 import type { Recipe, RecipeId } from '@/domain/recipe/recipe';
+import { boundedTransaction } from '@/infrastructure/db/bounded-transaction';
 import { recipeColumns, toRecipe } from '@/infrastructure/db/recipe-mapper';
 import { favorites, recipes, users } from '@/infrastructure/db/schema';
 
@@ -22,7 +23,7 @@ export class DrizzleFavoriteRepository implements FavoriteRepository {
 	// Stamps the first recipe as the newest and each next one a microsecond older, all after the
 	// member's newest favorite, so the order holds within one tick of the clock. The member's row is
 	// locked for share and must not be removed, so a removal committing meanwhile either waits and then
-	// deletes what this added, or leaves this nothing to add.
+	// deletes what this added, or leaves this nothing to add. A transaction of its own bounds the wait.
 	async add(memberId: MemberId, recipeIds: readonly RecipeId[]): Promise<number> {
 		if (recipeIds.length === 0) {
 			return 0;
@@ -32,22 +33,24 @@ export class DrizzleFavoriteRepository implements FavoriteRepository {
 		const newest = sql`(select max(${favorites.createdAt}) from ${favorites} where ${favorites.memberId} = ${memberId})`;
 		const position = sql`array_position(${sql.param(ids)}::uuid[], ${recipes.id})`;
 		const createdAt = sql<Date>`greatest(now(), ${newest} + ${ids.length} * ${microsecond}) - (${position} - 1) * ${microsecond}`;
-		const added = await this.db
-			.insert(favorites)
-			.select((qb) =>
-				qb
-					.select({
-						memberId: users.id,
-						recipeId: recipes.id,
-						createdAt: createdAt.as('created_at'),
-					})
-					.from(users)
-					.innerJoin(recipes, inArray(recipes.id, ids))
-					.where(and(eq(users.id, memberId), isNull(users.removedAt)))
-					.for('share', { of: users })
-			)
-			.onConflictDoNothing()
-			.returning({ recipeId: favorites.recipeId });
+		const added = await boundedTransaction(this.db, 'adding favorites', (tx) =>
+			tx
+				.insert(favorites)
+				.select((qb) =>
+					qb
+						.select({
+							memberId: users.id,
+							recipeId: recipes.id,
+							createdAt: createdAt.as('created_at'),
+						})
+						.from(users)
+						.innerJoin(recipes, inArray(recipes.id, ids))
+						.where(and(eq(users.id, memberId), isNull(users.removedAt)))
+						.for('share', { of: users })
+				)
+				.onConflictDoNothing()
+				.returning({ recipeId: favorites.recipeId })
+		);
 		return added.length;
 	}
 

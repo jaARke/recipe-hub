@@ -370,6 +370,13 @@ describe('parseIngredientLine', () => {
 		expect(parseIngredientLine(text)).toStrictEqual(line);
 	});
 
+	it.each(['2);', '3:,', '-;', '1. 2).'])(
+		'leaves nothing of %j, only a list marker once its closing punctuation goes',
+		(text) => {
+			expect(parseIngredientLine(text)).toStrictEqual({ text: '', item: '' });
+		}
+	);
+
 	it.each([
 		['1/4 tsp.', '1/4 tsp.'],
 		['1/4 tsp.;', '1/4 tsp.'],

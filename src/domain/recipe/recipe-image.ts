@@ -3,8 +3,9 @@ import { storedContent, writtenContent, type ContentLimits } from '@/domain/reci
 import { limitMessage } from '@/domain/text';
 import { settings } from '@/lib/settings';
 
-// Plain segments only: in a URL, `..`, `%2e%2e`, or `\` would climb out of the role's folder.
-const imagePathnameSchema = z
+// An image's pathname, in plain segments only: in a URL, `..`, `%2e%2e`, or `\` would climb out of
+// the folder it starts in.
+export const imagePathnameSchema = z
 	.string()
 	.regex(
 		/^[\w-][\w.-]*(?:\/[\w-][\w.-]*)*$/,
@@ -60,18 +61,20 @@ function recipeImageSchemaFor(limits: ContentLimits) {
 			role: recipeImageRoleSchema,
 			pathname: imagePathnameSchema,
 			alt: limits.text(settings.recipeLimits.maxImageAltLength).optional(),
-			// Absent from an image stored before sizes were recorded, until the image-size backfill gives
-			// it its own. Written content needs it, which the list checks.
+			// Absent from an image stored before sizes were recorded, which written content refuses.
 			size: imageSizeSchemaFor(limits).optional(),
 		})
 		.refine((image) => image.pathname.startsWith(imagePathnamePrefix(image.role)), {
 			message: 'Store the image under the folder for its role.',
 			path: ['pathname'],
+		})
+		.refine((image) => !limits.missing(image.size), {
+			message: unsizedImageMessage,
+			path: ['size'],
 		});
 }
 
-// One image's own fields, so a pathname can be checked on its own; the list adds what written content
-// needs of each image.
+// An image as written content holds it, with its size.
 export const recipeImageSchema = recipeImageSchemaFor(writtenContent);
 export type RecipeImage = z.infer<typeof recipeImageSchema>;
 
@@ -81,15 +84,11 @@ const maxImagesByRole: Record<RecipeImageRole, number> = {
 };
 
 // Array order is display order. A role over its limit has one problem, on its first image past it.
-// Written content needs each image's size.
 export function recipeImageListSchemaFor(limits: ContentLimits) {
 	return z.array(recipeImageSchemaFor(limits)).superRefine((images, context) => {
 		const seen = new Set<string>();
 		const counts: Record<RecipeImageRole, number> = { dish: 0, scan: 0 };
 		images.forEach((image, index) => {
-			if (limits.missing(image.size)) {
-				context.addIssue({ code: 'custom', message: unsizedImageMessage, path: [index, 'size'] });
-			}
 			if (seen.has(image.pathname)) {
 				context.addIssue({
 					code: 'custom',

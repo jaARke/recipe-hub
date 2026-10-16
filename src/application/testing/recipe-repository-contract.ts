@@ -258,6 +258,17 @@ export function describeRecipeRepositoryContract(fixture: () => RecipeRepository
 		});
 	});
 
+	describe('listIds', () => {
+		it('lists every recipe id newest first', async () => {
+			const ids = [];
+			for (const content of sampleRecipeContents.slice(0, 3)) {
+				ids.push((await create(content)).id);
+			}
+
+			expect(await fixture().repository.listIds()).toEqual(ids.toReversed());
+		});
+	});
+
 	describe('list', () => {
 		it('pages through recipes newest first', async () => {
 			const created = [];

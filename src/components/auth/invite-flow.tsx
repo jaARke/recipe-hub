@@ -6,7 +6,7 @@ import type { CompletedInviteDto, InvitePreviewDto } from '@/application/access/
 import { authClient } from '@/components/auth/auth-client';
 import { settleAuthCall } from '@/components/auth/auth-errors';
 import { authFieldNames } from '@/components/auth/auth-forms';
-import { inviteAccountParamName } from '@/components/auth/auth-paths';
+import { joinedInviteHref } from '@/components/auth/auth-paths';
 import { ConfirmCodeForm, RequestCodeForm } from '@/components/auth/email-code-forms';
 import { requestSignInCode, signInWithCode } from '@/components/auth/email-codes';
 import {
@@ -87,12 +87,6 @@ function takeInviteToken(): string | null {
 	return token === '' ? null : token;
 }
 
-// This page loaded again for the member a code signed in, so the header and every page after it
-// render for the new session.
-function joinedPageHref(account: CompletedInviteDto['account']): string {
-	return `${window.location.pathname}?${new URLSearchParams({ [inviteAccountParamName]: account })}`;
-}
-
 // This page with the token back in its fragment, so loading it again shows the invite.
 function invitePageHref(token: string | null | undefined): string {
 	const page = `${window.location.pathname}${window.location.search}`;
@@ -171,12 +165,12 @@ function InviteFlow({
 	};
 
 	// Completes the invite for the account the code signed in to, then loads the page again with
-	// whether the invite created it. Should completing fail, the header renders signed in and the
-	// flow offers to try again.
+	// whether the invite created it, so the header and every page after it render for the new
+	// session. Should completing fail, the header renders signed in and the flow offers to try again.
 	async function finishInvite() {
 		const completed = await complete(token.current ?? '').catch(() => null);
 		if (completed?.status === 'success') {
-			loadPage(joinedPageHref(completed.account));
+			loadPage(joinedInviteHref(completed.account));
 			return;
 		}
 		router.refresh();

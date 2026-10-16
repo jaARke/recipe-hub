@@ -39,6 +39,8 @@ export async function startFakeBlobApi(handle: FakeBlobApiHandler): Promise<Fake
 	return {
 		close: async () => {
 			vi.unstubAllEnvs();
+			// A request the API never answered and the client never abandoned would hold the server open.
+			server.closeAllConnections();
 			await new Promise((resolve) => server.close(resolve));
 		},
 	};

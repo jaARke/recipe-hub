@@ -1,23 +1,20 @@
 import 'server-only';
 import { z } from 'zod';
 import {
+	imagePathnameSchema,
 	recipeImageRoleSchema,
-	recipeImageSchema,
 	type RecipeImageRole,
 } from '@/domain/recipe/recipe-image';
+import { roleFolder } from '@/lib/image-paths';
 
 // What the browser names an upload: crypto.randomUUID() and the extension of the JPEG it encoded.
 const uploadIdSchema = z.uuidv4();
 const uploadExtension = '.jpg';
 
-// An environment's own folders take its name and a slash. A shorter prefix, such as preview/, takes in
-// every environment whose name starts with it.
+// An environment's folders take its name and a slash, so preview/feature-x's never take in
+// preview/feature-xy's.
 function environmentPrefix(environment: string): string {
 	return `${environment}/`;
-}
-
-function roleFolder(role: RecipeImageRole, prefix: string): string {
-	return `${role}/${prefix}`;
 }
 
 // Plain segments only, so a pathname cannot climb out of the folder it starts in.
@@ -25,31 +22,30 @@ function isUnderPrefix(pathname: string, prefix: string): boolean {
 	return recipeImageRoleSchema.options.some(
 		(role) =>
 			pathname.startsWith(roleFolder(role, prefix)) &&
-			recipeImageSchema.safeParse({ role, pathname }).success
+			imagePathnameSchema.safeParse(pathname).success
 	);
 }
 
-// Environments share a store, as production and previews do, so each writes and deletes images
-// only in its own folder under each role's: dish/production/, scan/preview/<branch>/, or dish/seed/
-// for the seed's photos. The one exception is the expiring environments' folders, where a
-// deployment deletes old images for good.
+// Environments share a store, as every preview and the seed's photos share the preview store, so
+// each writes and deletes images only in its own folder under each role's: dish/production/,
+// scan/preview/<branch>/, or dish/seed/ for the seed's photos.
 export class ImageFolders {
 	private readonly environment: string;
 	private readonly readableEnvironments: readonly string[];
-	private readonly expiringEnvironmentPrefixes: readonly string[];
+	private readonly fetchedFromProduction: readonly string[];
 
-	// Besides its own, an environment reads the readable environments' images, such as production's
-	// photos that a preview's copied recipes name, and deletes the old images of every environment
-	// whose name starts with an expiring prefix, such as production deleting previews'. By default it
-	// reads and deletes only in its own folders.
+	// Besides its own, an environment serves the readable environments' images from its store, such
+	// as the seed's photos, and those of the environments it fetches from production's public image
+	// route, such as production's photos that a preview's copied recipes name. By default it serves
+	// only its own.
 	constructor(
 		environment: string,
 		readableEnvironments: readonly string[] = [],
-		expiringEnvironmentPrefixes: readonly string[] = []
+		fetchedFromProduction: readonly string[] = []
 	) {
 		this.environment = environment;
 		this.readableEnvironments = readableEnvironments;
-		this.expiringEnvironmentPrefixes = expiringEnvironmentPrefixes;
+		this.fetchedFromProduction = fetchedFromProduction;
 	}
 
 	uploadFolder(role: RecipeImageRole): string {
@@ -61,24 +57,20 @@ export class ImageFolders {
 		return recipeImageRoleSchema.options.map((role) => this.uploadFolder(role));
 	}
 
-	// The expiring environments' folder under each role's, such as dish/preview/ and scan/preview/.
-	expiringFolders(): string[] {
-		return this.expiringEnvironmentPrefixes.flatMap((prefix) =>
-			recipeImageRoleSchema.options.map((role) => roleFolder(role, prefix))
-		);
-	}
-
 	contains(pathname: string): boolean {
 		return isUnderPrefix(pathname, environmentPrefix(this.environment));
 	}
 
-	isExpiring(pathname: string): boolean {
-		return this.expiringEnvironmentPrefixes.some((prefix) => isUnderPrefix(pathname, prefix));
-	}
-
-	// What this environment serves: its own images and the readable environments'.
+	// What this environment serves from its store: its own images and the readable environments'.
 	isReadable(pathname: string): boolean {
 		return [this.environment, ...this.readableEnvironments].some((environment) =>
+			isUnderPrefix(pathname, environmentPrefix(environment))
+		);
+	}
+
+	// What this environment serves from production's public image route.
+	isFetchedFromProduction(pathname: string): boolean {
+		return this.fetchedFromProduction.some((environment) =>
 			isUnderPrefix(pathname, environmentPrefix(environment))
 		);
 	}

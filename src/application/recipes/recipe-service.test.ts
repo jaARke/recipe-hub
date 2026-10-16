@@ -63,7 +63,7 @@ const secondDishPhoto: RecipeImage = {
 	size: photoSize,
 };
 const scan: RecipeImage = { role: 'scan', pathname: 'scan/seed/soup-card.jpg', size: photoSize };
-// Stored by another environment, as production's photos are for a preview's copied recipes.
+// Another environment's, as production's photos are for a preview's copied recipes.
 const productionPhoto: RecipeImage = {
 	role: 'dish',
 	pathname: 'dish/production/soup.jpg',
@@ -262,6 +262,7 @@ describe('public reads', () => {
 		await reader.getRecipe(ref.slug);
 		await reader.listRecipes({ limit: 10, offset: 0, sort: 'newest' });
 		await reader.listTagLabels();
+		await reader.listRecipeIds();
 
 		expect(actors.wasAsked).toBe(false);
 	});
@@ -570,6 +571,19 @@ describe('listTagLabels', () => {
 			'Breakfast',
 			'Soup',
 		]);
+	});
+});
+
+describe('listRecipeIds', () => {
+	it('lists every recipe’s id, newest first, and no longer one deleted', async () => {
+		const { serviceFor, addMember } = await createCatalog();
+		const member = serviceFor(await addMember('Ada'));
+		const biscuits = await member.createRecipe(manualEntry(sampleButtermilkBiscuits));
+		const soup = await member.createRecipe(manualEntry(sampleChickenSoup));
+		const salad = await member.createRecipe(manualEntry(sampleTomatoSalad));
+		await member.deleteRecipe(soup.id);
+
+		expect(await serviceFor(anonymousActor()).listRecipeIds()).toEqual([salad.id, biscuits.id]);
 	});
 });
 

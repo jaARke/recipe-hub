@@ -14,6 +14,7 @@ import { describedBy } from '@/components/forms/described-by';
 import { FieldNote, type FieldNoteContent } from '@/components/forms/field-note';
 import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
 import { FieldProblem } from '@/components/forms/problem-summary';
+import { useFieldUndo } from '@/components/forms/use-field-undo';
 import { ItemActionsMenu, type ItemAction } from '@/components/recipe-form/item-actions-menu';
 import { normalizePhoto, UnreadablePhotoError } from '@/components/recipe-form/photo-processing';
 import { newPhotoPathname, type PhotoUploader } from '@/components/recipe-form/photo-upload';
@@ -265,6 +266,13 @@ function PhotoField({
 	// One for each photo still processing or uploading, so removing it or leaving the page stops it.
 	const uploadsRef = React.useRef(new Map<number, AbortController>());
 	const ids = photoFieldIds(idPrefix);
+	const altUndo = useFieldUndo(
+		photos.map((photo) => ({
+			id: ids.alt(photo.id),
+			value: photo.alt,
+			setValue: (alt) => dispatch({ type: 'setPhotoAlt', photoId: photo.id, alt }),
+		}))
+	);
 	const isFull = photos.length >= limit;
 	// Saving makes the first stored dish photo the cover, so a failed or unfinished one ahead of it isn't.
 	const coverIndex =
@@ -496,8 +504,9 @@ function PhotoField({
 							id={ids.alt(photo.id)}
 							value={photo.alt}
 							onChange={(event) =>
-								dispatch({ type: 'setPhotoAlt', photoId: photo.id, alt: event.target.value })
+								altUndo.setTypedValue(ids.alt(photo.id), event.target.value, event.nativeEvent)
 							}
+							onKeyDown={altUndo.handleKeyDown}
 						/>
 					</Field>
 				)}

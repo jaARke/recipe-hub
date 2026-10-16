@@ -13,6 +13,7 @@ import {
 	type MemberId,
 	type MemberRole,
 } from '@/domain/member/member';
+import { boundedTransaction } from '@/infrastructure/db/bounded-transaction';
 import { DrizzleInviteRepository } from '@/infrastructure/db/drizzle-invite-repository';
 import { memberColumns, toInsertColumns, toMember } from '@/infrastructure/db/member-mapper';
 import {
@@ -85,7 +86,7 @@ export class DrizzleMemberRepository implements MemberRepository {
 	}
 
 	async ensureAdmin(account: Omit<NewMember, 'role'>): Promise<EnsuredAdmin> {
-		return this.db.transaction(async (tx) => {
+		return boundedTransaction(this.db, 'ensuring the admin account', async (tx) => {
 			await lockForTransaction(tx, ensureAdminLockKey);
 			const [current] = await tx
 				.select(memberColumns)
@@ -130,7 +131,7 @@ export class DrizzleMemberRepository implements MemberRepository {
 	}
 
 	async remove(id: MemberId): Promise<Member | null> {
-		return this.db.transaction(async (tx) => {
+		return boundedTransaction(this.db, 'removing a member', async (tx) => {
 			const [current] = await tx
 				.select({ email: users.email })
 				.from(users)

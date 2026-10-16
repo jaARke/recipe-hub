@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from 'cn';
-import { HistoryIcon, ScanTextIcon } from 'lucide-react';
+import { HistoryIcon, InfoIcon, ScanTextIcon } from 'lucide-react';
 import { unstable_rethrow } from 'next/navigation';
 import * as React from 'react';
 import { flushSync } from 'react-dom';
@@ -19,6 +19,7 @@ import {
 } from '@/components/forms/problem-summary';
 import { TextField, textFieldIds } from '@/components/forms/text-field';
 import { TextareaField } from '@/components/forms/textarea-field';
+import { useFieldUndo } from '@/components/forms/use-field-undo';
 import { useFormAction } from '@/components/forms/use-form-action';
 import { useHydrated } from '@/components/forms/use-hydrated';
 import { useTransientState } from '@/components/forms/use-transient-state';
@@ -39,6 +40,7 @@ import {
 import { uploadPhoto, type PhotoUploader } from '@/components/recipe-form/photo-upload';
 import {
 	recipeFormSubject,
+	type ExistingRecipeFormSubjects,
 	type RecipeFormSubject,
 } from '@/components/recipe-form/recipe-form-autosave';
 import {
@@ -165,6 +167,12 @@ const yieldAmountLabels = {
 	makes: 'Amount',
 } as const satisfies Record<RecipeYieldKind, string>;
 
+// Every field textFieldProps gives a control.
+const textFieldNames: readonly TextFieldName[] = [
+	...(Object.keys(textFieldLabels) as (keyof typeof textFieldLabels)[]),
+	'yieldAmount',
+];
+
 const listFieldLabels = {
 	ingredientSections: { legend: 'Ingredients', noun: 'ingredient' },
 	instructionSections: { legend: 'Steps', noun: 'step' },
@@ -209,8 +217,8 @@ type RecipeFormProps = {
 	// review's intro takes focus as the page loads.
 	importId?: string;
 	// Keeps unsaved changes in this browser for the member signed in, and brings them back as the form
-	// loads again.
-	autosave?: { memberId: string };
+	// loads again. What the page knows still exists of what the member's forms edit prunes the rest.
+	autosave?: { memberId: string; existing?: ExistingRecipeFormSubjects };
 	// Absent when editing a published recipe, which has no draft.
 	drafts?: RecipeFormDrafts;
 	submitLabel: string;
@@ -290,11 +298,14 @@ function RecipeForm({
 	const autosaved = useRecipeFormAutosave({
 		memberId: autosave?.memberId,
 		subject,
+		existing: autosave?.existing,
 		baseline,
 		values,
 		unchanged,
 		dispatch,
 		onRestore: (restoredAt) => announce(`${restoredTitle(restoredAt)}.`),
+		onOutdated: (outdatedAt) =>
+			announce(`${outdatedTitle(outdatedAt)}. ${outdatedDescription(subject)}`),
 	});
 	const [draftPending, startDraftSave] = React.useTransition();
 	const [draftStatus, setDraftStatus] = useTransientState<DraftStatus>();
@@ -313,6 +324,13 @@ function RecipeForm({
 		tags: `${baseId}-tags`,
 		photos: (role: RecipeImageRole) => `${baseId}-photos-${role}`,
 	};
+	const textUndo = useFieldUndo(
+		textFieldNames.map((field) => ({
+			id: ids.field(field),
+			value: values.text[field],
+			setValue: (text) => dispatch({ type: 'setText', field, text }),
+		}))
+	);
 
 	// A save's problems name places in what it sent, so they land through that submission's targets.
 	// A save that succeeds leads to the recipe through Next's redirect, the one error unstable_rethrow
@@ -497,20 +515,22 @@ function RecipeForm({
 	}
 
 	function textFieldProps(field: TextFieldName) {
+		const id = ids.field(field);
 		return {
-			id: ids.field(field),
+			id,
 			value: values.text[field],
 			error: values.fieldErrors[field],
 			note: noteFor({ kind: 'field', field }),
 			onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-				dispatch({ type: 'setText', field, text: event.target.value }),
+				textUndo.setTypedValue(id, event.target.value, event.nativeEvent),
+			onKeyDown: textUndo.handleKeyDown,
 		};
 	}
 
 	// A text field in a row, under the label the row shows, with the description below the row.
 	function rowFieldProps(field: TextFieldName, label: string, description?: string) {
-		const { value, onChange, ...shown } = textFieldProps(field);
-		return { field: { ...shown, label, description }, value, onChange };
+		const { value, onChange, onKeyDown, ...shown } = textFieldProps(field);
+		return { field: { ...shown, label, description }, value, onChange, onKeyDown };
 	}
 
 	// Saving with anything left to check asks first, unless the member chose to save anyway.
@@ -625,6 +645,12 @@ function RecipeForm({
 					restoredAt={autosaved.restoredAt}
 					returnsTo={savedDraft === undefined ? discardTargets[subject.kind] : discardTargets.draft}
 					onDiscard={discardChanges}
+				/>
+			)}
+			{autosaved.outdatedAt !== undefined && (
+				<OutdatedChangesNotice
+					outdatedAt={autosaved.outdatedAt}
+					description={outdatedDescription(subject)}
 				/>
 			)}
 			{/* About the whole form, such as an edit conflict; the summary lists a save's problems. */}
@@ -898,6 +924,19 @@ function restoredTitle(restoredAt: Date): string {
 	return `Restored changes made in this browser on ${formatDayAndTime(restoredAt)}`;
 }
 
+// Such as "Changes made in this browser on October 14 at 3:12 PM were for an earlier version".
+function outdatedTitle(outdatedAt: Date): string {
+	return `Changes made in this browser on ${formatDayAndTime(outdatedAt)} were for an earlier version`;
+}
+
+// Why changes kept in this browser were for an earlier version: the recipe changed, or the draft was
+// saved somewhere else. A new recipe has no versions.
+function outdatedDescription(subject: RecipeFormSubject): string {
+	return subject.kind === 'recipe'
+		? 'This recipe changed after you made them, so they weren’t restored.'
+		: 'This draft was saved somewhere else after you made them, so they weren’t restored.';
+}
+
 // What the action bar says of the last draft save, if anything.
 function draftStatusMessage(
 	status: DraftStatus | undefined,
@@ -942,6 +981,26 @@ function RestoredChangesNotice({
 			>
 				Discard
 			</Button>
+		</Alert>
+	);
+}
+
+// Heads the form in the restored changes' notice's place once it drops changes kept in this browser
+// for an earlier version of what it edits, and stays while the form does; their entry goes as they
+// drop, so the next load says nothing. Dropping them is announced, so nothing reads this out as it
+// appears.
+function OutdatedChangesNotice({
+	outdatedAt,
+	description,
+}: {
+	outdatedAt: Date;
+	description: string;
+}) {
+	return (
+		<Alert role={undefined} aria-live={undefined}>
+			<InfoIcon aria-hidden="true" />
+			<AlertTitle>{outdatedTitle(outdatedAt)}</AlertTitle>
+			<AlertDescription>{description}</AlertDescription>
 		</Alert>
 	);
 }

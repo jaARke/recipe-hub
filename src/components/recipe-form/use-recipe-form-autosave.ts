@@ -10,6 +10,7 @@ import {
 	recipeFormAutosavePrefix,
 	recipeFormAutosaveVersion,
 	unsavedUploads,
+	type ExistingRecipeFormSubjects,
 	type RecipeFormEntrySubject,
 	type RecipeFormSubject,
 	type UnsavedUpload,
@@ -36,6 +37,8 @@ type RecipeFormAutosaveOptions = {
 	// design reference.
 	memberId: string | undefined;
 	subject: RecipeFormSubject;
+	// What the page knows still exists of what the member's forms edit, which prunes their entries.
+	existing?: ExistingRecipeFormSubjects;
 	// The form as it loaded, or as its draft was last saved, which Discard returns to.
 	baseline: RecipeFormValues;
 	values: RecipeFormValues;
@@ -44,6 +47,9 @@ type RecipeFormAutosaveOptions = {
 	dispatch: React.Dispatch<RecipeFormEdit>;
 	// Runs as the stored changes come back, with when they were made.
 	onRestore: (restoredAt: Date) => void;
+	// Runs as stored changes made to an earlier version of what the form edits are dropped, with when
+	// they were made.
+	onOutdated: (outdatedAt: Date) => void;
 };
 
 // What was last written, under which key and version; no form where the entry was removed.
@@ -65,7 +71,10 @@ async function missingUploads(uploads: readonly UnsavedUpload[]): Promise<number
 }
 
 // Keeps the form's unsaved changes in this browser as the member edits, and brings them back as the
-// form first shows, not again when a hidden page shows. Expired entries, any member's, go first.
+// form first shows, not again when a hidden page shows. Stale entries go first: any member's past
+// their lifetime, and the member's for what the page knows is gone. Changes made to an earlier
+// version of what the form edits never come back; where they show something the form doesn't, the
+// form says so, once, as their entry goes.
 // Writing waits until the changes are back, so the form as it loads never replaces them, and a form
 // that shows what its baseline does keeps nothing. Changes come back only where they show something
 // the baseline doesn't, at once, and a lookup that then finds an upload gone changes only its photo,
@@ -78,17 +87,21 @@ async function missingUploads(uploads: readonly UnsavedUpload[]): Promise<number
 export function useRecipeFormAutosave({
 	memberId,
 	subject,
+	existing,
 	baseline,
 	values,
 	unchanged,
 	dispatch,
 	onRestore,
+	onOutdated,
 }: RecipeFormAutosaveOptions) {
 	const key = memberId === undefined ? undefined : recipeFormAutosaveKey(memberId, subject);
 	const version = recipeFormAutosaveVersion(subject);
 	// Whether the entry has been read, and brought back if there was one.
 	const [settled, setSettled] = React.useState(key === undefined);
 	const [restoredAt, setRestoredAt] = React.useState<Date>();
+	// When the changes the form dropped for being made to an earlier version were made.
+	const [outdatedAt, setOutdatedAt] = React.useState<Date>();
 	const read = React.useRef(false);
 	// So an edit that changes nothing kept, such as an upload's progress, writes nothing.
 	const written = React.useRef<Written | undefined>(undefined);
@@ -97,21 +110,29 @@ export function useRecipeFormAutosave({
 		setRestoredAt(undefined);
 	}
 
-	const restore = React.useEffectEvent(async (storageKey: string) => {
+	const restore = React.useEffectEvent(async (storageKey: string, member: string) => {
 		const now = new Date();
-		removeBrowserStorageWhere(recipeFormAutosavePrefix, (entry) =>
-			isStaleRecipeFormEntry(entry, now)
+		removeBrowserStorageWhere(recipeFormAutosavePrefix, (entry, entryKey) =>
+			isStaleRecipeFormEntry(entryKey, entry, { now, memberId: member, existing })
 		);
 		const entry = readBrowserStorage(storageKey);
-		const stored = readAutosavedRecipeForm(entry, version, now);
-		if (stored === undefined || showSameRecipeForm(stored.form, recipeFormSnapshot(baseline))) {
-			// An entry about another version of the recipe, or one that shows nothing new, is of no use.
+		const kept = readAutosavedRecipeForm(entry, version, now);
+		const showsNew =
+			kept !== undefined && !showSameRecipeForm(kept.entry.form, recipeFormSnapshot(baseline));
+		if (kept?.status !== 'current' || !showsNew) {
+			// One that shows nothing new is of no use, and one about another version never comes back.
 			if (entry !== undefined) {
 				removeBrowserStorage(storageKey);
+			}
+			if (kept?.status === 'outdated' && showsNew) {
+				const madeAt = new Date(kept.entry.writtenAt);
+				setOutdatedAt(madeAt);
+				onOutdated(madeAt);
 			}
 			setSettled(true);
 			return;
 		}
+		const stored = kept.entry;
 		const writtenAt = new Date(stored.writtenAt);
 		const restored = editRecipeForm(values, {
 			type: 'replaceForm',
@@ -132,12 +153,12 @@ export function useRecipeFormAutosave({
 	});
 
 	React.useEffect(() => {
-		if (key === undefined || read.current) {
+		if (key === undefined || memberId === undefined || read.current) {
 			return;
 		}
 		read.current = true;
-		void restore(key);
-	}, [key]);
+		void restore(key, memberId);
+	}, [key, memberId]);
 
 	React.useEffect(() => {
 		if (key === undefined || !settled) {
@@ -183,7 +204,7 @@ export function useRecipeFormAutosave({
 		};
 	}
 
-	return { restoredAt, discard, leave };
+	return { restoredAt, outdatedAt, discard, leave };
 }
 
 // Removes the member's unsaved changes to what a form edits, as deleting it from outside the form

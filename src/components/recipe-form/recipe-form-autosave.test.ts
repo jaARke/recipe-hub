@@ -8,6 +8,7 @@ import {
 	recipeFormAutosaveVersion,
 	recipeFormSubject,
 	unsavedUploads,
+	type RecipeFormEntrySubject,
 } from '@/components/recipe-form/recipe-form-autosave';
 import {
 	recipeFormSnapshot,
@@ -21,7 +22,9 @@ import { settings } from '@/lib/settings';
 const memberId = '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b';
 const otherMemberId = '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6c';
 const recipeId = '0b6f3c7e-3c1a-4d8e-9a57-2f1d6b8e4c10';
+const otherRecipeId = '0b6f3c7e-3c1a-4d8e-9a57-2f1d6b8e4c11';
 const importId = '6d2b9f4a-8e1c-4b7d-a3f5-1c9e7d2b6a84';
+const otherImportId = '6d2b9f4a-8e1c-4b7d-a3f5-1c9e7d2b6a85';
 const draftId = '0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e';
 
 const version = '2026-10-14T12:00:00.000Z';
@@ -114,17 +117,21 @@ describe('readAutosavedRecipeForm', () => {
 		const writtenAt = new Date(now.getTime() - 60 * 1000);
 
 		expect(readAutosavedRecipeForm(entry(writtenAt, version), version, now)).toEqual({
-			version,
-			writtenAt: writtenAt.toISOString(),
-			form: keptEdit,
+			status: 'current',
+			entry: { version, writtenAt: writtenAt.toISOString(), form: keptEdit },
 		});
 	});
 
-	it('reads nothing where nothing was written, or where an entry is about another version', () => {
+	it('reads nothing where nothing was written', () => {
 		expect(readAutosavedRecipeForm(undefined, undefined, now)).toBeUndefined();
-		expect(readAutosavedRecipeForm(entry(now, version), 'b', now)).toBeUndefined();
-		expect(readAutosavedRecipeForm(entry(now, version), undefined, now)).toBeUndefined();
-		expect(readAutosavedRecipeForm(entry(now), version, now)).toBeUndefined();
+	});
+
+	it('reads changes made to another version as outdated', () => {
+		const outdated = { status: 'outdated', entry: autosavedRecipeForm(keptEdit, version, now) };
+
+		expect(readAutosavedRecipeForm(entry(now, version), 'b', now)).toEqual(outdated);
+		expect(readAutosavedRecipeForm(entry(now, version), undefined, now)).toEqual(outdated);
+		expect(readAutosavedRecipeForm(entry(now), version, now)?.status).toBe('outdated');
 	});
 
 	it('reads nothing once the entry is as old as a saved draft’s lifetime', () => {
@@ -132,7 +139,8 @@ describe('readAutosavedRecipeForm', () => {
 		const kept = new Date(now.getTime() - lifetime + 1000);
 
 		expect(readAutosavedRecipeForm(entry(expired), undefined, now)).toBeUndefined();
-		expect(readAutosavedRecipeForm(entry(kept), undefined, now)).toBeDefined();
+		expect(readAutosavedRecipeForm(entry(expired, version), 'b', now)).toBeUndefined();
+		expect(readAutosavedRecipeForm(entry(kept), undefined, now)?.status).toBe('current');
 	});
 
 	it.each([
@@ -149,14 +157,83 @@ describe('readAutosavedRecipeForm', () => {
 });
 
 describe('isStaleRecipeFormEntry', () => {
-	it('finds stale an entry past its lifetime, or one that can’t be read, and nothing else', () => {
-		const written = (writtenAt: Date) =>
-			JSON.stringify(autosavedRecipeForm(keptEdit, undefined, writtenAt));
+	const written = (writtenAt: number) =>
+		JSON.stringify(autosavedRecipeForm(keptEdit, undefined, new Date(writtenAt)));
+	const keyOf = (subject: RecipeFormEntrySubject, member = memberId) =>
+		recipeFormAutosaveKey(member, subject);
+	const newRecipe = keyOf({ kind: 'new' });
+	const importKey = keyOf({ kind: 'import', importId });
+	const recipeKey = keyOf({ kind: 'recipe', recipeId });
+	const draftKey = keyOf({ kind: 'draft', draftId });
+	const pruning = { now, memberId };
 
-		expect(isStaleRecipeFormEntry(written(new Date(now.getTime() - lifetime - 1)), now)).toBe(true);
-		expect(isStaleRecipeFormEntry('{"text":', now)).toBe(true);
-		expect(isStaleRecipeFormEntry(JSON.stringify(keptEdit), now)).toBe(true);
-		expect(isStaleRecipeFormEntry(written(new Date(now.getTime() - 1000)), now)).toBe(false);
+	it('finds stale an entry past its lifetime, or one that can’t be read, and nothing else', () => {
+		const recent = written(now.getTime() - 1000);
+
+		expect(isStaleRecipeFormEntry(newRecipe, written(now.getTime() - lifetime - 1), pruning)).toBe(
+			true
+		);
+		expect(isStaleRecipeFormEntry(newRecipe, '{"text":', pruning)).toBe(true);
+		expect(isStaleRecipeFormEntry(newRecipe, JSON.stringify(keptEdit), pruning)).toBe(true);
+		for (const key of [newRecipe, importKey, recipeKey, draftKey]) {
+			expect(isStaleRecipeFormEntry(key, recent, pruning)).toBe(false);
+		}
+	});
+
+	it('finds stale any member’s entry for an import written longer ago than an import’s draft lasts', () => {
+		const importLifetime = daysInMilliseconds(settings.imports.importDraftLifetimeDays);
+		const closed = written(now.getTime() - importLifetime - 1);
+		const open = written(now.getTime() - importLifetime + 1000);
+
+		expect(isStaleRecipeFormEntry(importKey, closed, pruning)).toBe(true);
+		expect(
+			isStaleRecipeFormEntry(keyOf({ kind: 'import', importId }, otherMemberId), closed, pruning)
+		).toBe(true);
+		expect(isStaleRecipeFormEntry(importKey, open, pruning)).toBe(false);
+		// A saved draft, and a recipe, last longer than an import's review.
+		expect(isStaleRecipeFormEntry(draftKey, closed, pruning)).toBe(false);
+		expect(isStaleRecipeFormEntry(recipeKey, closed, pruning)).toBe(false);
+	});
+
+	it('finds stale the member’s entry for an import or a recipe their page knows is gone, written before it found out', () => {
+		const knownAt = new Date(now.getTime() - 60 * 1000);
+		const before = written(knownAt.getTime() - 1000);
+		const known = {
+			now,
+			memberId,
+			existing: { knownAt, importIds: [otherImportId], recipeIds: [otherRecipeId] },
+		};
+
+		expect(isStaleRecipeFormEntry(importKey, before, known)).toBe(true);
+		expect(isStaleRecipeFormEntry(recipeKey, before, known)).toBe(true);
+		expect(
+			isStaleRecipeFormEntry(keyOf({ kind: 'import', importId: otherImportId }), before, known)
+		).toBe(false);
+		expect(
+			isStaleRecipeFormEntry(keyOf({ kind: 'recipe', recipeId: otherRecipeId }), before, known)
+		).toBe(false);
+		// Written since, as by another tab that opened an import or a recipe the page never knew of.
+		expect(isStaleRecipeFormEntry(importKey, written(knownAt.getTime()), known)).toBe(false);
+		expect(isStaleRecipeFormEntry(recipeKey, written(knownAt.getTime() + 1000), known)).toBe(false);
+		// Another member's, whose imports the page never knew.
+		expect(
+			isStaleRecipeFormEntry(keyOf({ kind: 'import', importId }, otherMemberId), before, known)
+		).toBe(false);
+		expect(isStaleRecipeFormEntry(draftKey, before, known)).toBe(false);
+		expect(isStaleRecipeFormEntry(newRecipe, before, known)).toBe(false);
+	});
+
+	it('keeps an entry of a kind the page doesn’t know every one of, or under a key no form names', () => {
+		const knownAt = now;
+		const before = written(now.getTime() - 1000);
+		const recipesOnly = { now, memberId, existing: { knownAt, recipeIds: [] } };
+
+		expect(isStaleRecipeFormEntry(importKey, before, recipesOnly)).toBe(false);
+		expect(isStaleRecipeFormEntry(recipeKey, before, recipesOnly)).toBe(true);
+		expect(isStaleRecipeFormEntry(`${recipeKey}:extra`, before, recipesOnly)).toBe(false);
+		expect(
+			isStaleRecipeFormEntry(`${recipeFormAutosavePrefix}recipe:${recipeId}`, before, recipesOnly)
+		).toBe(false);
 	});
 });
 
