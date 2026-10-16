@@ -10,6 +10,7 @@ import {
 } from '@/components/forms/field-note';
 import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
 import { FieldProblem } from '@/components/forms/problem-summary';
+import { useFieldUndo } from '@/components/forms/use-field-undo';
 import {
 	tagLabelsFrom,
 	tagLabelsToAdd,
@@ -111,6 +112,10 @@ function TagsField({
 	const highlighted = React.useRef<TagOption | undefined>(undefined);
 	const invalid = error !== undefined;
 	const ids = tagsFieldIds(idPrefix);
+	function setDraft(text: string) {
+		dispatch({ type: 'setText', field: 'tagDraft', text });
+	}
+	const draftUndo = useFieldUndo([{ id: ids.input, value: draft, setValue: setDraft }]);
 
 	const suggestions = React.useMemo(() => tagLabels.map(inUseOption), [tagLabels]);
 	const labelsByKey = React.useMemo(
@@ -181,7 +186,13 @@ function TagsField({
 					if (details.reason === 'input-clear' && !details.isItemPress) {
 						return;
 					}
-					dispatch({ type: 'setText', field: 'tagDraft', text });
+					// Only typing is a step undo takes back; Base UI's other changes, such as clearing the text for
+					// a chosen tag, are not.
+					if (details.reason === 'input-change') {
+						draftUndo.setTypedValue(ids.input, text, details.event);
+					} else {
+						setDraft(text);
+					}
 				}}
 				onValueChange={(next, details) => {
 					// Escape on a closed list clears every value in Base UI; tags are removed one at a time.
@@ -219,6 +230,9 @@ function TagsField({
 							note !== undefined && fieldNoteMessageId(ids.note)
 						)}
 						onKeyDown={(event) => {
+							if (draftUndo.handleKeyDown(event)) {
+								return;
+							}
 							if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
 								// Enter never saves the recipe; with nothing highlighted it adds the typed text.
 								event.preventDefault();

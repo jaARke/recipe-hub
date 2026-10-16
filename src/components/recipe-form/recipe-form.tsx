@@ -19,6 +19,7 @@ import {
 } from '@/components/forms/problem-summary';
 import { TextField, textFieldIds } from '@/components/forms/text-field';
 import { TextareaField } from '@/components/forms/textarea-field';
+import { useFieldUndo } from '@/components/forms/use-field-undo';
 import { useFormAction } from '@/components/forms/use-form-action';
 import { useHydrated } from '@/components/forms/use-hydrated';
 import { useOnKeptPageHide } from '@/components/forms/use-on-kept-page-hide';
@@ -165,6 +166,12 @@ const yieldAmountLabels = {
 	servings: 'Servings',
 	makes: 'Amount',
 } as const satisfies Record<RecipeYieldKind, string>;
+
+// Every field textFieldProps gives a control.
+const textFieldNames: readonly TextFieldName[] = [
+	...(Object.keys(textFieldLabels) as (keyof typeof textFieldLabels)[]),
+	'yieldAmount',
+];
 
 const listFieldLabels = {
 	ingredientSections: { legend: 'Ingredients', noun: 'ingredient' },
@@ -314,6 +321,13 @@ function RecipeForm({
 		tags: `${baseId}-tags`,
 		photos: (role: RecipeImageRole) => `${baseId}-photos-${role}`,
 	};
+	const textUndo = useFieldUndo(
+		textFieldNames.map((field) => ({
+			id: ids.field(field),
+			value: values.text[field],
+			setValue: (text) => dispatch({ type: 'setText', field, text }),
+		}))
+	);
 
 	// A save's problems name places in what it sent, so they land through that submission's targets.
 	// A save that succeeds leads to the recipe through Next's redirect, the one error unstable_rethrow
@@ -499,20 +513,22 @@ function RecipeForm({
 	}
 
 	function textFieldProps(field: TextFieldName) {
+		const id = ids.field(field);
 		return {
-			id: ids.field(field),
+			id,
 			value: values.text[field],
 			error: values.fieldErrors[field],
 			note: noteFor({ kind: 'field', field }),
 			onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-				dispatch({ type: 'setText', field, text: event.target.value }),
+				textUndo.setTypedValue(id, event.target.value, event.nativeEvent),
+			onKeyDown: textUndo.handleKeyDown,
 		};
 	}
 
 	// A text field in a row, under the label the row shows, with the description below the row.
 	function rowFieldProps(field: TextFieldName, label: string, description?: string) {
-		const { value, onChange, ...shown } = textFieldProps(field);
-		return { field: { ...shown, label, description }, value, onChange };
+		const { value, onChange, onKeyDown, ...shown } = textFieldProps(field);
+		return { field: { ...shown, label, description }, value, onChange, onKeyDown };
 	}
 
 	// Saving with anything left to check asks first, unless the member chose to save anyway.

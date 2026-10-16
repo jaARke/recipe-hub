@@ -1,8 +1,8 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { redirect } from 'next/navigation';
 import * as React from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FormAction, FormState } from '@/components/forms/form-state';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import { HeldDraftProvider } from '@/components/recipe-form/held-draft';
@@ -652,6 +652,88 @@ describe('RecipeForm’s lists', () => {
 		expect(description.split(' ').map((id) => document.getElementById(id)?.textContent)).toContain(
 			'Add at least one ingredient.'
 		);
+	});
+});
+
+describe('RecipeForm’s undo', () => {
+	beforeEach(() => {
+		vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	function field(role: 'textbox' | 'combobox', name: string | RegExp) {
+		const element = screen.getByRole(role, { name });
+		if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) {
+			throw new Error(`${String(name)} is no text field.`);
+		}
+		return element;
+	}
+
+	it('undoes and redoes the title’s own typing, leaving a row typed in since untouched', async () => {
+		const user = userEvent.setup();
+		renderForm(lemonBars);
+		const title = field('textbox', 'Title');
+		const row = field('textbox', 'Ingredient 1');
+
+		await user.click(title);
+		await user.keyboard(' with thyme');
+		await user.click(row);
+		await user.keyboard(', sifted');
+		await user.click(title);
+
+		await user.keyboard('{Meta>}z{/Meta}');
+		expect(title.value).toBe('Lemon bars');
+		await user.keyboard('{Meta>}z{/Meta}');
+		expect(title.value).toBe('Lemon bars');
+		expect(row.value).toBe('1 cup flour, sifted');
+
+		await user.keyboard('{Meta>}{Shift>}Z{/Shift}{/Meta}');
+		expect(title.value).toBe('Lemon bars with thyme');
+
+		// The browser sends its own undo to the row, whose typing tops its stack.
+		const undo = new InputEvent('beforeinput', {
+			inputType: 'historyUndo',
+			cancelable: true,
+			bubbles: true,
+		});
+		expect(fireEvent(row, undo)).toBe(false);
+		expect(title.value).toBe('Lemon bars');
+		expect(row.value).toBe('1 cup flour, sifted');
+	});
+
+	it('gives a time, the tag being typed, and a photo’s description each its own undo', async () => {
+		const user = userEvent.setup();
+		renderForm({ ...lemonBars, images: [{ role: 'dish', pathname: 'dish/development/bars.jpg' }] });
+		// Found before the tag’s list opens, since it hides the rest of the form from screen readers.
+		const prep = field('textbox', 'Prep, in minutes');
+		const tag = field('combobox', 'Tags');
+		const alt = field('textbox', /^Describe the photo/);
+		const row = field('textbox', 'Ingredient 1');
+
+		await user.click(prep);
+		await user.keyboard('15');
+		await user.click(tag);
+		await user.keyboard('Dessert');
+		await user.click(alt);
+		await user.keyboard('Bars on a plate');
+
+		await user.click(prep);
+		await user.keyboard('{Meta>}z{/Meta}');
+		expect([prep.value, tag.value, alt.value]).toEqual(['', 'Dessert', 'Bars on a plate']);
+
+		await user.click(alt);
+		await user.keyboard('{Meta>}z{/Meta}');
+		expect([prep.value, tag.value, alt.value]).toEqual(['', 'Dessert', '']);
+
+		await user.click(tag);
+		await user.keyboard('{Meta>}z{/Meta}');
+		expect([prep.value, tag.value, alt.value]).toEqual(['', '', '']);
+		await user.keyboard('{Meta>}{Shift>}Z{/Shift}{/Meta}');
+		expect([prep.value, tag.value, alt.value]).toEqual(['', 'Dessert', '']);
+		expect(row.value).toBe('1 cup flour');
 	});
 });
 
