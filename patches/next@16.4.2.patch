@@ -1,4 +1,6 @@
-Patches next 16.4.0's "use cache" wrapper, both its CommonJS and ESM copies.
+Patches next 16.4.2 in two places, each in both its CommonJS and ESM copies.
+
+1. The "use cache" wrapper.
 
 Defect: concurrent requests for the same cache key share one in-progress fill, and a request that
 joins another's fill takes its result without checking it against the tags that expired after the
@@ -17,13 +19,65 @@ get(), as the leader path does on a hit: the fill, or an older entry carrying it
 is used, and a miss, a rejection or a newer entry regenerates. The cost is one extra fill for each
 joiner that races a tag expiration, and one handler read for each joiner on a handler not built in.
 
-Remove this patch and its patchedDependencies entry in pnpm-workspace.yaml once a Next release fixes
-vercel/next.js#100345; running that issue's reproduction against the new version shows whether it
-does. The entry names next@16.4.0, so changing next's version fails pnpm install until the patch is
-re-made against the new version or removed.
+Remove this part once a Next release fixes vercel/next.js#100345; running that issue's reproduction
+against the new version shows whether it does.
 
+2. The dev server's prerender manifest, under next dev only.
+
+Defect: DevServer.getStaticPaths adds a dynamic route's static paths to
+.next/dev/prerender-manifest.json with an awaited readFile, then a truncating writeFile, and no lock,
+so /recipes/[slug] and its cooking view, resolving together, interleave their updates. A shorter
+write over a longer one leaves the longer one's tail after valid JSON, and every page then fails to
+parse the manifest until next dev restarts; a request that reads during a write finds the file
+empty. Upstream canary has the same code.
+
+Fix: read, update and write the manifest without yielding, writing it with Next's own
+writeFileAtomic (a temporary file renamed over the manifest), so updates never interleave and a
+reader sees a whole file. The cost is a synchronous read of the manifest, and a write when it
+changes, on next dev's event loop each time a dynamic route's static paths resolve.
+
+Remove this part once a Next release fixes vercel/next.js#96259, whose fix is open as
+vercel/next.js#96384.
+
+Remove the patch and its patchedDependencies entry in pnpm-workspace.yaml once both parts are gone.
+The entry names next@16.4.2, so changing next's version fails pnpm install until the patch is
+re-made against the new version or removed, and re-making it with pnpm patch drops this header, so
+carry it over.
+
+diff --git a/dist/esm/server/dev/next-dev-server.js b/dist/esm/server/dev/next-dev-server.js
+index bdb0073c602e3329169e2a8819bf0699d9e8e130..07bb1bfe7cec704514199720ebcbe5019ec6e085 100644
+--- a/dist/esm/server/dev/next-dev-server.js
++++ b/dist/esm/server/dev/next-dev-server.js
+@@ -18,6 +18,7 @@ import { traceGlobals } from '../../trace/shared';
+ import { findPageFile } from '../lib/find-page-file';
+ import { getFormattedNodeOptionsWithoutInspect } from '../lib/utils';
+ import { withCoalescedInvoke } from '../../lib/coalesced-function';
++import { writeFileAtomic } from '../../lib/fs/write-atomic';
+ import { loadDefaultErrorComponents } from '../load-default-error-components';
+ import { DecodeError, MiddlewareNotFoundError } from '../../shared/lib/utils';
+ import * as Log from '../../build/output/log';
+@@ -539,7 +540,9 @@ export default class DevServer extends Server {
+             (!isAppPath || prerenderedRoutes && prerenderedRoutes.length > 0)) {
+                 // we write the static paths to partial manifest for
+                 // fallback handling inside of entry handler's
+-                const rawExistingManifest = await fs.promises.readFile(pathJoin(this.distDir, PRERENDER_MANIFEST), 'utf8');
++                // PATCH: read, update and write the manifest without yielding, and write it by rename, so static
++                // paths that resolve together never interleave their writes and no request reads a half-written file.
++                const rawExistingManifest = fs.readFileSync(pathJoin(this.distDir, PRERENDER_MANIFEST), 'utf8');
+                 const existingManifest = JSON.parse(rawExistingManifest);
+                 for (const staticPath of value.staticPaths || []){
+                     existingManifest.routes[staticPath] = {};
+@@ -569,7 +572,7 @@ export default class DevServer extends Server {
+                 };
+                 const updatedManifest = JSON.stringify(existingManifest);
+                 if (updatedManifest !== rawExistingManifest) {
+-                    await fs.promises.writeFile(pathJoin(this.distDir, PRERENDER_MANIFEST), updatedManifest);
++                    writeFileAtomic(pathJoin(this.distDir, PRERENDER_MANIFEST), updatedManifest);
+                 }
+             }
+             this.staticPathsCache.set(pathname, value);
 diff --git a/dist/esm/server/use-cache/use-cache-wrapper.js b/dist/esm/server/use-cache/use-cache-wrapper.js
-index 7837534f252dcb92ca6d1b131018cbe329c5cdff..9d839ff9388b2e068d55675abdb233011aa6b2d1 100644
+index bf5157c95b04f80c11e0e52fca95bd68bfcf1842..91b5f868187aaa927727b9838d8d29fb35211739 100644
 --- a/dist/esm/server/use-cache/use-cache-wrapper.js
 +++ b/dist/esm/server/use-cache/use-cache-wrapper.js
 @@ -2016,6 +2016,16 @@ export async function cache(kind, id, boundArgsLength, originalFn, args) {
@@ -94,8 +148,40 @@ index 7837534f252dcb92ca6d1b131018cbe329c5cdff..9d839ff9388b2e068d55675abdb23301
  function shouldDiscardCacheEntry(entry, workStore, workUnitStore, implicitTags, implicitTagsExpiration, logPrefix) {
      // If the cache entry was created before any of the implicit tags were
      // revalidated last, we need to discard it.
+diff --git a/dist/server/dev/next-dev-server.js b/dist/server/dev/next-dev-server.js
+index 95a71fd4d024a074e3d9dd757c8ce5b2efb1a217..20a7e0c0831f017043f4a4b1d60821b0819bf74b 100644
+--- a/dist/server/dev/next-dev-server.js
++++ b/dist/server/dev/next-dev-server.js
+@@ -28,6 +28,7 @@ const _shared = require("../../trace/shared");
+ const _findpagefile = require("../lib/find-page-file");
+ const _utils = require("../lib/utils");
+ const _coalescedfunction = require("../../lib/coalesced-function");
++const _writeatomic = require("../../lib/fs/write-atomic");
+ const _loaddefaulterrorcomponents = require("../load-default-error-components");
+ const _utils1 = require("../../shared/lib/utils");
+ const _log = /*#__PURE__*/ _interop_require_wildcard(require("../../build/output/log"));
+@@ -595,7 +596,9 @@ class DevServer extends _nextserver.default {
+             (!isAppPath || prerenderedRoutes && prerenderedRoutes.length > 0)) {
+                 // we write the static paths to partial manifest for
+                 // fallback handling inside of entry handler's
+-                const rawExistingManifest = await _fs.default.promises.readFile((0, _path.join)(this.distDir, _constants1.PRERENDER_MANIFEST), 'utf8');
++                // PATCH: read, update and write the manifest without yielding, and write it by rename, so static
++                // paths that resolve together never interleave their writes and no request reads a half-written file.
++                const rawExistingManifest = _fs.default.readFileSync((0, _path.join)(this.distDir, _constants1.PRERENDER_MANIFEST), 'utf8');
+                 const existingManifest = JSON.parse(rawExistingManifest);
+                 for (const staticPath of value.staticPaths || []){
+                     existingManifest.routes[staticPath] = {};
+@@ -625,7 +628,7 @@ class DevServer extends _nextserver.default {
+                 };
+                 const updatedManifest = JSON.stringify(existingManifest);
+                 if (updatedManifest !== rawExistingManifest) {
+-                    await _fs.default.promises.writeFile((0, _path.join)(this.distDir, _constants1.PRERENDER_MANIFEST), updatedManifest);
++                    (0, _writeatomic.writeFileAtomic)((0, _path.join)(this.distDir, _constants1.PRERENDER_MANIFEST), updatedManifest);
+                 }
+             }
+             this.staticPathsCache.set(pathname, value);
 diff --git a/dist/server/use-cache/use-cache-wrapper.js b/dist/server/use-cache/use-cache-wrapper.js
-index 801d1f687fecbd774e9601f1dab1526c9d127652..a6219e6c67133707334784ca69e72f894205b4ea 100644
+index dc16d38df80cafe00dd8289f88b353340e9ccb18..219307dc4c71c98bacf3c2a71d444aff7e4d87f6 100644
 --- a/dist/server/use-cache/use-cache-wrapper.js
 +++ b/dist/server/use-cache/use-cache-wrapper.js
 @@ -2072,6 +2072,16 @@ async function cache(kind, id, boundArgsLength, originalFn, args) {
