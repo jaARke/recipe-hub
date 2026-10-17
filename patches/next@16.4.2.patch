@@ -18,6 +18,9 @@ and leave tags to get(), as the cacheHandlers contract allows, so it judges the 
 get(), as the leader path does on a hit: the fill, or an older entry carrying its tags, passing get()
 is used, and a miss, a rejection or a newer entry regenerates. The cost is one extra fill for each
 joiner that races a tag expiration, and one handler read for each joiner on a handler not built in.
+Under next dev, a custom handler is read through Next's tiered handler, whose get() answers from
+its in-memory front before the custom one has judged the entry, so there the guard can still take an
+outdated fill; a deployment reads its handler directly, and this project configures none of its own.
 
 Remove this part once a Next release fixes vercel/next.js#100345; running that issue's reproduction
 against the new version shows whether it does.
