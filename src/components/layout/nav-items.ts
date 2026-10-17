@@ -4,7 +4,6 @@ import {
 	favoritesPath,
 	recipeListPath,
 	recipePagesPath,
-	recipeSearchPath,
 } from '@/components/recipe/recipe-paths';
 
 export type NavItem = {
@@ -15,9 +14,10 @@ export type NavItem = {
 };
 
 // The site's sections, in the header's row and the phone menu. Signed out, Add recipe leads to
-// sign-in, which the proxy sends it to and which says why.
+// sign-in, which the proxy sends it to and which says why. Search is no section's: the header's field
+// holding the words marks it.
 export const navItems: readonly NavItem[] = [
-	{ href: recipeListPath, label: 'Browse', otherPaths: [recipePagesPath, recipeSearchPath] },
+	{ href: recipeListPath, label: 'Browse', otherPaths: [recipePagesPath] },
 	{ href: favoritesPath, label: 'Favorites' },
 	{ href: contributePath, label: 'Add recipe' },
 ];

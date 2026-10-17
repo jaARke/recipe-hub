@@ -1,7 +1,9 @@
 import 'server-only';
 import { cacheLife, cacheTag } from 'next/cache';
+import { searchRecipes } from '@/app/_lib/search-recipes';
 import type { RecipeSort } from '@/application/ports/recipe-repository';
 import type { PublicRecipeDto, RecipeSummaryPage } from '@/application/recipes/recipe-dtos';
+import type { RecipeSearchInput, RecipeSearchPage } from '@/application/search/recipe-search-dtos';
 import { defaultListSort } from '@/components/recipe/recipe-list-params';
 import { getRecipeService } from '@/composition/services';
 import type { MemberId } from '@/domain/member/member';
@@ -18,7 +20,12 @@ export const recipeCacheTags = {
 	recipe: (slug: string) => `recipe:${slug}`,
 	// Every recipe page showing the member's name, so a rename reaches them all.
 	member: (id: MemberId) => `member:${id}`,
+	// Every list whose filters name members, one tag however many there are, so a rename reaches them.
+	memberNames: 'member-names',
 };
+
+// A date filter's window moves with the clock, so its lists last an hour at most, even unread.
+const dateFilteredListLife = { revalidate: 60 * 60, expire: 60 * 60 };
 
 // Tagged with the slug asked for, so a miss clears once a recipe takes it, and with the current
 // slug. Writes invalidate the tags; revalidating a day after caching catches edits made outside
@@ -47,6 +54,21 @@ export async function getCachedRecipePage(
 		offset: (page - 1) * settings.display.recipesPerPage,
 		sort,
 	});
+}
+
+// Browse's lists, read through search for the counts its filters show: each filter set, order, and
+// page is its own entry. Null for input search refuses.
+export async function getCachedRecipeSearchPage(
+	input: RecipeSearchInput
+): Promise<RecipeSearchPage | null> {
+	'use cache: remote';
+	cacheTag(recipeCacheTags.list, recipeCacheTags.memberNames);
+	if (input.addedWithin === undefined) {
+		cacheLife('days');
+	} else {
+		cacheLife(dateFilteredListLife);
+	}
+	return searchRecipes(input);
 }
 
 // The recipes a recipe's pages prerender for, its page and its cooking view: the list's first page.

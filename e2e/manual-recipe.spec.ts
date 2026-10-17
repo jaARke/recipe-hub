@@ -1,13 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import {
-	contributePath,
-	recipeEditPath,
-	recipeListPath,
-	recipePath,
-} from '@/components/recipe/recipe-paths';
+import { contributePath, recipeEditPath, recipePath } from '@/components/recipe/recipe-paths';
 import { slugify } from '@/domain/recipe/slug';
 import { expect, test } from './support/fixtures';
-import { waitForHydration } from './support/hydration';
+import { deleteRecipeInEditor } from './support/recipe-editor';
 import { testMemberName } from './support/test-members';
 
 // A member enters a recipe by hand, edits it, and deletes it, so the run leaves no recipe behind; the
@@ -60,16 +55,7 @@ test('a recipe entered by hand is saved, edited, and deleted', async ({ page, si
 	await page.goto(recipePath(slugify(title)));
 	await expect(page).toHaveURL(recipePath(slugify(editedTitle)));
 
-	await page.goto(recipeEditPath(slugify(editedTitle)));
-	const recipeActions = page.getByRole('button', { name: 'Recipe actions' });
-	await waitForHydration(recipeActions);
-	await recipeActions.click();
-	await page.getByRole('menuitem', { name: 'Delete recipe' }).click();
-	await page
-		.getByRole('alertdialog', { name: `Delete “${editedTitle}”?` })
-		.getByRole('button', { name: 'Delete recipe' })
-		.click();
-	await expect(page).toHaveURL(recipeListPath);
+	await deleteRecipeInEditor(page, editedTitle);
 	await expect(page.getByRole('link', { name: editedTitle })).toBeHidden();
 
 	await page.goto(recipePath(slugify(editedTitle)));

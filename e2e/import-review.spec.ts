@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { recipeImportPath } from '@/components/recipe-import/recipe-import-paths';
-import { recipeEditPath, recipeListPath, recipePath } from '@/components/recipe/recipe-paths';
+import { recipePath } from '@/components/recipe/recipe-paths';
 import { slugify } from '@/domain/recipe/slug';
 import { expect, test } from './support/fixtures';
-import { waitForHydration } from './support/hydration';
+import { deleteRecipeInEditor } from './support/recipe-editor';
 import { seedLinkImportDraft } from './support/test-imports';
 import { testMemberName } from './support/test-members';
 
@@ -64,16 +64,7 @@ test('an import’s draft is reviewed, edited, and saved as a recipe', async ({
 	await page.goto(recipeImportPath(recipeImport.id));
 	await expect(page).toHaveURL(recipePath(slugify(title)));
 
-	await page.goto(recipeEditPath(slugify(title)));
-	const recipeActions = page.getByRole('button', { name: 'Recipe actions' });
-	await waitForHydration(recipeActions);
-	await recipeActions.click();
-	await page.getByRole('menuitem', { name: 'Delete recipe' }).click();
-	await page
-		.getByRole('alertdialog', { name: `Delete “${title}”?` })
-		.getByRole('button', { name: 'Delete recipe' })
-		.click();
-	await expect(page).toHaveURL(recipeListPath);
+	await deleteRecipeInEditor(page, title);
 
 	// Saving cleared the draft, so with the recipe gone the review has nothing left to show.
 	await page.goto(recipeImportPath(recipeImport.id));

@@ -2,39 +2,12 @@ import type { Locator, Page } from '@playwright/test';
 import { favoritesPath, recipeListPath } from '@/components/recipe/recipe-paths';
 import { pressFavorite } from './support/favorite-toggle';
 import { expect, test } from './support/fixtures';
+import { expectHeaderSection } from './support/header-section';
 import { waitForHydration } from './support/hydration';
 import { sampleRecipe } from './support/sample-recipe';
 
 // The back link reads the tab's history through the Navigation API, which Playwright 1.64's WebKit
 // (27.2) and Chromium have with the entries Next pushes, so every project expects the link.
-
-const sections = ['Browse', 'Favorites', 'Add recipe'] as const;
-
-// The header marks one section as current: in the main navigation, or on a phone in its menu.
-async function expectHeaderSection(
-	page: Page,
-	isMobile: boolean,
-	current: (typeof sections)[number]
-) {
-	if (isMobile) {
-		await page.getByRole('button', { name: 'Menu' }).click();
-	}
-	const links = isMobile
-		? page.getByRole('menu').getByRole('menuitem')
-		: page.getByRole('navigation', { name: 'Main' }).getByRole('link');
-	for (const section of sections) {
-		const link = links.filter({ hasText: section });
-		if (section === current) {
-			await expect(link).toHaveAttribute('aria-current', 'true');
-		} else {
-			await expect(link).not.toHaveAttribute('aria-current');
-		}
-	}
-	if (isMobile) {
-		await page.keyboard.press('Escape');
-		await expect(page.getByRole('menu')).toBeHidden();
-	}
-}
 
 // Clicks the target and returns the page's scroll as the press started, since Playwright's click
 // scrolls its target into view first. The page stays the same document through Next's navigation.
@@ -64,7 +37,7 @@ test('a recipe opened from Browse links back to the list as it was left', async 
 
 	const backLink = page.getByRole('link', { name: 'Back to recipes' });
 	await expect(backLink).toBeVisible();
-	await expectHeaderSection(page, isMobile, 'Browse');
+	await expectHeaderSection(page, isMobile, { section: 'Browse', ariaCurrent: 'true' });
 
 	await backLink.click();
 	await expect(page).toHaveURL(recipeListPath);
@@ -86,7 +59,7 @@ test('a recipe opened from Favorites links back to Favorites, which the header m
 	await expect(page).toHaveURL(sampleRecipe.path);
 	const backLink = page.getByRole('link', { name: 'Back to Favorites' });
 	await expect(backLink).toBeVisible();
-	await expectHeaderSection(page, isMobile, 'Favorites');
+	await expectHeaderSection(page, isMobile, { section: 'Favorites', ariaCurrent: 'true' });
 
 	await backLink.click();
 	await expect(page).toHaveURL(favoritesPath);

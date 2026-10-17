@@ -10,20 +10,21 @@ import {
 	type RecipeTotalTimeChoice,
 } from '@/application/search/recipe-search-dtos';
 import {
+	defaultListSort,
 	parseOptionParam,
 	parsePageParam,
 	singleParam,
-	type RouteSearchParams,
 } from '@/components/recipe/recipe-list-params';
 import {
-	hrefWithParams,
 	recipeListParamNames,
+	recipeListPath,
 	recipeSearchPath,
 } from '@/components/recipe/recipe-paths';
 import { storedTagListSchema } from '@/domain/recipe/tag';
 import { normalizeTagLabel } from '@/domain/recipe/tag-normalization';
+import { hrefWithParams, type RouteSearchParams } from '@/lib/url-query';
 
-// The search page's URL parameters, by the state they hold.
+// Browse's and Search's URL parameters, by the state they hold.
 export const recipeSearchParamNames = {
 	text: 'q',
 	tags: 'tag',
@@ -49,6 +50,15 @@ export type RecipeSearchState = {
 	page: number;
 };
 
+// The two lists a state is shown in: Browse lists the collection without words, and Search finds
+// recipes by them, refined by the same filters.
+export type RecipeSearchMode = 'browse' | 'search';
+
+const recipeSearchModePaths: Record<RecipeSearchMode, string> = {
+	browse: recipeListPath,
+	search: recipeSearchPath,
+};
+
 // One value of a URL parameter; a parameter appears once per tag.
 export type RecipeSearchParam = {
 	name: (typeof recipeSearchParamNames)[RecipeSearchField];
@@ -63,7 +73,16 @@ export function recipeSearchSortsFor(text: string | undefined): RecipeSearchSort
 }
 
 function defaultSearchSort(text: string | undefined): RecipeSearchSort {
-	return text === undefined ? 'newest' : 'relevance';
+	return text === undefined ? defaultListSort : 'relevance';
+}
+
+export function recipeSearchMode(state: Pick<RecipeSearchState, 'text'>): RecipeSearchMode {
+	return state.text === undefined ? 'browse' : 'search';
+}
+
+// Where the state's forms submit, so a form keeps a search in its mode.
+export function recipeSearchModePath(state: Pick<RecipeSearchState, 'text'>): string {
+	return recipeSearchModePaths[recipeSearchMode(state)];
 }
 
 // Trimmed, so a query of spaces is no query.
@@ -164,13 +183,28 @@ export function recipeSearchParams(state: RecipeSearchState): RecipeSearchParam[
 	return params;
 }
 
+// Browse's URL without words and Search's with them; every link and redirect between the two is
+// built here.
 export function recipeSearchHref(state: RecipeSearchState): string {
 	const params = new URLSearchParams();
 	for (const { name, value } of recipeSearchParams(state)) {
 		params.append(name, value);
 	}
 
-	return hrefWithParams(recipeSearchPath, params);
+	return hrefWithParams(recipeSearchModePath(state), params);
+}
+
+// Where a request for Browse or Search belongs when it reached the other's path: a search without
+// words is Browse, and Browse given words is Search, so each list has one URL. Undefined where it
+// already is, or where the parameters are refused, which its page answers with a 404.
+export function misplacedRecipeSearchHref(
+	pathname: string,
+	params: RouteSearchParams
+): string | undefined {
+	const state = parseRecipeSearchParams(params);
+	return state === null || recipeSearchModePath(state) === pathname
+		? undefined
+		: recipeSearchHref(state);
 }
 
 // What a form carries besides the fields it edits; any change starts again from the first page.
@@ -192,6 +226,18 @@ export function appliedFilterCount(state: RecipeSearchState): number {
 // Keeps the query and the order.
 export function withoutFilters(state: RecipeSearchState): RecipeSearchState {
 	return { text: state.text, tags: [], sort: state.sort, page: 1 };
+}
+
+// Browse with the filters kept. Best match ranks by the words, so it leaves with them.
+export function withoutText(state: RecipeSearchState): RecipeSearchState {
+	const sort = state.sort === 'relevance' ? defaultSearchSort(undefined) : state.sort;
+	return { ...state, text: undefined, sort, page: 1 };
+}
+
+// The words and the filters, which a new order or page leaves as they were.
+export function recipeSearchFiltersKey(state: RecipeSearchState): string {
+	const params = carriedSearchParams(state, ['sort']).map(({ name, value }) => [name, value]);
+	return new URLSearchParams(params).toString();
 }
 
 export function toRecipeSearchInput(state: RecipeSearchState, pageSize: number): RecipeSearchInput {

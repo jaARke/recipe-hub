@@ -21,5 +21,6 @@ export async function renameMember(_state: FormState, formData: FormData): Promi
 	}
 
 	updateTag(recipeCacheTags.member(member.id));
+	updateTag(recipeCacheTags.memberNames);
 	return { status: 'success' };
 }

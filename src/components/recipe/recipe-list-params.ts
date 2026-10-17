@@ -1,18 +1,6 @@
-import { recipeSorts, type RecipeSort } from '@/application/ports/recipe-repository';
-import {
-	favoritesPath,
-	hrefWithParams,
-	recipeListParamNames,
-	recipeListPath,
-} from '@/components/recipe/recipe-paths';
-
-// A page's searchParams as Next.js passes them: a repeated parameter arrives as an array.
-export type RouteSearchParams = Record<string, string | string[] | undefined>;
-
-export type RecipeListState = {
-	page: number;
-	sort: RecipeSort;
-};
+import type { RecipeSort } from '@/application/ports/recipe-repository';
+import { favoritesPath, recipeListParamNames } from '@/components/recipe/recipe-paths';
+import { hrefWithParams } from '@/lib/url-query';
 
 export const defaultListSort: RecipeSort = 'newest';
 
@@ -46,29 +34,6 @@ export function parseOptionParam<Option extends string | number>(
 	}
 
 	return options.find((option) => String(option) === param) ?? null;
-}
-
-export function parseRecipeListParams(params: RouteSearchParams): RecipeListState | null {
-	const page = parsePageParam(params[recipeListParamNames.page]);
-	const sort = parseOptionParam(params[recipeListParamNames.sort], recipeSorts);
-	if (page === null || sort === null) {
-		return null;
-	}
-
-	return { page, sort: sort ?? defaultListSort };
-}
-
-// The first page in the default order is the bare list, so its link matches the one in the header.
-export function recipeListHref({ page, sort }: RecipeListState): string {
-	const params = new URLSearchParams();
-	if (sort !== defaultListSort) {
-		params.set(recipeListParamNames.sort, sort);
-	}
-	if (page > 1) {
-		params.set(recipeListParamNames.page, String(page));
-	}
-
-	return hrefWithParams(recipeListPath, params);
 }
 
 // Favorites list newest first in one order, so only the page reaches the URL, and the first is bare.

@@ -20,6 +20,8 @@ describe('givesAmount', () => {
 		'Add up to 12 C. Water',
 		// A "C." that may be a cup's or a sentence's end.
 		'Add 12 C.',
+		// After "Reduce", "to" may give an amount or a temperature.
+		'Reduce to 12 C. Strain.',
 	])('finds an amount in "%s"', (text) => {
 		expect(givesAmount(text)).toBe(true);
 	});
@@ -38,6 +40,7 @@ describe('givesAmount', () => {
 		'Bake at 180C. Cool on a rack.',
 		'Bake at 180 C. for 25 minutes',
 		'Heat the oil to about 180 C. Fry in batches.',
+		'Bake in a 180 C. oven',
 		'Heat the milk to 40.5 C',
 		'Heat the milk to between 40.5 and 45.5 C.',
 		'Heat the milk to 105.5 F.',
@@ -90,6 +93,10 @@ describe('scaleIngredientLine', () => {
 		['⅛ teaspoon cayenne', 1 / 4, { amount: { min: 0.125 }, unit: 'teaspoon', item: 'cayenne' }],
 		['500 g flour', 1 / 3, { amount: { min: 165 }, unit: 'g', item: 'flour' }],
 		['1.5 kg potatoes', 1 / 2, { amount: { min: 0.75 }, unit: 'kg', item: 'potatoes' }],
+		['1,5 kg potatoes', 2, { amount: { min: 3 }, unit: 'kg', item: 'potatoes' }],
+		['1,5 kg potatoes', 1 / 2, { amount: { min: 0.75 }, unit: 'kg', item: 'potatoes' }],
+		['1,500 g flour', 2, { amount: { min: 3000 }, unit: 'g', item: 'flour' }],
+		['1,500 g flour', 1 / 2, { amount: { min: 750 }, unit: 'g', item: 'flour' }],
 		['1 c. milk', 1 / 2, { amount: { min: 0.5 }, unit: 'c.', item: 'milk' }],
 		['1 C. Sugar', 2, { amount: { min: 2 }, unit: 'C.', item: 'Sugar' }],
 		['12 C. Water', 1 / 2, { amount: { min: 6 }, unit: 'C.', item: 'Water' }],
@@ -225,8 +232,64 @@ describe('scaleIngredientLine', () => {
 	);
 
 	it.each<[string, number, ScaledParts]>([
+		[
+			'½ to 1 fl oz lime juice',
+			2,
+			{ amount: { min: 1, max: 2 }, unit: 'fl oz', item: 'lime juice' },
+		],
+		[
+			'½ to 1 fl oz lime juice',
+			1 / 2,
+			{ amount: { min: 1.5, max: 3 }, unit: 'teaspoons', item: 'lime juice' },
+		],
+		['¼ to ½ stick butter', 2, { amount: { min: 0.5, max: 1 }, unit: 'stick', item: 'butter' }],
+		[
+			'¼ to ½ stick butter',
+			1 / 2,
+			{ amount: { min: 1, max: 2 }, unit: 'tablespoons', item: 'butter' },
+		],
+		['0.05 to 0.1 kg sugar', 2, { amount: { min: 0.1, max: 0.2 }, unit: 'kg', item: 'sugar' }],
+		['0.05 to 0.1 kg sugar', 1 / 2, { amount: { min: 25, max: 50 }, unit: 'grams', item: 'sugar' }],
+		[
+			'0.05 to 0.1 l stock',
+			1 / 2,
+			{ amount: { min: 25, max: 50 }, unit: 'milliliters', item: 'stock' },
+		],
+		['1 to 2 g saffron', 2, { amount: { min: 2, max: 4 }, unit: 'g', item: 'saffron' }],
+		['1 to 2 g saffron', 1 / 2, { amount: { min: 0.5, max: 1 }, unit: 'g', item: 'saffron' }],
+	])(
+		'keeps both ends of the range in "%s" by %s, in a smaller unit or step where its unit’s are too coarse',
+		(text, factor, parts) => {
+			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+				line: { text, ...parts },
+			});
+		}
+	);
+
+	it.each<[string, number, ScaledParts]>([
+		[
+			'⅛ to ¼ teaspoon salt',
+			2,
+			{ amount: { min: 0.25, max: 0.5 }, unit: 'teaspoon', item: 'salt' },
+		],
+		['⅛ to ¼ teaspoon salt', 1 / 2, { amount: { min: 0.125 }, unit: 'teaspoon', item: 'salt' }],
+		['¼ to ½ ounce yeast', 2, { amount: { min: 0.5, max: 1 }, unit: 'ounce', item: 'yeast' }],
+		['¼ to ½ ounce yeast', 1 / 2, { amount: { min: 0.25 }, unit: 'ounce', item: 'yeast' }],
+	])(
+		'reads the range in "%s" by %s at no less than its unit’s smallest step, as no smaller unit is below it',
+		(text, factor, parts) => {
+			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+				line: { text, ...parts },
+			});
+		}
+	);
+
+	it.each<[string, number, ScaledParts]>([
 		['40 g butter', 1 / 3, { amount: { min: 13 }, unit: 'g', item: 'butter' }],
-		['2.5 g yeast', 3, { amount: { min: 8 }, unit: 'g', item: 'yeast' }],
+		['2.5 g yeast', 3, { amount: { min: 7.5 }, unit: 'g', item: 'yeast' }],
+		['5 to 10 g salt', 1 / 2, { amount: { min: 2.5, max: 5 }, unit: 'g', item: 'salt' }],
+		['1 g saffron', 1 / 2, { amount: { min: 0.5 }, unit: 'g', item: 'saffron' }],
+		['10 ml vanilla', 1 / 3, { amount: { min: 3.5 }, unit: 'ml', item: 'vanilla' }],
 		['330 ml milk', 1 / 2, { amount: { min: 165 }, unit: 'ml', item: 'milk' }],
 		['250 ml stock', 1 / 3, { amount: { min: 83 }, unit: 'ml', item: 'stock' }],
 		['1.1 kg potatoes', 2 / 3, { amount: { min: 0.75 }, unit: 'kg', item: 'potatoes' }],
@@ -239,6 +302,8 @@ describe('scaleIngredientLine', () => {
 	it.each([
 		['1.1 kg potatoes', 2 / 3, '0.75'],
 		['500 g flour', 1 / 3, '165'],
+		['5 to 10 g salt', 1 / 2, '2.5 to 5'],
+		['1 g saffron', 1 / 2, '0.5'],
 		['2.5 g yeast', 1, '2.5'],
 		['1½ kg potatoes', 1, '1.5'],
 		['166.67 g sugar', 1, '166.67'],
@@ -309,6 +374,18 @@ describe('scaleIngredientLine', () => {
 	])('leaves "%s", with nothing to scale, unchanged and unmarked', (text) => {
 		const line = parseIngredientLine(text);
 		expect(scaleIngredientLine(line, 2)).toStrictEqual({ line });
+	});
+
+	it.each([
+		['1 of every 2 eggs', 2],
+		['1 of every 2 eggs', 1 / 2],
+		['one in every three', 2],
+		['one in every three', 1 / 2],
+		['1 cup of every 2 cups milk', 2],
+		['1 cup of every 2 cups milk', 1 / 2],
+	])('leaves "%s", which opens with a proportion, unchanged and unmarked by %s', (text, factor) => {
+		const line = parseIngredientLine(text);
+		expect(scaleIngredientLine(line, factor)).toStrictEqual({ line });
 	});
 
 	it.each([
@@ -959,6 +1036,24 @@ describe('scaleIngredientLine', () => {
 			1 / 2,
 			{ amount: { min: 0.5 }, unit: 'cup', item: 'chopped onion (about 1 onion)' },
 		],
+		// A comma before one or two digits is a decimal, and before three separates thousands.
+		[
+			'12 cups flour (about 1,5 kg sifted)',
+			2,
+			{ amount: { min: 24 }, unit: 'cups', item: 'flour (about 3 kg sifted)' },
+		],
+		[
+			'12 cups flour (about 1,5 kg sifted)',
+			1 / 2,
+			{ amount: { min: 6 }, unit: 'cups', item: 'flour (about 0.75 kg sifted)' },
+		],
+		['⅓ cup flour (40,5 g)', 2, { amount: { min: 2 / 3 }, unit: 'cup', item: 'flour (81 g)' }],
+		[
+			'⅓ cup flour (40,5 g)',
+			1 / 2,
+			{ amount: { min: 2.5 }, unit: 'tablespoons', item: 'flour (20 g)' },
+		],
+		['12 cups flour (1,500 g)', 1 / 2, { amount: { min: 6 }, unit: 'cups', item: 'flour (750 g)' }],
 		// A C after one digit is a cup, as old cards write it.
 		['2 sticks (1 C) butter', 2, { amount: { min: 4 }, unit: 'sticks (2 C)', item: 'butter' }],
 		['2 sticks (1 C) butter', 1 / 2, { amount: { min: 1 }, unit: 'stick (½ C)', item: 'butter' }],
@@ -1573,6 +1668,25 @@ describe('scaleIngredientLine', () => {
 			{ amount: { min: 6 }, unit: 'quarts', item: 'water', preparation: 'about 12 C.' },
 			[{ field: 'preparation', start: 6, end: 11 }],
 		],
+		[
+			'4 quarts stock, reduced to 12 C. Strain',
+			2,
+			{ amount: { min: 8 }, unit: 'quarts', item: 'stock', preparation: 'reduced to 12 C. Strain' },
+			[{ field: 'preparation', start: 11, end: 16 }],
+		],
+		// A capitalized word before a lowercase one opens a sentence, which the period may end.
+		[
+			'1 cup milk (45 C. Not hotter)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'milk (45 C. Not hotter)' },
+			[{ field: 'item', start: 6, end: 11 }],
+		],
+		[
+			'1 cup milk (45 C. Not hotter)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'milk (45 C. Not hotter)' },
+			[{ field: 'item', start: 6, end: 11 }],
+		],
 	])(
 		'marks the "C." in "%s", which may be a cup or end a sentence in Celsius, unscaled by %s',
 		(text, factor, parts, amounts) => {
@@ -1601,13 +1715,11 @@ describe('scaleIngredientLine', () => {
 	);
 
 	it.each<[string, number, ScaledParts]>([
-		['2 fillets salmon (skin on)', 2, { amount: { min: 4 }, item: 'fillets salmon (skin on)' }],
-		['2 fillets salmon (skin on)', 1 / 2, { amount: { min: 1 }, item: 'fillet salmon (skin on)' }],
-		['2 fillets of salmon', 1 / 2, { amount: { min: 1 }, item: 'fillet of salmon' }],
-		['1 fillet of salmon', 2, { amount: { min: 2 }, item: 'fillets of salmon' }],
-		['1 fillet of salmon', 1 / 2, { amount: { min: 0.5 }, item: 'fillet of salmon' }],
+		['2 bulbs fennel (trimmed)', 2, { amount: { min: 4 }, item: 'bulbs fennel (trimmed)' }],
+		['2 bulbs fennel (trimmed)', 1 / 2, { amount: { min: 1 }, item: 'bulb fennel (trimmed)' }],
 		['2 chipotles in adobo', 2, { amount: { min: 4 }, item: 'chipotles in adobo' }],
 		['2 chipotles in adobo', 1 / 2, { amount: { min: 1 }, item: 'chipotle in adobo' }],
+		['1 chipotle in adobo', 2, { amount: { min: 2 }, item: 'chipotles in adobo' }],
 		['2 of the eggs', 2, { amount: { min: 4 }, item: 'of the eggs' }],
 		['2 of the eggs', 1 / 2, { amount: { min: 1 }, item: 'of the eggs' }],
 		['2 Eggs well beaten', 1 / 2, { amount: { min: 1 }, item: 'Egg well beaten' }],
@@ -1631,6 +1743,38 @@ describe('scaleIngredientLine', () => {
 		['2 star anise', 1 / 2, { amount: { min: 1 }, item: 'star anise' }],
 	])(
 		'makes the noun the count in "%s" counts agree with it by %s, though other words follow it',
+		(text, factor, parts) => {
+			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+				line: { text, ...parts },
+			});
+		}
+	);
+
+	it.each<[string, number, ScaledParts]>([
+		['2 eggs and milk', 2, { amount: { min: 4 }, item: 'eggs and milk' }],
+		['2 eggs and milk', 1 / 2, { amount: { min: 1 }, item: 'egg and milk' }],
+		['2 apples or pears', 2, { amount: { min: 4 }, item: 'apples or pears' }],
+		['2 apples or pears', 1 / 2, { amount: { min: 1 }, item: 'apple or pear' }],
+		['2 apples and pears', 2, { amount: { min: 4 }, item: 'apples and pears' }],
+		['2 apples and pears', 1 / 2, { amount: { min: 1 }, item: 'apple and pears' }],
+	])(
+		'makes the nouns the count in "%s" counts agree with it by %s, though another item is joined to them',
+		(text, factor, parts) => {
+			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+				line: { text, ...parts },
+			});
+		}
+	);
+
+	it.each<[string, number, ScaledParts]>([
+		['1 apple or pear', 2, { amount: { min: 2 }, item: 'apple or pear' }],
+		['1 apple or pear', 1 / 2, { amount: { min: 0.5 }, item: 'apple or pear' }],
+		['1 red or green pepper', 2, { amount: { min: 2 }, item: 'red or green pepper' }],
+		['1 egg and milk', 2, { amount: { min: 2 }, item: 'egg and milk' }],
+		['1 egg and milk', 1 / 2, { amount: { min: 0.5 }, item: 'egg and milk' }],
+		['1 red and green pepper', 2, { amount: { min: 2 }, item: 'red and green pepper' }],
+	])(
+		'keeps the wording of "%s" by %s, whose joined word after a count of one may describe its noun',
 		(text, factor, parts) => {
 			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
 				line: { text, ...parts },
@@ -1665,6 +1809,24 @@ describe('scaleIngredientLine', () => {
 		],
 		['1 tub ricotta', 2, { amount: { min: 2 }, unit: 'tubs', item: 'ricotta' }],
 		['1 tub ricotta', 1 / 2, { amount: { min: 0.5 }, unit: 'tub', item: 'ricotta' }],
+		['1 fillet salmon', 2, { amount: { min: 2 }, unit: 'fillets', item: 'salmon' }],
+		['1 fillet salmon', 1 / 2, { amount: { min: 0.5 }, unit: 'fillet', item: 'salmon' }],
+		[
+			'2 fillets salmon (skin on)',
+			1 / 2,
+			{ amount: { min: 1 }, unit: 'fillet', item: 'salmon (skin on)' },
+		],
+		['1 fillet of salmon', 2, { amount: { min: 2 }, unit: 'fillets', item: 'salmon' }],
+		['1 pod cardamom', 2, { amount: { min: 2 }, unit: 'pods', item: 'cardamom' }],
+		['1 pod cardamom', 1 / 2, { amount: { min: 0.5 }, unit: 'pod', item: 'cardamom' }],
+		['1 cube bouillon', 2, { amount: { min: 2 }, unit: 'cubes', item: 'bouillon' }],
+		['1 cube bouillon', 1 / 2, { amount: { min: 0.5 }, unit: 'cube', item: 'bouillon' }],
+		['1 link sausage', 2, { amount: { min: 2 }, unit: 'links', item: 'sausage' }],
+		['1 link sausage', 1 / 2, { amount: { min: 0.5 }, unit: 'link', item: 'sausage' }],
+		['1 block tofu', 2, { amount: { min: 2 }, unit: 'blocks', item: 'tofu' }],
+		['1 block tofu', 1 / 2, { amount: { min: 0.5 }, unit: 'block', item: 'tofu' }],
+		['1 pouch tuna', 2, { amount: { min: 2 }, unit: 'pouches', item: 'tuna' }],
+		['1 pouch tuna', 1 / 2, { amount: { min: 0.5 }, unit: 'pouch', item: 'tuna' }],
 	])(
 		'counts "%s" in its unit, which takes the number in place of the item, by %s',
 		(text, factor, parts) => {
@@ -1822,6 +1984,8 @@ describe('scaleIngredientLine', () => {
 			1 / 2,
 			{ amount: { min: 1 }, unit: 'cup', item: 'milk (1 cup of every 2 cups reserved)' },
 		],
+		['½ of the butter', 2, { amount: { min: 0.5 }, item: 'of the butter' }],
+		['½ of the butter', 1 / 2, { amount: { min: 0.5 }, item: 'of the butter' }],
 	])(
 		'keeps the share of the whole in "%s", right at any scale, by %s without a mark',
 		(text, factor, parts) => {

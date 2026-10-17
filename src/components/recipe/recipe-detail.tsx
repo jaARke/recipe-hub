@@ -35,8 +35,8 @@ const contributorCellClassName = 'sm:col-span-2';
 // The description and the notes read as body text.
 const recipeParagraphsClassName = cn(recipeTextStyles.body, 'gap-4');
 
-// Every recipe with the tag, newest first as search lists them without a query.
-function tagSearchHref(tag: string): string {
+// Browse filtered by the tag, newest first.
+function tagBrowseHref(tag: string): string {
 	return recipeSearchHref({ tags: [tag], sort: 'newest', page: 1 });
 }
 
@@ -127,7 +127,7 @@ function RecipeRuledBlock({ recipe }: { recipe: PublicRecipeDto }) {
 				<dl className="flex flex-col gap-1.5 py-3">
 					<dt className={recipeTextStyles.cellLabel}>Tags</dt>
 					<dd>
-						<RecipeTags tags={recipe.tags} tagHref={tagSearchHref} />
+						<RecipeTags tags={recipe.tags} tagHref={tagBrowseHref} />
 					</dd>
 				</dl>
 			)}

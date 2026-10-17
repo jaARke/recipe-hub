@@ -168,6 +168,18 @@ export const sampleCatalogFacets: RecipeSearchFacets = {
 	],
 };
 
+// Browse's first cards, newest first, counted over every sample recipe.
+export const sampleBrowsePage: RecipeSearchPage = {
+	results: sampleRecipeContents
+		.slice(0, sampleGridCount)
+		.map((content) =>
+			toRecipeSearchResultDto({ recipe: sampleRecipe(content), title: highlighted(content.title) })
+		),
+	total: sampleRecipeContents.length,
+	match: 'exact',
+	facets: sampleCatalogFacets,
+};
+
 // A search for "butter" among baking recipes added by the sample contributor, best match first.
 export const sampleSearchPage: RecipeSearchPage = {
 	results: [

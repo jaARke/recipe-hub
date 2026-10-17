@@ -57,6 +57,14 @@ describe('RecipeDetail’s ruled block', () => {
 		await expect.element(page.getByRole('link', { name: 'Soup' })).toBeInTheDocument();
 	});
 
+	it('opens Browse filtered by a tag from its link', async () => {
+		await render(<RecipeDetail recipe={soup()} headingLevel={1} />);
+
+		await expect
+			.element(page.getByRole('link', { name: 'Weeknight' }))
+			.toHaveAttribute('href', '/?tag=Weeknight');
+	});
+
 	it('names its tags a list, which Safari takes for a group without markers', async () => {
 		await render(<RecipeDetail recipe={soup()} headingLevel={1} />);
 

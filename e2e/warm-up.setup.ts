@@ -12,11 +12,11 @@ import {
 	favoritesPath,
 	recipeEditPath,
 	recipeListPath,
-	recipeSearchPath,
 } from '@/components/recipe/recipe-paths';
 import { test as setup } from './support/fixtures';
 import { waitForHydration } from './support/hydration';
 import { sampleRecipe } from './support/sample-recipe';
+import { sampleSearchPath } from './support/sample-search';
 import { seedLinkImportDraft } from './support/test-imports';
 
 // Long enough for `next dev` to compile a page's server and client code on its first request.
@@ -27,7 +27,7 @@ const signedOutPaths = [
 	sampleRecipe.path,
 	sampleRecipe.cookPath,
 	favoritesPath,
-	recipeSearchPath,
+	sampleSearchPath,
 	signInPath,
 	requestAccessPath,
 	privacyPath,

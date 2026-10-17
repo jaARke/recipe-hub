@@ -3,14 +3,25 @@ import { render } from 'vitest-browser-react';
 import { page, userEvent } from 'vitest/browser';
 import { holdPageLoads } from '@/components/auth/testing/page-loads';
 import { HeaderSearchForm } from '@/components/search/header-search';
+import { HeaderSearchFields } from '@/components/search/header-search-bar';
+import type { RecipeSearchState } from '@/components/search/search-params';
 
 // Tailwind's lg breakpoint, from which the header's row holds the field.
 const lgViewport = { width: 1024, height: 768 };
 
 const hint = 'Try "brown butter" for an exact phrase, or -nuts to leave nuts out.';
 
-// The header's form, beside the search page's hint, which only the search page has.
-async function renderHeaderSearch({ query, searchPage }: { query: string; searchPage: boolean }) {
+// The header's form, beside the search page's hint, which only the search page has, and the page's
+// search, whose fields join the form.
+async function renderHeaderSearch({
+	query,
+	searchPage,
+	pageState,
+}: {
+	query: string;
+	searchPage: boolean;
+	pageState?: RecipeSearchState;
+}) {
 	await render(
 		<>
 			<HeaderSearchForm
@@ -21,6 +32,7 @@ async function renderHeaderSearch({ query, searchPage }: { query: string; search
 				searchPage={searchPage}
 			/>
 			{searchPage && <p id="search-hint">{hint}</p>}
+			{pageState !== undefined && <HeaderSearchFields state={pageState} />}
 		</>
 	);
 }
@@ -36,6 +48,10 @@ function searchIcon({ includeHidden = false } = {}) {
 
 function cancelButton() {
 	return page.getByRole('button', { name: 'Cancel' });
+}
+
+function clearSearchButton() {
+	return page.getByRole('button', { name: 'Clear search' });
 }
 
 describe('HeaderSearchForm', () => {
@@ -67,6 +83,31 @@ describe('HeaderSearchForm', () => {
 		await expect.element(cancelButton()).toBeVisible();
 	});
 
+	it('offers Clear search on the search page only', async () => {
+		await renderHeaderSearch({ query: '', searchPage: false });
+		await searchIcon().click();
+		await searchField().fill('lemon');
+
+		await expect.element(clearSearchButton()).not.toBeInTheDocument();
+	});
+
+	it('clears the words and searches again with the filters and order, which lists Browse', async () => {
+		const loads = holdPageLoads();
+		await renderHeaderSearch({
+			query: 'lemon',
+			searchPage: true,
+			pageState: { text: 'lemon', tags: ['Dessert'], sort: 'title', page: 2 },
+		});
+
+		await clearSearchButton().click();
+
+		await expect.element(searchField()).toHaveValue('');
+		await expect.element(searchField()).toHaveFocus();
+		await expect
+			.poll(() => loads)
+			.toEqual([{ path: '/search?q=&tag=Dessert&sort=title', type: 'push' }]);
+	});
+
 	describe('from lg', () => {
 		beforeEach(async () => {
 			await page.viewport(lgViewport.width, lgViewport.height);
@@ -81,6 +122,38 @@ describe('HeaderSearchForm', () => {
 			await userEvent.keyboard('{Enter}');
 
 			await expect.poll(() => loads).toEqual([{ path: '/search?q=sugar', type: 'push' }]);
+		});
+
+		it('keeps the filters but not the order of a search typed on Browse', async () => {
+			const loads = holdPageLoads();
+			await renderHeaderSearch({
+				query: '',
+				searchPage: false,
+				pageState: { tags: ['Dessert'], sort: 'title', page: 2 },
+			});
+
+			await searchField().fill('lemon');
+			await userEvent.keyboard('{Enter}');
+
+			await expect
+				.poll(() => loads)
+				.toEqual([{ path: '/search?q=lemon&tag=Dessert', type: 'push' }]);
+		});
+
+		it('keeps the filters and the order of a new search typed on Search', async () => {
+			const loads = holdPageLoads();
+			await renderHeaderSearch({
+				query: 'lemon',
+				searchPage: true,
+				pageState: { text: 'lemon', tags: ['Dessert'], sort: 'title', page: 2 },
+			});
+
+			await searchField().fill('lime');
+			await userEvent.keyboard('{Enter}');
+
+			await expect
+				.poll(() => loads)
+				.toEqual([{ path: '/search?q=lime&tag=Dessert&sort=title', type: 'push' }]);
 		});
 	});
 });

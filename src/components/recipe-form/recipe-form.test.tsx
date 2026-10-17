@@ -740,7 +740,25 @@ describe('RecipeForm’s lists', () => {
 		await userEvent.keyboard('{Enter}');
 
 		await expect.element(announced('Added Step 5, For the gravy.')).toBeInTheDocument();
-		expect(shownStepNumbers()).toEqual(['1.', '2.', '3.', '4.', '5.']);
+		expect(shownStepNumbers()).toEqual(['1.', '2.', '3.', '4.']);
+		await userEvent.keyboard('Strain.');
+		await expect.poll(() => shownStepNumbers()).toEqual(['1.', '2.', '3.', '4.', '5.']);
+	});
+
+	// Saving leaves out a blank step, so the recipe page numbers the steps around it 1 and 2.
+	it('numbers only the steps saving keeps, as the recipe page does', async () => {
+		await renderForm({
+			...lemonBars,
+			instructionSections: [{ steps: [{ text: 'Mix.' }, { text: '' }, { text: 'Bake.' }] }],
+		});
+
+		expect(shownStepNumbers()).toEqual(['1.', '2.']);
+		expect(rowTexts('Steps')).toEqual(['Step 1: Mix.', 'Step 2: ', 'Step 2: Bake.']);
+
+		await page.getByRole('list', { name: 'Steps' }).getByRole('textbox').nth(1).fill('Stir.');
+
+		await expect.poll(() => shownStepNumbers()).toEqual(['1.', '2.', '3.']);
+		expect(rowTexts('Steps')).toEqual(['Step 1: Mix.', 'Step 2: Stir.', 'Step 3: Bake.']);
 	});
 
 	it('names a step by its number in a save’s problems', async () => {

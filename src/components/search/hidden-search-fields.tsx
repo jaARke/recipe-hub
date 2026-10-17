@@ -5,7 +5,8 @@ import {
 } from '@/components/search/search-params';
 
 // A search form submits only its own fields, so these carry the rest of the search along. Given a
-// form's id, they join that form from wherever they render, as the search page's join the header's.
+// form's id, they join that form from wherever they render, as Browse's and Search's join the
+// header's.
 function HiddenSearchFields({
 	state,
 	editedFields,

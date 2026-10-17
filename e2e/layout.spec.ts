@@ -14,17 +14,16 @@ import {
 import {
 	contributePath,
 	favoritesPath,
-	hrefWithParams,
 	recipeEditPath,
 	recipeListPath,
 	recipePath,
-	recipeSearchPath,
 } from '@/components/recipe/recipe-paths';
-import { recipeSearchParamNames } from '@/components/search/search-params';
 import type { MemberRole } from '@/domain/member/member';
+import { hrefWithParams } from '@/lib/url-query';
 import { expect, test } from './support/fixtures';
 import { checkLayout, minimumTargetSize, phoneWidthsToCheck } from './support/layout';
 import { sampleRecipe } from './support/sample-recipe';
+import { sampleSearchPath } from './support/sample-search';
 import { stylesheetDeclarationsNotServed } from './support/stylesheet';
 
 type CheckedPage = {
@@ -50,13 +49,7 @@ const checkedPages: CheckedPage[] = [
 	{ name: 'a cooking step', path: cookingScreenPath(6) },
 	{ name: 'the cooking view’s finish', path: cookingScreenPath(8) },
 	{ name: 'Favorites', path: favoritesPath },
-	{
-		name: 'search results',
-		path: hrefWithParams(
-			recipeSearchPath,
-			new URLSearchParams({ [recipeSearchParamNames.text]: 'soup' })
-		),
-	},
+	{ name: 'search results', path: sampleSearchPath },
 	{ name: 'sign-in', path: signInPath },
 	{ name: 'request access', path: requestAccessPath },
 	{ name: 'privacy', path: privacyPath },

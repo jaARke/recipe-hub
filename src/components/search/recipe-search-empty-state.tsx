@@ -40,7 +40,7 @@ function RecipeSearchEmptyState({ state }: { state: RecipeSearchState }) {
 		<Empty className="border">
 			<EmptyHeader>
 				<EmptyMedia>
-					<Mascot pose="sleeping" size="lg" />
+					<Mascot pose="sleeping" size="lg" loading="eager" />
 				</EmptyMedia>
 				<EmptyTitle>{title}</EmptyTitle>
 				<EmptyDescription>{advice.join(' ')}</EmptyDescription>

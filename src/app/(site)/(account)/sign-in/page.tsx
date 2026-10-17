@@ -10,6 +10,8 @@ import { settings } from '@/lib/settings';
 
 export const metadata: Metadata = {
 	title: 'Sign in',
+	// Kept out of search results, which would send strangers here; its links are followed.
+	robots: { index: false, follow: true },
 };
 
 type SignInSearchParams = Pick<PageProps<'/sign-in'>, 'searchParams'>;

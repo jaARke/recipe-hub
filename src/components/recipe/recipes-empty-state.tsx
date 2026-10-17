@@ -12,7 +12,7 @@ function RecipesEmptyState() {
 		<Empty className="border">
 			<EmptyHeader>
 				<EmptyMedia>
-					<Mascot pose="sleeping" size="lg" />
+					<Mascot pose="sleeping" size="lg" loading="eager" />
 				</EmptyMedia>
 				<EmptyTitle>No recipes yet</EmptyTitle>
 				<EmptyDescription>Recipes will show up here once they are added.</EmptyDescription>

@@ -1,7 +1,6 @@
 import type { CompletedInviteDto } from '@/application/access/access-dtos';
-import type { RouteSearchParams } from '@/components/recipe/recipe-list-params';
-import { hrefWithParams } from '@/components/recipe/recipe-paths';
 import { invitePath } from '@/lib/auth-paths';
+import { hrefWithParams, type RouteSearchParams } from '@/lib/url-query';
 
 export const signInPath = '/sign-in';
 

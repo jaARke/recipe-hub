@@ -1,0 +1,68 @@
+name: Wiki
+
+# Publishes docs/ to the repository's wiki, which is output: every run replaces each page with its
+# docs/ source and drops pages docs/ no longer has. GitHub creates the wiki's repository with its
+# first page, made by hand once; workflow_dispatch then publishes without a docs/ change.
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run at a time, and a waiting run gives way to a newer one, so an older push never publishes
+# over a newer one.
+concurrency:
+  group: wiki
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Pushing to the wiki's repository takes write access to the repository's contents.
+    permissions:
+      contents: write
+    steps:
+      # main as it is now, not the commit that triggered the run, so a re-run never publishes older
+      # pages over newer ones.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: repository
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki
+      - name: Copy the pages
+        run: |
+          set -euo pipefail
+          find wiki -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          for source in repository/docs/*.md; do
+            page=$(basename "$source" .md)
+            # The wiki shows Home as its front page.
+            if [ "$page" = README ]; then
+              page=Home
+            fi
+            # A link to a page beside it, Operations.md#builds, names the wiki page, Operations#builds.
+            sed -E \
+              -e 's/\]\(README\.md(#[^)]*)?\)/](Home\1)/g' \
+              -e 's/\]\(([A-Za-z0-9_-]+)\.md(#[^)]*)?\)/](\1\2)/g' \
+              "$source" > "wiki/$page.md"
+          done
+          echo "This wiki is generated from [\`docs/\`]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/main/docs) in the repository, and edits made here are replaced on the next publish." > wiki/_Footer.md
+      - name: Publish
+        working-directory: wiki
+        run: |
+          set -euo pipefail
+          git add --all
+          if git diff --cached --quiet; then
+            echo "The wiki already matches docs/"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit --quiet --message "Publish docs/ from $(git -C ../repository rev-parse HEAD)"
+          git push origin HEAD

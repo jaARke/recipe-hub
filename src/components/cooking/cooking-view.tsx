@@ -196,7 +196,7 @@ function StepScreen({
 function FinishScreen({ title, heading }: { title: string; heading: HeadingRef }) {
 	return (
 		<div className="flex flex-col items-start gap-6">
-			<Mascot size="xl" />
+			<Mascot size="xl" loading="eager" />
 			<ScreenHeading heading={heading}>Enjoy your {title}</ScreenHeading>
 			<p className="text-lg text-muted-foreground">That was the last step.</p>
 		</div>

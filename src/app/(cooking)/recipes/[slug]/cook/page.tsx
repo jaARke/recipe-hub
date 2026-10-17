@@ -4,7 +4,8 @@ import { Suspense } from 'react';
 import { getCachedRecipe, recipeStaticParams } from '@/app/_lib/recipe-cache';
 import { cookingRecipeFrom, cookingViewParams } from '@/components/cooking/cooking-screens';
 import { CookingView, CookingViewSkeleton } from '@/components/cooking/cooking-view';
-import { hrefWithParams, recipeCookPath, recipePath } from '@/components/recipe/recipe-paths';
+import { recipeCookPath, recipePath } from '@/components/recipe/recipe-paths';
+import { hrefWithParams } from '@/lib/url-query';
 
 export function generateStaticParams(): Promise<{ slug: string }[]> {
 	return recipeStaticParams();

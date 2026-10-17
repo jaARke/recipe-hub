@@ -50,8 +50,15 @@ const unreadRangeEnd = new RegExp(String.raw`^(?:${rangeDash}|${rangeWord}(?=\s)
 // On old recipe cards "1-1/2" is a mixed number, since a range cannot fall from 1 to 1/2.
 const hyphenatedMixedNumber = /^[1-9]\d*[-\u2013]\d+[/⁄]\d+$/u;
 
-// The number goes on past what the library read, as in "2-inch piece" or "1,5 kg".
+// The number goes on past what the library read, as in "2-inch piece".
 const continuedNumber = /[\d,./⁄\-\u2013\u2014]/u;
+
+// A comma before one or two digits is a decimal point, and one before three separates thousands:
+// "1,5 kg" is 1.5 kg, and "1,500 g" 1500 g. The library reads every comma as a thousands separator,
+// so text is read with each decimal comma as a point, which keeps every offset where it is written,
+// and an amount is checked without its thousands commas.
+const decimalComma = /(?<=\d),(?=\d{1,2}(?!\d))/gu;
+const thousandsComma = /(?<=\d),(?=\d{3}(?!\d))/gu;
 
 // A size in parentheses right after the unit belongs to it: "1 can (14 ounces) tomatoes".
 const unitSize = /^\([^()]*\)(?=\s)/u;
@@ -94,16 +101,23 @@ export function amountOfQuantities(
 		: toAmount(quantity, quantity2);
 }
 
+// The text with each decimal comma a point, as the library is to read it.
+export function withDecimalPoints(text: string): string {
+	return text.replace(decimalComma, '.');
+}
+
 // The amount and unit that open the line, as the library reads them, or nothing it may misread. An
-// amount in words is read as its numerals: "two eggs" as "2 eggs".
+// amount in words is read as its numerals, "two eggs" as "2 eggs", and an amount with a comma by the
+// comma's rule: "1,5" as 1.5, "1,500" as 1500.
 function readMeasure(line: string): Measure | undefined {
 	if (line.length > maxReadLineLength) {
 		return undefined;
 	}
 
 	const words = readAmountWords(line);
-	const reading =
+	const written =
 		words === undefined ? line : `${words.numerals}${line.slice(words.written.length)}`;
+	const reading = withDecimalPoints(written);
 	const [parsed] = parseIngredient([reading], libraryOptions);
 	if (parsed === undefined || parsed.quantity === null) {
 		return undefined;
@@ -123,6 +137,8 @@ function readMeasure(line: string): Measure | undefined {
 	}
 
 	const descriptionStart = reading.length - description.length;
+	// The item and preparation keep the decimal commas the line writes in them: "(40,5 g)".
+	description = written.slice(descriptionStart);
 	const measureText = reading.slice(0, descriptionStart).trimEnd();
 	if (!measureText.endsWith(unit)) {
 		return undefined;
@@ -133,7 +149,7 @@ function readMeasure(line: string): Measure | undefined {
 	const amount = amountOfQuantities(parsed.quantity, parsed.quantity2, amountText);
 	if (
 		amount === undefined ||
-		!amountPattern.test(amountText) ||
+		!amountPattern.test(amountText.replace(thousandsComma, '')) ||
 		continuedNumber.test(reading.charAt(amountText.length)) ||
 		unreadRangeEnd.test(description) ||
 		// The words' numerals run on into the line's, as in "a 1/2 cup".
@@ -168,7 +184,7 @@ function readMeasure(line: string): Measure | undefined {
 	const size = unitSize.exec(description)?.[0] ?? '';
 	return {
 		amount,
-		unit: size === '' ? unit : reading.slice(unitStart, descriptionStart + size.length),
+		unit: size === '' ? unit : written.slice(unitStart, descriptionStart + size.length),
 		description: description.slice(size.length).trimStart().replace(leadingOf, ''),
 	};
 }

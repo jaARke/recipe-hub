@@ -126,6 +126,12 @@ const additionalUnits = {
 	loaf: { short: 'loaf', plural: 'loaves', type: 'count' },
 	handful: { short: 'handful', plural: 'handfuls', type: 'count' },
 	knob: { short: 'knob', plural: 'knobs', type: 'count' },
+	fillet: { short: 'fillet', plural: 'fillets', type: 'count' },
+	pod: { short: 'pod', plural: 'pods', type: 'count' },
+	cube: { short: 'cube', plural: 'cubes', type: 'count' },
+	link: { short: 'link', plural: 'links', type: 'count' },
+	block: { short: 'block', plural: 'blocks', type: 'count' },
+	pouch: { short: 'pouch', plural: 'pouches', type: 'count' },
 } satisfies UnitOfMeasureDefinitions;
 
 // The metric units, whose amounts are written as decimals rather than fractions: "1.5 kg".

@@ -48,7 +48,9 @@ type ImageSweepStep = 'restore' | 'delete' | 'remove';
 type FailedSweepImage = FailedImage & { step: ImageSweepStep };
 
 // What a sweep step did: the images it handled, those it left where they were, and those it moved
-// whose cached copies it could not purge.
+// whose cached copies it could not purge. No later sweep purges a trashed image, so purge each by
+// hand: `vercel cache dangerously-delete --tag image:<pathname> --yes`, then with
+// `--srcimg /api/images/<pathname>`.
 type SweepStepOutcome = {
 	pathnames: string[];
 	failedImages: FailedSweepImage[];

@@ -33,6 +33,10 @@ describe('parseIngredientLine', () => {
 		['1 1⁄2 cups milk', { amount: { min: 1.5 }, unit: 'cups', item: 'milk' }],
 		['1.5 cups rice', { amount: { min: 1.5 }, unit: 'cups', item: 'rice' }],
 		['.5 tsp salt', { amount: { min: 0.5 }, unit: 'tsp', item: 'salt' }],
+		['1,5 kg potatoes', { amount: { min: 1.5 }, unit: 'kg', item: 'potatoes' }],
+		['1,25 l milk', { amount: { min: 1.25 }, unit: 'l', item: 'milk' }],
+		['1,500 g flour', { amount: { min: 1500 }, unit: 'g', item: 'flour' }],
+		['1,500 to 2,000 g flour', { amount: { min: 1500, max: 2000 }, unit: 'g', item: 'flour' }],
 	])('reads the quantity in "%s"', (text, parts) => {
 		expect(parseIngredientLine(text)).toStrictEqual({ text, ...parts });
 	});
@@ -52,6 +56,16 @@ describe('parseIngredientLine', () => {
 		['1-1/2 cups milk', { amount: { min: 1.5 }, unit: 'cups', item: 'milk' }],
 		['2–3/4 cups sugar', { amount: { min: 2.75 }, unit: 'cups', item: 'sugar' }],
 	])('reads the hyphenated mixed number in "%s"', (text, parts) => {
+		expect(parseIngredientLine(text)).toStrictEqual({ text, ...parts });
+	});
+
+	it.each<[string, ParsedParts]>([
+		['1 cup flour (40,5 g)', { amount: { min: 1 }, unit: 'cup', item: 'flour (40,5 g)' }],
+		[
+			'1 can (14,5 ounces) tomatoes',
+			{ amount: { min: 1 }, unit: 'can (14,5 ounces)', item: 'tomatoes' },
+		],
+	])('keeps the decimal comma "%s" writes after its amount as written', (text, parts) => {
 		expect(parseIngredientLine(text)).toStrictEqual({ text, ...parts });
 	});
 
@@ -344,7 +358,6 @@ describe('parseIngredientLine', () => {
 		'Juice of 1 lemon',
 		'2-inch piece ginger',
 		'1 1/2-inch piece ginger',
-		'1,5 kg potatoes',
 		'1/0 cup sugar',
 		'0 cups sugar',
 		'3-1 cups milk',
@@ -541,14 +554,13 @@ describe('parseAmountText', () => {
 		['4 to 6', { min: 4, max: 6 }],
 		['4-6', { min: 4, max: 6 }],
 		['1½', { min: 1.5 }],
+		['1,5', { min: 1.5 }],
+		['1,500', { min: 1500 }],
 	])('reads "%s"', (text, amount) => {
 		expect(parseAmountText(text)).toStrictEqual(amount);
 	});
 
-	it.each(['', 'about 4', '4 servings', '0', '6 to 4', '1,5'])(
-		'reads no amount in "%s"',
-		(text) => {
-			expect(parseAmountText(text)).toBeUndefined();
-		}
-	);
+	it.each(['', 'about 4', '4 servings', '0', '6 to 4'])('reads no amount in "%s"', (text) => {
+		expect(parseAmountText(text)).toBeUndefined();
+	});
 });

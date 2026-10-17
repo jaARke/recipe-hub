@@ -42,9 +42,9 @@ const fontFamilies: readonly FontFamily[] = [
 	{
 		utility: 'font-mono',
 		family: 'JetBrains Mono',
-		usage: 'Times and yields on cards, step numbers, and other counts.',
-		sampleClassName: 'font-mono text-xs tracking-wide uppercase',
-		sample: '50 min · Serves 6',
+		usage: 'Step numbers, list markers, and other counts.',
+		sampleClassName: 'font-mono text-base tabular-nums',
+		sample: '1. 2. 3. 12.',
 	},
 ];
 

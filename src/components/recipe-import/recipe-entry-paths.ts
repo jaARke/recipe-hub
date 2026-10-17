@@ -1,4 +1,5 @@
-import { contributePath, hrefWithParams } from '@/components/recipe/recipe-paths';
+import { contributePath } from '@/components/recipe/recipe-paths';
+import { hrefWithParams } from '@/lib/url-query';
 
 // The add page's tabs: the three ways to add a recipe, then the member's drafts.
 export const recipeEntryTabs = ['manual', 'url', 'photo', 'drafts'] as const;

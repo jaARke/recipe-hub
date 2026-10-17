@@ -97,6 +97,13 @@ export class FavoriteService {
 		return { recipes: recipes.map(toRecipeSummaryDto), total };
 	}
 
+	// Whether mergeDeviceFavorites has anything to merge: a member's device still keeps favorites from
+	// while they were signed out. A signed-out reader's are theirs already.
+	async hasDeviceFavoritesToMerge(): Promise<boolean> {
+		const actor = await this.actors.currentActor();
+		return actor.kind === 'member' && (await this.device.list()).length > 0;
+	}
+
 	// Adds a signed-out reader's favorites to the account they signed in to, newest first, then clears
 	// the device, so merging again adds nothing. A failed add leaves the device's for the next merge.
 	async mergeDeviceFavorites(): Promise<MergedFavoritesDto> {
