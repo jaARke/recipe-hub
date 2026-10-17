@@ -14,8 +14,10 @@ type ActionBarProps = {
 	status?: React.ReactNode;
 };
 
-// True while the bar is held at the screen's bottom: while the sentinel marking the end of its place
-// is below the screen.
+// True while the sentinel marking the end of the bar's place is off the screen: below it, the bar is
+// held at the screen's bottom, and above it, the bar has left the screen with its form, where its
+// look shows nothing. Telling the two apart would go stale after a jump from one to the other in one
+// scroll, such as Home's, which crosses no edge of the screen, so the observer reports nothing.
 function useHeldAtBottom(sentinel: React.RefObject<HTMLElement | null>): boolean {
 	const [held, setHeld] = React.useState(false);
 	React.useEffect(() => {
@@ -26,7 +28,7 @@ function useHeldAtBottom(sentinel: React.RefObject<HTMLElement | null>): boolean
 		const observer = new IntersectionObserver((entries) => {
 			const entry = entries.at(-1);
 			if (entry !== undefined) {
-				setHeld(!entry.isIntersecting && entry.boundingClientRect.top > 0);
+				setHeld(!entry.isIntersecting);
 			}
 		});
 		observer.observe(element);

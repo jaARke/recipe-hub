@@ -9,8 +9,10 @@ beforeEach(() => {
 	window.focus();
 });
 
-// Vitest sets the configured viewport once per file, so a test that sets its own hands it back here.
+// Vitest sets the configured viewport once per file, and Chromium keeps a test's scroll for the next,
+// so each test hands both back here.
 afterEach(async () => {
+	window.scrollTo(0, 0);
 	const { width, height } = server.config.browser.viewport;
 	await page.viewport(width, height);
 });
