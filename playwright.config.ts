@@ -32,8 +32,14 @@ const spendingProjects: Project[] = Object.entries(spendingTags).map(([name, tag
 // Playwright empties its output as a run starts and the report as it is written.
 const resultsDir = 'test-results/playwright';
 
-// Run against `pnpm dev` from this tree on Neon develop, which the owner starts; a production build
-// breaks BotID and /design, so it is never the target.
+// As Next's own Playwright example allows: a cold `next dev` compiles the first page it serves.
+const devServerStartTimeoutMs = 120_000;
+
+// Long enough for `next dev` to stop its workers before it is killed.
+const devServerShutdownTimeoutMs = 5_000;
+
+// Run against `pnpm dev` from this tree on Neon develop: the one already serving, or one started for
+// the run and stopped after it. A production build breaks BotID and /design, so it is never the target.
 export default defineConfig({
 	testDir: './e2e',
 	// Resolves server-only, which the suites' Better Auth instance imports, as the scripts do.
@@ -41,6 +47,14 @@ export default defineConfig({
 	fullyParallel: true,
 	outputDir: `${resultsDir}/output`,
 	reporter: [['list'], ['html', { open: 'never', outputFolder: `${resultsDir}/report` }]],
+	webServer: {
+		command: 'pnpm dev',
+		url: devServerUrl.href,
+		// The suites never run in CI, so a server already serving this checkout is always the one to use.
+		reuseExistingServer: true,
+		timeout: devServerStartTimeoutMs,
+		gracefulShutdown: { signal: 'SIGTERM', timeout: devServerShutdownTimeoutMs },
+	},
 	use: {
 		baseURL: devServerUrl.href,
 		trace: 'retain-on-failure',
