@@ -1,6 +1,5 @@
-import { screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
+import { page } from 'vitest/browser';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import {
 	Select,
@@ -9,16 +8,20 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select';
+import { displayAsPageShows } from '@/components/ui/testing/kept-page-popup';
 
 const orders = [
 	{ value: 'newest', label: 'Newest' },
 	{ value: 'title', label: 'Title' },
 ];
 
+function popupParts(): Element[] {
+	return Array.from(document.querySelectorAll('[data-slot="select-content"]'));
+}
+
 describe('Select', () => {
 	it('closes as its page hides, kept from drawing as the page shows again', async () => {
-		const user = userEvent.setup();
-		const page = renderKeptPage(
+		const keptPage = await renderKeptPage(
 			<Select items={orders} defaultValue="newest">
 				<SelectTrigger aria-label="Order">
 					<SelectValue />
@@ -32,19 +35,14 @@ describe('Select', () => {
 				</SelectContent>
 			</Select>
 		);
-		const trigger = screen.getByRole('combobox', { name: 'Order' });
+		await page.getByRole('combobox', { name: 'Order' }).click();
+		await expect.element(page.getByRole('listbox')).toBeVisible();
+		await keptPage.hide();
 
-		await user.click(trigger);
-		expect(await screen.findByRole('listbox')).toBeDefined();
-		await page.hide();
-		expect(
-			document
-				.querySelector('[data-slot="select-content"]')
-				?.hasAttribute('data-closed-by-page-hide')
-		).toBe(true);
-		await page.show();
-
-		expect(trigger.getAttribute('aria-expanded')).toBe('false');
-		await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+		expect(await displayAsPageShows(popupParts(), keptPage.show)).toEqual(['none']);
+		// Base UI keeps a select's popup mounted once it closes.
+		await expect
+			.element(page.getByRole('combobox', { name: 'Order' }))
+			.toHaveAttribute('aria-expanded', 'false');
 	});
 });

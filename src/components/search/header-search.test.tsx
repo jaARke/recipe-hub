@@ -1,54 +1,86 @@
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page, userEvent } from 'vitest/browser';
+import { holdPageLoads } from '@/components/auth/testing/page-loads';
 import { HeaderSearchForm } from '@/components/search/header-search';
 
-function renderHeaderSearch({ query, searchPage }: { query: string; searchPage: boolean }) {
-	render(
-		<HeaderSearchForm
-			formId="header-search"
-			queryName="q"
-			hintId="search-hint"
-			query={query}
-			searchPage={searchPage}
-		/>
+// Tailwind's lg breakpoint, from which the header's row holds the field.
+const lgViewport = { width: 1024, height: 768 };
+
+const hint = 'Try "brown butter" for an exact phrase, or -nuts to leave nuts out.';
+
+// The header's form, beside the search page's hint, which only the search page has.
+async function renderHeaderSearch({ query, searchPage }: { query: string; searchPage: boolean }) {
+	await render(
+		<>
+			<HeaderSearchForm
+				formId="header-search"
+				queryName="q"
+				hintId="search-hint"
+				query={query}
+				searchPage={searchPage}
+			/>
+			{searchPage && <p id="search-hint">{hint}</p>}
+		</>
 	);
+}
+
+// What a width hides leaves the accessibility tree, so a hidden control is found with includeHidden.
+function searchField({ includeHidden = false } = {}) {
+	return page.getByRole('searchbox', { name: 'Search recipes', includeHidden });
+}
+
+function searchIcon({ includeHidden = false } = {}) {
+	return page.getByRole('button', { name: 'Search recipes', includeHidden });
+}
+
+function cancelButton() {
+	return page.getByRole('button', { name: 'Cancel' });
 }
 
 describe('HeaderSearchForm', () => {
 	it('opens the field from the search icon and focuses it in the same tap', async () => {
-		renderHeaderSearch({ query: '', searchPage: false });
+		await renderHeaderSearch({ query: '', searchPage: false });
+		await expect.element(searchField({ includeHidden: true })).not.toBeVisible();
 
-		await userEvent.click(screen.getByRole('button', { name: 'Search recipes' }));
+		await searchIcon().click();
 
-		expect(document.activeElement).toBe(screen.getByRole('searchbox', { name: 'Search recipes' }));
-		expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
+		await expect.element(searchField()).toHaveFocus();
+		await expect.element(cancelButton()).toBeVisible();
 	});
 
 	it('brings the row back on Cancel, keeping the query and focusing the icon', async () => {
-		renderHeaderSearch({ query: 'brown butter', searchPage: true });
+		await renderHeaderSearch({ query: 'brown butter', searchPage: true });
 
-		await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		await cancelButton().click();
 
-		expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Search recipes' }));
-		const field = screen.getByLabelText<HTMLInputElement>('Search recipes', { selector: 'input' });
-		expect(field.value).toBe('brown butter');
+		await expect.element(searchIcon()).toHaveFocus();
+		await expect.element(searchField({ includeHidden: true })).not.toBeVisible();
+		await searchIcon().click();
+		await expect.element(searchField()).toHaveValue('brown butter');
 	});
 
-	it('opens with the field on the search page, described by its hint', () => {
-		renderHeaderSearch({ query: 'brown butter', searchPage: true });
+	it('opens with the field on the search page, described by its hint', async () => {
+		await renderHeaderSearch({ query: 'brown butter', searchPage: true });
 
-		expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
-		expect(screen.getByRole('searchbox').getAttribute('aria-describedby')).toBe('search-hint');
+		await expect.element(searchField()).toHaveAccessibleDescription(hint);
+		await expect.element(cancelButton()).toBeVisible();
 	});
 
-	it('starts a fresh search with only its own query elsewhere', () => {
-		renderHeaderSearch({ query: '', searchPage: false });
+	describe('from lg', () => {
+		beforeEach(async () => {
+			await page.viewport(lgViewport.width, lgViewport.height);
+		});
 
-		const form = screen.getByRole('searchbox').closest('form');
-		expect(form?.getAttribute('action')).toBe('/search');
-		expect(form?.id).toBe('header-search');
-		expect(screen.getByRole('searchbox').getAttribute('aria-describedby')).toBeNull();
-		expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+		it('starts a fresh search with only its own query elsewhere, from the field the row shows', async () => {
+			const loads = holdPageLoads();
+			await renderHeaderSearch({ query: '', searchPage: false });
+			await expect.element(searchIcon({ includeHidden: true })).not.toBeVisible();
+
+			await searchField().fill('sugar');
+			await userEvent.keyboard('{Enter}');
+
+			await expect.poll(() => loads).toEqual([{ path: '/search?q=sugar', type: 'push' }]);
+		});
 	});
 });

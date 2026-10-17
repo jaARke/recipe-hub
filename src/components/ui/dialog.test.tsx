@@ -1,9 +1,10 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page } from 'vitest/browser';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import { useOnKeptPageHide } from '@/components/forms/use-on-kept-page-hide';
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { displayAsPageShows } from '@/components/ui/testing/kept-page-popup';
 
 function renamePasskey(onOpenChange?: (open: boolean) => void) {
 	return (
@@ -24,20 +25,13 @@ function popupParts(): Element[] {
 
 describe('Dialog', () => {
 	it('closes as its page hides, kept from drawing as the page shows, where it unmounts at once', async () => {
-		const user = userEvent.setup();
-		const page = renderKeptPage(renamePasskey());
+		const keptPage = await renderKeptPage(renamePasskey());
+		await page.getByRole('button', { name: 'Rename' }).click();
+		await expect.element(page.getByRole('dialog')).toBeVisible();
+		await keptPage.hide();
 
-		await user.click(screen.getByRole('button', { name: 'Rename' }));
-		expect(await screen.findByRole('dialog')).toBeDefined();
-		await page.hide();
-
-		expect(popupParts()).toHaveLength(2);
-		for (const part of popupParts()) {
-			expect(part.hasAttribute('data-closed')).toBe(true);
-			expect(part.hasAttribute('data-closed-by-page-hide')).toBe(true);
-		}
-		await page.show();
-		expect(popupParts()).toEqual([]);
+		expect(await displayAsPageShows(popupParts(), keptPage.show)).toEqual(['none', 'none']);
+		await expect.poll(popupParts).toEqual([]);
 	});
 
 	it('gives focus back to what it opened from before its page hides', async () => {
@@ -48,43 +42,43 @@ describe('Dialog', () => {
 			useOnKeptPageHide(() => focusedAsHidden(document.activeElement));
 			return null;
 		}
-		const user = userEvent.setup();
-		const page = renderKeptPage(
+		const keptPage = await renderKeptPage(
 			<>
 				{renamePasskey()}
 				<FocusAsPageHides />
 			</>
 		);
-		const trigger = screen.getByRole('button', { name: 'Rename' });
+		// Read while shown: the hidden page's trigger leaves the accessibility tree locators search.
+		const trigger = page.getByRole('button', { name: 'Rename' }).element();
 
-		await user.click(trigger);
-		const dialog = await screen.findByRole('dialog');
-		await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
-		await page.hide();
+		await page.getByRole('button', { name: 'Rename' }).click();
+		await expect
+			.poll(() => page.getByRole('dialog').query()?.contains(document.activeElement))
+			.toBe(true);
+		await keptPage.hide();
 
 		expect(focusedAsHidden).toHaveBeenCalledExactlyOnceWith(trigger);
 	});
 
 	it('opens as usual after its page hid it', async () => {
-		const user = userEvent.setup();
-		const page = renderKeptPage(renamePasskey());
+		const keptPage = await renderKeptPage(renamePasskey());
+		await page.getByRole('button', { name: 'Rename' }).click();
+		await expect.element(page.getByRole('dialog')).toBeVisible();
+		await keptPage.hide();
+		await keptPage.show();
 
-		await user.click(screen.getByRole('button', { name: 'Rename' }));
-		await screen.findByRole('dialog');
-		await page.hide();
-		await page.show();
-		await user.click(screen.getByRole('button', { name: 'Rename' }));
+		await page.getByRole('button', { name: 'Rename' }).click();
 
-		expect(await screen.findByRole('dialog')).toBeDefined();
-		expect(popupParts().some((part) => part.hasAttribute('data-closed-by-page-hide'))).toBe(false);
+		await expect.element(page.getByRole('dialog')).toBeVisible();
+		await expect.element(page.getByRole('dialog')).not.toHaveAttribute('data-closed-by-page-hide');
 	});
 
 	it('tells its onOpenChange nothing when its page hides it closed', async () => {
 		const onOpenChange = vi.fn();
-		const page = renderKeptPage(renamePasskey(onOpenChange));
+		const keptPage = await renderKeptPage(renamePasskey(onOpenChange));
 
-		await page.hide();
-		await page.show();
+		await keptPage.hide();
+		await keptPage.show();
 
 		expect(onOpenChange).not.toHaveBeenCalled();
 	});
@@ -92,7 +86,7 @@ describe('Dialog', () => {
 
 describe('DialogContent', () => {
 	it('makes its close button 44 px under a finger', async () => {
-		render(
+		await render(
 			<Dialog open>
 				<DialogContent>
 					<DialogTitle>Rename passkey</DialogTitle>
@@ -100,7 +94,8 @@ describe('DialogContent', () => {
 			</Dialog>
 		);
 
-		const close = await screen.findByRole('button', { name: 'Close' });
-		expect(close.className.split(' ')).toContain('pointer-coarse:size-11');
+		await expect
+			.element(page.getByRole('button', { name: 'Close' }))
+			.toHaveClass('pointer-coarse:size-11');
 	});
 });

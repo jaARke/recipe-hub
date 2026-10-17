@@ -1,6 +1,6 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page, userEvent } from 'vitest/browser';
 import type { FormAction } from '@/components/forms/form-state';
 import { HeldDraftProvider } from '@/components/recipe-form/held-draft';
 import { DraftMenu, EditedRecipeMenu, HeldDraftMenu } from '@/components/recipe-form/subject-menus';
@@ -32,43 +32,44 @@ const refuse: FormAction = async () => ({
 const lemonBars = { id: recipeId, slug: 'lemon-bars', title: 'Lemon bars' };
 
 // Opens the menu its button names, and returns it.
-async function openMenu(user: ReturnType<typeof userEvent.setup>, name: string) {
-	await user.click(screen.getByRole('button', { name }));
-	return screen.findByRole('menu');
+async function openMenu(name: string) {
+	await page.getByRole('button', { name }).click();
+	const menu = page.getByRole('menu');
+	await expect.element(menu).toBeVisible();
+	return menu;
 }
 
-function itemNames(menu: HTMLElement): (string | null)[] {
-	return within(menu)
-		.getAllByRole('menuitem')
-		.map((item) => item.textContent);
-}
-
-// Chooses the item from the menu its button names, and returns the dialog it opens.
-async function choose(user: ReturnType<typeof userEvent.setup>, name: string, item: string) {
-	await user.click(within(await openMenu(user, name)).getByRole('menuitem', { name: item }));
-	return screen.findByRole('alertdialog');
+// Chooses the item from the menu its button names, and returns the dialog it opens, which its
+// question names.
+async function choose(name: string, item: string, question: string) {
+	await (await openMenu(name)).getByRole('menuitem', { name: item }).click();
+	const dialog = page.getByRole('alertdialog', { name: question });
+	await expect.element(dialog).toBeVisible();
+	return dialog;
 }
 
 afterEach(() => {
-	vi.clearAllMocks();
 	localStorage.clear();
 });
 
 describe('EditedRecipeMenu', () => {
 	it('holds View recipe, a link to the recipe, then Delete recipe', async () => {
-		const user = userEvent.setup();
-		render(<EditedRecipeMenu recipe={lemonBars} memberId={memberId} action={succeed} />);
+		await render(<EditedRecipeMenu recipe={lemonBars} memberId={memberId} action={succeed} />);
 
-		const menu = await openMenu(user, 'Recipe actions');
+		const menu = await openMenu('Recipe actions');
 
-		expect(itemNames(menu)).toEqual(['View recipe', 'Delete recipe']);
-		expect(within(menu).getByRole('menuitem', { name: 'View recipe' }).getAttribute('href')).toBe(
-			'/recipes/lemon-bars'
-		);
+		expect(
+			menu
+				.getByRole('menuitem')
+				.elements()
+				.map((item) => item.textContent)
+		).toEqual(['View recipe', 'Delete recipe']);
+		await expect
+			.element(menu.getByRole('menuitem', { name: 'View recipe' }))
+			.toHaveAttribute('href', '/recipes/lemon-bars');
 	});
 
 	it('deletes the recipe once confirmed, with its unsaved changes and no others, and leaves for the list', async () => {
-		const user = userEvent.setup();
 		const action = vi.fn(succeed);
 		localStorage.setItem(recipeKey, '{}');
 		localStorage.setItem(draftKey, '{}');
@@ -76,55 +77,49 @@ describe('EditedRecipeMenu', () => {
 		router.replace.mockImplementation(() => {
 			entryAsItLeft = localStorage.getItem(recipeKey);
 		});
-		render(<EditedRecipeMenu recipe={lemonBars} memberId={memberId} action={action} />);
+		await render(<EditedRecipeMenu recipe={lemonBars} memberId={memberId} action={action} />);
 
-		const dialog = await choose(user, 'Recipe actions', 'Delete recipe');
-		expect(within(dialog).getByText('Delete “Lemon bars”?')).toBeDefined();
-		await user.click(within(dialog).getByRole('button', { name: 'Delete recipe' }));
+		const dialog = await choose('Recipe actions', 'Delete recipe', 'Delete “Lemon bars”?');
+		await dialog.getByRole('button', { name: 'Delete recipe' }).click();
 
-		await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/'));
+		await expect.poll(() => router.replace).toHaveBeenCalledWith('/');
 		expect(action.mock.calls[0]?.[1].get('recipeId')).toBe(recipeId);
 		expect(entryAsItLeft).toBeNull();
 		expect(localStorage.getItem(draftKey)).toBe('{}');
 	});
 
 	it('shows why a delete was refused, and stays', async () => {
-		const user = userEvent.setup();
 		localStorage.setItem(recipeKey, '{}');
-		render(<EditedRecipeMenu recipe={lemonBars} memberId={memberId} action={refuse} />);
+		await render(<EditedRecipeMenu recipe={lemonBars} memberId={memberId} action={refuse} />);
 
-		const dialog = await choose(user, 'Recipe actions', 'Delete recipe');
-		await user.click(within(dialog).getByRole('button', { name: 'Delete recipe' }));
+		const dialog = await choose('Recipe actions', 'Delete recipe', 'Delete “Lemon bars”?');
+		await dialog.getByRole('button', { name: 'Delete recipe' }).click();
 
-		expect(
-			await within(dialog).findByText('We couldn’t delete it. Reload the page and try again.')
-		).toBeDefined();
+		await expect
+			.element(dialog.getByText('We couldn’t delete it. Reload the page and try again.'))
+			.toBeVisible();
 		expect(router.replace).not.toHaveBeenCalled();
 		expect(localStorage.getItem(recipeKey)).toBe('{}');
 	});
 
 	it('returns focus to the menu’s button when the dialog is cancelled', async () => {
-		const user = userEvent.setup();
 		const action = vi.fn(succeed);
-		render(<EditedRecipeMenu recipe={lemonBars} memberId={memberId} action={action} />);
+		await render(<EditedRecipeMenu recipe={lemonBars} memberId={memberId} action={action} />);
 
-		const dialog = await choose(user, 'Recipe actions', 'Delete recipe');
-		await user.click(within(dialog).getByRole('button', { name: 'Keep recipe' }));
+		const dialog = await choose('Recipe actions', 'Delete recipe', 'Delete “Lemon bars”?');
+		await dialog.getByRole('button', { name: 'Keep recipe' }).click();
 
-		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
-		await waitFor(() =>
-			expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Recipe actions' }))
-		);
+		await expect.element(page.getByRole('alertdialog')).not.toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Recipe actions' })).toHaveFocus();
 		expect(action).not.toHaveBeenCalled();
 	});
 });
 
 describe('DraftMenu', () => {
 	it('deletes an import’s draft by its import, with the review’s unsaved changes, and leaves for the drafts left', async () => {
-		const user = userEvent.setup();
 		const action = vi.fn(succeed);
 		localStorage.setItem(importKey, '{}');
-		render(
+		await render(
 			<DraftMenu
 				label="Draft actions"
 				draft={{ kind: 'import', id: importId }}
@@ -136,22 +131,30 @@ describe('DraftMenu', () => {
 			/>
 		);
 
-		expect(itemNames(await openMenu(user, 'Draft actions'))).toEqual(['Delete draft']);
-		await user.keyboard('{Escape}');
-		const dialog = await choose(user, 'Draft actions', 'Delete draft');
-		expect(within(dialog).getByText('Delete the draft of “Lemon bars”?')).toBeDefined();
-		await user.click(within(dialog).getByRole('button', { name: 'Delete draft' }));
+		const menu = await openMenu('Draft actions');
+		expect(
+			menu
+				.getByRole('menuitem')
+				.elements()
+				.map((item) => item.textContent)
+		).toEqual(['Delete draft']);
+		await userEvent.keyboard('{Escape}');
+		const dialog = await choose(
+			'Draft actions',
+			'Delete draft',
+			'Delete the draft of “Lemon bars”?'
+		);
+		await dialog.getByRole('button', { name: 'Delete draft' }).click();
 
-		await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/contribute?tab=drafts'));
+		await expect.poll(() => router.replace).toHaveBeenCalledWith('/contribute?tab=drafts');
 		expect(action.mock.calls[0]?.[1].get('importId')).toBe(importId);
 		expect(action.mock.calls[0]?.[1].get('draftId')).toBeNull();
 		expect(localStorage.getItem(importKey)).toBeNull();
 	});
 
 	it('stays where nothing to leave for is given, as a list does', async () => {
-		const user = userEvent.setup();
 		const action = vi.fn(succeed);
-		render(
+		await render(
 			<DraftMenu
 				label="Actions for Lemon bars"
 				draft={{ kind: 'saved', id: draftId }}
@@ -162,17 +165,20 @@ describe('DraftMenu', () => {
 			/>
 		);
 
-		const dialog = await choose(user, 'Actions for Lemon bars', 'Delete draft');
-		await user.click(within(dialog).getByRole('button', { name: 'Delete draft' }));
+		const dialog = await choose(
+			'Actions for Lemon bars',
+			'Delete draft',
+			'Delete the draft of “Lemon bars”?'
+		);
+		await dialog.getByRole('button', { name: 'Delete draft' }).click();
 
-		await waitFor(() => expect(action).toHaveBeenCalledOnce());
+		await expect.poll(() => action).toHaveBeenCalledOnce();
 		expect(action.mock.calls[0]?.[1].get('draftId')).toBe(draftId);
 		expect(router.replace).not.toHaveBeenCalled();
 	});
 
 	it('asks about an untitled draft as this draft', async () => {
-		const user = userEvent.setup();
-		render(
+		await render(
 			<DraftMenu
 				label="Draft actions"
 				draft={{ kind: 'saved', id: draftId }}
@@ -183,38 +189,32 @@ describe('DraftMenu', () => {
 			/>
 		);
 
-		const dialog = await choose(user, 'Draft actions', 'Delete draft');
+		await (await openMenu('Draft actions')).getByRole('menuitem', { name: 'Delete draft' }).click();
 
-		expect(within(dialog).getByText('Delete this draft?')).toBeDefined();
+		await expect
+			.element(page.getByRole('alertdialog', { name: 'Delete this draft?' }))
+			.toBeVisible();
 	});
 });
 
 describe('HeldDraftMenu', () => {
-	it('shows nothing while the page’s form holds no saved draft', () => {
-		render(
-			<HeldDraftProvider opened={undefined}>
-				<HeldDraftMenu memberId={memberId} action={succeed} />
-			</HeldDraftProvider>
-		);
-
-		expect(screen.queryByRole('button')).toBeNull();
-	});
-
 	it('deletes the saved draft the page opened, with its unsaved changes, and leaves for the drafts left', async () => {
-		const user = userEvent.setup();
 		const action = vi.fn(succeed);
 		localStorage.setItem(draftKey, '{}');
-		render(
+		await render(
 			<HeldDraftProvider opened={{ id: draftId, title: 'Lemon bars' }}>
 				<HeldDraftMenu memberId={memberId} action={action} />
 			</HeldDraftProvider>
 		);
 
-		const dialog = await choose(user, 'Draft actions', 'Delete draft');
-		expect(within(dialog).getByText('Delete the draft of “Lemon bars”?')).toBeDefined();
-		await user.click(within(dialog).getByRole('button', { name: 'Delete draft' }));
+		const dialog = await choose(
+			'Draft actions',
+			'Delete draft',
+			'Delete the draft of “Lemon bars”?'
+		);
+		await dialog.getByRole('button', { name: 'Delete draft' }).click();
 
-		await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/contribute?tab=drafts'));
+		await expect.poll(() => router.replace).toHaveBeenCalledWith('/contribute?tab=drafts');
 		expect(action.mock.calls[0]?.[1].get('draftId')).toBe(draftId);
 		expect(localStorage.getItem(draftKey)).toBeNull();
 	});

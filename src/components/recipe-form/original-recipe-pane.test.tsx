@@ -1,107 +1,103 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page, userEvent } from 'vitest/browser';
 import { OriginalRecipePane } from '@/components/recipe-form/original-recipe-pane';
 import type { ShownImage } from '@/components/recipe/shown-recipe-image';
-import { stubViewerLayout } from '@/components/recipe/testing/viewer-layout';
+import { centeredImageBox, expectImageIn } from '@/components/recipe/testing/viewer-layout';
 
-// A landscape card and a portrait page; the stubbed layout makes the frame, and each page whole in
-// it, 400 by 300.
+// A landscape card and a portrait page.
+const frontSize = { width: 1600, height: 908 };
+const backSize = { width: 2304, height: 3072 };
 const pages: ShownImage[] = [
-	{ pathname: 'scan/development/front.jpg', size: { width: 1600, height: 908 } },
-	{ pathname: 'scan/development/back.jpg', size: { width: 2304, height: 3072 } },
+	{ pathname: 'scan/development/front.jpg', size: frontSize },
+	{ pathname: 'scan/development/back.jpg', size: backSize },
 ];
 
-let undoLayout = () => {};
-
-afterEach(() => {
-	undoLayout();
-});
-
-function renderPane(images: readonly ShownImage[] = pages) {
-	undoLayout = stubViewerLayout();
-	render(<OriginalRecipePane images={images} title="Original recipe" />);
-	return screen.getByRole('complementary', { name: 'Original recipe' });
-}
-
-function pageTransform(pane: HTMLElement): string | undefined {
-	return pane.querySelector<HTMLElement>('.react-transform-component')?.style.transform;
-}
-
-const whole = 'translate(0px, 0px) scale(1)';
-
-// The keys and buttons animate the zoom, so a test waits for where it settles.
-async function expectSettled(pane: HTMLElement, transform: string) {
-	await waitFor(() => expect(pageTransform(pane)).toBe(transform));
+async function renderPane(images: readonly ShownImage[] = pages) {
+	await render(<OriginalRecipePane images={images} title="Original recipe" />);
+	return page.getByRole('complementary', { name: 'Original recipe' });
 }
 
 describe('OriginalRecipePane', () => {
 	it('shows a strip of the pages in their own shapes, the page shown marked', async () => {
-		const user = userEvent.setup();
-		const pane = renderPane();
+		const pane = await renderPane();
 
-		const thumbnails = within(pane).getAllByRole('button', { name: /^Show page/ });
+		const thumbnails = pane.getByRole('button', { name: /^Show page/ }).elements();
 		expect(
-			thumbnails.map((thumbnail) => ({
-				name: thumbnail.getAttribute('aria-label'),
-				current: thumbnail.getAttribute('aria-current'),
-				shape: thumbnail.style.getPropertyValue('--image-ratio'),
-			}))
+			thumbnails.map((thumbnail) => {
+				const { width, height } = thumbnail.getBoundingClientRect();
+				return {
+					name: thumbnail.getAttribute('aria-label'),
+					current: thumbnail.getAttribute('aria-current'),
+					shape: width / height,
+				};
+			})
 		).toEqual([
-			{ name: 'Show page 1 of 2', current: 'true', shape: '1600 / 908' },
-			{ name: 'Show page 2 of 2', current: null, shape: '2304 / 3072' },
+			{
+				name: 'Show page 1 of 2',
+				current: 'true',
+				shape: expect.closeTo(frontSize.width / frontSize.height),
+			},
+			{
+				name: 'Show page 2 of 2',
+				current: null,
+				shape: expect.closeTo(backSize.width / backSize.height),
+			},
 		]);
 
-		await user.click(within(pane).getByRole('button', { name: 'Show page 2 of 2' }));
+		await pane.getByRole('button', { name: 'Show page 2 of 2' }).click();
 
-		expect(within(pane).getByRole('status').textContent).toBe('Page 2 of 2');
-		expect(within(pane).getByRole('group', { name: 'Page 2 of 2' })).toBeDefined();
-		expect(
-			within(pane).getByRole('button', { name: 'Show page 2 of 2' }).getAttribute('aria-current')
-		).toBe('true');
+		await expect.element(pane.getByRole('status')).toHaveTextContent('Page 2 of 2');
+		await expect.element(pane.getByRole('group', { name: 'Page 2 of 2' })).toBeVisible();
+		await expect
+			.element(pane.getByRole('button', { name: 'Show page 2 of 2' }))
+			.toHaveAttribute('aria-current', 'true');
 	});
 
-	it('shows a lone page under the original’s name, with no strip', () => {
-		const pane = renderPane(pages.slice(0, 1));
+	it('shows a lone page under the original’s name, with no strip', async () => {
+		const pane = await renderPane(pages.slice(0, 1));
 
-		expect(within(pane).getByRole('group', { name: 'Original recipe' })).toBeDefined();
-		expect(within(pane).queryByRole('button', { name: /^Show page/ })).toBeNull();
-		expect(within(pane).queryByRole('status')).toBeNull();
+		await expect.element(pane.getByRole('group', { name: 'Original recipe' })).toBeVisible();
+		await expect.element(pane.getByRole('button', { name: /^Show page/ })).not.toBeInTheDocument();
+		await expect.element(pane.getByRole('status')).not.toBeInTheDocument();
 	});
 
 	it('zooms with its buttons and keys, pans while zoomed, and turns the page while it’s whole', async () => {
-		const user = userEvent.setup();
-		const pane = renderPane();
+		const pane = await renderPane();
+		const frame = pane.getByRole('group', { name: 'Page 1 of 2' });
+		const whole = centeredImageBox(frame, frontSize);
+		const zoomed = centeredImageBox(frame, frontSize, 1.5);
 
-		// 150% about the frame's middle, (200, 150), puts the page's corner at 200 − 300 and 150 − 225.
-		await user.click(within(pane).getByRole('button', { name: 'Zoom in' }));
-		await expectSettled(pane, 'translate(-100px, -75px) scale(1.5)');
-		await user.click(within(pane).getByRole('button', { name: 'Fit the whole image' }));
-		await expectSettled(pane, whole);
+		await pane.getByRole('button', { name: 'Zoom in' }).click();
+		await expectImageIn(frame, zoomed);
+		await pane.getByRole('button', { name: 'Fit the whole image' }).click();
+		await expectImageIn(frame, whole);
 
-		within(pane).getByRole('group', { name: 'Page 1 of 2' }).focus();
-		await user.keyboard('+');
-		await expectSettled(pane, 'translate(-100px, -75px) scale(1.5)');
-		await user.keyboard('{ArrowLeft}');
-		await expectSettled(pane, 'translate(-20px, -75px) scale(1.5)');
-		expect(within(pane).getByRole('status').textContent).toBe('Page 1 of 2');
+		await frame.click();
+		await userEvent.keyboard('+');
+		await expectImageIn(frame, zoomed);
+		// An arrow moves the view 80 pixels, so the page the other way.
+		await userEvent.keyboard('{ArrowLeft}');
+		await expectImageIn(frame, { ...zoomed, left: zoomed.left + 80 });
+		await expect.element(pane.getByRole('status')).toHaveTextContent('Page 1 of 2');
 
-		await user.keyboard('0');
-		await expectSettled(pane, whole);
-		await user.keyboard('{ArrowRight}');
-		expect(within(pane).getByRole('status').textContent).toBe('Page 2 of 2');
+		await userEvent.keyboard('0');
+		await expectImageIn(frame, whole);
+		await userEvent.keyboard('{ArrowRight}');
+		await expect.element(pane.getByRole('status')).toHaveTextContent('Page 2 of 2');
 	});
 
 	it('shows each page whole when it is turned to', async () => {
-		const user = userEvent.setup();
-		const pane = renderPane();
-		within(pane).getByRole('group', { name: 'Page 1 of 2' }).focus();
-		await user.keyboard('+');
-		await expectSettled(pane, 'translate(-100px, -75px) scale(1.5)');
+		const pane = await renderPane();
+		const front = pane.getByRole('group', { name: 'Page 1 of 2' });
+		await front.click();
+		await userEvent.keyboard('+');
+		await expectImageIn(front, centeredImageBox(front, frontSize, 1.5));
 
-		await user.click(within(pane).getByRole('button', { name: 'Show page 2 of 2' }));
+		await pane.getByRole('button', { name: 'Show page 2 of 2' }).click();
 
-		await expectSettled(pane, whole);
-		expect(within(pane).getByText('100%')).toBeDefined();
+		const back = pane.getByRole('group', { name: 'Page 2 of 2' });
+		await expectImageIn(back, centeredImageBox(back, backSize));
+		await expect.element(pane.getByText('100%')).toBeVisible();
 	});
 });

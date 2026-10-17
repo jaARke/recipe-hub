@@ -1,6 +1,5 @@
-import { act, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
+import { page } from 'vitest/browser';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import { useTransientState } from '@/components/forms/use-transient-state';
 
@@ -23,28 +22,27 @@ function ProbePasskeyButton({ added }: { added: Promise<void> }) {
 
 describe('useTransientState', () => {
 	it('drops its value before its page shows again', async () => {
-		const user = userEvent.setup();
-		const page = renderKeptPage(<ProbePasskeyButton added={Promise.resolve()} />);
+		const keptPage = await renderKeptPage(<ProbePasskeyButton added={Promise.resolve()} />);
 
-		await user.click(screen.getByRole('button', { name: 'Add a passkey' }));
-		expect(await screen.findByText('Passkey added.')).toBeDefined();
-		await page.hide();
+		await page.getByRole('button', { name: 'Add a passkey' }).click();
+		await expect.element(page.getByText('Passkey added.')).toBeVisible();
+		await keptPage.hide();
 
 		expect(document.body.textContent).not.toContain('Passkey added.');
-		await page.show();
-		expect(screen.queryByText('Passkey added.')).toBeNull();
+		await keptPage.show();
+		await expect.element(page.getByText('Passkey added.')).not.toBeInTheDocument();
 	});
 
 	it('keeps a value set while its page is hidden', async () => {
-		const user = userEvent.setup();
 		const { promise, resolve } = Promise.withResolvers<void>();
-		const page = renderKeptPage(<ProbePasskeyButton added={promise} />);
+		const keptPage = await renderKeptPage(<ProbePasskeyButton added={promise} />);
 
-		await user.click(screen.getByRole('button', { name: 'Add a passkey' }));
-		await page.hide();
-		await act(async () => resolve());
-		await page.show();
+		await page.getByRole('button', { name: 'Add a passkey' }).click();
+		await keptPage.hide();
+		resolve();
+		await expect.poll(() => document.body.textContent).toContain('Passkey added.');
+		await keptPage.show();
 
-		expect(screen.getByText('Passkey added.')).toBeDefined();
+		await expect.element(page.getByText('Passkey added.')).toBeVisible();
 	});
 });

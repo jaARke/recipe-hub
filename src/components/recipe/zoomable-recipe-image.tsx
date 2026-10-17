@@ -159,11 +159,19 @@ function ZoomableRecipeImage({
 	const hintId = React.useId();
 	const shape = imageShape(image.size);
 
-	// Whole again when it shows another image, or goes off to the side. Animated, which also stops a
-	// zoom still under way, as a change at once would not.
+	// Whole again as it goes off to the side. Animated, which also stops a zoom still under way, as a
+	// change at once would not.
 	React.useEffect(() => {
 		void ownZoomRef.current?.resetTransform(zoomAnimationTime());
-	}, [active, image.pathname]);
+	}, [active]);
+
+	// Whole at once when it shows another image, whose shape resizes the content, and a resize cancels
+	// the zoom's animations; then animated in place, to stop a zoom still under way.
+	React.useEffect(() => {
+		const zoom = ownZoomRef.current;
+		void zoom?.resetTransform(0);
+		void zoom?.resetTransform(zoomAnimationTime());
+	}, [image.pathname]);
 
 	return (
 		<TransformWrapper

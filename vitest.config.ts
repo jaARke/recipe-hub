@@ -1,3 +1,5 @@
+import tailwindcss from '@tailwindcss/vite';
+import { playwright } from '@vitest/browser-playwright';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -7,16 +9,39 @@ export default defineConfig({
 		tsconfigPaths: true,
 	},
 	test: {
-		// Component render tests are .test.tsx and run in a DOM; every other test runs in Node.
+		// Component render tests are .test.tsx and run in real browsers; every other test runs in Node.
 		projects: [
 			{ extends: true, test: { name: 'node', include: ['**/*.test.ts'], environment: 'node' } },
 			{
 				extends: true,
+				plugins: [tailwindcss()],
+				// Next's bundler replaces process.env.* in client code, and the browser has no process.
+				define: { 'process.env': '{}' },
+				optimizeDeps: { rolldownOptions: { transform: { define: { 'process.env': '{}' } } } },
+				resolve: {
+					// next/image's CommonJS default would arrive whole, as Vite 8 imports CommonJS as Node does.
+					alias: [
+						{
+							find: /^next\/image$/,
+							replacement: 'next/dist/esm/shared/lib/image-external.js',
+						},
+					],
+				},
 				test: {
-					name: 'dom',
+					name: 'browser',
 					include: ['**/*.test.tsx'],
-					environment: 'happy-dom',
-					setupFiles: ['./vitest.dom-setup.ts'],
+					setupFiles: ['./vitest.browser-setup.ts'],
+					// After the Node tests rather than beside them, whose load slows real input past a test's bound.
+					sequence: { groupOrder: 1 },
+					browser: {
+						enabled: true,
+						// Vitest opens the browsers outside CI unless told otherwise.
+						headless: true,
+						provider: playwright(),
+						instances: [{ browser: 'chromium' }, { browser: 'firefox' }, { browser: 'webkit' }],
+						// A phone's, where Tailwind's unprefixed classes apply; a test of a wider layout sets its own.
+						viewport: { width: 390, height: 844 },
+					},
 				},
 			},
 		],

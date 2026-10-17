@@ -1,7 +1,7 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 import { describe, expect, it } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page, userEvent } from 'vitest/browser';
 import type { AccessRequestDto, InviteDto } from '@/application/access/access-dtos';
 import type { MemberDto } from '@/application/members/member-dtos';
 import { AdminDashboard } from '@/components/admin/admin-dashboard';
@@ -125,62 +125,63 @@ function Dashboard({
 }
 
 function tabNames(): (string | null)[] {
-	return screen.getAllByRole('tab').map((tab) => tab.textContent);
+	return page
+		.getByRole('tab')
+		.elements()
+		.map((tab) => tab.textContent);
+}
+
+function selectedTab() {
+	return page.getByRole('tab', { selected: true });
 }
 
 describe('AdminDashboard', () => {
-	it('opens the tab its owner names', () => {
-		render(<Dashboard initialTab="members" />);
+	it('opens the tab its owner names', async () => {
+		await render(<Dashboard initialTab="members" />);
 
-		expect(screen.getByRole('tab', { selected: true }).textContent).toBe('Members, 3');
-		const panel = screen.getByRole('tabpanel');
-		expect(within(panel).getByRole('heading', { name: 'Members' })).toBeDefined();
-		expect(screen.queryByRole('heading', { name: 'Access requests' })).toBeNull();
+		await expect.element(selectedTab()).toHaveTextContent('Members, 3');
+		await expect
+			.element(page.getByRole('tabpanel').getByRole('heading', { name: 'Members' }))
+			.toBeVisible();
+		expect(page.getByRole('heading', { name: 'Access requests' }).query()).toBeNull();
 	});
 
 	it('hands a change of tab to its owner, from a click or an arrow key', async () => {
-		const user = userEvent.setup();
-		render(<Dashboard />);
+		await render(<Dashboard />);
 
-		await user.click(screen.getByRole('tab', { name: /^Invites/ }));
-		expect(screen.getByRole('tab', { selected: true }).textContent).toBe('Invites, 1');
-		expect(screen.getByRole('heading', { name: 'Invite someone' })).toBeDefined();
+		await page.getByRole('tab', { name: /^Invites/ }).click();
+		await expect.element(selectedTab()).toHaveTextContent('Invites, 1');
+		await expect.element(page.getByRole('heading', { name: 'Invite someone' })).toBeVisible();
 
-		await user.keyboard('{ArrowRight}');
-		expect(screen.getByRole('tab', { selected: true }).textContent).toBe('Members, 3');
-		expect(screen.getByRole('heading', { name: 'Members' })).toBeDefined();
+		await userEvent.keyboard('{ArrowRight}');
+		await expect.element(selectedTab()).toHaveTextContent('Members, 3');
+		await expect.element(page.getByRole('heading', { name: 'Members' })).toBeVisible();
 	});
 
-	it("shows each tab's count in its label, read after a comma, and none for an empty list", () => {
-		render(<Dashboard requests={[]} />);
+	it("shows each tab's count in its label, read after a comma, and none for an empty list", async () => {
+		await render(<Dashboard requests={[]} />);
 
 		expect(tabNames()).toEqual(['Requests', 'Invites, 1', 'Members, 3']);
 	});
 
 	it("moves focus to the Requests panel's heading after declining a request", async () => {
-		const user = userEvent.setup();
-		render(<Dashboard />);
+		await render(<Dashboard />);
 
-		await user.click(screen.getByRole('button', { name: 'Decline the request from Casey' }));
-		await user.click(await screen.findByRole('button', { name: 'Decline request' }));
+		await page.getByRole('button', { name: 'Decline the request from Casey' }).click();
+		await page.getByRole('button', { name: 'Decline request' }).click();
 
-		// The heading is hidden from the accessibility tree until the confirmation closes.
-		await waitFor(() =>
-			expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Access requests' }))
-		);
+		await expect.element(page.getByRole('heading', { name: 'Access requests' })).toHaveFocus();
 		expect(tabNames()).toEqual(['Requests, 1', 'Invites, 1', 'Members, 3']);
 	});
 
 	it('keeps the issued invite in view on Requests after an approval and counts the new invite', async () => {
-		const user = userEvent.setup();
-		render(<Dashboard />);
+		await render(<Dashboard />);
 
-		await user.click(screen.getByRole('button', { name: 'Approve the request from Casey' }));
+		await page.getByRole('button', { name: 'Approve the request from Casey' }).click();
 
-		const panel = screen.getByRole('tabpanel');
-		expect(await within(panel).findByText('Invite for Casey')).toBeDefined();
+		await expect.element(page.getByRole('tabpanel').getByText('Invite for Casey')).toBeVisible();
 		// The lists can commit a render after the notice.
-		await waitFor(() => expect(tabNames()).toEqual(['Requests, 1', 'Invites, 2', 'Members, 3']));
-		expect(screen.getByRole('tab', { selected: true }).textContent).toBe('Requests, 1');
+		await expect.poll(tabNames).toEqual(['Requests, 1', 'Invites, 2', 'Members, 3']);
+		await expect.element(selectedTab()).toHaveTextContent('Requests, 1');
 	});
 });

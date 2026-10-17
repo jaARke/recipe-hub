@@ -1,21 +1,28 @@
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page } from 'vitest/browser';
 import type { FormAction } from '@/components/forms/form-state';
 import { UrlImportForm } from '@/components/recipe-import/url-import-form';
+
+const fieldDescription =
+	'Paste the address of the page with the recipe. You’ll check what’s read before saving it.';
+
+function linkField() {
+	return page.getByRole('textbox', { name: 'Recipe link' });
+}
 
 describe('UrlImportForm', () => {
 	it('asks for a link at once when none is given, before any request, with focus on the field', async () => {
 		const action = vi.fn<FormAction>();
-		const user = userEvent.setup();
-		render(<UrlImportForm action={action} />);
+		await render(<UrlImportForm action={action} />);
 
-		await user.click(screen.getByRole('button', { name: 'Import recipe' }));
+		await page.getByRole('button', { name: 'Import recipe' }).click();
 
-		const field = screen.getByLabelText('Recipe link');
-		expect(screen.getByText('Enter a link to the recipe.')).toBeDefined();
-		expect(field.getAttribute('aria-invalid')).toBe('true');
-		expect(document.activeElement).toBe(field);
+		await expect.element(linkField()).toHaveFocus();
+		await expect.element(linkField()).toHaveAttribute('aria-invalid', 'true');
+		await expect
+			.element(linkField())
+			.toHaveAccessibleDescription(`${fieldDescription} Enter a link to the recipe.`);
 		expect(action).not.toHaveBeenCalled();
 	});
 
@@ -24,16 +31,18 @@ describe('UrlImportForm', () => {
 			status: 'error',
 			fieldErrors: { url: 'Enter a web address that starts with http:// or https://.' },
 		}));
-		const user = userEvent.setup();
-		render(<UrlImportForm action={action} />);
+		await render(<UrlImportForm action={action} />);
 
-		await user.type(screen.getByLabelText('Recipe link'), 'recipes.example.com/lemonade');
-		await user.click(screen.getByRole('button', { name: 'Import recipe' }));
+		await linkField().fill('recipes.example.com/lemonade');
+		await page.getByRole('button', { name: 'Import recipe' }).click();
 
-		expect(
-			await screen.findByText('Enter a web address that starts with http:// or https://.')
-		).toBeDefined();
+		await expect
+			.element(linkField())
+			.toHaveAccessibleDescription(
+				`${fieldDescription} Enter a web address that starts with http:// or https://.`
+			);
+		await expect.element(linkField()).toHaveFocus();
+		await expect.element(linkField()).toHaveValue('recipes.example.com/lemonade');
 		expect(action).toHaveBeenCalledOnce();
-		expect(document.activeElement).toBe(screen.getByLabelText('Recipe link'));
 	});
 });

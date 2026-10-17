@@ -1,6 +1,6 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page } from 'vitest/browser';
 import type { SavedDraftId } from '@/application/drafts/saved-draft';
 import type { DraftSummaryDto } from '@/application/drafts/saved-draft-dtos';
 import type { FormAction } from '@/components/forms/form-state';
@@ -50,77 +50,61 @@ const drafts: DraftSummaryDto[] = [
 	},
 ];
 
-function rows(): HTMLElement[] {
-	return screen.getAllByRole('listitem');
-}
-
-// Chooses Delete draft from the row's menu, which its button names by the draft, and returns the
-// dialog that asks first.
-async function deleteFromMenu(user: ReturnType<typeof userEvent.setup>, name: string) {
-	await user.click(screen.getByRole('button', { name: `Actions for ${name}` }));
-	const menu = await screen.findByRole('menu');
-	expect(
-		within(menu)
-			.getAllByRole('menuitem')
-			.map((item) => item.textContent)
-	).toEqual(['Delete draft']);
-	await user.click(within(menu).getByRole('menuitem', { name: 'Delete draft' }));
-	return screen.findByRole('alertdialog');
+// Chooses Delete draft from the row's menu, which its button names by the draft and which holds
+// only that, and returns the dialog that asks first.
+async function deleteFromMenu(name: string) {
+	await page.getByRole('button', { name: `Actions for ${name}` }).click();
+	const menu = page.getByRole('menu');
+	await expect.element(menu.getByRole('menuitem')).toHaveLength(1);
+	await menu.getByRole('menuitem', { name: 'Delete draft' }).click();
+	return page.getByRole('alertdialog');
 }
 
 afterEach(() => {
-	vi.restoreAllMocks();
 	localStorage.clear();
 });
 
 describe('DraftList', () => {
-	it('says how long drafts stay when there are none', () => {
-		render(<DraftList drafts={[]} now={now} memberId={memberId} deleteDraft={vi.fn()} />);
+	it('says how long drafts stay when there are none', async () => {
+		await render(<DraftList drafts={[]} now={now} memberId={memberId} deleteDraft={vi.fn()} />);
 
-		expect(screen.getByText('No drafts')).toBeDefined();
-		expect(
-			screen.getByText(
-				'A draft you save stays here for 30 days after your last save, and an import you haven’t saved for 7 days.'
+		await expect.element(page.getByText('No drafts')).toBeVisible();
+		await expect
+			.element(
+				page.getByText(
+					'A draft you save stays here for 30 days after your last save, and an import you haven’t saved for 7 days.'
+				)
 			)
-		).toBeDefined();
+			.toBeVisible();
 	});
 
-	it('lists each draft with its title, when it was saved, and when it goes, opening where it continues', () => {
-		render(<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={vi.fn()} />);
+	it('lists each draft with its title, when it was saved, and when it goes, opening where it continues', async () => {
+		await render(<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={vi.fn()} />);
 
-		const [untitled, continuing, imported] = rows() as [HTMLElement, HTMLElement, HTMLElement];
 		// Each row's link is named by the draft's title and described by its details.
-		expect(
-			screen.getByRole('link', {
-				name: 'Untitled recipe',
-				description: 'Saved draft Saved 3 hours ago Kept until November 14, 2026',
-			})
-		).toBe(within(untitled).getByRole('link'));
-		expect(
-			screen.getByRole('link', {
-				name: 'Lemon bars',
-				description: 'From a link Saved yesterday Kept until November 13, 2026',
-			})
-		).toBe(within(continuing).getByRole('link'));
-		expect(
-			screen.getByRole('link', {
-				name: 'Sheet-pan gnocchi',
-				description: 'From a link Imported 2 days ago Kept until October 20, 2026',
-			})
-		).toBe(within(imported).getByRole('link'));
-		expect(
-			[untitled, continuing, imported].map((row) =>
-				within(row).getByRole('link').getAttribute('href')
-			)
-		).toEqual([
+		const links = page.getByRole('listitem').getByRole('link');
+		await expect.element(links).toHaveLength(3);
+		await expect.element(links.nth(0)).toHaveAccessibleName('Untitled recipe');
+		await expect
+			.element(links.nth(0))
+			.toHaveAccessibleDescription('Saved draft Saved 3 hours ago Kept until November 14, 2026');
+		await expect.element(links.nth(1)).toHaveAccessibleName('Lemon bars');
+		await expect
+			.element(links.nth(1))
+			.toHaveAccessibleDescription('From a link Saved yesterday Kept until November 13, 2026');
+		await expect.element(links.nth(2)).toHaveAccessibleName('Sheet-pan gnocchi');
+		await expect
+			.element(links.nth(2))
+			.toHaveAccessibleDescription('From a link Imported 2 days ago Kept until October 20, 2026');
+		expect(links.elements().map((link) => link.getAttribute('href'))).toEqual([
 			`/contribute?draft=${savedId}`,
 			`/contribute/imports/${continuedImportId}`,
 			`/contribute/imports/${importId}`,
 		]);
 	});
 
-	it('says where a draft saved from an import came from once it opens on its own', () => {
-		render(
+	it('says where a draft saved from an import came from once it opens on its own', async () => {
+		await render(
 			<DraftList
 				drafts={[
 					{
@@ -138,27 +122,28 @@ describe('DraftList', () => {
 			/>
 		);
 
-		const link = screen.getByRole('link', {
-			name: 'Anise cakes',
-			description: 'From photos Saved 3 hours ago Kept until November 14, 2026',
-		});
-		expect(link.getAttribute('href')).toBe(`/contribute?draft=${savedId}`);
+		const link = page.getByRole('link', { name: 'Anise cakes' });
+		await expect
+			.element(link)
+			.toHaveAccessibleDescription('From photos Saved 3 hours ago Kept until November 14, 2026');
+		await expect.element(link).toHaveAttribute('href', `/contribute?draft=${savedId}`);
 	});
 
 	it('deletes a draft from its row’s menu once asked, with the changes this browser kept for it', async () => {
-		const user = userEvent.setup();
 		const deleteDraft = vi.fn<FormAction>(async () => ({ status: 'success' }));
 		const continuingKey = `member:recipe-form:${memberId}:import:${continuedImportId}`;
 		const keptKey = `member:recipe-form:${memberId}:draft:${savedId}`;
 		localStorage.setItem(continuingKey, '{}');
 		localStorage.setItem(keptKey, '{}');
-		render(<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={deleteDraft} />);
+		await render(
+			<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={deleteDraft} />
+		);
 
-		const dialog = await deleteFromMenu(user, 'Lemon bars');
-		expect(within(dialog).getByText('Delete the draft of “Lemon bars”?')).toBeDefined();
-		await user.click(within(dialog).getByRole('button', { name: 'Delete draft' }));
+		const dialog = await deleteFromMenu('Lemon bars');
+		await expect.element(dialog).toHaveAccessibleName('Delete the draft of “Lemon bars”?');
+		await dialog.getByRole('button', { name: 'Delete draft' }).click();
 
-		await waitFor(() => expect(localStorage.getItem(continuingKey)).toBeNull());
+		await expect.poll(() => localStorage.getItem(continuingKey)).toBeNull();
 		expect(deleteDraft.mock.calls[0]?.[1].get('draftId')).toBe(continuingId);
 		expect(localStorage.getItem(keptKey)).toBe('{}');
 		// The list stays, and the page renders again without the draft.
@@ -166,32 +151,32 @@ describe('DraftList', () => {
 	});
 
 	it('returns focus to the row’s menu button when the member keeps the draft', async () => {
-		const user = userEvent.setup();
 		const deleteDraft = vi.fn<FormAction>();
-		render(<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={deleteDraft} />);
-
-		const dialog = await deleteFromMenu(user, 'Untitled recipe');
-		expect(within(dialog).getByText('Delete this draft?')).toBeDefined();
-		await user.click(within(dialog).getByRole('button', { name: 'Keep draft' }));
-
-		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
-		await waitFor(() =>
-			expect(document.activeElement).toBe(
-				screen.getByRole('button', { name: 'Actions for Untitled recipe' })
-			)
+		await render(
+			<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={deleteDraft} />
 		);
+
+		const dialog = await deleteFromMenu('Untitled recipe');
+		await expect.element(dialog).toHaveAccessibleName('Delete this draft?');
+		await dialog.getByRole('button', { name: 'Keep draft' }).click();
+
+		await expect.element(dialog).not.toBeInTheDocument();
+		await expect
+			.element(page.getByRole('button', { name: 'Actions for Untitled recipe' }))
+			.toHaveFocus();
 		expect(deleteDraft).not.toHaveBeenCalled();
 	});
 
 	it('deletes an import’s draft by its import', async () => {
-		const user = userEvent.setup();
 		const deleteDraft = vi.fn<FormAction>(async () => ({ status: 'success' }));
-		render(<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={deleteDraft} />);
+		await render(
+			<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={deleteDraft} />
+		);
 
-		const dialog = await deleteFromMenu(user, 'Sheet-pan gnocchi');
-		await user.click(within(dialog).getByRole('button', { name: 'Delete draft' }));
+		const dialog = await deleteFromMenu('Sheet-pan gnocchi');
+		await dialog.getByRole('button', { name: 'Delete draft' }).click();
 
-		await waitFor(() => expect(deleteDraft).toHaveBeenCalledOnce());
+		await expect.poll(() => deleteDraft).toHaveBeenCalledOnce();
 		expect(deleteDraft.mock.calls[0]?.[1].get('importId')).toBe(importId);
 		expect(deleteDraft.mock.calls[0]?.[1].get('draftId')).toBeNull();
 	});

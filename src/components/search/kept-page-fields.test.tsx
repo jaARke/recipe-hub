@@ -1,7 +1,7 @@
-import { render } from '@testing-library/react';
 import * as React from 'react';
-import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { hydrate, serverRender } from '@/components/forms/testing/hydrate';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import { HeaderSearchForm } from '@/components/search/header-search';
 import { HiddenSearchFields } from '@/components/search/hidden-search-fields';
@@ -16,55 +16,57 @@ const searchPageFields = (
 	</KeptPageFields>
 );
 
-function fieldset() {
-	return document.querySelector('fieldset');
+// The header's own field, then the search page's fields that join its form.
+const headerField = ['q', 'sugar'];
+const joinedFields = [headerField, ['tag', 'Baking'], ['sort', 'newest']];
+
+async function renderHeaderForm() {
+	await render(
+		<HeaderSearchForm
+			formId="header-search"
+			queryName="q"
+			hintId="search-hint"
+			query="sugar"
+			searchPage
+		/>
+	);
 }
 
-// happy-dom still submits a disabled fieldset's fields, which browsers leave out, so past the shown
-// page's FormData these assert the fieldset's disabled state.
-describe('KeptPageFields', () => {
-	it('joins the header’s form while its page shows, and is disabled while hidden', async () => {
-		render(
-			<HeaderSearchForm
-				formId="header-search"
-				queryName="q"
-				hintId="search-hint"
-				query="sugar"
-				searchPage
-			/>
-		);
-		const page = renderKeptPage(searchPageFields);
-		const headerForm = document.getElementById('header-search') as HTMLFormElement;
+// What the header's form would submit.
+function headerFormData() {
+	return [...new FormData(document.getElementById('header-search') as HTMLFormElement)];
+}
 
-		expect([...new FormData(headerForm)]).toEqual([
-			['q', 'sugar'],
-			['tag', 'Baking'],
-			['sort', 'newest'],
-		]);
-		expect(fieldset()?.disabled).toBe(false);
-		await page.hide();
-		expect(fieldset()?.disabled).toBe(true);
-		await page.show();
-		expect(fieldset()?.disabled).toBe(false);
+describe('KeptPageFields', () => {
+	it('joins the header’s form while its page shows, and leaves it while hidden', async () => {
+		await renderHeaderForm();
+		const keptPage = await renderKeptPage(searchPageFields);
+
+		expect(headerFormData()).toEqual(joinedFields);
+		await keptPage.hide();
+		expect(headerFormData()).toEqual([headerField]);
+		await keptPage.show();
+		expect(headerFormData()).toEqual(joinedFields);
 	});
 
-	it('starts disabled when created on a page that is hidden, until the page shows', () => {
+	it('stays out of the header’s form when created on a page that is hidden, until the page shows', async () => {
+		await renderHeaderForm();
 		const page = (mode: React.ActivityProps['mode']) => (
 			<React.Activity mode={mode}>{searchPageFields}</React.Activity>
 		);
-		const { rerender } = render(page('hidden'));
+		const { rerender } = await render(page('hidden'));
 
-		expect(fieldset()?.disabled).toBe(true);
-		rerender(page('visible'));
-		expect(fieldset()?.disabled).toBe(false);
+		expect(headerFormData()).toEqual([headerField]);
+		await rerender(page('visible'));
+		expect(headerFormData()).toEqual(joinedFields);
 	});
 
-	it('starts enabled from the server, so its fields submit before the page hydrates', () => {
-		const container = document.body.appendChild(document.createElement('div'));
-		container.innerHTML = renderToString(searchPageFields);
+	it('joins the header’s form from the server, so its fields submit before the page hydrates', async () => {
+		await renderHeaderForm();
+		const container = serverRender(searchPageFields);
 
-		expect(fieldset()?.disabled).toBe(false);
-		render(searchPageFields, { container, hydrate: true });
-		expect(fieldset()?.disabled).toBe(false);
+		expect(headerFormData()).toEqual(joinedFields);
+		await hydrate(container, searchPageFields);
+		expect(headerFormData()).toEqual(joinedFields);
 	});
 });

@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { redirect } from 'next/navigation';
 import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page, userEvent, type Locator } from 'vitest/browser';
 import type { FormAction, FormState } from '@/components/forms/form-state';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import { HeldDraftProvider } from '@/components/recipe-form/held-draft';
@@ -23,6 +23,13 @@ import {
 	type RecipeFormValues,
 } from '@/components/recipe-form/recipe-form-values';
 import { EditedRecipeMenu, HeldDraftMenu } from '@/components/recipe-form/subject-menus';
+import {
+	pasteText,
+	pressRedo,
+	pressUndo,
+	sendHistoryInput,
+	textControl,
+} from '@/components/recipe-form/testing/text-editing';
 import type { Problem } from '@/domain/problem';
 import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
 import { daysInMilliseconds, formatDayAndTime, formatTime } from '@/lib/dates';
@@ -36,6 +43,9 @@ vi.mock('next/navigation', async (importOriginal) => ({
 }));
 
 const uploadFolders = { dish: 'dish/development/', scan: 'scan/development/' };
+
+// A laptop's, from lg, where the original recipe sits beside the fields.
+const laptop = { width: 1280, height: 800 };
 
 const lemonBars: RecipeDraftContent = {
 	title: 'Lemon bars',
@@ -55,12 +65,12 @@ const refuse: FormAction = async () => ({
 	fieldErrors: { 'ingredientSections.0.lines.0': 'Enter an amount.' },
 });
 
-function renderForm(
+async function renderForm(
 	content: RecipeDraftContent,
 	problems: readonly Problem[] = [],
 	action: FormAction = refuse
 ) {
-	renderFormFrom(recipeFormValues(content, problems), action);
+	await renderFormFrom(recipeFormValues(content, problems), action);
 }
 
 function recipeForm(initial: RecipeFormValues, action: FormAction = refuse) {
@@ -76,217 +86,240 @@ function recipeForm(initial: RecipeFormValues, action: FormAction = refuse) {
 	);
 }
 
-function renderFormFrom(initial: RecipeFormValues, action: FormAction = refuse) {
-	render(recipeForm(initial, action));
+async function renderFormFrom(initial: RecipeFormValues, action: FormAction = refuse) {
+	await render(recipeForm(initial, action));
+}
+
+function textbox(name: string | RegExp) {
+	return page.getByRole('textbox', { name });
+}
+
+function title() {
+	return textbox('Title');
+}
+
+function saveRecipe() {
+	return page.getByRole('button', { name: 'Save recipe' });
 }
 
 // The note holding this text, which is what takes focus.
 function noteWith(text: string): HTMLElement {
-	const note = screen.getByText(text).closest<HTMLElement>('[data-slot="alert"]');
+	const note = page.getByText(text).element().closest<HTMLElement>('[data-slot="alert"]');
 	if (note === null) {
 		throw new Error(`No note holds “${text}”.`);
 	}
 	return note;
 }
 
-function lookRight(name: string): HTMLElement {
-	return screen.getByRole('button', { name: `Looks right: ${name}` });
+function lookRight(name: string) {
+	return page.getByRole('button', { name: `Looks right: ${name}` });
+}
+
+// The text as a live region says it, which screen readers read as it arrives.
+function announced(text: string | RegExp) {
+	return page.getByRole('status').getByText(text);
+}
+
+// The save's problems, which take focus after it fails.
+function problemSummary(heading: string) {
+	return page.getByRole('alert').filter({ hasText: heading });
+}
+
+// The ids of the fields marked invalid, in order.
+function invalidFieldIds(): string[] {
+	return Array.from(document.querySelectorAll('[aria-invalid="true"]'), (element) => element.id);
+}
+
+// Each item's name and the status under it, in a list of photos.
+function photoStatuses(legend: string) {
+	return page
+		.getByRole('list', { name: legend })
+		.getByRole('listitem')
+		.elements()
+		.map((row) => ({
+			name: row.querySelector('[data-slot="attachment-title"]')?.textContent,
+			status: row.querySelector('[data-slot="attachment-description"]')?.textContent,
+		}));
 }
 
 describe('RecipeForm’s review notes', () => {
-	it('shows each note under its field and an intro, with no summary or invalid field', () => {
-		renderForm(lemonBars, threeNotes);
+	it('shows each note under its field and an intro, with no summary or invalid field', async () => {
+		await renderForm(lemonBars, threeNotes);
 
-		expect(screen.getByText('3 things need a second look')).toBeDefined();
-		expect(screen.getAllByText('Check')).toHaveLength(3);
-		expect(screen.getAllByRole('button', { name: /^Looks right/ })).toHaveLength(3);
-		expect(screen.queryByText(/^Fix \d+ things? to save$/)).toBeNull();
-		expect(document.querySelector('[aria-invalid="true"]')).toBeNull();
-		expect(
-			screen.getByRole('textbox', { name: 'Ingredient 2' }).getAttribute('aria-describedby')
-		).toContain(noteWith('Check this line.').id);
+		await expect.element(page.getByText('3 things need a second look')).toBeVisible();
+		expect(page.getByText('Check')).toHaveLength(3);
+		expect(page.getByRole('button', { name: /^Looks right/ })).toHaveLength(3);
+		await expect.element(page.getByText(/^Fix \d+ things? to save$/)).not.toBeInTheDocument();
+		expect(invalidFieldIds()).toEqual([]);
+		await expect.element(textbox('Ingredient 2')).toHaveAccessibleDescription(/Check this line\./);
 	});
 
 	it('moves focus to the next open note as each looks right, and announces what is left', async () => {
-		const user = userEvent.setup();
-		renderForm(lemonBars, threeNotes);
+		await renderForm(lemonBars, threeNotes);
 
-		await user.click(lookRight('Ingredient 2'));
-		expect(document.activeElement).toBe(noteWith('Check this step.'));
-		expect(screen.getByText('Checked. 2 left.').closest('[role="status"]')).not.toBeNull();
-		expect(screen.queryByText('Check this line.')).toBeNull();
-		expect(screen.getByText('2 things need a second look')).toBeDefined();
+		await lookRight('Ingredient 2').click();
+		await expect.element(noteWith('Check this step.')).toHaveFocus();
+		await expect.element(announced('Checked. 2 left.')).toBeInTheDocument();
+		await expect.element(page.getByText('Check this line.')).not.toBeInTheDocument();
+		await expect.element(page.getByText('2 things need a second look')).toBeVisible();
 
 		// After the last note, the first one left comes next.
-		await user.click(lookRight('Step 1'));
-		expect(document.activeElement).toBe(noteWith('Check the title.'));
-		expect(screen.getByText('Checked. 1 left.')).toBeDefined();
+		await lookRight('Step 1').click();
+		await expect.element(noteWith('Check the title.')).toHaveFocus();
+		await expect.element(announced('Checked. 1 left.')).toBeInTheDocument();
 
-		await user.click(lookRight('Title'));
-		expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Save recipe' }));
-		expect(screen.getByText('Checked. Nothing left to check.')).toBeDefined();
-		expect(screen.queryByText(/need a second look/)).toBeNull();
+		await lookRight('Title').click();
+		await expect.element(saveRecipe()).toHaveFocus();
+		await expect.element(announced('Checked. Nothing left to check.')).toBeInTheDocument();
+		await expect.element(page.getByText(/need a second look/)).not.toBeInTheDocument();
 	});
 
 	it('moves Next to the open note after where focus last was in the form, wrapping past the last', async () => {
-		const user = userEvent.setup();
-		renderForm(lemonBars, threeNotes);
-		// The count describes Next, as "3 to check" even where phones show "3 left".
-		const next = screen.getByRole('button', { name: 'Next', description: '3 to check' });
+		await renderForm(lemonBars, threeNotes);
+		const next = page.getByRole('button', { name: 'Next' });
+		// The count describes Next as "3 to check", though a phone shows "3 left".
+		await expect.element(next).toHaveAccessibleDescription('3 to check');
 
-		await user.click(next);
-		expect(document.activeElement).toBe(noteWith('Check the title.'));
-		await user.click(next);
-		expect(document.activeElement).toBe(noteWith('Check this line.'));
-		await user.click(next);
-		expect(document.activeElement).toBe(noteWith('Check this step.'));
-		await user.click(next);
-		expect(document.activeElement).toBe(noteWith('Check the title.'));
+		await next.click();
+		await expect.element(noteWith('Check the title.')).toHaveFocus();
+		await next.click();
+		await expect.element(noteWith('Check this line.')).toHaveFocus();
+		await next.click();
+		await expect.element(noteWith('Check this step.')).toHaveFocus();
+		await next.click();
+		await expect.element(noteWith('Check the title.')).toHaveFocus();
 
-		await user.click(screen.getByRole('textbox', { name: 'Ingredient 1' }));
-		await user.click(next);
-		expect(document.activeElement).toBe(noteWith('Check this line.'));
+		await textbox('Ingredient 1').click();
+		await next.click();
+		await expect.element(noteWith('Check this line.')).toHaveFocus();
 
-		await user.click(lookRight('Ingredient 2'));
-		expect(document.activeElement).toBe(noteWith('Check this step.'));
-		expect(screen.getByRole('button', { name: 'Next', description: '2 to check' })).toBe(next);
-		await user.click(next);
-		expect(document.activeElement).toBe(noteWith('Check the title.'));
+		await lookRight('Ingredient 2').click();
+		await expect.element(noteWith('Check this step.')).toHaveFocus();
+		await expect.element(next).toHaveAccessibleDescription('2 to check');
+		await next.click();
+		await expect.element(noteWith('Check the title.')).toHaveFocus();
 	});
 
 	it('starts checking at the first note', async () => {
-		const user = userEvent.setup();
-		renderForm(lemonBars, threeNotes);
+		await renderForm(lemonBars, threeNotes);
 
-		await user.click(screen.getByRole('button', { name: 'Start checking' }));
+		await page.getByRole('button', { name: 'Start checking' }).click();
 
-		expect(document.activeElement).toBe(noteWith('Check the title.'));
+		await expect.element(noteWith('Check the title.')).toHaveFocus();
 	});
 
 	it('clears a note when its field is edited, and offers no Looks right on an empty title', async () => {
-		const user = userEvent.setup();
-		renderForm({ ...lemonBars, title: undefined }, [
+		await renderForm({ ...lemonBars, title: undefined }, [
 			{ path: 'title', message: 'Add a title. The original doesn’t show one.' },
 		]);
 
-		const note = noteWith('Add a title. The original doesn’t show one.');
-		expect(within(note).queryByRole('button')).toBeNull();
+		const note = page.elementLocator(noteWith('Add a title. The original doesn’t show one.'));
+		await expect.element(note.getByRole('button')).not.toBeInTheDocument();
 
-		await user.type(screen.getByRole('textbox', { name: 'Title' }), 'Lemon bars');
+		await title().fill('Lemon bars');
 
-		expect(screen.queryByText('Add a title. The original doesn’t show one.')).toBeNull();
-		expect(screen.queryByText(/need a second look/)).toBeNull();
+		await expect
+			.element(page.getByText('Add a title. The original doesn’t show one.'))
+			.not.toBeInTheDocument();
+		await expect.element(page.getByText(/need a second look/)).not.toBeInTheDocument();
 	});
 
 	it('asks before saving with notes open; Show me goes to the first and saves nothing', async () => {
 		const action = vi.fn(refuse);
-		const user = userEvent.setup();
-		renderForm(lemonBars, threeNotes, action);
+		await renderForm(lemonBars, threeNotes, action);
 
-		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
-		const dialog = await screen.findByRole('alertdialog');
-		expect(within(dialog).getByText('3 things haven’t been checked')).toBeDefined();
+		await saveRecipe().click();
+		const dialog = page.getByRole('alertdialog', { name: '3 things haven’t been checked' });
+		await expect.element(dialog).toBeVisible();
 
-		await user.click(within(dialog).getByRole('button', { name: 'Show me' }));
+		await dialog.getByRole('button', { name: 'Show me' }).click();
 
-		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
-		await waitFor(() => expect(document.activeElement).toBe(noteWith('Check the title.')));
+		await expect.element(page.getByRole('alertdialog')).not.toBeInTheDocument();
+		await expect.element(noteWith('Check the title.')).toHaveFocus();
 		expect(action).not.toHaveBeenCalled();
 	});
 
 	it('closes the warning about notes as its page hides, and saves nothing', async () => {
 		const action = vi.fn(refuse);
-		const user = userEvent.setup();
-		const page = renderKeptPage(recipeForm(recipeFormValues(lemonBars, threeNotes), action));
+		const keptPage = await renderKeptPage(
+			recipeForm(recipeFormValues(lemonBars, threeNotes), action)
+		);
 
-		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
-		expect(await screen.findByRole('alertdialog')).toBeDefined();
-		await page.hide();
-		await page.show();
+		await saveRecipe().click();
+		await expect.element(page.getByRole('alertdialog')).toBeVisible();
+		await keptPage.hide();
+		await keptPage.show();
 
-		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+		await expect.element(page.getByRole('alertdialog')).not.toBeInTheDocument();
 		expect(action).not.toHaveBeenCalled();
 	});
 
 	it('saves anyway when asked, and keeps the open notes when the save fails', async () => {
 		const action = vi.fn(refuse);
-		const user = userEvent.setup();
-		renderForm(lemonBars, threeNotes, action);
+		await renderForm(lemonBars, threeNotes, action);
 
-		await user.click(lookRight('Step 1'));
-		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
-		const dialog = await screen.findByRole('alertdialog');
-		expect(within(dialog).getByText('2 things haven’t been checked')).toBeDefined();
-		await user.click(within(dialog).getByRole('button', { name: 'Save anyway' }));
+		await lookRight('Step 1').click();
+		await saveRecipe().click();
+		const dialog = page.getByRole('alertdialog', { name: '2 things haven’t been checked' });
+		await dialog.getByRole('button', { name: 'Save anyway' }).click();
 
-		await waitFor(() => expect(action).toHaveBeenCalledOnce());
-		expect(await screen.findByText('Fix 1 thing to save')).toBeDefined();
-		expect(screen.getByText('Check the title.')).toBeDefined();
-		expect(screen.getByText('Check this line.')).toBeDefined();
-		expect(screen.queryByText('Check this step.')).toBeNull();
-		expect(screen.getByText('2 things need a second look')).toBeDefined();
+		await expect.element(problemSummary('Fix 1 thing to save')).toBeVisible();
+		expect(action).toHaveBeenCalledOnce();
+		await expect.element(page.getByText('Check the title.')).toBeVisible();
+		await expect.element(page.getByText('Check this line.')).toBeVisible();
+		await expect.element(page.getByText('Check this step.')).not.toBeInTheDocument();
+		await expect.element(page.getByText('2 things need a second look')).toBeVisible();
 		// Only the save's error marks its field invalid.
-		expect(
-			Array.from(document.querySelectorAll('[aria-invalid="true"]'), (element) => element.id)
-		).toEqual([screen.getByRole('textbox', { name: 'Ingredient 1' }).id]);
+		expect(invalidFieldIds()).toEqual([textbox('Ingredient 1').element().id]);
 	});
 
 	it('shows what the save needs before asking about notes, and clears it as it asks once it can save', async () => {
 		const action = vi.fn(refuse);
-		const user = userEvent.setup();
-		renderForm({ ...lemonBars, title: undefined }, threeNotes.slice(1), action);
-		const title = screen.getByRole('textbox', { name: 'Title' });
+		await renderForm({ ...lemonBars, title: undefined }, threeNotes.slice(1), action);
+		// Found before the warning opens, since it hides the rest of the page from screen readers.
+		const titleField = page.elementLocator(title().element());
 
-		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+		await saveRecipe().click();
 
-		const summary = screen.getByText('Fix 1 thing to save').closest('[role="alert"]');
-		expect(document.activeElement).toBe(summary);
-		expect(screen.getByRole('link', { name: 'Title: Enter a title.' })).toBeDefined();
-		expect(title.getAttribute('aria-invalid')).toBe('true');
-		expect(screen.queryByRole('alertdialog')).toBeNull();
+		await expect.element(problemSummary('Fix 1 thing to save')).toHaveFocus();
+		await expect
+			.element(page.getByRole('link', { name: 'Title: Enter a title.' }))
+			.toBeInTheDocument();
+		await expect.element(titleField).toHaveAttribute('aria-invalid', 'true');
+		await expect.element(page.getByRole('alertdialog')).not.toBeInTheDocument();
 		expect(action).not.toHaveBeenCalled();
 
-		await user.type(title, 'Lemon bars');
-		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+		await titleField.fill('Lemon bars');
+		await saveRecipe().click();
 
-		const dialog = await screen.findByRole('alertdialog');
-		expect(within(dialog).getByText('2 things haven’t been checked')).toBeDefined();
-		expect(screen.queryByText('Fix 1 thing to save')).toBeNull();
-		expect(screen.queryByText('Enter a title.')).toBeNull();
-		expect(title.getAttribute('aria-invalid')).toBeNull();
+		await expect
+			.element(page.getByRole('alertdialog', { name: '2 things haven’t been checked' }))
+			.toBeVisible();
+		await expect.element(page.getByText('Fix 1 thing to save')).not.toBeInTheDocument();
+		await expect.element(page.getByText('Enter a title.')).not.toBeInTheDocument();
+		await expect.element(titleField).not.toHaveAttribute('aria-invalid');
 		expect(action).not.toHaveBeenCalled();
 	});
 
 	it('asks for the ingredients and steps a recipe needs before any request', async () => {
 		const action = vi.fn(refuse);
-		const user = userEvent.setup();
-		renderForm({ title: 'Lemon bars' }, [], action);
+		await renderForm({ title: 'Lemon bars' }, [], action);
 
-		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+		await saveRecipe().click();
 
-		expect(screen.getByText('Fix 2 things to save')).toBeDefined();
-		expect(
-			screen.getByRole('link', { name: 'Ingredients: Add at least one ingredient.' })
-		).toBeDefined();
-		expect(screen.getByRole('link', { name: 'Steps: Add at least one step.' })).toBeDefined();
+		await expect.element(problemSummary('Fix 2 things to save')).toBeVisible();
+		await expect
+			.element(page.getByRole('link', { name: 'Ingredients: Add at least one ingredient.' }))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByRole('link', { name: 'Steps: Add at least one step.' }))
+			.toBeInTheDocument();
 		expect(action).not.toHaveBeenCalled();
-	});
-
-	it('saves without asking once nothing is left to check', async () => {
-		const action = vi.fn(refuse);
-		const user = userEvent.setup();
-		renderForm(lemonBars, [], action);
-
-		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
-
-		await waitFor(() => expect(action).toHaveBeenCalledOnce());
-		expect(screen.queryByRole('alertdialog')).toBeNull();
 	});
 
 	it('marks a transcription marker left in a line, and asks before saving it', async () => {
 		const action = vi.fn(refuse);
-		const user = userEvent.setup();
-		renderForm(
+		await renderForm(
 			{ ...lemonBars, ingredientSections: [{ lines: [{ text: '1 cup [illegible] flour' }] }] },
 			[],
 			action
@@ -294,30 +327,33 @@ describe('RecipeForm’s review notes', () => {
 
 		const marks = Array.from(document.querySelectorAll('mark'), (mark) => mark.textContent);
 		expect(marks).toEqual(['[illegible]']);
-		expect(screen.getByText('1 thing needs a second look')).toBeDefined();
-		expect(screen.queryByRole('button', { name: /^Looks right/ })).toBeNull();
+		await expect.element(page.getByText('1 thing needs a second look')).toBeVisible();
+		await expect
+			.element(page.getByRole('button', { name: /^Looks right/ }))
+			.not.toBeInTheDocument();
 
-		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+		await saveRecipe().click();
 
-		const dialog = await screen.findByRole('alertdialog');
-		expect(within(dialog).getByText('1 thing hasn’t been checked')).toBeDefined();
+		await expect
+			.element(page.getByRole('alertdialog', { name: '1 thing hasn’t been checked' }))
+			.toBeVisible();
 		expect(action).not.toHaveBeenCalled();
 	});
 });
 
 describe('RecipeForm’s times', () => {
-	it('names each time with its unit, as its problems name it', () => {
-		renderForm(lemonBars);
+	it('names each time with its unit, as its problems name it', async () => {
+		await renderForm(lemonBars);
 
 		for (const time of ['Prep', 'Cook', 'Total']) {
-			expect(screen.getByRole('textbox', { name: `${time}, in minutes` })).toBeDefined();
+			await expect.element(textbox(`${time}, in minutes`)).toBeVisible();
 		}
 	});
 });
 
 describe('RecipeForm’s original recipe', () => {
 	it('shows the stored scans beside the form and in the viewer, numbered as the viewer numbers them', async () => {
-		const user = userEvent.setup();
+		await page.viewport(laptop.width, laptop.height);
 		const saved = 'scan/development/front.jpg';
 		const values = recipeFormValues({ ...lemonBars, images: [{ role: 'scan', pathname: saved }] });
 		const uploaded = values.nextId;
@@ -349,29 +385,36 @@ describe('RecipeForm’s original recipe', () => {
 			{ type: 'movePhoto', photoId: uploaded, toIndex: 1 },
 			{ type: 'movePhoto', photoId: uploading, toIndex: 2 },
 		];
-		renderFormFrom(edits.reduce(editRecipeForm, values));
+		await renderFormFrom(edits.reduce(editRecipeForm, values));
 
 		// The upload shows from its file until it's saved, so it is never downloaded.
-		const pane = screen.getByRole('complementary', { name: 'Original recipe' });
-		expect(within(pane).getByRole('status').textContent).toBe('Page 1 of 2');
-		expect(within(pane).getByRole('img').getAttribute('src')).toMatch(/^blob:/);
+		const pane = page.getByRole('complementary', { name: 'Original recipe' });
+		await expect.element(pane.getByRole('status')).toHaveTextContent('Page 1 of 2');
+		await expect
+			.element(pane.getByRole('img'))
+			.toHaveAttribute('src', expect.stringMatching(/^blob:/));
 
-		await user.click(within(pane).getByRole('button', { name: 'Show page 2 of 2' }));
-		expect(within(pane).getByRole('status').textContent).toBe('Page 2 of 2');
+		await pane.getByRole('button', { name: 'Show page 2 of 2' }).click();
+		await expect.element(pane.getByRole('status')).toHaveTextContent('Page 2 of 2');
 		// Through the image optimizer, at the size the page shows at its zoom.
-		expect(within(pane).getByRole('img').getAttribute('src')).toMatch(
-			/^\/_next\/image\?url=%2Fapi%2Fimages%2Fscan%2Fdevelopment%2Ffront\.jpg/
-		);
+		await expect
+			.element(pane.getByRole('img'))
+			.toHaveAttribute(
+				'src',
+				expect.stringMatching(
+					/^\/_next\/image\?url=%2Fapi%2Fimages%2Fscan%2Fdevelopment%2Ffront\.jpg/
+				)
+			);
 
 		// A row the viewer holds opens it at the place the row names; the others have no place in it.
-		const rows = within(screen.getByRole('list', { name: 'Original recipe' })).getAllByRole(
-			'listitem'
-		);
+		const rows = page.getByRole('list', { name: 'Original recipe' }).getByRole('listitem');
 		expect(
-			rows.map((row) => ({
+			rows.elements().map((row) => ({
 				name: row.querySelector('[data-slot="attachment-title"]')?.textContent,
-				opens: within(row)
-					.queryByRole('button', { name: /^View page/ })
+				opens: page
+					.elementLocator(row)
+					.getByRole('button', { name: /^View page/ })
+					.query()
 					?.getAttribute('aria-label'),
 			}))
 		).toEqual([
@@ -380,7 +423,25 @@ describe('RecipeForm’s original recipe', () => {
 			{ name: 'wip.jpg', opens: undefined },
 			{ name: 'Page 2', opens: 'View page 2 of 2' },
 		]);
-		expect(screen.getByRole('button', { name: 'View original' })).toBeDefined();
+	});
+
+	it('reads the original beside the fields on a laptop, and from View original on a phone', async () => {
+		await renderForm({
+			...lemonBars,
+			images: [{ role: 'scan', pathname: 'scan/development/card.jpg' }],
+		});
+		const pane = page.getByRole('complementary', { name: 'Original recipe', includeHidden: true });
+		const viewOriginal = page.getByRole('button', { name: 'View original', includeHidden: true });
+		await expect.element(viewOriginal).toBeVisible();
+		await expect.element(pane).not.toBeVisible();
+
+		await page.viewport(laptop.width, laptop.height);
+
+		await expect.element(pane).toBeVisible();
+		await expect.element(viewOriginal).not.toBeVisible();
+		expect(pane.element().getBoundingClientRect().left).toBeGreaterThanOrEqual(
+			title().element().getBoundingClientRect().right
+		);
 	});
 });
 
@@ -391,18 +452,21 @@ describe('RecipeForm’s action bar', () => {
 		images: [{ role: 'scan' as const, pathname: scanPathname }],
 	};
 
+	beforeEach(async () => {
+		await page.viewport(laptop.width, laptop.height);
+	});
+
 	it('saves what the fields beside the original hold, from Save after them', async () => {
 		const action = vi.fn(refuse);
-		const user = userEvent.setup();
-		renderForm(withOriginal, [], action);
-		expect(screen.getByRole('complementary', { name: 'Original recipe' })).toBeDefined();
+		await renderForm(withOriginal, [], action);
+		await expect
+			.element(page.getByRole('complementary', { name: 'Original recipe' }))
+			.toBeVisible();
 
-		const title = screen.getByRole('textbox', { name: 'Title' });
-		await user.clear(title);
-		await user.type(title, 'Lemon squares');
-		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+		await title().fill('Lemon squares');
+		await saveRecipe().click();
 
-		await waitFor(() => expect(action).toHaveBeenCalledOnce());
+		await expect.poll(() => action).toHaveBeenCalledOnce();
 		const sent = action.mock.calls[0]?.[1].get('recipe');
 		expect(JSON.parse(typeof sent === 'string' ? sent : '{}')).toMatchObject({
 			title: 'Lemon squares',
@@ -410,33 +474,32 @@ describe('RecipeForm’s action bar', () => {
 		});
 	});
 
-	it('puts the fields before the original, so Save comes after the fields and Tab reaches them first', () => {
-		renderForm(withOriginal);
+	it('puts the fields before the original, so Save comes after the fields and Tab reaches them first', async () => {
+		await renderForm(withOriginal);
 
-		const title = screen.getByRole('textbox', { name: 'Title' });
-		const pane = screen.getByRole('complementary', { name: 'Original recipe' });
-		expect(title.compareDocumentPosition(pane) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+		const pane = page.getByRole('complementary', { name: 'Original recipe' }).element();
 		expect(
-			pane.compareDocumentPosition(screen.getByRole('button', { name: 'Save recipe' })) &
-				Node.DOCUMENT_POSITION_FOLLOWING
+			title().element().compareDocumentPosition(pane) & Node.DOCUMENT_POSITION_FOLLOWING
+		).not.toBe(0);
+		expect(
+			pane.compareDocumentPosition(saveRecipe().element()) & Node.DOCUMENT_POSITION_FOLLOWING
 		).not.toBe(0);
 	});
 
 	it('moves Next on from the last field focused, not from the original beside the fields', async () => {
-		const user = userEvent.setup();
-		renderForm(withOriginal, threeNotes);
-		const pane = screen.getByRole('complementary', { name: 'Original recipe' });
+		await renderForm(withOriginal, threeNotes);
+		const pane = page.getByRole('complementary', { name: 'Original recipe' });
 
-		await user.click(screen.getByRole('textbox', { name: 'Ingredient 1' }));
-		await user.click(within(pane).getByRole('button', { name: 'Zoom in' }));
-		await user.click(screen.getByRole('button', { name: 'Next' }));
+		await textbox('Ingredient 1').click();
+		await pane.getByRole('button', { name: 'Zoom in' }).click();
+		await page.getByRole('button', { name: 'Next' }).click();
 
-		expect(document.activeElement).toBe(noteWith('Check this line.'));
+		await expect.element(noteWith('Check this line.')).toHaveFocus();
 	});
 });
 
 describe('RecipeForm’s photos', () => {
-	it('calls the first stored photo the cover, as saving makes it, past a failed or unfinished one', () => {
+	it('calls the first stored photo the cover, as saving makes it, past a failed or unfinished one', async () => {
 		const values = recipeFormValues({
 			...lemonBars,
 			images: [{ role: 'dish', pathname: 'dish/development/bars.jpg' }],
@@ -458,15 +521,9 @@ describe('RecipeForm’s photos', () => {
 			{ type: 'movePhoto', photoId: uploading, toIndex: 0 },
 			{ type: 'movePhoto', photoId: failed, toIndex: 1 },
 		];
-		renderFormFrom(edits.reduce(editRecipeForm, values));
+		await renderFormFrom(edits.reduce(editRecipeForm, values));
 
-		const rows = within(screen.getByRole('list', { name: 'Photos' })).getAllByRole('listitem');
-		expect(
-			rows.map((row) => ({
-				name: row.querySelector('[data-slot="attachment-title"]')?.textContent,
-				status: row.querySelector('[data-slot="attachment-description"]')?.textContent,
-			}))
-		).toEqual([
+		expect(photoStatuses('Photos')).toEqual([
 			{ name: 'wip.jpg', status: 'Uploading' },
 			{ name: 'bad.jpg', status: 'Didn’t upload' },
 			{ name: 'Photo 1', status: 'Cover photo' },
@@ -475,136 +532,129 @@ describe('RecipeForm’s photos', () => {
 });
 
 describe('RecipeForm’s lists', () => {
-	function textbox(name: string): HTMLTextAreaElement {
-		const element = screen.getByRole('textbox', { name });
-		if (!(element instanceof HTMLTextAreaElement)) {
-			throw new Error(`${name} is no textarea.`);
-		}
-		return element;
-	}
-
 	// Each row as its label and its text, in order.
 	function rowTexts(legend: string): string[] {
-		return within(screen.getByRole('list', { name: legend }))
-			.getAllByRole<HTMLTextAreaElement>('textbox')
-			.map((row) => `${row.labels?.[0]?.textContent}: ${row.value}`);
+		return page
+			.getByRole('list', { name: legend })
+			.getByRole('textbox')
+			.all()
+			.map((row) => `${textControl(row).labels?.[0]?.textContent}: ${textControl(row).value}`);
 	}
 
-	function expectAnnounced(text: string) {
-		expect(screen.getByText(text).closest('[role="status"]')).not.toBeNull();
+	async function choose(row: string, action: string) {
+		await page.getByRole('button', { name: `Actions for ${row}` }).click();
+		await page.getByRole('menuitem', { name: action }).click();
 	}
 
-	async function choose(user: ReturnType<typeof userEvent.setup>, row: string, action: string) {
-		await user.click(screen.getByRole('button', { name: `Actions for ${row}` }));
-		await user.click(await screen.findByRole('menuitem', { name: action }));
-	}
-
-	it('shows how a line without an amount reads once tidied, and nothing when it reads as typed', () => {
-		renderForm({
+	it('shows how a line without an amount reads once tidied, and nothing when it reads as typed', async () => {
+		await renderForm({
 			...lemonBars,
 			ingredientSections: [{ lines: [{ text: 'Salt to taste;' }, { text: 'Pepper to taste' }] }],
 		});
 
-		const previews = Array.from(
-			screen.getByRole('list', { name: 'Ingredients' }).querySelectorAll('[id$="-preview"]'),
-			(preview) => preview.textContent
-		);
-		expect(previews).toEqual(['Shows as Salt to taste']);
+		await expect
+			.element(textbox('Ingredient 1'))
+			.toHaveAccessibleDescription('Shows as Salt to taste');
+		await expect.element(textbox('Ingredient 2')).toHaveAccessibleDescription('');
 	});
 
 	it('adds a line below on Enter and removes an empty one on Backspace, announcing each', async () => {
-		const user = userEvent.setup();
-		renderForm(lemonBars);
+		await renderForm(lemonBars);
 
-		await user.click(textbox('Ingredient 1'));
-		await user.keyboard('{Enter}');
+		await textbox('Ingredient 1').click();
+		await userEvent.keyboard('{Enter}');
 
-		expect(rowTexts('Ingredients')).toEqual([
-			'Ingredient 1: 1 cup flour',
-			'Ingredient 2: ',
-			'Ingredient 3: 2 eggs',
-		]);
-		expect(document.activeElement).toBe(textbox('Ingredient 2'));
-		expectAnnounced('Added Ingredient 2.');
+		await expect
+			.poll(() => rowTexts('Ingredients'))
+			.toEqual(['Ingredient 1: 1 cup flour', 'Ingredient 2: ', 'Ingredient 3: 2 eggs']);
+		await expect.element(textbox('Ingredient 2')).toHaveFocus();
+		await expect.element(announced('Added Ingredient 2.')).toBeInTheDocument();
 
-		await user.keyboard('{Backspace}');
+		await userEvent.keyboard('{Backspace}');
 
-		expect(rowTexts('Ingredients')).toEqual(['Ingredient 1: 1 cup flour', 'Ingredient 2: 2 eggs']);
-		const above = textbox('Ingredient 1');
-		expect(document.activeElement).toBe(above);
-		expect(above.selectionStart).toBe(above.value.length);
-		expectAnnounced('Removed Ingredient 2.');
+		await expect
+			.poll(() => rowTexts('Ingredients'))
+			.toEqual(['Ingredient 1: 1 cup flour', 'Ingredient 2: 2 eggs']);
+		await expect.element(textbox('Ingredient 1')).toHaveFocus();
+		expect(textControl(textbox('Ingredient 1')).selectionStart).toBe('1 cup flour'.length);
+		await expect.element(announced('Removed Ingredient 2.')).toBeInTheDocument();
 
 		// Backspace in a line with text deletes text, as it always does.
-		await user.keyboard('{Backspace}');
-		expect(rowTexts('Ingredients')).toEqual(['Ingredient 1: 1 cup flou', 'Ingredient 2: 2 eggs']);
+		await userEvent.keyboard('{Backspace}');
+		await expect
+			.poll(() => rowTexts('Ingredients'))
+			.toEqual(['Ingredient 1: 1 cup flou', 'Ingredient 2: 2 eggs']);
 	});
 
 	it('splits a pasted list into lines and headings, without bullets, and announces it', async () => {
-		const user = userEvent.setup();
-		renderForm({ ...lemonBars, ingredientSections: undefined });
+		await renderForm({ ...lemonBars, ingredientSections: undefined });
 
-		await user.click(textbox('Ingredient 1'));
-		await user.paste('• 2 cups flour\n• 1 teaspoon salt\n\nFor the glaze:\n1. 1 cup sugar\n');
+		await textbox('Ingredient 1').click();
+		await pasteText('• 2 cups flour\n• 1 teaspoon salt\n\nFor the glaze:\n1. 1 cup sugar\n');
 
-		expect(rowTexts('Ingredients')).toEqual([
-			'Ingredient 1: 2 cups flour',
-			'Ingredient 2: 1 teaspoon salt',
-			'Ingredient heading 1: For the glaze',
-			'Ingredient 1, For the glaze: 1 cup sugar',
-		]);
-		expect(document.activeElement).toBe(textbox('Ingredient 1, For the glaze'));
-		expectAnnounced('Pasted 3 ingredients and 1 heading.');
+		await expect
+			.poll(() => rowTexts('Ingredients'))
+			.toEqual([
+				'Ingredient 1: 2 cups flour',
+				'Ingredient 2: 1 teaspoon salt',
+				'Ingredient heading 1: For the glaze',
+				'Ingredient 1, For the glaze: 1 cup sugar',
+			]);
+		await expect.element(textbox('Ingredient 1, For the glaze')).toHaveFocus();
+		await expect.element(announced('Pasted 3 ingredients and 1 heading.')).toBeInTheDocument();
 
-		// A single line pastes as usual, at the caret.
-		await user.paste(', sifted');
-		expect(textbox('Ingredient 1, For the glaze').value).toBe('1 cup sugar, sifted');
+		// A single line pastes as the browser pastes, at the caret.
+		await pasteText(', sifted');
+		await expect.element(textbox('Ingredient 1, For the glaze')).toHaveValue('1 cup sugar, sifted');
 	});
 
 	it('announces a message again when it repeats', async () => {
-		const user = userEvent.setup();
-		renderForm({ ...lemonBars, ingredientSections: undefined });
+		await renderForm({ ...lemonBars, ingredientSections: undefined });
 
-		await user.click(textbox('Ingredient 1'));
-		await user.paste('2 cups flour\n1 teaspoon salt');
-		const first = screen.getByText('Pasted 2 ingredients.');
+		await textbox('Ingredient 1').click();
+		await pasteText('2 cups flour\n1 teaspoon salt');
+		await expect.element(announced('Pasted 2 ingredients.')).toBeInTheDocument();
+		const first = announced('Pasted 2 ingredients.').element();
 		const region = first.closest('[role="status"]');
-		await user.paste('2 eggs\n1 cup milk');
-		const second = screen.getByText('Pasted 2 ingredients.');
+		await pasteText('2 eggs\n1 cup milk');
 
 		// The region stays, and the message arrives in it as a new node, which screen readers read.
-		expect(second).not.toBe(first);
-		expect(first.isConnected).toBe(false);
+		await expect.poll(() => first.isConnected).toBe(false);
+		const second = announced('Pasted 2 ingredients.').element();
 		expect(second.closest('[role="status"]')).toBe(region);
 	});
 
 	it('changes a line to a heading over the lines after it', async () => {
-		const user = userEvent.setup();
-		renderForm({
+		await renderForm({
 			...lemonBars,
 			ingredientSections: [
 				{ lines: [{ text: '1 cup flour' }, { text: 'For the glaze' }, { text: '1 cup sugar' }] },
 			],
 		});
 
-		await choose(user, 'Ingredient 2', 'Change to heading');
+		await choose('Ingredient 2', 'Change to heading');
 
-		expect(rowTexts('Ingredients')).toEqual([
-			'Ingredient 1: 1 cup flour',
-			'Ingredient heading 1: For the glaze',
-			'Ingredient 1, For the glaze: 1 cup sugar',
-		]);
-		expectAnnounced('Changed “For the glaze” to Ingredient heading 1.');
+		await expect
+			.poll(() => rowTexts('Ingredients'))
+			.toEqual([
+				'Ingredient 1: 1 cup flour',
+				'Ingredient heading 1: For the glaze',
+				'Ingredient 1, For the glaze: 1 cup sugar',
+			]);
+		await expect
+			.element(announced('Changed “For the glaze” to Ingredient heading 1.'))
+			.toBeInTheDocument();
 		// The row keeps its menu, which takes focus back and now offers the way back.
-		const trigger = screen.getByRole('button', { name: 'Actions for Ingredient heading 1' });
-		await waitFor(() => expect(document.activeElement).toBe(trigger));
-		await user.click(trigger);
-		expect(await screen.findByRole('menuitem', { name: 'Change to ingredient' })).toBeDefined();
+		const trigger = page.getByRole('button', { name: 'Actions for Ingredient heading 1' });
+		await expect.element(trigger).toHaveFocus();
+		await trigger.click();
+		await expect
+			.element(page.getByRole('menuitem', { name: 'Change to ingredient' }))
+			.toBeVisible();
 	});
 
 	it('keeps a removed heading’s lines, which join the lines above it', async () => {
-		const user = userEvent.setup();
-		renderForm({
+		await renderForm({
 			...lemonBars,
 			ingredientSections: [
 				{ lines: [{ text: '1 cup flour' }] },
@@ -612,14 +662,15 @@ describe('RecipeForm’s lists', () => {
 			],
 		});
 
-		await choose(user, 'Ingredient heading 1', 'Remove');
+		await choose('Ingredient heading 1', 'Remove');
 
-		expect(rowTexts('Ingredients')).toEqual([
-			'Ingredient 1: 1 cup flour',
-			'Ingredient 2: 1 cup sugar',
-		]);
-		expect(document.activeElement).toBe(textbox('Ingredient 1'));
-		expectAnnounced('Removed Ingredient heading 1. The ingredient under it stays.');
+		await expect
+			.poll(() => rowTexts('Ingredients'))
+			.toEqual(['Ingredient 1: 1 cup flour', 'Ingredient 2: 1 cup sugar']);
+		await expect.element(textbox('Ingredient 1')).toHaveFocus();
+		await expect
+			.element(announced('Removed Ingredient heading 1. The ingredient under it stays.'))
+			.toBeInTheDocument();
 		const sent = document.querySelector<HTMLInputElement>('input[name="recipe"]')?.value ?? '{}';
 		expect(JSON.parse(sent)).toMatchObject({
 			ingredientSections: [{ lines: ['1 cup flour', '1 cup sugar'] }],
@@ -627,8 +678,7 @@ describe('RecipeForm’s lists', () => {
 	});
 
 	it('shows a save’s problem with a heading that has nothing under it at the heading', async () => {
-		const user = userEvent.setup();
-		renderForm(
+		await renderForm(
 			{
 				...lemonBars,
 				ingredientSections: [
@@ -643,24 +693,23 @@ describe('RecipeForm’s lists', () => {
 			})
 		);
 
-		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+		await saveRecipe().click();
 
-		const link = await screen.findByRole('link', {
-			name: 'Ingredients, For the glaze: Add at least one ingredient.',
-		});
 		const heading = textbox('Ingredient heading 1');
-		expect(link.getAttribute('href')).toBe(`#${heading.id}`);
-		expect(heading.getAttribute('aria-invalid')).toBe('true');
-		const description = heading.getAttribute('aria-describedby') ?? '';
-		expect(description.split(' ').map((id) => document.getElementById(id)?.textContent)).toContain(
-			'Add at least one ingredient.'
-		);
+		await expect
+			.element(
+				page.getByRole('link', {
+					name: 'Ingredients, For the glaze: Add at least one ingredient.',
+				})
+			)
+			.toHaveAttribute('href', `#${heading.element().id}`);
+		await expect.element(heading).toHaveAttribute('aria-invalid', 'true');
+		await expect.element(heading).toHaveAccessibleDescription('Add at least one ingredient.');
 	});
 
 	it('asks for a line under each heading of a list holding only headings, where the server does', async () => {
 		const action = vi.fn(refuse);
-		const user = userEvent.setup();
-		renderForm(
+		await renderForm(
 			{
 				...lemonBars,
 				ingredientSections: [
@@ -672,102 +721,90 @@ describe('RecipeForm’s lists', () => {
 			action
 		);
 
-		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+		await saveRecipe().click();
 
-		expect(screen.getByText('Fix 2 things to save')).toBeDefined();
-		const link = screen.getByRole('link', {
-			name: 'Ingredients, For the glaze: Add at least one ingredient.',
-		});
-		expect(link.getAttribute('href')).toBe(`#${textbox('Ingredient heading 2').id}`);
-		expect(
-			screen.getByRole('link', { name: 'Ingredients, For the crust: Add at least one ingredient.' })
-		).toBeDefined();
-		expect(
-			screen.queryByRole('link', { name: 'Ingredients: Add at least one ingredient.' })
-		).toBeNull();
+		await expect.element(problemSummary('Fix 2 things to save')).toBeVisible();
+		await expect
+			.element(
+				page.getByRole('link', {
+					name: 'Ingredients, For the glaze: Add at least one ingredient.',
+				})
+			)
+			.toHaveAttribute('href', `#${textbox('Ingredient heading 2').element().id}`);
+		await expect
+			.element(
+				page.getByRole('link', {
+					name: 'Ingredients, For the crust: Add at least one ingredient.',
+				})
+			)
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByRole('link', { name: 'Ingredients: Add at least one ingredient.' }))
+			.not.toBeInTheDocument();
 		expect(action).not.toHaveBeenCalled();
 	});
 });
 
 describe('RecipeForm’s undo', () => {
-	beforeEach(() => {
-		vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
-	});
-
-	afterEach(() => {
-		vi.restoreAllMocks();
-	});
-
-	function field(role: 'textbox' | 'combobox', name: string | RegExp) {
-		const element = screen.getByRole(role, { name });
-		if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) {
-			throw new Error(`${String(name)} is no text field.`);
-		}
-		return element;
-	}
-
 	it('undoes and redoes the title’s own typing, leaving a row typed in since untouched', async () => {
-		const user = userEvent.setup();
-		renderForm(lemonBars);
-		const title = field('textbox', 'Title');
-		const row = field('textbox', 'Ingredient 1');
+		await renderForm(lemonBars);
+		const row = textbox('Ingredient 1');
 
-		await user.click(title);
-		await user.keyboard(' with thyme');
-		await user.click(row);
-		await user.keyboard(', sifted');
-		await user.click(title);
+		await title().click();
+		await userEvent.keyboard(' with thyme');
+		await row.click();
+		await userEvent.keyboard(', sifted');
+		await title().click();
 
-		await user.keyboard('{Meta>}z{/Meta}');
-		expect(title.value).toBe('Lemon bars');
-		await user.keyboard('{Meta>}z{/Meta}');
-		expect(title.value).toBe('Lemon bars');
-		expect(row.value).toBe('1 cup flour, sifted');
+		await pressUndo();
+		await expect.element(title()).toHaveValue('Lemon bars');
+		// With nothing left to undo here, the browser's own undo of the row never runs.
+		await pressUndo();
+		expect(textControl(title()).value).toBe('Lemon bars');
+		expect(textControl(row).value).toBe('1 cup flour, sifted');
 
-		await user.keyboard('{Meta>}{Shift>}Z{/Shift}{/Meta}');
-		expect(title.value).toBe('Lemon bars with thyme');
+		await pressRedo();
+		await expect.element(title()).toHaveValue('Lemon bars with thyme');
 
-		// The browser sends its own undo to the row, whose typing tops its stack.
-		const undo = new InputEvent('beforeinput', {
-			inputType: 'historyUndo',
-			cancelable: true,
-			bubbles: true,
-		});
-		expect(fireEvent(row, undo)).toBe(false);
-		expect(title.value).toBe('Lemon bars');
-		expect(row.value).toBe('1 cup flour, sifted');
+		expect(sendHistoryInput(row, 'historyUndo')).toBe(false);
+		await expect.element(title()).toHaveValue('Lemon bars');
+		expect(textControl(row).value).toBe('1 cup flour, sifted');
 	});
 
 	it('gives a time, the tag being typed, and a photo’s description each its own undo', async () => {
-		const user = userEvent.setup();
-		renderForm({ ...lemonBars, images: [{ role: 'dish', pathname: 'dish/development/bars.jpg' }] });
+		await renderForm({
+			...lemonBars,
+			images: [{ role: 'dish', pathname: 'dish/development/bars.jpg' }],
+		});
 		// Found before the tag’s list opens, since it hides the rest of the form from screen readers.
-		const prep = field('textbox', 'Prep, in minutes');
-		const tag = field('combobox', 'Tags');
-		const alt = field('textbox', /^Describe the photo/);
-		const row = field('textbox', 'Ingredient 1');
+		const found = (field: Locator) => page.elementLocator(field.element());
+		const prep = found(textbox('Prep, in minutes'));
+		const tag = found(page.getByRole('combobox', { name: 'Tags' }));
+		const alt = found(textbox(/^Describe the photo/));
+		const row = found(textbox('Ingredient 1'));
+		const values = () => [prep, tag, alt].map((field) => textControl(field).value);
 
-		await user.click(prep);
-		await user.keyboard('15');
-		await user.click(tag);
-		await user.keyboard('Dessert');
-		await user.click(alt);
-		await user.keyboard('Bars on a plate');
+		await prep.click();
+		await userEvent.keyboard('15');
+		await tag.click();
+		await userEvent.keyboard('Dessert');
+		await alt.click();
+		await userEvent.keyboard('Bars on a plate');
 
-		await user.click(prep);
-		await user.keyboard('{Meta>}z{/Meta}');
-		expect([prep.value, tag.value, alt.value]).toEqual(['', 'Dessert', 'Bars on a plate']);
+		await prep.click();
+		await pressUndo();
+		await expect.poll(values).toEqual(['', 'Dessert', 'Bars on a plate']);
 
-		await user.click(alt);
-		await user.keyboard('{Meta>}z{/Meta}');
-		expect([prep.value, tag.value, alt.value]).toEqual(['', 'Dessert', '']);
+		await alt.click();
+		await pressUndo();
+		await expect.poll(values).toEqual(['', 'Dessert', '']);
 
-		await user.click(tag);
-		await user.keyboard('{Meta>}z{/Meta}');
-		expect([prep.value, tag.value, alt.value]).toEqual(['', '', '']);
-		await user.keyboard('{Meta>}{Shift>}Z{/Shift}{/Meta}');
-		expect([prep.value, tag.value, alt.value]).toEqual(['', 'Dessert', '']);
-		expect(row.value).toBe('1 cup flour');
+		await tag.click();
+		await pressUndo();
+		await expect.poll(values).toEqual(['', '', '']);
+		await pressRedo();
+		await expect.poll(values).toEqual(['', 'Dessert', '']);
+		expect(textControl(row).value).toBe('1 cup flour');
 	});
 });
 
@@ -815,13 +852,13 @@ function AutosavedForm({
 	);
 }
 
-function stored(key: string): RecipeFormSnapshot | undefined {
+function storedEntry(key: string): AutosavedRecipeForm | undefined {
 	const entry = localStorage.getItem(key);
-	return entry === null ? undefined : (JSON.parse(entry) as AutosavedRecipeForm).form;
+	return entry === null ? undefined : (JSON.parse(entry) as AutosavedRecipeForm);
 }
 
-function title(): HTMLInputElement {
-	return screen.getByRole<HTMLInputElement>('textbox', { name: 'Title' });
+function stored(key: string): RecipeFormSnapshot | undefined {
+	return storedEntry(key)?.form;
 }
 
 // The notice for changes restored from this browser, which says when they were made; its
@@ -881,16 +918,6 @@ describe('RecipeForm’s autosave', () => {
 		return fetch;
 	}
 
-	// Each photo's name and the status under it.
-	function photoStatuses() {
-		return within(screen.getByRole('list', { name: 'Photos' }))
-			.getAllByRole('listitem')
-			.map((row) => ({
-				name: row.querySelector('[data-slot="attachment-title"]')?.textContent,
-				status: row.querySelector('[data-slot="attachment-description"]')?.textContent,
-			}));
-	}
-
 	afterEach(() => {
 		vi.restoreAllMocks();
 		vi.unstubAllGlobals();
@@ -898,72 +925,68 @@ describe('RecipeForm’s autosave', () => {
 	});
 
 	it('offers a half-filled new recipe back as the form loads again, and Discard clears it', async () => {
-		const user = userEvent.setup();
-		const first = render(<AutosavedForm />);
-		await user.type(title(), 'Lemon bars');
-		await user.type(screen.getByRole('textbox', { name: 'Ingredient 1' }), '1 cup flour');
-		expect(stored(newRecipeKey)?.text.title).toBe('Lemon bars');
-		first.unmount();
+		const first = await render(<AutosavedForm />);
+		await title().fill('Lemon bars');
+		await textbox('Ingredient 1').fill('1 cup flour');
+		await expect.poll(() => stored(newRecipeKey)?.text.title).toBe('Lemon bars');
+		await first.unmount();
 
-		render(<AutosavedForm />);
+		await render(<AutosavedForm />);
 
-		expect(await screen.findByText(restoredNotice)).toBeDefined();
-		expect(screen.getByText('Discard them to go back to an empty form.')).toBeDefined();
-		expect(
-			screen.getByText(/^Restored changes made in this browser on .*\.$/).closest('[role="status"]')
-		).not.toBeNull();
-		expect(title().value).toBe('Lemon bars');
-		expect(screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Ingredient 1' }).value).toBe(
-			'1 cup flour'
-		);
+		await expect.element(page.getByText(restoredNotice)).toBeVisible();
+		await expect.element(page.getByText('Discard them to go back to an empty form.')).toBeVisible();
+		await expect
+			.element(announced(/^Restored changes made in this browser on .*\.$/))
+			.toBeInTheDocument();
+		await expect.element(title()).toHaveValue('Lemon bars');
+		await expect.element(textbox('Ingredient 1')).toHaveValue('1 cup flour');
 
-		await user.click(screen.getByRole('button', { name: 'Discard unsaved changes' }));
+		await page.getByRole('button', { name: 'Discard unsaved changes' }).click();
 
-		expect(title().value).toBe('');
-		expect(screen.queryByText(restoredNotice)).toBeNull();
-		expect(screen.getByText('Discarded your unsaved changes.')).toBeDefined();
-		expect(document.activeElement).toBe(title());
+		await expect.element(title()).toHaveValue('');
+		await expect.element(page.getByText(restoredNotice)).not.toBeInTheDocument();
+		await expect.element(page.getByText('Discarded your unsaved changes.')).toBeInTheDocument();
+		await expect.element(title()).toHaveFocus();
 		expect(localStorage.getItem(newRecipeKey)).toBeNull();
 	});
 
 	it('keeps nothing for a form as it loaded, and nothing once it is back to that', async () => {
-		const user = userEvent.setup();
-		render(<AutosavedForm />);
+		await render(<AutosavedForm />);
 		expect(localStorage.getItem(newRecipeKey)).toBeNull();
 
-		await user.type(title(), 'L');
-		expect(stored(newRecipeKey)?.text.title).toBe('L');
-		await user.clear(title());
-		expect(localStorage.getItem(newRecipeKey)).toBeNull();
+		await title().fill('L');
+		await expect.poll(() => stored(newRecipeKey)?.text.title).toBe('L');
+		await title().clear();
+		await expect.poll(() => localStorage.getItem(newRecipeKey)).toBeNull();
 
 		// A line added and removed again leaves only a higher next id.
-		await user.type(screen.getByRole('textbox', { name: 'Ingredient 1' }), '{Enter}');
-		expect(screen.getByRole('textbox', { name: 'Ingredient 2' })).toBeDefined();
-		await user.keyboard('{Backspace}');
-		expect(screen.queryByRole('textbox', { name: 'Ingredient 2' })).toBeNull();
+		await textbox('Ingredient 1').click();
+		await userEvent.keyboard('{Enter}');
+		await expect.element(textbox('Ingredient 2')).toHaveFocus();
+		await userEvent.keyboard('{Backspace}');
+		await expect.element(textbox('Ingredient 2')).not.toBeInTheDocument();
 		expect(localStorage.getItem(newRecipeKey)).toBeNull();
 	});
 
 	it('keeps the changes when a save is refused, or never reaches the site', async () => {
 		const action = vi.fn(refuse);
-		const user = userEvent.setup();
 		localStorage.setItem(newRecipeKey, entryFor(storedNewRecipe, writtenAt));
 		answerLookups();
-		render(<AutosavedForm action={action} />);
-		await screen.findByText(restoredNotice);
+		await render(<AutosavedForm action={action} />);
+		await expect.element(page.getByText(restoredNotice)).toBeVisible();
 
 		// The button reads "Saving recipe" until the last save settles.
-		await user.click(await screen.findByRole('button', { name: 'Save recipe' }));
-		expect(await screen.findByText('Fix 1 thing to save')).toBeDefined();
+		await saveRecipe().click();
+		await expect.element(problemSummary('Fix 1 thing to save')).toBeVisible();
 		expect(stored(newRecipeKey)?.text.title).toBe('Lemon bars');
 
 		action.mockImplementation(async () => {
 			throw new TypeError('Failed to fetch');
 		});
-		await user.click(await screen.findByRole('button', { name: 'Save recipe' }));
-		expect(
-			await screen.findByText('We couldn’t save the recipe. Check your connection and try again.')
-		).toBeDefined();
+		await saveRecipe().click();
+		await expect
+			.element(page.getByText('We couldn’t save the recipe. Check your connection and try again.'))
+			.toBeVisible();
 		expect(action).toHaveBeenCalledTimes(2);
 		expect(stored(newRecipeKey)?.text.title).toBe('Lemon bars');
 	});
@@ -971,50 +994,51 @@ describe('RecipeForm’s autosave', () => {
 	it('clears the changes before a save leads to the saved recipe', async () => {
 		// React reports the error the page's boundary catches.
 		vi.spyOn(console, 'error').mockImplementation(() => {});
-		const user = userEvent.setup();
 		localStorage.setItem(newRecipeKey, entryFor(storedNewRecipe, writtenAt));
 		answerLookups();
-		render(
+		await render(
 			<LeavingPage>
 				<AutosavedForm action={async () => redirect('/recipes/lemon-bars')} />
 			</LeavingPage>
 		);
-		await screen.findByText(restoredNotice);
+		await expect.element(page.getByText(restoredNotice)).toBeVisible();
 
-		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+		await saveRecipe().click();
 
-		expect(await screen.findByText('Left for the recipe')).toBeDefined();
+		await expect.element(page.getByText('Left for the recipe')).toBeVisible();
 		expect(localStorage.getItem(newRecipeKey)).toBeNull();
 	});
 
 	it('shows a restored upload the sweep removed as one that didn’t upload, and saves the rest', async () => {
 		const action = vi.fn(refuse);
-		const user = userEvent.setup();
 		localStorage.setItem(newRecipeKey, entryFor(storedNewRecipe, writtenAt));
 		const fetch = answerLookups();
-		render(<AutosavedForm action={action} />);
-		await screen.findByText(restoredNotice);
+		await render(<AutosavedForm action={action} />);
+		await expect.element(page.getByText(restoredNotice)).toBeVisible();
 
 		expect(fetch.mock.calls.map(([url]) => url)).toEqual([
 			'/api/images/dish/development/kept.jpg',
 			'/api/images/dish/development/swept.jpg',
 		]);
-		await waitFor(() =>
-			expect(photoStatuses()).toEqual([
+		await expect
+			.poll(() => photoStatuses('Photos'))
+			.toEqual([
 				{ name: 'kept.jpg', status: 'Cover photo' },
 				{ name: 'swept.jpg', status: 'Didn’t upload' },
-			])
-		);
-		const rows = within(screen.getByRole('list', { name: 'Photos' })).getAllByRole('listitem');
-		expect(
-			within(rows[1] as HTMLElement).getByText(
-				'This photo didn’t upload. Remove it and add it again.'
+			]);
+		await expect
+			.element(
+				page
+					.getByRole('list', { name: 'Photos' })
+					.getByRole('listitem')
+					.nth(1)
+					.getByText('This photo didn’t upload. Remove it and add it again.')
 			)
-		).toBeDefined();
+			.toBeVisible();
 
-		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+		await saveRecipe().click();
 
-		await waitFor(() => expect(action).toHaveBeenCalledOnce());
+		await expect.poll(() => action).toHaveBeenCalledOnce();
 		const sent = action.mock.calls[0]?.[1].get('recipe');
 		expect(JSON.parse(typeof sent === 'string' ? sent : '{}').images).toEqual([
 			{ role: 'dish', pathname: 'dish/development/kept.jpg', alt: 'Bars' },
@@ -1022,7 +1046,6 @@ describe('RecipeForm’s autosave', () => {
 	});
 
 	it('keeps what is typed while a restored upload is looked up, and then shows the upload gone', async () => {
-		const user = userEvent.setup();
 		localStorage.setItem(newRecipeKey, entryFor(storedNewRecipe, writtenAt));
 		// The swept upload's lookup answers only when the test says.
 		const sweptLookup = Promise.withResolvers<Response>();
@@ -1032,20 +1055,19 @@ describe('RecipeForm’s autosave', () => {
 				url.includes('swept') ? sweptLookup.promise : new Response(null, { status: 200 })
 			)
 		);
-		render(<AutosavedForm />);
+		await render(<AutosavedForm />);
 
-		await user.clear(title());
-		await user.type(title(), 'Lemon squares');
+		await title().fill('Lemon squares');
 		sweptLookup.resolve(new Response(null, { status: 404 }));
 
-		await waitFor(() =>
-			expect(photoStatuses()).toEqual([
+		await expect
+			.poll(() => photoStatuses('Photos'))
+			.toEqual([
 				{ name: 'kept.jpg', status: 'Cover photo' },
 				{ name: 'swept.jpg', status: 'Didn’t upload' },
-			])
-		);
-		expect(title().value).toBe('Lemon squares');
-		expect(stored(newRecipeKey)?.text.title).toBe('Lemon squares');
+			]);
+		await expect.element(title()).toHaveValue('Lemon squares');
+		await expect.poll(() => stored(newRecipeKey)?.text.title).toBe('Lemon squares');
 		expect(stored(newRecipeKey)?.photos.dish.map(({ pathname }) => pathname)).toEqual([
 			'dish/development/kept.jpg',
 			undefined,
@@ -1053,22 +1075,21 @@ describe('RecipeForm’s autosave', () => {
 	});
 
 	it('brings an edit back only to the version of the recipe it was made on, and says so once', async () => {
-		const user = userEvent.setup();
 		const recipeKey = `member:recipe-form:${memberId}:recipe:${recipeId}`;
 		const editing = (version: string) => ({ id: recipeId, version, respellableTags: [] });
-		const first = render(
+		const first = await render(
 			<AutosavedForm
 				initial={recipeFormValues(lemonBars)}
 				editing={editing('2026-10-14T12:00:00.000Z')}
 			/>
 		);
-		await user.type(title(), ' squares');
-		const kept = JSON.parse(localStorage.getItem(recipeKey) ?? '{}') as AutosavedRecipeForm;
-		expect(kept.version).toBe('2026-10-14T12:00:00.000Z');
-		first.unmount();
+		await title().fill('Lemon bars squares');
+		await expect.poll(() => storedEntry(recipeKey)?.version).toBe('2026-10-14T12:00:00.000Z');
+		const kept = storedEntry(recipeKey) as AutosavedRecipeForm;
+		await first.unmount();
 
 		// Another tab saved the recipe since.
-		const reloaded = render(
+		const reloaded = await render(
 			<AutosavedForm
 				initial={recipeFormValues(lemonBars)}
 				editing={editing('2026-10-15T09:30:00.000Z')}
@@ -1077,44 +1098,43 @@ describe('RecipeForm’s autosave', () => {
 
 		const notice = `Changes made in this browser on ${formatDayAndTime(new Date(kept.writtenAt))} were for an earlier version`;
 		const description = 'This recipe changed after you made them, so they weren’t restored.';
-		expect(await screen.findByText(notice)).toBeDefined();
-		expect(screen.getByText(description)).toBeDefined();
-		expect(screen.getByText(`${notice}. ${description}`).closest('[role="status"]')).not.toBeNull();
-		expect(title().value).toBe('Lemon bars');
-		expect(screen.queryByText(restoredNotice)).toBeNull();
+		await expect.element(page.getByText(notice)).toBeVisible();
+		await expect.element(page.getByText(description)).toBeVisible();
+		await expect.element(announced(`${notice}. ${description}`)).toBeInTheDocument();
+		await expect.element(title()).toHaveValue('Lemon bars');
+		await expect.element(page.getByText(restoredNotice)).not.toBeInTheDocument();
 		expect(localStorage.getItem(recipeKey)).toBeNull();
-		reloaded.unmount();
+		await reloaded.unmount();
 
-		render(
+		await render(
 			<AutosavedForm
 				initial={recipeFormValues(lemonBars)}
 				editing={editing('2026-10-15T09:30:00.000Z')}
 			/>
 		);
 
-		await waitFor(() => expect(title().value).toBe('Lemon bars'));
-		expect(screen.queryByText(outdatedNotice)).toBeNull();
+		await expect.element(title()).toHaveValue('Lemon bars');
+		await expect.element(page.getByText(outdatedNotice)).not.toBeInTheDocument();
 	});
 
 	it('says nothing of changes for an earlier version that the form now shows', async () => {
+		const recipeKey = `member:recipe-form:${memberId}:recipe:${recipeId}`;
 		const edited = recipeFormValues({ ...lemonBars, title: 'Lemon squares' });
 		localStorage.setItem(
-			`member:recipe-form:${memberId}:recipe:${recipeId}`,
+			recipeKey,
 			JSON.stringify({ ...JSON.parse(entryFor(recipeFormSnapshot(edited))), version: 'a' })
 		);
 
-		render(
+		await render(
 			<AutosavedForm
 				initial={edited}
 				editing={{ id: recipeId, version: 'b', respellableTags: [] }}
 			/>
 		);
 
-		await waitFor(() =>
-			expect(localStorage.getItem(`member:recipe-form:${memberId}:recipe:${recipeId}`)).toBeNull()
-		);
-		expect(screen.queryByText(outdatedNotice)).toBeNull();
-		expect(screen.queryByText(restoredNotice)).toBeNull();
+		await expect.poll(() => localStorage.getItem(recipeKey)).toBeNull();
+		await expect.element(page.getByText(outdatedNotice)).not.toBeInTheDocument();
+		await expect.element(page.getByText(restoredNotice)).not.toBeInTheDocument();
 	});
 
 	it.each([
@@ -1127,28 +1147,25 @@ describe('RecipeForm’s autosave', () => {
 	])(
 		'brings changes to $name back only to the version of the draft they were made on',
 		async ({ props, key }) => {
-			const user = userEvent.setup();
 			const entryKey = `member:recipe-form:${memberId}:${key}`;
 			const openedAt = (savedAt: string) => ({
 				save: vi.fn<FormAction<SavedDraftResult>>(),
 				inUrl: props.inUrl,
 				opened: { id: draftId, savedAt: new Date(savedAt) },
 			});
-			const first = render(
+			const first = await render(
 				<AutosavedForm
 					initial={recipeFormValues(lemonBars)}
 					importId={props.importId}
 					drafts={openedAt('2026-10-14T12:00:00.000Z')}
 				/>
 			);
-			await user.type(title(), ' squares');
-			expect(JSON.parse(localStorage.getItem(entryKey) ?? '{}').version).toBe(
-				'2026-10-14T12:00:00.000Z'
-			);
-			first.unmount();
+			await title().fill('Lemon bars squares');
+			await expect.poll(() => storedEntry(entryKey)?.version).toBe('2026-10-14T12:00:00.000Z');
+			await first.unmount();
 
 			// Another page saved the draft since.
-			render(
+			await render(
 				<AutosavedForm
 					initial={recipeFormValues(lemonBars)}
 					importId={props.importId}
@@ -1156,64 +1173,68 @@ describe('RecipeForm’s autosave', () => {
 				/>
 			);
 
-			await waitFor(() => expect(localStorage.getItem(entryKey)).toBeNull());
-			expect(title().value).toBe('Lemon bars');
-			expect(screen.queryByText(restoredNotice)).toBeNull();
-			expect(screen.getByText(outdatedNotice)).toBeDefined();
-			expect(
-				screen.getByText(
-					'This draft was saved somewhere else after you made them, so they weren’t restored.'
+			await expect.poll(() => localStorage.getItem(entryKey)).toBeNull();
+			await expect.element(title()).toHaveValue('Lemon bars');
+			await expect.element(page.getByText(restoredNotice)).not.toBeInTheDocument();
+			await expect.element(page.getByText(outdatedNotice)).toBeVisible();
+			await expect
+				.element(
+					page.getByText(
+						'This draft was saved somewhere else after you made them, so they weren’t restored.'
+					)
 				)
-			).toBeDefined();
+				.toBeVisible();
 		}
 	);
 
 	it('brings an import’s review back with its notes as they were', async () => {
-		const user = userEvent.setup();
 		const initial = recipeFormValues(lemonBars, threeNotes);
-		const first = render(<AutosavedForm initial={initial} importId={importId} />);
-		await user.click(lookRight('Ingredient 2'));
-		expect(stored(`member:recipe-form:${memberId}:import:${importId}`)).toBeDefined();
-		first.unmount();
+		const first = await render(<AutosavedForm initial={initial} importId={importId} />);
+		await lookRight('Ingredient 2').click();
+		await expect
+			.poll(() => stored(`member:recipe-form:${memberId}:import:${importId}`))
+			.toBeDefined();
+		await first.unmount();
 
-		render(<AutosavedForm initial={initial} importId={importId} />);
+		await render(<AutosavedForm initial={initial} importId={importId} />);
 
-		expect(await screen.findByText(restoredNotice)).toBeDefined();
-		expect(screen.getByText('2 things need a second look')).toBeDefined();
-		expect(screen.queryByText('Check this line.')).toBeNull();
-		expect(screen.getByText('Check this step.')).toBeDefined();
+		await expect.element(page.getByText(restoredNotice)).toBeVisible();
+		await expect.element(page.getByText('2 things need a second look')).toBeVisible();
+		await expect.element(page.getByText('Check this line.')).not.toBeInTheDocument();
+		await expect.element(page.getByText('Check this step.')).toBeVisible();
 	});
 
 	it('keeps the notice while its page is hidden and shown again, and never brings back what it discarded', async () => {
-		const user = userEvent.setup();
 		localStorage.setItem(newRecipeKey, entryFor(storedNewRecipe, writtenAt));
 		answerLookups();
-		const page = renderKeptPage(<AutosavedForm />);
-		await screen.findByText(restoredNotice);
+		const keptPage = await renderKeptPage(<AutosavedForm />);
+		await expect.element(page.getByText(restoredNotice)).toBeVisible();
 
-		await page.hide();
-		await page.show();
-		expect(screen.getByText(restoredNotice)).toBeDefined();
+		await keptPage.hide();
+		await keptPage.show();
+		await expect.element(page.getByText(restoredNotice)).toBeVisible();
 
-		await user.click(screen.getByRole('button', { name: 'Discard unsaved changes' }));
-		await user.type(title(), 'Lemon tart');
-		await page.hide();
-		await page.show();
+		await page.getByRole('button', { name: 'Discard unsaved changes' }).click();
+		await title().fill('Lemon tart');
+		await expect.poll(() => stored(newRecipeKey)?.text.title).toBe('Lemon tart');
+		await keptPage.hide();
+		await keptPage.show();
 
-		expect(screen.queryByText(restoredNotice)).toBeNull();
-		expect(title().value).toBe('Lemon tart');
+		await expect.element(page.getByText(restoredNotice)).not.toBeInTheDocument();
+		await expect.element(title()).toHaveValue('Lemon tart');
 		expect(stored(newRecipeKey)?.text.title).toBe('Lemon tart');
 	});
 
 	it('restores nothing where the changes look as the form loaded, as a blank line swapped for another', async () => {
-		const user = userEvent.setup();
-		const first = render(<AutosavedForm />);
-		await user.type(screen.getByRole('textbox', { name: 'Ingredient 1' }), '{Enter}');
-		await user.click(screen.getByRole('button', { name: 'Actions for Ingredient 1' }));
-		await user.click(await screen.findByRole('menuitem', { name: 'Remove' }));
-		expect(screen.getAllByRole('textbox', { name: /^Ingredient/ })).toHaveLength(1);
+		const first = await render(<AutosavedForm />);
+		await textbox('Ingredient 1').click();
+		await userEvent.keyboard('{Enter}');
+		await page.getByRole('button', { name: 'Actions for Ingredient 1' }).click();
+		await page.getByRole('menuitem', { name: 'Remove' }).click();
+		await expect.element(textbox('Ingredient 2')).not.toBeInTheDocument();
+		expect(page.getByRole('textbox', { name: /^Ingredient/ })).toHaveLength(1);
 		expect(localStorage.getItem(newRecipeKey)).toBeNull();
-		first.unmount();
+		await first.unmount();
 		// What an older form kept for the same swap: the rows' ids moved on, and nothing shows else.
 		localStorage.setItem(
 			newRecipeKey,
@@ -1224,14 +1245,13 @@ describe('RecipeForm’s autosave', () => {
 			})
 		);
 
-		render(<AutosavedForm />);
+		await render(<AutosavedForm />);
 
-		await waitFor(() => expect(localStorage.getItem(newRecipeKey)).toBeNull());
-		expect(screen.queryByText(restoredNotice)).toBeNull();
+		await expect.poll(() => localStorage.getItem(newRecipeKey)).toBeNull();
+		await expect.element(page.getByText(restoredNotice)).not.toBeInTheDocument();
 	});
 
 	it('says when the restored changes were made, and clears once the form shows what it loaded', async () => {
-		const user = userEvent.setup();
 		localStorage.setItem(
 			newRecipeKey,
 			entryFor(
@@ -1239,46 +1259,43 @@ describe('RecipeForm’s autosave', () => {
 				writtenAt
 			)
 		);
-		render(<AutosavedForm />);
+		await render(<AutosavedForm />);
 
-		expect(
-			await screen.findByText(
-				`Restored changes made in this browser on ${formatDayAndTime(writtenAt)}`
-			)
-		).toBeDefined();
-		expect(formatDayAndTime(writtenAt)).toBe('October 14 at 3:12 PM');
+		await expect
+			.element(page.getByText('Restored changes made in this browser on October 14 at 3:12 PM'))
+			.toBeVisible();
 
-		await user.clear(title());
+		await title().clear();
 
-		expect(screen.queryByText(restoredNotice)).toBeNull();
-		expect(localStorage.getItem(newRecipeKey)).toBeNull();
-		await user.type(title(), 'Lemon bars');
-		expect(screen.queryByText(restoredNotice)).toBeNull();
+		await expect.element(page.getByText(restoredNotice)).not.toBeInTheDocument();
+		await expect.poll(() => localStorage.getItem(newRecipeKey)).toBeNull();
+		await title().fill('Lemon bars');
+		await expect.poll(() => stored(newRecipeKey)?.text.title).toBe('Lemon bars');
+		await expect.element(page.getByText(restoredNotice)).not.toBeInTheDocument();
 	});
 
 	it('keeps when the restored changes were made until the member edits again', async () => {
-		const user = userEvent.setup();
 		const kept = entryFor(
 			{ ...recipeFormSnapshot(recipeFormValues()), text: { ...blankText, title: 'L' } },
 			writtenAt
 		);
 		localStorage.setItem(newRecipeKey, kept);
-		const first = render(<AutosavedForm />);
-		await screen.findByText(restoredNotice);
+		const first = await render(<AutosavedForm />);
+		await expect.element(page.getByText(restoredNotice)).toBeVisible();
 		expect(localStorage.getItem(newRecipeKey)).toBe(kept);
-		first.unmount();
+		await first.unmount();
 
-		render(<AutosavedForm />);
+		await render(<AutosavedForm />);
 
-		expect(
-			await screen.findByText(
-				`Restored changes made in this browser on ${formatDayAndTime(writtenAt)}`
+		await expect
+			.element(
+				page.getByText(`Restored changes made in this browser on ${formatDayAndTime(writtenAt)}`)
 			)
-		).toBeDefined();
+			.toBeVisible();
 		expect(localStorage.getItem(newRecipeKey)).toBe(kept);
-		await user.type(title(), 'emon bars');
-		const edited = JSON.parse(localStorage.getItem(newRecipeKey) ?? '{}') as AutosavedRecipeForm;
-		expect(edited.form.text.title).toBe('Lemon bars');
+		await title().fill('Lemon bars');
+		await expect.poll(() => stored(newRecipeKey)?.text.title).toBe('Lemon bars');
+		const edited = storedEntry(newRecipeKey) as AutosavedRecipeForm;
 		expect(new Date(edited.writtenAt).getTime()).toBeGreaterThan(writtenAt.getTime());
 	});
 
@@ -1292,38 +1309,38 @@ describe('RecipeForm’s autosave', () => {
 			`member:recipe-form:${memberId}:import:${importId}`,
 			entryFor(restoredOver(imported))
 		);
-		const review = render(<AutosavedForm initial={imported} importId={importId} />);
-		expect(
-			await screen.findByText('Discard them to go back to the recipe as it was imported.')
-		).toBeDefined();
-		review.unmount();
+		const review = await render(<AutosavedForm initial={imported} importId={importId} />);
+		await expect
+			.element(page.getByText('Discard them to go back to the recipe as it was imported.'))
+			.toBeVisible();
+		await review.unmount();
 
 		const edited = recipeFormValues(lemonBars);
 		localStorage.setItem(
 			`member:recipe-form:${memberId}:recipe:${recipeId}`,
 			JSON.stringify({ ...JSON.parse(entryFor(restoredOver(edited))), version: 'a' })
 		);
-		render(
+		await render(
 			<AutosavedForm
 				initial={edited}
 				editing={{ id: recipeId, version: 'a', respellableTags: [] }}
 			/>
 		);
-		expect(
-			await screen.findByText('Discard them to go back to the recipe as it was saved.')
-		).toBeDefined();
+		await expect
+			.element(page.getByText('Discard them to go back to the recipe as it was saved.'))
+			.toBeVisible();
 	});
 
 	it('never restores another member’s changes on this browser', async () => {
-		const user = userEvent.setup();
-		const first = render(<AutosavedForm member={otherMemberId} />);
-		await user.type(title(), 'Lemon bars');
-		first.unmount();
+		const first = await render(<AutosavedForm member={otherMemberId} />);
+		await title().fill('Lemon bars');
+		await expect.poll(() => stored(`member:recipe-form:${otherMemberId}:new`)).toBeDefined();
+		await first.unmount();
 
-		render(<AutosavedForm />);
+		await render(<AutosavedForm />);
 
-		await waitFor(() => expect(title().value).toBe(''));
-		expect(screen.queryByText(restoredNotice)).toBeNull();
+		await expect.element(title()).toHaveValue('');
+		await expect.element(page.getByText(restoredNotice)).not.toBeInTheDocument();
 		expect(stored(`member:recipe-form:${otherMemberId}:new`)?.text.title).toBe('Lemon bars');
 	});
 
@@ -1339,13 +1356,13 @@ describe('RecipeForm’s autosave', () => {
 		// Kept before entries named their member and said when they were written.
 		localStorage.setItem('member:recipe-form:new', JSON.stringify(storedNewRecipe));
 
-		render(<AutosavedForm />);
+		await render(<AutosavedForm />);
 
-		await waitFor(() => expect(localStorage.getItem(othersExpired)).toBeNull());
+		await expect.poll(() => localStorage.getItem(othersExpired)).toBeNull();
 		expect(localStorage.getItem(newRecipeKey)).toBeNull();
 		expect(localStorage.getItem('member:recipe-form:new')).toBeNull();
 		expect(localStorage.getItem(othersRecent)).not.toBeNull();
-		expect(title().value).toBe('');
+		await expect.element(title()).toHaveValue('');
 	});
 
 	it('removes the member’s entries for imports and recipes the page knows are gone, as a form loads', async () => {
@@ -1364,9 +1381,11 @@ describe('RecipeForm’s autosave', () => {
 		}
 		localStorage.setItem(writtenSince, entryFor(storedNewRecipe, knownAt));
 
-		render(<AutosavedForm existing={{ knownAt, importIds: [reviewedImportId], recipeIds: [] }} />);
+		await render(
+			<AutosavedForm existing={{ knownAt, importIds: [reviewedImportId], recipeIds: [] }} />
+		);
 
-		await waitFor(() => expect(localStorage.getItem(goneImport)).toBeNull());
+		await expect.poll(() => localStorage.getItem(goneImport)).toBeNull();
 		expect(localStorage.getItem(goneRecipe)).toBeNull();
 		for (const key of [keptImport, othersRecipe, writtenSince]) {
 			expect(localStorage.getItem(key)).not.toBeNull();
@@ -1375,17 +1394,16 @@ describe('RecipeForm’s autosave', () => {
 
 	it('works as without it where the browser blocks storage', async () => {
 		const action = vi.fn(refuse);
-		const user = userEvent.setup();
 		vi.spyOn(globalThis, 'localStorage', 'get').mockImplementation(() => {
 			throw new DOMException('The operation is insecure.', 'SecurityError');
 		});
-		render(<AutosavedForm initial={recipeFormValues(lemonBars)} action={action} />);
+		await render(<AutosavedForm initial={recipeFormValues(lemonBars)} action={action} />);
 
-		await user.type(title(), ' squares');
-		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+		await title().fill('Lemon bars squares');
+		await saveRecipe().click();
 
-		await waitFor(() => expect(action).toHaveBeenCalledOnce());
-		expect(screen.queryByText(restoredNotice)).toBeNull();
+		await expect.poll(() => action).toHaveBeenCalledOnce();
+		await expect.element(page.getByText(restoredNotice)).not.toBeInTheDocument();
 	});
 });
 
@@ -1407,10 +1425,10 @@ describe('RecipeForm’s drafts', () => {
 		return { save, inUrl: true, ...changes };
 	}
 
-	// Found once a save in progress is done: its status shows before the button reads Save as draft
-	// again.
-	function saveAsDraft() {
-		return screen.findByRole('button', { name: 'Save as draft' });
+	// The button a phone's width calls Save draft. It reads Saving draft while a save is in progress,
+	// so a click waits for that save to be done.
+	function saveDraft() {
+		return page.getByRole('button', { name: 'Save draft' });
 	}
 
 	// The snapshot the save sent.
@@ -1420,36 +1438,32 @@ describe('RecipeForm’s drafts', () => {
 	}
 
 	afterEach(() => {
-		vi.restoreAllMocks();
 		localStorage.clear();
 		window.history.replaceState(null, '', '/');
 	});
 
 	it('says an untouched new recipe has nothing to save, and saves no empty draft', async () => {
 		const save = saving();
-		const user = userEvent.setup();
-		render(<AutosavedForm drafts={draftsWith(save)} />);
+		await render(<AutosavedForm drafts={draftsWith(save)} />);
 
-		await user.click(await saveAsDraft());
+		await saveDraft().click();
 
-		expect(await screen.findByText('Nothing to save yet')).toBeDefined();
+		await expect.element(page.getByText('Nothing to save yet')).toBeVisible();
 		expect(save).not.toHaveBeenCalled();
 	});
 
 	it('saves whatever the form holds, with nothing required, and says when', async () => {
 		const save = saving();
-		const user = userEvent.setup();
-		render(<AutosavedForm drafts={draftsWith(save)} />);
-		await user.type(title(), 'Lemon bars');
+		await render(<AutosavedForm drafts={draftsWith(save)} />);
+		await title().fill('Lemon bars');
 
-		await user.click(await saveAsDraft());
+		await saveDraft().click();
 
-		expect(await screen.findByText(`Draft saved at ${formatTime(savedAt)}`)).toBeDefined();
-		expect(formatTime(savedAt)).toBe('3:12 PM');
+		await expect.element(page.getByText('Draft saved at 3:12 PM')).toBeVisible();
 		expect(sentDraft(save).text.title).toBe('Lemon bars');
 		expect(save.mock.calls[0]?.[1].get('draftId')).toBeNull();
-		expect(screen.queryByText(/^Fix \d+ things? to save$/)).toBeNull();
-		expect(document.querySelector('[aria-invalid="true"]')).toBeNull();
+		await expect.element(page.getByText(/^Fix \d+ things? to save$/)).not.toBeInTheDocument();
+		expect(invalidFieldIds()).toEqual([]);
 		// A reload opens the draft from the server, so the URL names it and the browser keeps nothing.
 		expect(`${location.pathname}${location.search}`).toBe(`/contribute?draft=${draftId}`);
 		expect(localStorage.getItem(newRecipeKey)).toBeNull();
@@ -1458,74 +1472,73 @@ describe('RecipeForm’s drafts', () => {
 
 	it('saves over the draft once saved, says when nothing changed since, and keeps later changes under the draft', async () => {
 		const save = saving();
-		const user = userEvent.setup();
-		render(<AutosavedForm drafts={draftsWith(save)} />);
-		await user.type(title(), 'Lemon bars');
-		await user.click(await saveAsDraft());
-		await screen.findByText(`Draft saved at ${formatTime(savedAt)}`);
+		await render(<AutosavedForm drafts={draftsWith(save)} />);
+		await title().fill('Lemon bars');
+		await saveDraft().click();
+		await expect.element(page.getByText(`Draft saved at ${formatTime(savedAt)}`)).toBeVisible();
 
-		await user.click(await saveAsDraft());
-		expect(await screen.findByText('No changes since the draft was saved')).toBeDefined();
+		await saveDraft().click();
+		await expect.element(page.getByText('No changes since the draft was saved')).toBeVisible();
 		expect(save).toHaveBeenCalledOnce();
 
-		await user.type(title(), ' squares');
-		expect(stored(draftKey)?.text.title).toBe('Lemon bars squares');
-		await user.click(await saveAsDraft());
-		await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+		await title().fill('Lemon bars squares');
+		await expect.poll(() => stored(draftKey)?.text.title).toBe('Lemon bars squares');
+		await saveDraft().click();
+		await expect.poll(() => save).toHaveBeenCalledTimes(2);
 		expect(save.mock.calls[1]?.[1].get('draftId')).toBe(draftId);
 		// The version the first save returned, so a save made elsewhere since is never replaced.
 		expect(save.mock.calls[1]?.[1].get('draftVersion')).toBe(savedAt.toISOString());
 	});
 
 	it('keeps what is typed while a draft saves under the version that save made', async () => {
-		const user = userEvent.setup();
 		const saved = Promise.withResolvers<FormState<SavedDraftResult>>();
 		const save = vi.fn<FormAction<SavedDraftResult>>(() => saved.promise);
 		const openedAt = new Date('2026-10-15T12:00:00.000Z');
-		render(
+		await render(
 			<AutosavedForm
 				initial={recipeFormValues(lemonBars)}
 				drafts={draftsWith(save, { opened: { id: draftId, savedAt: openedAt } })}
 			/>
 		);
-		await user.type(title(), ' squares');
-		await user.click(await saveAsDraft());
-		await user.type(title(), ' with glaze');
+		await title().fill('Lemon bars squares');
+		await saveDraft().click();
+		await expect.poll(() => save).toHaveBeenCalledOnce();
+		await title().fill('Lemon bars squares with glaze');
 
 		saved.resolve({ status: 'success', draftId, savedAt, expiresAt });
 
-		await screen.findByText(`Draft saved at ${formatTime(savedAt)}`);
-		const entry = JSON.parse(localStorage.getItem(draftKey) ?? '{}') as AutosavedRecipeForm;
-		expect(entry.form.text.title).toBe('Lemon bars squares with glaze');
+		await expect.element(page.getByText(`Draft saved at ${formatTime(savedAt)}`)).toBeVisible();
 		// A reload opens the draft as that save left it, and brings these changes back over it.
-		expect(entry.version).toBe(savedAt.toISOString());
+		await expect
+			.poll(() => storedEntry(draftKey))
+			.toMatchObject({
+				version: savedAt.toISOString(),
+				form: { text: { title: 'Lemon bars squares with glaze' } },
+			});
 	});
 
 	it('says when another page saved the draft since, and keeps what was typed here', async () => {
-		const user = userEvent.setup();
 		const message =
 			'This draft was saved somewhere else after you opened it here. Copy anything you want to keep, then reload the page to see that version.';
 		const save = saving({ status: 'error', message, fieldErrors: {} });
-		render(
+		await render(
 			<AutosavedForm
 				initial={recipeFormValues(lemonBars)}
 				drafts={draftsWith(save, { opened: { id: draftId, savedAt } })}
 			/>
 		);
-		await user.type(title(), ' squares');
+		await title().fill('Lemon bars squares');
 
-		await user.click(await saveAsDraft());
+		await saveDraft().click();
 
-		expect(await screen.findByText(message)).toBeDefined();
-		expect(screen.getByText(message).closest('[role="status"]')).not.toBeNull();
+		await expect.element(announced(message)).toBeVisible();
 		expect(save.mock.calls[0]?.[1].get('draftVersion')).toBe(savedAt.toISOString());
-		expect(title().value).toBe('Lemon bars squares');
+		await expect.element(title()).toHaveValue('Lemon bars squares');
 		expect(stored(draftKey)?.text.title).toBe('Lemon bars squares');
 	});
 
 	it('opens a saved draft, discards back to it, and saves the recipe from it, naming the draft', async () => {
 		const action = vi.fn(refuse);
-		const user = userEvent.setup();
 		const opened = recipeFormValues(lemonBars);
 		localStorage.setItem(
 			draftKey,
@@ -1537,28 +1550,29 @@ describe('RecipeForm’s drafts', () => {
 				),
 			} satisfies AutosavedRecipeForm)
 		);
-		render(
+		await render(
 			<AutosavedForm
 				initial={opened}
 				action={action}
 				drafts={draftsWith(saving(), { opened: { id: draftId, savedAt } })}
 			/>
 		);
-		expect(await screen.findByText('Discard them to go back to your saved draft.')).toBeDefined();
+		await expect
+			.element(page.getByText('Discard them to go back to your saved draft.'))
+			.toBeVisible();
 
-		await user.click(screen.getByRole('button', { name: 'Discard unsaved changes' }));
-		expect(title().value).toBe('Lemon bars');
-		await user.click(screen.getByRole('button', { name: 'Save recipe' }));
+		await page.getByRole('button', { name: 'Discard unsaved changes' }).click();
+		await expect.element(title()).toHaveValue('Lemon bars');
+		await saveRecipe().click();
 
-		await waitFor(() => expect(action).toHaveBeenCalledOnce());
+		await expect.poll(() => action).toHaveBeenCalledOnce();
 		expect(action.mock.calls[0]?.[1].get('draftId')).toBe(draftId);
 	});
 
 	it('keeps an import’s review at its own address, and saves its import with the draft', async () => {
 		const save = saving();
-		const user = userEvent.setup();
 		window.history.replaceState(null, '', `/contribute/imports/${importId}`);
-		render(
+		await render(
 			<AutosavedForm
 				initial={recipeFormValues(lemonBars, threeNotes)}
 				importId={importId}
@@ -1567,16 +1581,15 @@ describe('RecipeForm’s drafts', () => {
 		);
 
 		// Unlike a new recipe, an import's review is worth keeping as it was read.
-		await user.click(await saveAsDraft());
+		await saveDraft().click();
 
-		await screen.findByText(`Draft saved at ${formatTime(savedAt)}`);
+		await expect.element(page.getByText(`Draft saved at ${formatTime(savedAt)}`)).toBeVisible();
 		expect(save.mock.calls[0]?.[1].get('importId')).toBe(importId);
 		expect(sentDraft(save).reviewNotes).toHaveLength(3);
 		expect(location.pathname).toBe(`/contribute/imports/${importId}`);
 	});
 
 	it('shows an image the draft may not keep at its photo, and says the draft wasn’t saved', async () => {
-		const user = userEvent.setup();
 		const withPhoto = recipeFormValues({
 			title: 'Lemon bars',
 			images: [{ role: 'dish', pathname: 'dish/development/bars.jpg' }],
@@ -1585,45 +1598,47 @@ describe('RecipeForm’s drafts', () => {
 			status: 'error',
 			fieldErrors: { 'images.0.pathname': 'This photo didn’t upload. Remove it and add it again.' },
 		});
-		render(<AutosavedForm initial={withPhoto} drafts={draftsWith(save)} />);
-		await user.type(title(), ' squares');
+		await render(<AutosavedForm initial={withPhoto} drafts={draftsWith(save)} />);
+		await title().fill('Lemon bars squares');
 
-		await user.click(await saveAsDraft());
+		await saveDraft().click();
 
-		expect(await screen.findByText('The draft wasn’t saved.')).toBeDefined();
-		expect(screen.getByText('Fix 1 thing to save')).toBeDefined();
-		expect(
-			within(screen.getByRole('list', { name: 'Photos' })).getByText(
-				'This photo didn’t upload. Remove it and add it again.'
+		await expect.element(page.getByText('The draft wasn’t saved.')).toBeVisible();
+		await expect.element(problemSummary('Fix 1 thing to save')).toBeVisible();
+		await expect
+			.element(
+				page
+					.getByRole('list', { name: 'Photos' })
+					.getByText('This photo didn’t upload. Remove it and add it again.')
 			)
-		).toBeDefined();
+			.toBeVisible();
 	});
 
 	it('says the draft wasn’t saved when the save never reaches the site', async () => {
-		const user = userEvent.setup();
 		const save = vi.fn<FormAction<SavedDraftResult>>(async () => {
 			throw new TypeError('Failed to fetch');
 		});
-		render(<AutosavedForm drafts={draftsWith(save)} />);
-		await user.type(title(), 'Lemon bars');
+		await render(<AutosavedForm drafts={draftsWith(save)} />);
+		await title().fill('Lemon bars');
 
-		await user.click(await saveAsDraft());
+		await saveDraft().click();
 
-		expect(
-			await screen.findByText('We couldn’t save the draft. Check your connection and try again.')
-		).toBeDefined();
+		await expect
+			.element(page.getByText('We couldn’t save the draft. Check your connection and try again.'))
+			.toBeVisible();
 		expect(location.search).toBe('');
 	});
 
-	it('offers no draft when editing a published recipe', () => {
-		render(
+	it('offers no draft when editing a published recipe', async () => {
+		await render(
 			<AutosavedForm
 				initial={recipeFormValues(lemonBars)}
 				editing={{ id: recipeId, version: 'a', respellableTags: [] }}
 			/>
 		);
 
-		expect(screen.queryByRole('button', { name: /draft/i })).toBeNull();
+		await expect.element(saveRecipe()).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /draft/i })).not.toBeInTheDocument();
 	});
 });
 
@@ -1631,20 +1646,17 @@ describe('RecipeForm with its page’s menu', () => {
 	const succeed: FormAction = async () => ({ status: 'success' });
 
 	afterEach(() => {
-		vi.clearAllMocks();
 		localStorage.clear();
 		window.history.replaceState(null, '', '/');
 	});
 
 	async function confirmDelete(menu: string, name: string) {
-		const user = userEvent.setup();
-		await user.click(screen.getByRole('button', { name: menu }));
-		await user.click(await screen.findByRole('menuitem', { name }));
-		await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name }));
+		await page.getByRole('button', { name: menu }).click();
+		await page.getByRole('menuitem', { name }).click();
+		await page.getByRole('alertdialog').getByRole('button', { name }).click();
 	}
 
 	it('deletes the recipe being edited, the form’s unsaved changes and no others first, and leaves for the list', async () => {
-		const user = userEvent.setup();
 		const recipeKey = `member:recipe-form:${memberId}:recipe:${recipeId}`;
 		const newRecipeEntry = JSON.stringify({
 			writtenAt: new Date().toISOString(),
@@ -1655,7 +1667,7 @@ describe('RecipeForm with its page’s menu', () => {
 		router.replace.mockImplementation(() => {
 			entryAsItLeft = localStorage.getItem(recipeKey);
 		});
-		render(
+		await render(
 			<>
 				<EditedRecipeMenu
 					recipe={{ id: recipeId, slug: 'lemon-bars', title: 'Lemon bars' }}
@@ -1668,19 +1680,18 @@ describe('RecipeForm with its page’s menu', () => {
 				/>
 			</>
 		);
-		await user.type(title(), ' squares');
-		expect(localStorage.getItem(recipeKey)).not.toBeNull();
+		await title().fill('Lemon bars squares');
+		await expect.poll(() => localStorage.getItem(recipeKey)).not.toBeNull();
 
 		await confirmDelete('Recipe actions', 'Delete recipe');
 
-		await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/'));
+		await expect.poll(() => router.replace).toHaveBeenCalledWith('/');
 		expect(entryAsItLeft).toBeNull();
 		expect(localStorage.getItem(recipeKey)).toBeNull();
 		expect(localStorage.getItem(newRecipeKey)).toBe(newRecipeEntry);
 	});
 
 	it('offers Delete draft once the form saves a draft, and leaves for the drafts left', async () => {
-		const user = userEvent.setup();
 		const remove = vi.fn(succeed);
 		const save = vi.fn<FormAction<SavedDraftResult>>(async () => ({
 			status: 'success',
@@ -1688,26 +1699,28 @@ describe('RecipeForm with its page’s menu', () => {
 			savedAt: new Date(),
 			expiresAt: new Date(),
 		}));
-		render(
+		await render(
 			<HeldDraftProvider opened={undefined}>
 				<HeldDraftMenu memberId={memberId} action={remove} />
 				<AutosavedForm drafts={{ save, inUrl: true }} />
 			</HeldDraftProvider>
 		);
-		expect(screen.queryByRole('button', { name: 'Draft actions' })).toBeNull();
-		await user.type(title(), 'Lemon bars');
-		await user.click(screen.getByRole('button', { name: 'Save as draft' }));
-		await user.type(title(), ' squares');
-		expect(localStorage.getItem(draftKey)).not.toBeNull();
+		await expect
+			.element(page.getByRole('button', { name: 'Draft actions' }))
+			.not.toBeInTheDocument();
+		await title().fill('Lemon bars');
+		await page.getByRole('button', { name: 'Save draft' }).click();
+		await expect.element(page.getByRole('button', { name: 'Draft actions' })).toBeVisible();
+		await title().fill('Lemon bars squares');
+		await expect.poll(() => localStorage.getItem(draftKey)).not.toBeNull();
 
-		await user.click(await screen.findByRole('button', { name: 'Draft actions' }));
-		await user.click(await screen.findByRole('menuitem', { name: 'Delete draft' }));
-		const dialog = await screen.findByRole('alertdialog');
+		await page.getByRole('button', { name: 'Draft actions' }).click();
+		await page.getByRole('menuitem', { name: 'Delete draft' }).click();
 		// Named as it was saved, which is what the delete takes away.
-		expect(within(dialog).getByText('Delete the draft of “Lemon bars”?')).toBeDefined();
-		await user.click(within(dialog).getByRole('button', { name: 'Delete draft' }));
+		const dialog = page.getByRole('alertdialog', { name: 'Delete the draft of “Lemon bars”?' });
+		await dialog.getByRole('button', { name: 'Delete draft' }).click();
 
-		await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/contribute?tab=drafts'));
+		await expect.poll(() => router.replace).toHaveBeenCalledWith('/contribute?tab=drafts');
 		expect(remove.mock.calls[0]?.[1].get('draftId')).toBe(draftId);
 		expect(localStorage.getItem(draftKey)).toBeNull();
 	});

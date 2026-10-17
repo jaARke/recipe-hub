@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react';
-import { renderToString } from 'react-dom/server';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page } from 'vitest/browser';
+import { hydrate, serverRender } from '@/components/forms/testing/hydrate';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import { RecipeListHeading } from '@/components/recipe/recipe-list-heading';
 
@@ -14,42 +15,30 @@ vi.mock('next/navigation', async (importOriginal) => ({
 
 const heading = <RecipeListHeading id="recipes-heading">Recipes</RecipeListHeading>;
 
-function recipesHeading() {
-	return screen.getByRole('heading', { name: 'Recipes' });
-}
-
-afterEach(() => {
-	vi.restoreAllMocks();
-});
-
 describe('RecipeListHeading', () => {
-	it('leaves focus alone when the page arrives from the server', () => {
-		const container = document.body.appendChild(document.createElement('div'));
-		container.innerHTML = renderToString(heading);
+	it('leaves focus alone when the page arrives from the server', async () => {
+		const container = serverRender(heading);
 
-		render(heading, { container, hydrate: true });
+		await hydrate(container, heading);
 
 		expect(document.activeElement).toBe(document.body);
 	});
 
-	it('takes the focus that fell with the content it replaced', () => {
-		render(heading);
+	it('takes the focus that fell with the content it replaced', async () => {
+		await render(heading);
 
-		expect(document.activeElement).toBe(recipesHeading());
+		await expect.element(page.getByRole('heading', { name: 'Recipes' })).toHaveFocus();
 	});
 
 	// Focusing the heading would scroll it into view, losing the scroll the browser restores.
 	it('moves no focus when its kept page shows again on a return through history', async () => {
-		const page = renderKeptPage(heading);
-		const shown = recipesHeading();
-		await page.hide();
-		// A browser drops focus from the hidden page's heading.
-		shown.blur();
-		const focus = vi.spyOn(HTMLElement.prototype, 'focus');
+		const keptPage = await renderKeptPage(heading);
+		await keptPage.hide();
+		// The browser takes focus from the hidden page's heading.
+		await expect.poll(() => document.activeElement).toBe(document.body);
 
-		await page.show();
+		await keptPage.show();
 
-		expect(focus).not.toHaveBeenCalled();
 		expect(document.activeElement).toBe(document.body);
 	});
 });

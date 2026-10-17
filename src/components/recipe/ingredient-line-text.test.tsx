@@ -1,19 +1,17 @@
-import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { render } from 'vitest-browser-react';
 import { IngredientLineText } from '@/components/recipe/ingredient-line-text';
 import { parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import { scaleIngredientLine } from '@/domain/recipe/ingredient-scaling';
 
-describe('IngredientLineText', () => {
-	it('keeps the word the amount was read past, as in "About"', () => {
-		const { container } = render(
-			<IngredientLineText line={parseIngredientLine('About ¼ cupful cold water')} />
-		);
-		expect(container.textContent).toBe('About ¼ cupful cold water');
-		expect(container.querySelector('.font-semibold')?.textContent).toBe('¼ cupful');
-	});
+// Marks each part the line renders through renderText, as the recipe form marks what is left to check.
+function markText(text: string) {
+	return <mark>{text}</mark>;
+}
 
+describe('IngredientLineText', () => {
 	it.each([
+		['About ¼ cupful cold water', 'About ¼ cupful cold water', '¼ cupful'],
 		['1 cup of water', '1 cup of water', '1 cup'],
 		['a pinch of salt', '1 pinch of salt', '1 pinch'],
 		['half a cup of milk', '½ cup of milk', '½ cup'],
@@ -23,52 +21,58 @@ describe('IngredientLineText', () => {
 		['1 (14 oz) can of tomatoes', '1 (14 oz) can of tomatoes', '1'],
 		['two eggs', '2 eggs', '2'],
 		['2 cups flour', '2 cups flour', '2 cups'],
-	])('shows "%s" as "%s", with "%s" in bold', (text, shown, bold) => {
-		const { container } = render(<IngredientLineText line={parseIngredientLine(text)} />);
-		expect(container.textContent).toBe(shown);
-		expect(container.querySelector('.font-semibold')?.textContent).toBe(bold);
+	])('shows "%s" as "%s", with "%s" in bold', async (text, shown, bold) => {
+		const { locator } = await render(<IngredientLineText line={parseIngredientLine(text)} />);
+
+		await expect.element(locator).toHaveTextContent(shown);
+		await expect.element(locator.getByText(bold)).toHaveStyle({ fontWeight: '600' });
 	});
 
-	it('keeps the words between the unit and the item when the scale changes the unit', () => {
+	it('keeps the words between the unit and the item when the scale changes the unit', async () => {
 		const { line } = scaleIngredientLine(parseIngredientLine('1 cup of water'), 2);
-		const { container } = render(<IngredientLineText line={line} />);
-		expect(container.textContent).toBe('2 cups of water');
+		const { locator } = await render(<IngredientLineText line={line} />);
+
+		await expect.element(locator).toHaveTextContent('2 cups of water');
 	});
 
 	it.each([
 		['1/3 [?] cup flour', 2, '⅔ [?] cup flour'],
 		['1 [?] cup (240 ml) milk', 2, '2 [?] cups (480 ml) milk'],
 		['3 [?] tsp vanilla', 3, '3 [?] tablespoons vanilla'],
-	])('shows "%s" by %s as "%s", with the marker before the unit', (text, factor, shown) => {
+	])('shows "%s" by %s as "%s", with the marker before the unit', async (text, factor, shown) => {
 		const { line } = scaleIngredientLine(parseIngredientLine(text), factor);
-		const { container } = render(<IngredientLineText line={line} />);
-		expect(container.textContent).toBe(shown);
+		const { locator } = await render(<IngredientLineText line={line} />);
+
+		await expect.element(locator).toHaveTextContent(shown);
 	});
 
-	it('renders the unit as it renders the words after the amount, so a marker in it shows', () => {
-		const { container } = render(
+	it('renders the unit as it renders the words after the amount, so a marker in it shows', async () => {
+		const { locator } = await render(
 			<IngredientLineText
 				line={parseIngredientLine('1 1/2 [?] cups flour')}
-				renderText={(text) => <mark>{text}</mark>}
+				renderText={markText}
 			/>
 		);
-		expect(Array.from(container.querySelectorAll('mark'), (mark) => mark.textContent)).toEqual([
-			'[?] cups',
-			'flour',
-		]);
+
+		expect(
+			locator
+				.getByRole('mark')
+				.elements()
+				.map((mark) => mark.textContent)
+		).toEqual(['[?] cups', 'flour']);
 	});
 
-	it('renders the words between the unit and the item as it renders the item, outside the bold', () => {
-		const { container } = render(
-			<IngredientLineText
-				line={parseIngredientLine('1 [?] cup of milk')}
-				renderText={(text) => <mark>{text}</mark>}
-			/>
+	it('renders the words between the unit and the item as it renders the item, outside the bold', async () => {
+		const { locator } = await render(
+			<IngredientLineText line={parseIngredientLine('1 [?] cup of milk')} renderText={markText} />
 		);
-		expect(Array.from(container.querySelectorAll('mark'), (mark) => mark.textContent)).toEqual([
-			'[?] cup',
-			'of milk',
-		]);
-		expect(container.querySelector('.font-semibold')?.textContent).toBe('1 [?] cup');
+
+		expect(
+			locator
+				.getByRole('mark')
+				.elements()
+				.map((mark) => mark.textContent)
+		).toEqual(['[?] cup', 'of milk']);
+		await expect.element(locator.getByText('1 [?] cup')).toHaveStyle({ fontWeight: '600' });
 	});
 });

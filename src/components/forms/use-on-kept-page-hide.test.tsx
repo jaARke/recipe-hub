@@ -1,7 +1,6 @@
-import { screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import { page } from 'vitest/browser';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import { useOnKeptPageHide } from '@/components/forms/use-on-kept-page-hide';
 
@@ -20,14 +19,13 @@ function ProbeCounter({ onHide }: { onHide: (presses: number) => void }) {
 describe('useOnKeptPageHide', () => {
 	it('runs once as its page hides, with what its last render saw', async () => {
 		const onHide = vi.fn();
-		const user = userEvent.setup();
-		const page = renderKeptPage(<ProbeCounter onHide={onHide} />);
+		const keptPage = await renderKeptPage(<ProbeCounter onHide={onHide} />);
 
-		await user.click(screen.getByRole('button', { name: 'Press' }));
-		await user.click(screen.getByRole('button', { name: 'Press' }));
+		await page.getByRole('button', { name: 'Press' }).click();
+		await page.getByRole('button', { name: 'Press' }).click();
 		expect(onHide).not.toHaveBeenCalled();
-		await page.hide();
-		await page.show();
+		await keptPage.hide();
+		await keptPage.show();
 
 		expect(onHide.mock.calls).toEqual([[2]]);
 	});

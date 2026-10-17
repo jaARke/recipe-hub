@@ -19,6 +19,7 @@ Requires Node 24, [pnpm](https://pnpm.io/installation), and the [Vercel CLI](htt
 
 ```bash
 pnpm install
+pnpm exec playwright install --only-shell chromium firefox webkit   # once, the browsers pnpm test runs components in
 vercel link       # once, connects this checkout to the Vercel project
 vercel env pull   # writes .env.local; the Blob and AI SDKs renew its 12-hour OIDC token with your CLI login
 pnpm db:migrate && pnpm db:bootstrap && pnpm db:seed   # once, and after pulling new migrations
@@ -42,7 +43,7 @@ The design reference at [localhost:3000/design](http://localhost:3000/design) sh
 | `pnpm lint:migrations`        | Check the migration history for conflicts                       |
 | `pnpm format`                 | Format with Prettier                                            |
 | `pnpm typecheck`              | Generate route types, then run `tsc`                            |
-| `pnpm test`                   | Run Vitest: repository tests on PGlite, components in happy-dom |
+| `pnpm test`                   | Run Vitest: repository tests on PGlite, components in browsers  |
 | `pnpm db:generate`            | Generate a migration from `src/infrastructure/db/schema.ts`     |
 | `pnpm db:migrate`             | Apply migrations to the database in `DATABASE_URL_UNPOOLED`     |
 | `pnpm db:bootstrap`           | Make the owner, the account at `ADMIN_EMAIL`, an admin          |

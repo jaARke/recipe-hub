@@ -1,6 +1,5 @@
-import { screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
+import { page } from 'vitest/browser';
 import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 
@@ -19,17 +18,16 @@ function ProbeMoveButton() {
 
 describe('useLiveAnnouncement', () => {
 	it('leaves nothing to read when its page shows again, and announces the next edit', async () => {
-		const user = userEvent.setup();
-		const page = renderKeptPage(<ProbeMoveButton />);
+		const keptPage = await renderKeptPage(<ProbeMoveButton />);
 
-		await user.click(screen.getByRole('button', { name: 'Move up' }));
-		expect(screen.getByRole('status').textContent).toBe('Moved up.');
-		await page.hide();
+		await page.getByRole('button', { name: 'Move up' }).click();
+		await expect.element(page.getByRole('status')).toHaveTextContent('Moved up.');
+		await keptPage.hide();
 		expect(document.body.textContent).not.toContain('Moved up.');
-		await page.show();
-		expect(screen.getByRole('status').textContent).toBe('');
+		await keptPage.show();
+		await expect.element(page.getByRole('status')).toHaveTextContent('');
 
-		await user.click(screen.getByRole('button', { name: 'Move up' }));
-		expect(screen.getByRole('status').textContent).toBe('Moved up.');
+		await page.getByRole('button', { name: 'Move up' }).click();
+		await expect.element(page.getByRole('status')).toHaveTextContent('Moved up.');
 	});
 });

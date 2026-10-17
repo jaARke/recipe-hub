@@ -1,7 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page } from 'vitest/browser';
 import { PhotoField } from '@/components/recipe-form/photo-field';
 import type { PhotoUploader } from '@/components/recipe-form/photo-upload';
 import {
@@ -10,19 +10,29 @@ import {
 	type RecipeFormPhoto,
 } from '@/components/recipe-form/recipe-form-values';
 
-// happy-dom draws no images, so a chosen photo goes to its upload as it was chosen, drawn at this size.
-const drawnSize = { width: 1600, height: 1200 };
-vi.mock('@/components/recipe-form/photo-processing', async (importOriginal) => ({
-	...(await importOriginal<typeof import('@/components/recipe-form/photo-processing')>()),
-	normalizePhoto: async (file: File) => ({ file, size: drawnSize }),
-}));
+// A photo as a camera saves one, drawn at its size.
+function photo(name: string, size: { width: number; height: number }): Promise<File> {
+	const canvas = document.createElement('canvas');
+	canvas.width = size.width;
+	canvas.height = size.height;
+	return new Promise((resolve, reject) => {
+		canvas.toBlob(
+			(blob) =>
+				blob === null
+					? reject(new Error('The canvas drew no photo.'))
+					: resolve(new File([blob], name, { type: 'image/jpeg' })),
+			'image/jpeg'
+		);
+	});
+}
 
-function fileInput(): HTMLInputElement {
+// The field's file input, which the visible button opens, out of the accessibility tree.
+function fileInput() {
 	const input = document.querySelector<HTMLInputElement>('input[type="file"]');
 	if (input === null) {
 		throw new Error('The field has no file input.');
 	}
-	return input;
+	return page.elementLocator(input);
 }
 
 // The dish photos of a new recipe, each as the form holds it after every edit.
@@ -83,40 +93,49 @@ function DiscardablePhotos({ uploader }: { uploader: PhotoUploader }) {
 
 describe('PhotoField', () => {
 	it('stops an upload whose photo leaves the form without its Remove, as discarding changes does', async () => {
-		const user = userEvent.setup();
 		const signals: AbortSignal[] = [];
 		// Never finishes, so the photo is still uploading as the form starts over.
 		const uploader: PhotoUploader = async (_pathname, _file, { signal }) => {
 			signals.push(signal);
 			await new Promise(() => {});
 		};
-		render(<DiscardablePhotos uploader={uploader} />);
+		await render(<DiscardablePhotos uploader={uploader} />);
 
-		await user.upload(fileInput(), new File(['jpeg'], 'bars.jpg', { type: 'image/jpeg' }));
-		await waitFor(() => expect(signals).toHaveLength(1));
-		expect(await screen.findByText('Uploading')).toBeDefined();
+		await fileInput().upload(await photo('bars.jpg', { width: 1600, height: 1200 }));
+		await expect.element(page.getByText('Uploading')).toBeInTheDocument();
+		expect(signals).toHaveLength(1);
 		expect(signals[0]?.aborted).toBe(false);
 
-		await user.click(screen.getByRole('button', { name: 'Start over' }));
+		await page.getByRole('button', { name: 'Start over' }).click();
 
-		expect(screen.queryByText('bars.jpg')).toBeNull();
+		await expect.element(page.getByText('bars.jpg')).not.toBeInTheDocument();
 		expect(signals[0]?.aborted).toBe(true);
 	});
 
-	it('keeps each uploaded photo with the size it was drawn at', async () => {
-		const user = userEvent.setup();
+	it('uploads each photo as a JPEG drawn within its long edge, and keeps the size it was drawn at', async () => {
+		const uploaded: File[] = [];
 		const onPhotos = vi.fn<(photos: readonly RecipeFormPhoto[]) => void>();
-		render(<WatchedPhotos uploader={async () => {}} onPhotos={onPhotos} />);
-
-		await user.upload(fileInput(), new File(['jpeg'], 'bars.jpg', { type: 'image/jpeg' }));
-
-		await waitFor(() =>
-			expect(onPhotos.mock.lastCall?.[0][0]?.upload).toEqual({
-				status: 'uploaded',
-				pathname: expect.stringMatching(/^dish\/development\/[\w-]+\.jpg$/),
-				size: drawnSize,
-				file: expect.any(File),
-			})
+		await render(
+			<WatchedPhotos
+				uploader={async (_pathname, file) => void uploaded.push(file)}
+				onPhotos={onPhotos}
+			/>
 		);
+
+		await fileInput().upload(await photo('bars.jpg', { width: 3200, height: 2400 }));
+
+		await expect.poll(() => onPhotos.mock.lastCall?.[0][0]?.upload.status).toBe('uploaded');
+		expect(onPhotos.mock.lastCall?.[0][0]?.upload).toEqual({
+			status: 'uploaded',
+			pathname: expect.stringMatching(/^dish\/development\/[\w-]+\.jpg$/),
+			size: { width: 2400, height: 1800 },
+			file: uploaded[0],
+		});
+		const drawn = await createImageBitmap(uploaded[0] as File);
+		expect({ type: uploaded[0]?.type, width: drawn.width, height: drawn.height }).toEqual({
+			type: 'image/jpeg',
+			width: 2400,
+			height: 1800,
+		});
 	});
 });

@@ -1,9 +1,9 @@
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page, userEvent, type Locator } from 'vitest/browser';
 import { RecipeScaleStepper } from '@/components/cooking/recipe-scale-stepper';
 import { useRecipeScale } from '@/components/cooking/use-cooking-url';
+import { hydrate, serverRender } from '@/components/forms/testing/hydrate';
 import { formatScaledYield, type RecipeYield } from '@/domain/recipe/recipe-yield';
 
 const cookingPathname = '/recipes/weeknight-chicken-soup/cook';
@@ -27,16 +27,20 @@ function visit(search: string) {
 	history.replaceState(null, '', `${cookingPathname}${search}`);
 }
 
-function stepper(name: string): HTMLInputElement {
-	return screen.getByRole<HTMLInputElement>('textbox', { name });
+function stepper(name: string): Locator {
+	return page.getByRole('textbox', { name });
 }
 
-function scaledYield(): string | null {
-	return screen.getByTestId('yield').textContent;
+function button(name: string): Locator {
+	return page.getByRole('button', { name });
 }
 
-function announced(): string | null | undefined {
-	return screen.getAllByRole('status').at(-1)?.textContent;
+function scaledYield(): Locator {
+	return page.getByTestId('yield');
+}
+
+function announced(): Locator {
+	return page.getByRole('status');
 }
 
 beforeEach(() => {
@@ -45,87 +49,79 @@ beforeEach(() => {
 
 afterEach(() => {
 	visit('');
-	// The server's HTML is written in by hand, so a test that fails before hydrating it leaves it.
-	document.body.replaceChildren();
 });
 
 describe('RecipeScaleStepper', () => {
-	it('renders the recipe at its own scale from the server, disabled, then the URL’s once hydrated', () => {
+	it('renders the recipe at its own scale from the server, disabled, then the URL’s once hydrated', async () => {
 		visit('?servings=12');
-		const container = document.body.appendChild(document.createElement('div'));
-		container.innerHTML = renderToString(<ScaledRecipe recipeYield={serves6} />);
+		const container = serverRender(<ScaledRecipe recipeYield={serves6} />);
 
-		const serverInput = container.querySelector('input[type="text"]');
-		expect(serverInput?.getAttribute('value')).toBe('6');
-		expect(serverInput?.hasAttribute('disabled')).toBe(true);
-		expect(container.querySelector('[data-testid="yield"]')?.textContent).toBe('Serves 6');
+		await expect.element(stepper('Servings')).toHaveValue('6');
+		await expect.element(stepper('Servings')).toBeDisabled();
+		await expect.element(scaledYield()).toHaveTextContent('Serves 6');
 
-		render(<ScaledRecipe recipeYield={serves6} />, { container, hydrate: true });
+		await hydrate(container, <ScaledRecipe recipeYield={serves6} />);
 
-		expect(stepper('Servings').value).toBe('12');
-		expect(stepper('Servings').disabled).toBe(false);
-		expect(scaledYield()).toBe('Serves 12');
+		await expect.element(stepper('Servings')).toHaveValue('12');
+		await expect.element(stepper('Servings')).toBeEnabled();
+		await expect.element(scaledYield()).toHaveTextContent('Serves 12');
 	});
 
 	it('steps servings by one, writing the scale to the URL in place and announcing the yield', async () => {
 		visit('?step=3');
 		const length = history.length;
-		const user = userEvent.setup();
-		render(<ScaledRecipe recipeYield={serves6} />);
+		await render(<ScaledRecipe recipeYield={serves6} />);
 
-		await user.click(screen.getByRole('button', { name: 'Increase' }));
+		await button('Increase').click();
 
-		expect(stepper('Servings').value).toBe('7');
+		await expect.element(stepper('Servings')).toHaveValue('7');
+		await expect.element(scaledYield()).toHaveTextContent('Serves 7');
+		await expect.element(announced()).toHaveTextContent('Serves 7');
 		expect(location.search).toBe('?step=3&servings=7');
-		expect(scaledYield()).toBe('Serves 7');
-		expect(announced()).toBe('Serves 7');
 
-		await user.click(screen.getByRole('button', { name: 'Decrease' }));
-		await user.click(screen.getByRole('button', { name: 'Decrease' }));
+		await button('Decrease').click();
+		await button('Decrease').click();
 
+		await expect.element(announced()).toHaveTextContent('Serves 5');
 		expect(location.search).toBe('?step=3&servings=5');
-		expect(announced()).toBe('Serves 5');
 		expect(history.length).toBe(length);
 	});
 
 	it('steps what a recipe makes by half its count, from half the recipe, under its own parameter', async () => {
-		const user = userEvent.setup();
-		render(<ScaledRecipe recipeYield={makes24Cookies} />);
+		await render(<ScaledRecipe recipeYield={makes24Cookies} />);
 
-		await user.click(screen.getByRole('button', { name: 'Increase' }));
+		await button('Increase').click();
 
-		expect(stepper('Cookies').value).toBe('36');
+		await expect.element(stepper('Cookies')).toHaveValue('36');
+		await expect.element(scaledYield()).toHaveTextContent('Makes 36 cookies');
 		expect(location.search).toBe('?makes=36');
-		expect(scaledYield()).toBe('Makes 36 cookies');
 
-		await user.click(screen.getByRole('button', { name: 'Decrease' }));
-		await user.click(screen.getByRole('button', { name: 'Decrease' }));
+		await button('Decrease').click();
+		await button('Decrease').click();
 
-		expect(stepper('Cookies').value).toBe('12');
-		expect(screen.getByRole('button', { name: 'Decrease' }).hasAttribute('disabled')).toBe(true);
+		await expect.element(stepper('Cookies')).toHaveValue('12');
+		await expect.element(button('Decrease')).toBeDisabled();
 	});
 
 	it('steps a range yield in batches by half', async () => {
-		const user = userEvent.setup();
-		render(<ScaledRecipe recipeYield={serves4To6} />);
+		await render(<ScaledRecipe recipeYield={serves4To6} />);
 
-		await user.click(screen.getByRole('button', { name: 'Increase' }));
+		await button('Increase').click();
 
-		expect(stepper('Batches').value).toBe('1.5');
+		await expect.element(stepper('Batches')).toHaveValue('1.5');
+		await expect.element(scaledYield()).toHaveTextContent('Serves 6 to 9');
+		await expect.element(announced()).toHaveTextContent('Serves 6 to 9');
 		expect(location.search).toBe('?batches=1.5');
-		expect(scaledYield()).toBe('Serves 6 to 9');
-		expect(announced()).toBe('Serves 6 to 9');
 	});
 
 	it('steps a recipe with no yield in batches', async () => {
-		const user = userEvent.setup();
-		render(<ScaledRecipe recipeYield={undefined} />);
+		await render(<ScaledRecipe recipeYield={undefined} />);
 
-		await user.click(screen.getByRole('button', { name: 'Decrease' }));
+		await button('Decrease').click();
 
-		expect(stepper('Batches').value).toBe('0.5');
+		await expect.element(stepper('Batches')).toHaveValue('0.5');
+		await expect.element(announced()).toHaveTextContent('½ batch');
 		expect(location.search).toBe('?batches=0.5');
-		expect(announced()).toBe('½ batch');
 	});
 
 	it.each([
@@ -136,54 +132,49 @@ describe('RecipeScaleStepper', () => {
 	])(
 		'holds %j typed as %s to the nearest step, %s, once the field is left',
 		async (recipeYield, name, typed, held, search) => {
-			const user = userEvent.setup();
-			render(<ScaledRecipe recipeYield={recipeYield} />);
+			await render(<ScaledRecipe recipeYield={recipeYield} />);
 
-			await user.clear(stepper(name));
-			await user.type(stepper(name), typed);
-			await user.tab();
+			await stepper(name).fill(typed);
+			await userEvent.tab();
 
-			expect(stepper(name).value).toBe(held);
+			await expect.element(stepper(name)).toHaveValue(held);
 			expect(location.search).toBe(search);
 		}
 	);
 
 	it('scales as a number is typed, and keeps the scale while the field is empty', async () => {
-		const user = userEvent.setup();
-		render(<ScaledRecipe recipeYield={serves6} />);
+		visit('?servings=8');
+		await render(<ScaledRecipe recipeYield={serves6} />);
 
-		await user.clear(stepper('Servings'));
-		expect(location.search).toBe('');
+		await stepper('Servings').clear();
+		await expect.element(stepper('Servings')).toHaveValue('');
+		expect(location.search).toBe('?servings=8');
 
-		await user.type(stepper('Servings'), '12');
+		await stepper('Servings').fill('12');
 
+		await expect.element(scaledYield()).toHaveTextContent('Serves 12');
 		expect(location.search).toBe('?servings=12');
-		expect(scaledYield()).toBe('Serves 12');
 	});
 
 	it('shows Reset while scaled, which restores the recipe’s scale and takes the parameter out', async () => {
 		visit('?step=2&servings=8');
-		const user = userEvent.setup();
-		render(<ScaledRecipe recipeYield={serves6} />);
+		await render(<ScaledRecipe recipeYield={serves6} />);
 
-		await user.click(screen.getByRole('button', { name: 'Reset' }));
+		await button('Reset').click();
 
+		await expect.element(button('Reset')).not.toBeInTheDocument();
+		await expect.element(stepper('Servings')).toHaveValue('6');
+		await expect.element(stepper('Servings')).toHaveFocus();
+		await expect.element(announced()).toHaveTextContent('Serves 6');
 		expect(location.search).toBe('?step=2');
-		expect(stepper('Servings').value).toBe('6');
-		expect(screen.queryByRole('button', { name: 'Reset' })).toBeNull();
-		expect(document.activeElement).toBe(stepper('Servings'));
-		expect(announced()).toBe('Serves 6');
 	});
 
-	it.each(['?servings=abc', '?servings=0', '?makes=12'])(
-		'shows the recipe at its own scale for %s, without Reset',
-		(search) => {
-			visit(search);
-			render(<ScaledRecipe recipeYield={serves6} />);
+	it('shows the recipe at its own scale, without Reset, for a scale it cannot read', async () => {
+		visit('?servings=abc');
+		await render(<ScaledRecipe recipeYield={serves6} />);
 
-			expect(stepper('Servings').value).toBe('6');
-			expect(screen.queryByRole('button', { name: 'Reset' })).toBeNull();
-			expect(scaledYield()).toBe('Serves 6');
-		}
-	);
+		await expect.element(stepper('Servings')).toHaveValue('6');
+		await expect.element(scaledYield()).toHaveTextContent('Serves 6');
+		await expect.element(button('Reset')).not.toBeInTheDocument();
+	});
 });

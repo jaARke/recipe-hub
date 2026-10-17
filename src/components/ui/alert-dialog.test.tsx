@@ -1,6 +1,5 @@
-import { screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
+import { page } from 'vitest/browser';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import {
 	AlertDialog,
@@ -8,6 +7,7 @@ import {
 	AlertDialogTitle,
 	AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { displayAsPageShows } from '@/components/ui/testing/kept-page-popup';
 
 function popupParts(): Element[] {
 	return Array.from(
@@ -19,8 +19,7 @@ function popupParts(): Element[] {
 
 describe('AlertDialog', () => {
 	it('closes as its page hides, kept from drawing as the page shows, where it unmounts at once', async () => {
-		const user = userEvent.setup();
-		const page = renderKeptPage(
+		const keptPage = await renderKeptPage(
 			<AlertDialog>
 				<AlertDialogTrigger>Delete</AlertDialogTrigger>
 				<AlertDialogContent>
@@ -28,17 +27,11 @@ describe('AlertDialog', () => {
 				</AlertDialogContent>
 			</AlertDialog>
 		);
+		await page.getByRole('button', { name: 'Delete' }).click();
+		await expect.element(page.getByRole('alertdialog')).toBeVisible();
+		await keptPage.hide();
 
-		await user.click(screen.getByRole('button', { name: 'Delete' }));
-		expect(await screen.findByRole('alertdialog')).toBeDefined();
-		await page.hide();
-
-		expect(popupParts()).toHaveLength(2);
-		for (const part of popupParts()) {
-			expect(part.hasAttribute('data-closed')).toBe(true);
-			expect(part.hasAttribute('data-closed-by-page-hide')).toBe(true);
-		}
-		await page.show();
-		expect(popupParts()).toEqual([]);
+		expect(await displayAsPageShows(popupParts(), keptPage.show)).toEqual(['none', 'none']);
+		await expect.poll(popupParts).toEqual([]);
 	});
 });
