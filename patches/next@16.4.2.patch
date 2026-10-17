@@ -24,8 +24,10 @@ Under next dev, a custom handler is read through Next's tiered handler, whose ge
 its in-memory front before the custom one has judged the entry, so there the guard can still take an
 outdated fill; a deployment reads its handler directly, and this project configures none of its own.
 
-Remove this part once a Next release fixes vercel/next.js#100345; running that issue's reproduction
-against the new version shows whether it does.
+Remove this part once a Next release fixes vercel/next.js#100345 for every handler; running that
+issue's reproduction against the new version with REPRO_HANDLER unset, set to infinity and set to
+zero shows whether it does. A fix that asks only getExpiration, as vercel/next.js#100353 proposes,
+passes only with the built-in handler.
 
 2. The dev server's prerender manifest, under next dev only.
 
