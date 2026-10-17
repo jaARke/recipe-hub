@@ -10,9 +10,9 @@ import {
 	withCookingStepParam,
 	type CookingScreen,
 } from '@/components/cooking/cooking-screens';
-import type { RouteSearchParams } from '@/components/recipe/recipe-list-params';
 import type { InstructionSection } from '@/domain/recipe/instruction';
 import type { RecipeYield } from '@/domain/recipe/recipe-yield';
+import type { RouteSearchParams } from '@/lib/url-query';
 
 // Two sections, the first without a heading, as a pot roast and its gravy.
 const sectioned: InstructionSection[] = [

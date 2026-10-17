@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import { parseCookingStepParam, withCookingStepParam } from '@/components/cooking/cooking-screens';
-import { hrefWithParams } from '@/components/recipe/recipe-paths';
 import {
 	parseRecipeScaleParam,
 	withRecipeScaleParam,
@@ -13,6 +12,7 @@ import {
 	type RecipeYield,
 	type ScaleStepper,
 } from '@/domain/recipe/recipe-yield';
+import { hrefWithParams } from '@/lib/url-query';
 
 // The cooking view's place in its URL: the screen, as ?step=4, and the scale, as ?servings=12. Each
 // is read afresh whenever the browser asks and written with replaceState, so a reload keeps it and

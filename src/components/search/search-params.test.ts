@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import type { RouteSearchParams } from '@/components/recipe/recipe-list-params';
 import {
 	appliedFilterCount,
 	carriedSearchParams,
@@ -10,6 +9,7 @@ import {
 	withoutFilters,
 	type RecipeSearchState,
 } from '@/components/search/search-params';
+import type { RouteSearchParams } from '@/lib/url-query';
 
 // A query string as Next.js passes it to a page: a repeated parameter becomes an array.
 function routeParams(query: string): RouteSearchParams {

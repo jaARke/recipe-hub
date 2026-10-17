@@ -14,7 +14,6 @@ import {
 import {
 	contributePath,
 	favoritesPath,
-	hrefWithParams,
 	recipeEditPath,
 	recipeListPath,
 	recipePath,
@@ -22,6 +21,7 @@ import {
 } from '@/components/recipe/recipe-paths';
 import { recipeSearchParamNames } from '@/components/search/search-params';
 import type { MemberRole } from '@/domain/member/member';
+import { hrefWithParams } from '@/lib/url-query';
 import { expect, test } from './support/fixtures';
 import { checkLayout, minimumTargetSize, phoneWidthsToCheck } from './support/layout';
 import { sampleRecipe } from './support/sample-recipe';

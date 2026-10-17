@@ -1,13 +1,10 @@
 import { recipeSorts, type RecipeSort } from '@/application/ports/recipe-repository';
 import {
 	favoritesPath,
-	hrefWithParams,
 	recipeListParamNames,
 	recipeListPath,
 } from '@/components/recipe/recipe-paths';
-
-// A page's searchParams as Next.js passes them: a repeated parameter arrives as an array.
-export type RouteSearchParams = Record<string, string | string[] | undefined>;
+import { hrefWithParams, type RouteSearchParams } from '@/lib/url-query';
 
 export type RecipeListState = {
 	page: number;

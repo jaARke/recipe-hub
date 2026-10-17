@@ -13,15 +13,11 @@ import {
 	parseOptionParam,
 	parsePageParam,
 	singleParam,
-	type RouteSearchParams,
 } from '@/components/recipe/recipe-list-params';
-import {
-	hrefWithParams,
-	recipeListParamNames,
-	recipeSearchPath,
-} from '@/components/recipe/recipe-paths';
+import { recipeListParamNames, recipeSearchPath } from '@/components/recipe/recipe-paths';
 import { storedTagListSchema } from '@/domain/recipe/tag';
 import { normalizeTagLabel } from '@/domain/recipe/tag-normalization';
+import { hrefWithParams, type RouteSearchParams } from '@/lib/url-query';
 
 // The search page's URL parameters, by the state they hold.
 export const recipeSearchParamNames = {

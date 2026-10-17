@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import type { PublicRecipeDto } from '@/application/recipes/recipe-dtos';
-import type { RouteSearchParams } from '@/components/recipe/recipe-list-params';
 import { recipeScaleParamNames } from '@/components/recipe/recipe-scale-params';
 import { numberInstructionSteps } from '@/components/recipe/recipe-step-numbers';
 import { scaleStepperFor, type RecipeYield } from '@/domain/recipe/recipe-yield';
+import type { RouteSearchParams } from '@/lib/url-query';
 
 // The cooking view's screens: Gather your ingredients, one per step across every section, and the
 // finish. A screen's index is its step's number, which the URL's step parameter holds, so ?step=4
