@@ -68,7 +68,7 @@ function RecipeCover({
 
 function RecipeFacts({ facts }: { facts: readonly RecipeFact[] }) {
 	return (
-		<dl className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs tracking-wide text-muted-foreground uppercase">
+		<dl className="flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium wrap-anywhere text-muted-foreground">
 			{facts.map((fact) => (
 				<div key={fact.label}>
 					<dt className="sr-only">{fact.label}</dt>
