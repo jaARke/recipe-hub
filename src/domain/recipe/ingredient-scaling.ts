@@ -76,6 +76,9 @@ type LineContext = {
 // scale, or keeps it and marks it unscaled.
 type Treatment = 'scale' | 'keep' | 'unscaled';
 
+// What a C after degrees reads as: a temperature, a cup, or either, where the text cannot tell.
+type CelsiusOrCup = 'celsius' | 'cup' | 'either';
+
 // The amounts the words a count counts agree with: as written, and at the scale.
 type Agreement = { written: Amount; scaled: Amount };
 
@@ -617,13 +620,18 @@ const noAmountAfter =
 	/^[\s\-\u2010-\u2015]*(?:[°º˚%]|:\s*\p{N}|[x×](?![\p{L}-])|f(?![\p{L}\p{N}])|(?:deg(?:ree)?|sec(?:ond)?|min(?:ute)?|h(?:ou)?r|day|week|month|y(?:ea)?r|part|time)s?(?!\p{L})|(?:per\s?cent|fahrenheit|celsius|centigrade|ratio|proof)(?!\p{L}))/iu;
 // A C after two digits or more, with any decimals, is a temperature in Celsius ("45 C", "40.5 C", "40
 // to 45 C", "between 40 and 45 C"), where one after a single digit is a cup, as old cards write it
-// ("1 C"). A period after it ends a sentence ("Bake at 180 C."), unless a lowercase word follows, as
-// one after a cup's "C." does ("12 C. flour").
+// ("1 C"). Old cards also write a cup "C.", so with a period it is Celsius only after a word that
+// sets a temperature, a cup before a word ("12 C. flour", "(12 C. Water)", "Add 12 C. Flour"), and
+// either where nothing tells an abbreviation's period from a sentence's ("(12 C.)").
 const celsiusDegrees = String.raw`\d{2,}(?:[.,]\d+)?`;
-const celsius = new RegExp(
-	String.raw`^(?:[Bb]etween\s+${celsiusDegrees}\s+and\s+|${celsiusDegrees}\s*(?:[-\u2013\u2014]|to|or)\s*)?${celsiusDegrees}\s*C(?!\p{L}|\.\s*\p{Ll})`,
+const degreesC = new RegExp(
+	String.raw`^(?:[Bb]etween\s+${celsiusDegrees}\s+and\s+|${celsiusDegrees}\s*(?:[-\u2013\u2014]|to|or)\s*)?${celsiusDegrees}\s*C(?!\p{L})`,
 	'u'
 );
+const wordAfterPeriod = /^\.\s*\p{L}/u;
+// A word that sets the temperature the degrees after it give, with any word such as "about" between:
+// "Bake at 180 C.", "Heat to about 45 C.", but not "up to 12 C.", which approximates an amount.
+const temperatureWord = /(?<!\p{L})(?<!up\s+)(?:at|to)\s+/giu;
 // A number written in zeros is a grade, as in "00 flour", and a fraction no smaller than one a
 // ratio, as in "80/20 ground beef": a recipe writes neither as an amount.
 const zeros = /^0+$/u;
@@ -632,15 +640,16 @@ const fraction = /^(\d+)\s*[/⁄]\s*(\d+)$/u;
 // "(about 2)".
 const closesAlone = /^\s*[),;]/u;
 // A share of the whole a line gives is right at any scale: a fraction before "of" and the whole ("½
-// of them", "a third of the eggs", "½ of it"), and either term of a proportion ("one of every two", "1
-// in every 3"). A count of the whole is a share the scale changes ("2 of them"), as is a rate's base,
-// which scales with the amount before it ("1 tablespoon salt for every 2 cups water").
-const ofTheWhole = /^\s+of\s+(?:them|it|the|these|those)(?!\p{L})/iu;
+// of them", "a third of the eggs", "½ of it", "½ of this"), and either term of a proportion, with or
+// without a unit ("one of every two", "1 in every 3", "1 of every 2 cups", "1 cup of every 2"). A
+// count of the whole is a share the scale changes ("2 of them"), as is a rate's base, which scales with
+// the amount before it ("1 tablespoon salt for every 2 cups water").
+const ofTheWhole = /^\s+of\s+(?:them|it|this|that|the|these|those)(?!\p{L})/iu;
 const proportionTerm = String.raw`(?:\p{N}+|${wordsSource(wholeNumberWords)}(?!\p{L}))`;
 const ofEvery = String.raw`\s+(?:of|in)\s+every\s+`;
 const proportionFirstTerm = new RegExp(String.raw`^${ofEvery}${proportionTerm}`, 'iu');
 const proportionSecondTerm = new RegExp(
-	String.raw`(?<![\p{L}\p{N}])${proportionTerm}${ofEvery}$`,
+	String.raw`(?<![\p{L}\p{N}])${proportionTerm}(?:\s*\p{L}+\.?)?${ofEvery}$`,
 	'iu'
 );
 
@@ -656,11 +665,35 @@ function isShareOfWhole(
 ): boolean {
 	const isFraction = amount !== undefined && (amount.max ?? amount.min) < 1;
 	return (
-		measurement === undefined &&
-		(proportionFirstTerm.test(after) ||
-			proportionSecondTerm.test(before) ||
-			(isFraction && ofTheWhole.test(after)))
+		proportionFirstTerm.test(after) ||
+		proportionSecondTerm.test(before) ||
+		(measurement === undefined && isFraction && ofTheWhole.test(after))
 	);
+}
+
+function setsTemperature(before: string): boolean {
+	const word = [...before.matchAll(temperatureWord)].at(-1);
+	if (word === undefined) {
+		return false;
+	}
+
+	const between = before.slice(word.index + word[0].length);
+	return between === '' || approximationWord.exec(between)?.[0] === between;
+}
+
+// What a C after a number's degrees reads as, if one follows them.
+function celsiusOrCup({ start }: WrittenNumber, text: string): CelsiusOrCup | undefined {
+	const degrees = degreesC.exec(text.slice(start))?.[0];
+	if (degrees === undefined) {
+		return undefined;
+	}
+
+	const after = text.slice(start + degrees.length);
+	if (!after.startsWith('.') || setsTemperature(text.slice(0, start))) {
+		return 'celsius';
+	}
+
+	return wordAfterPeriod.test(after) ? 'cup' : 'either';
 }
 
 // Whether a number is no amount, so right as written at any scale.
@@ -670,7 +703,7 @@ function isNoAmount(number: WrittenNumber, text: string): boolean {
 	return (
 		noAmountBefore.test(before) ||
 		noAmountAfter.test(after) ||
-		celsius.test(text.slice(number.start)) ||
+		celsiusOrCup(number, text) === 'celsius' ||
 		isGradeOrRatio(text.slice(number.start, number.end)) ||
 		isShareOfWhole(number, before, after) ||
 		(number.measurement === undefined && opensParentheses(before) && closesAlone.test(after))
@@ -756,13 +789,17 @@ function opensParentheses(before: string): boolean {
 // size of each item; it scales an amount a word joins to the line's ("1 egg plus 1 yolk"), a share of
 // the line's count ("1 for the dough"), and, in a line measured by volume or weight, a second amount
 // or an equivalent of the line's ("(about 1 ¾ cups)", "(1 medium)"); and it marks the rest unscaled,
-// such as a size after a count above one ("2 sweet potatoes (about 1 pound)") or a total on a count's
-// unit ("2 envelopes (4½ teaspoons)").
+// such as a size after a count above one ("2 sweet potatoes (about 1 pound)"), a total on a count's
+// unit ("2 envelopes (4½ teaspoons)"), or a "C." that may be Celsius ("(12 C.)").
 function treatmentOf(number: WrittenNumber, text: string, context: LineContext): Treatment {
 	const before = text.slice(0, number.start);
 	const after = text.slice(number.end);
 	if (isNoAmount(number, text) || isSizeOfEach(number, before, after, context)) {
 		return 'keep';
+	}
+
+	if (celsiusOrCup(number, text) === 'either') {
+		return 'unscaled';
 	}
 
 	const isShare = number.measurement === undefined && share.test(after);

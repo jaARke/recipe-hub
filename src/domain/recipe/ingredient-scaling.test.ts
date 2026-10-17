@@ -13,8 +13,13 @@ describe('givesAmount', () => {
 		'Stir in the remaining ½ cup sugar',
 		'Juice of 1 lemon',
 		'a few sprigs thyme',
-		// A cup's "C." before a lowercase word, which no sentence ends with.
+		// A cup's "C." before a word, after no word that sets a temperature.
 		'Add 12 C. flour',
+		'Add 12 C. Flour and mix.',
+		'Add 2 C. Flour and mix.',
+		'Add up to 12 C. Water',
+		// A "C." that may be a cup's or a sentence's end.
+		'Add 12 C.',
 	])('finds an amount in "%s"', (text) => {
 		expect(givesAmount(text)).toBe(true);
 	});
@@ -31,6 +36,8 @@ describe('givesAmount', () => {
 		'Whisk in the flour.',
 		'Bake at 180 C.',
 		'Bake at 180C. Cool on a rack.',
+		'Bake at 180 C. for 25 minutes',
+		'Heat the oil to about 180 C. Fry in batches.',
 		'Heat the milk to 40.5 C',
 		'Heat the milk to between 40.5 and 45.5 C.',
 		'Heat the milk to 105.5 F.',
@@ -40,6 +47,8 @@ describe('givesAmount', () => {
 		'Fold in a third of the whites',
 		'Half of the eggs go into the dough',
 		'Separate one of every two eggs',
+		'Set aside ½ of this for the topping',
+		'Reserve 1 of every 2 cups',
 	])('finds no amount in "%s", whose numbers are right at any scale', (text) => {
 		expect(givesAmount(text)).toBe(false);
 	});
@@ -82,6 +91,13 @@ describe('scaleIngredientLine', () => {
 		['500 g flour', 1 / 3, { amount: { min: 165 }, unit: 'g', item: 'flour' }],
 		['1.5 kg potatoes', 1 / 2, { amount: { min: 0.75 }, unit: 'kg', item: 'potatoes' }],
 		['1 c. milk', 1 / 2, { amount: { min: 0.5 }, unit: 'c.', item: 'milk' }],
+		['1 C. Sugar', 2, { amount: { min: 2 }, unit: 'C.', item: 'Sugar' }],
+		['12 C. Water', 1 / 2, { amount: { min: 6 }, unit: 'C.', item: 'Water' }],
+		[
+			'1 C. Brown Sugar, packed',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'C.', item: 'Brown Sugar', preparation: 'packed' },
+		],
 		['1 onion', 2, { amount: { min: 2 }, item: 'onions' }],
 		['1 large onion', 3, { amount: { min: 3 }, item: 'large onions' }],
 		['2 eggs', 1 / 2, { amount: { min: 1 }, item: 'egg' }],
@@ -966,6 +982,22 @@ describe('scaleIngredientLine', () => {
 			1 / 2,
 			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour (or ¾ C whole wheat)' },
 		],
+		// A "C." before a word is a cup, as cards write it before a Title Case item.
+		[
+			'3 quarts water (12 C. Water)',
+			2,
+			{ amount: { min: 6 }, unit: 'quarts', item: 'water (24 C. Water)' },
+		],
+		[
+			'3 quarts water (12 C. Water)',
+			1 / 2,
+			{ amount: { min: 1.5 }, unit: 'quarts', item: 'water (6 C. Water)' },
+		],
+		[
+			'1 cup flour (or 1 C. Whole Wheat)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour (or 2 C. Whole Wheat)' },
+		],
 		// A rate's base scales with the amount before it, so the rate holds.
 		[
 			'1 tablespoon salt for every 2 cups water',
@@ -1374,6 +1406,16 @@ describe('scaleIngredientLine', () => {
 			1 / 2,
 			{ amount: { min: 0.5 }, unit: 'cup', item: 'water', preparation: 'heated to 45 C.' },
 		],
+		[
+			'1 cup oil, heated to about 180 C. for frying',
+			2,
+			{
+				amount: { min: 2 },
+				unit: 'cups',
+				item: 'oil',
+				preparation: 'heated to about 180 C. for frying',
+			},
+		],
 		['1 cup water (40.5°C)', 2, { amount: { min: 2 }, unit: 'cups', item: 'water (40.5°C)' }],
 		['1 cup water (40.5°C)', 1 / 2, { amount: { min: 0.5 }, unit: 'cup', item: 'water (40.5°C)' }],
 		['1 cup water (105.5 F)', 2, { amount: { min: 2 }, unit: 'cups', item: 'water (105.5 F)' }],
@@ -1504,6 +1546,35 @@ describe('scaleIngredientLine', () => {
 		],
 	])(
 		'marks the amount in "%s" it cannot vouch for, after a count above one, unscaled by %s',
+		(text, factor, parts, amounts) => {
+			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+				line: { text, ...parts },
+				unscaled: { amounts },
+			});
+		}
+	);
+
+	it.each<[string, number, ScaledParts, IngredientLineSpan[]]>([
+		[
+			'3 quarts water (12 C.)',
+			2,
+			{ amount: { min: 6 }, unit: 'quarts', item: 'water (12 C.)' },
+			[{ field: 'item', start: 7, end: 12 }],
+		],
+		[
+			'1 cup water (45 C.)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'water (45 C.)' },
+			[{ field: 'item', start: 7, end: 12 }],
+		],
+		[
+			'3 quarts water, about 12 C.',
+			2,
+			{ amount: { min: 6 }, unit: 'quarts', item: 'water', preparation: 'about 12 C.' },
+			[{ field: 'preparation', start: 6, end: 11 }],
+		],
+	])(
+		'marks the "C." in "%s", which may be a cup or end a sentence in Celsius, unscaled by %s',
 		(text, factor, parts, amounts) => {
 			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
 				line: { text, ...parts },
@@ -1715,6 +1786,41 @@ describe('scaleIngredientLine', () => {
 			'1 cup sugar (½ of it for the topping)',
 			1 / 2,
 			{ amount: { min: 0.5 }, unit: 'cup', item: 'sugar (½ of it for the topping)' },
+		],
+		[
+			'2 cups sugar (½ of this for the topping)',
+			2,
+			{ amount: { min: 4 }, unit: 'cups', item: 'sugar (½ of this for the topping)' },
+		],
+		[
+			'2 cups sugar (½ of this for the topping)',
+			1 / 2,
+			{ amount: { min: 1 }, unit: 'cup', item: 'sugar (½ of this for the topping)' },
+		],
+		[
+			'2 cups sugar (½ of that for the topping)',
+			2,
+			{ amount: { min: 4 }, unit: 'cups', item: 'sugar (½ of that for the topping)' },
+		],
+		[
+			'2 cups milk (1 of every 2 cups reserved)',
+			2,
+			{ amount: { min: 4 }, unit: 'cups', item: 'milk (1 of every 2 cups reserved)' },
+		],
+		[
+			'2 cups milk (1 of every 2 cups reserved)',
+			1 / 2,
+			{ amount: { min: 1 }, unit: 'cup', item: 'milk (1 of every 2 cups reserved)' },
+		],
+		[
+			'2 cups milk (1 cup of every 2 reserved)',
+			2,
+			{ amount: { min: 4 }, unit: 'cups', item: 'milk (1 cup of every 2 reserved)' },
+		],
+		[
+			'2 cups milk (1 cup of every 2 cups reserved)',
+			1 / 2,
+			{ amount: { min: 1 }, unit: 'cup', item: 'milk (1 cup of every 2 cups reserved)' },
 		],
 	])(
 		'keeps the share of the whole in "%s", right at any scale, by %s without a mark',
