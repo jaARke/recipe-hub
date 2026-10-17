@@ -6,6 +6,7 @@ import {
 } from '@/components/design-reference/reference-section';
 import { SampleFavoriteToggle } from '@/components/design-reference/sample-favorite-toggle';
 import {
+	sampleBrowsePage,
 	sampleCatalogFacets,
 	sampleContributor,
 	sampleDrafts,
@@ -27,7 +28,6 @@ import {
 } from '@/components/recipe-form/recipe-form-values';
 import { RecipeImportSubmit } from '@/components/recipe-import/recipe-import-submit';
 import { RecipeActions } from '@/components/recipe/recipe-actions';
-import { RecipeCard } from '@/components/recipe/recipe-card';
 import { RecipeDetail, RecipeDetailSkeleton } from '@/components/recipe/recipe-detail';
 import { RecipeFilmstrip } from '@/components/recipe/recipe-filmstrip';
 import { RecipeGrid, RecipeGridSkeleton } from '@/components/recipe/recipe-grid';
@@ -48,6 +48,9 @@ import { parseRecipeContent } from '@/domain/recipe/recipe';
 import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
 import { sampleSundayPotRoast } from '@/domain/recipe/samples/sample-recipes';
 import { slugify } from '@/domain/recipe/slug';
+import { settings } from '@/lib/settings';
+
+const sampleBrowseState: RecipeSearchState = { tags: [], sort: 'newest', page: 1 };
 
 const sampleSearchState: RecipeSearchState = {
 	text: 'butter',
@@ -205,17 +208,30 @@ const entryDraftSamples: readonly { label: string; drafts: readonly DraftSummary
 // One entry per composition, browsing first and contributing last.
 const subsections = [
 	{
+		id: 'browse',
+		title: 'Browse',
+		description:
+			'The collection as cards beside the search page’s filters, so one control serves Browse and Search, which differ in what they list. From lg the filters sit in a sidebar, every tag with its count and the first eight shown, over two columns of cards and three from xl; below lg the toolbar’s Filters opens the same form above the cards. Filters apply with their button and keep to Browse; the tags on offer are those that narrow the list. Each card is a single link to its recipe, and a recipe without a photo keeps the photo’s box. Here six of its cards; its links lead to Browse.',
+		Content: BrowseSpecimen,
+	},
+	{
+		id: 'browse-loading',
+		title: 'Browse, loading',
+		description: 'Skeletons hold the same layout while recipes load.',
+		Content: BrowseSkeletonSpecimen,
+	},
+	{
 		id: 'recipe-grid',
 		title: 'Recipe grid',
 		description:
-			'One column on phones, two on tablets, three on desktop. Each card is a single link to its recipe, and a recipe without a photo keeps the photo’s box.',
+			'Favorites’ cards across the page: one column on phones, two on tablets, three on desktop. Each card is a single link to its recipe, and a recipe without a photo keeps the photo’s box.',
 		Content: RecipeGridSpecimen,
 	},
 	{
 		id: 'recipe-grid-loading',
 		title: 'Recipe grid, loading',
 		description: 'Skeletons hold the same layout while recipes load.',
-		Content: RecipeGridSkeleton,
+		Content: RecipeGridSkeletonSpecimen,
 	},
 	{
 		id: 'recipe-pagination',
@@ -262,21 +278,21 @@ const subsections = [
 		id: 'search-bar',
 		title: 'Search bar',
 		description:
-			'The header’s search, at this screen’s width: from lg a field that fills the row, and below lg an icon that turns the header’s row into the field, with Cancel to bring the row back. Away from the search page it starts a fresh search; on the search page the field holds the query, the page’s filters and order join its form, and below lg the header opens with the field.',
+			'The header’s search, at this screen’s width: from lg a field that fills the row, and below lg an icon that turns the header’s row into the field, with Cancel to bring the row back. A search keeps the filters of the page it is typed on, Browse’s or Search’s, and on Search the order too. On the search page the field holds the query, with Clear search to empty it and return to Browse with the filters, and below lg the header opens with the field.',
 		Content: SearchBarSpecimen,
 	},
 	{
 		id: 'search-results',
 		title: 'Search results',
 		description:
-			'A search for butter among baking recipes added by one member, as it shows under the page’s heading and syntax hint. From lg the filters sit beside the results, over the count and the order. Below lg a toolbar holds Filters, with the applied count, and the order in one row, then the count; Filters opens the filters in the page’s flow beneath the row, and Apply filters closes them and moves focus to the results. Filters apply with their button, while the order applies on selection. Active filters are links that remove themselves, the count is announced as it changes, and matches are marked. Its headings start at h4 here.',
+			'A search for butter among baking recipes added by one member, as it shows under the page’s heading and syntax hint. From lg the filters sit beside the results, over the count and the order. Below lg a toolbar holds Filters, with the applied count, and the order in one row, then the count; Filters opens the filters in the page’s flow beneath the row, and Apply filters closes them and moves focus to the results. Filters apply with their button, while the order applies on selection. The words and each active filter are inked pills that remove themselves, the words returning to Browse with the filters, and Clear filters keeps the words; focus moves to the results as one goes. The count is announced as it changes, and matches are marked. Its headings start at h4 here.',
 		Content: SearchResultsSpecimen,
 	},
 	{
 		id: 'search-results-loading',
 		title: 'Search results, loading',
 		description: 'Skeletons hold the same layout while results load.',
-		Content: RecipeSearchSkeleton,
+		Content: SearchResultsSkeletonSpecimen,
 	},
 	{
 		id: 'search-no-results',
@@ -301,16 +317,34 @@ const subsections = [
 	},
 ] as const;
 
-function RecipeGridSpecimen() {
+// Its own heading heads the cards, as the page's does.
+function BrowseSpecimen() {
 	return (
-		<RecipeGrid>
-			{sampleRecipeSummaries.map((recipe) => (
-				<li key={recipe.id}>
-					<RecipeCard recipe={recipe} headingTag="h4" />
-				</li>
-			))}
-		</RecipeGrid>
+		<Specimen className="flex flex-col gap-8">
+			<h4 id="design-browse-heading" tabIndex={-1} className="font-heading text-2xl font-semibold">
+				Recipes
+			</h4>
+			<RecipeSearch
+				state={sampleBrowseState}
+				results={sampleBrowsePage}
+				pageCount={Math.ceil(sampleBrowsePage.total / settings.display.recipesPerPage)}
+				headingLevel={4}
+				resultsHeadingId="design-browse-heading"
+			/>
+		</Specimen>
 	);
+}
+
+function BrowseSkeletonSpecimen() {
+	return <RecipeSearchSkeleton mode="browse" />;
+}
+
+function RecipeGridSpecimen() {
+	return <RecipeGrid layout="fullWidth" recipes={sampleRecipeSummaries} headingTag="h4" />;
+}
+
+function RecipeGridSkeletonSpecimen() {
+	return <RecipeGridSkeleton layout="fullWidth" />;
 }
 
 function RecipePaginationSpecimen() {
@@ -423,6 +457,7 @@ function SearchResultsSpecimen() {
 						idPrefix="design-filters-sidebar"
 						state={sampleCatalogState}
 						facets={sampleCatalogFacets}
+						total={sampleBrowsePage.total}
 						headingTag="h4"
 					/>
 				</Specimen>
@@ -432,6 +467,10 @@ function SearchResultsSpecimen() {
 			</Specimen>
 		</>
 	);
+}
+
+function SearchResultsSkeletonSpecimen() {
+	return <RecipeSearchSkeleton mode="search" />;
 }
 
 function NoResultsSpecimen() {

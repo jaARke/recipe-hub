@@ -19,12 +19,17 @@ describe('navItemCurrent', () => {
 		expect(navItemCurrent(navItem('Browse'), '/')).toBe('page');
 	});
 
-	it('marks Browse as the section on a recipe, its edit page, and search', () => {
+	it('marks Browse as the section on a recipe and its edit page', () => {
 		const browse = navItem('Browse');
 
 		expect(navItemCurrent(browse, '/recipes/sunday-pot-roast')).toBe('true');
 		expect(navItemCurrent(browse, '/recipes/sunday-pot-roast/edit')).toBe('true');
-		expect(navItemCurrent(browse, '/search')).toBe('true');
+	});
+
+	it('marks no section on search, where the field holding the words marks it', () => {
+		for (const item of [...navItems, adminNavItem]) {
+			expect(navItemCurrent(item, '/search')).toBeUndefined();
+		}
 	});
 
 	it('marks Favorites, not Browse, as the section on a recipe opened from Favorites', () => {
@@ -36,14 +41,14 @@ describe('navItemCurrent', () => {
 		).toBeUndefined();
 	});
 
-	it('marks Browse as the section on a recipe opened from Browse or from search', () => {
-		for (const listPathname of ['/', '/search']) {
-			expect(navItemCurrent(navItem('Browse'), '/recipes/sunday-pot-roast', listPathname)).toBe(
-				'true'
-			);
-			expect(
-				navItemCurrent(navItem('Favorites'), '/recipes/sunday-pot-roast', listPathname)
-			).toBeUndefined();
+	it('marks Browse as the section on a recipe opened from Browse', () => {
+		expect(navItemCurrent(navItem('Browse'), '/recipes/sunday-pot-roast', '/')).toBe('true');
+		expect(navItemCurrent(navItem('Favorites'), '/recipes/sunday-pot-roast', '/')).toBeUndefined();
+	});
+
+	it('marks no section on a recipe opened from search', () => {
+		for (const item of [...navItems, adminNavItem]) {
+			expect(navItemCurrent(item, '/recipes/sunday-pot-roast', '/search')).toBeUndefined();
 		}
 	});
 

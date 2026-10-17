@@ -6,6 +6,9 @@ import { RecipeSearchFilters } from '@/components/search/recipe-search-filters';
 import type { RecipeSearchState } from '@/components/search/search-params';
 import { memberIdSchema } from '@/domain/member/member';
 
+// Counted over five results, none of which carries every tag.
+const total = 5;
+
 const facets: RecipeSearchFacets = {
 	tags: [
 		{ label: 'Baking', count: 4 },
@@ -21,14 +24,34 @@ const facets: RecipeSearchFacets = {
 	],
 };
 
+function filters(state: RecipeSearchState, searchFacets = facets, searchTotal = total) {
+	return (
+		<RecipeSearchFilters
+			idPrefix="filters"
+			state={state}
+			facets={searchFacets}
+			total={searchTotal}
+		/>
+	);
+}
+
 async function renderFilters(state: RecipeSearchState) {
-	await render(<RecipeSearchFilters idPrefix="filters" state={state} facets={facets} />);
+	await render(filters(state));
+}
+
+function form() {
+	return document.querySelector('form') as HTMLFormElement;
 }
 
 // What the form would submit, which next/form turns into the URL's query in this order.
 function submittedQuery() {
-	const form = document.querySelector('form') as HTMLFormElement;
-	return new URLSearchParams([...new FormData(form)] as [string, string][]).toString();
+	return new URLSearchParams([...new FormData(form())] as [string, string][]).toString();
+}
+
+// The tags on offer, each as its label reads.
+function offeredTags() {
+	const tags = page.getByRole('group', { name: 'Tags' }).element();
+	return Array.from(tags.querySelectorAll('label'), (label) => label.textContent);
 }
 
 async function choose(field: string, option: string) {
@@ -72,5 +95,71 @@ describe('RecipeSearchFilters', () => {
 		await choose('Date added', 'Any time');
 
 		expect(submittedQuery()).toBe('sort=title&tag=Dessert');
+	});
+
+	it('submits to Browse without words and to Search with them', async () => {
+		const { rerender } = await render(filters({ tags: [], sort: 'newest', page: 1 }));
+		expect(form().getAttribute('action')).toBe('/');
+
+		await rerender(filters({ text: 'butter', tags: [], sort: 'relevance', page: 1 }));
+		expect(form().getAttribute('action')).toBe('/search');
+	});
+
+	it('offers the tags that narrow the results, none that every result has', async () => {
+		await render(
+			filters(
+				{ tags: [], sort: 'newest', page: 1 },
+				{
+					...facets,
+					tags: [
+						{ label: 'Dessert', count: 2 },
+						{ label: 'Make ahead', count: 2 },
+						{ label: 'Français', count: 1 },
+					],
+				},
+				2
+			)
+		);
+
+		expect(offeredTags()).toEqual(['Français 1']);
+	});
+
+	it('keeps a checked tag that every result has, so it can be cleared', async () => {
+		await render(
+			filters(
+				{ tags: ['Dessert', 'Make ahead'], sort: 'newest', page: 1 },
+				{
+					...facets,
+					tags: [
+						{ label: 'Dessert', count: 2 },
+						{ label: 'Make ahead', count: 2 },
+						{ label: 'Baking', count: 2 },
+						{ label: 'Français', count: 1 },
+					],
+				},
+				2
+			)
+		);
+
+		expect(offeredTags()).toEqual(['Dessert 2', 'Make ahead 2', 'Français 1']);
+		await expect.element(page.getByRole('checkbox', { name: 'Dessert 2' })).toBeChecked();
+	});
+
+	it('keeps choices not yet applied when the order changes, and shows new filters as they apply', async () => {
+		const state: RecipeSearchState = { tags: [], sort: 'newest', page: 1 };
+		const { rerender } = await render(filters(state));
+		await page.getByRole('checkbox', { name: 'Dessert 2' }).click();
+		await choose('Total time', '30 minutes or less');
+
+		await rerender(filters({ ...state, sort: 'title' }));
+
+		await expect.element(page.getByRole('checkbox', { name: 'Dessert 2' })).toBeChecked();
+		expect(submittedQuery()).toBe('sort=title&tag=Dessert&time=30');
+
+		await rerender(filters({ ...state, tags: ['Baking'], sort: 'title' }));
+
+		await expect.element(page.getByRole('checkbox', { name: 'Baking 4' })).toBeChecked();
+		await expect.element(page.getByRole('checkbox', { name: 'Dessert 2' })).not.toBeChecked();
+		expect(submittedQuery()).toBe('sort=title&tag=Baking');
 	});
 });

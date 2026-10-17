@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from 'cn';
-import { SearchIcon } from 'lucide-react';
+import { SearchIcon, XIcon } from 'lucide-react';
 import Form from 'next/form';
 import { usePathname, useSearchParams } from 'next/navigation';
 import * as React from 'react';
@@ -14,8 +14,8 @@ import { InputGroup, InputGroupAddon } from '@/components/ui/input-group';
 
 // Passed down from the server, where search-params.ts names the query's parameter.
 type HeaderSearchProps = {
-	// The search page's hidden fields join the form by its id, so a new query keeps the filters and
-	// the order.
+	// Browse's and Search's hidden fields join the form by its id, so a new query keeps the filters,
+	// and on Search the order.
 	formId: string;
 	queryName: string;
 	// The search page's syntax hint, which describes the field there.
@@ -25,19 +25,12 @@ type HeaderSearchProps = {
 type HeaderSearchFormProps = HeaderSearchProps & {
 	query: string;
 	searchPage: boolean;
-	autoFocus?: boolean;
 };
 
 // From lg, a field that fills the header's row. Below lg, an icon that turns the row into the field
-// with Cancel, which the search page opens with. Enter searches.
-function HeaderSearchForm({
-	formId,
-	queryName,
-	hintId,
-	query,
-	searchPage,
-	autoFocus = false,
-}: HeaderSearchFormProps) {
+// with Cancel, which the search page opens with. Enter searches; on the search page, Clear search
+// empties the field and searches again, and a search without words lists Browse with the filters.
+function HeaderSearchForm({ formId, queryName, hintId, query, searchPage }: HeaderSearchFormProps) {
 	const inputId = `${formId}-query`;
 	const openButtonId = `${formId}-open`;
 	// The search page opens with the field, and leaving it brings the row back.
@@ -60,6 +53,19 @@ function HeaderSearchForm({
 		document.getElementById(openButtonId)?.focus();
 	}
 
+	// Submitted rather than linked, so the search page's fields that join the form carry the filters
+	// and the order, and the proxy's redirect builds Browse's URL from them.
+	function clearSearch() {
+		const input = document.getElementById(inputId);
+		if (input instanceof HTMLInputElement) {
+			input.value = '';
+			input.focus();
+			input.form?.requestSubmit();
+		}
+	}
+
+	const clearable = searchPage && query !== '';
+
 	return (
 		// The header hides the rest of its row below lg while this is open.
 		<div
@@ -80,12 +86,25 @@ function HeaderSearchForm({
 								query={query}
 								enterKeyHint="search"
 								placeholder="Search recipes"
-								autoFocus={autoFocus}
 								aria-describedby={searchPage ? hintId : undefined}
+								// Clear search leaves the search page; the browser's own clear only empties the field.
+								className={cn(clearable && '[&::-webkit-search-cancel-button]:hidden')}
 							/>
 							<InputGroupAddon>
 								<SearchIcon aria-hidden="true" />
 							</InputGroupAddon>
+							{clearable && (
+								<InputGroupAddon align="inline-end">
+									<Button
+										variant="ghost"
+										size="icon-xs"
+										aria-label="Clear search"
+										onClick={clearSearch}
+									>
+										<XIcon aria-hidden="true" />
+									</Button>
+								</InputGroupAddon>
+							)}
 						</InputGroup>
 					</Field>
 				</Form>
@@ -112,8 +131,8 @@ function HeaderSearchForm({
 	);
 }
 
-// On the search page the field holds the query, and an empty search page focuses it. Under Cache
-// Components reading the URL suspends while prerendering, so this renders inside Suspense.
+// On the search page the field holds the query. Under Cache Components reading the URL suspends
+// while prerendering, so this renders inside Suspense.
 function HeaderSearch(props: HeaderSearchProps) {
 	const searchPage = usePathname() === recipeSearchPath;
 	const searchParams = useSearchParams();
@@ -123,7 +142,6 @@ function HeaderSearch(props: HeaderSearchProps) {
 			{...props}
 			query={searchPage ? (searchParams.get(props.queryName) ?? '') : ''}
 			searchPage={searchPage}
-			autoFocus={searchPage && searchParams.size === 0}
 		/>
 	);
 }

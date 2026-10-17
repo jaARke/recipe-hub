@@ -14,6 +14,8 @@ import {
 	recipeListPath,
 	recipeSearchPath,
 } from '@/components/recipe/recipe-paths';
+import { recipeSearchParamNames } from '@/components/search/search-params';
+import { hrefWithParams } from '@/lib/url-query';
 import { test as setup } from './support/fixtures';
 import { waitForHydration } from './support/hydration';
 import { sampleRecipe } from './support/sample-recipe';
@@ -27,7 +29,8 @@ const signedOutPaths = [
 	sampleRecipe.path,
 	sampleRecipe.cookPath,
 	favoritesPath,
-	recipeSearchPath,
+	// A search without words is Browse, so the search page compiles for one with words.
+	hrefWithParams(recipeSearchPath, new URLSearchParams({ [recipeSearchParamNames.text]: 'soup' })),
 	signInPath,
 	requestAccessPath,
 	privacyPath,

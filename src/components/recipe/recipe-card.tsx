@@ -11,9 +11,6 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 
-// One column on phones, two from sm, and three from lg, where a wide container's column is 352px.
-const cardPhotoSizes = '(min-width: 1024px) 352px, (min-width: 640px) 50vw, 100vw';
-
 // Level 4 nests a card under the design reference's own headings.
 type CardHeadingTag = 'h2' | 'h4';
 
@@ -21,10 +18,13 @@ type CardHeadingTag = 'h2' | 'h4';
 function RecipeCard({
 	recipe,
 	headingTag: Heading,
+	photoSizes,
 	eager = false,
 }: {
 	recipe: RecipeSummaryDto;
 	headingTag: CardHeadingTag;
+	// The photo's width in the grid the card sits in.
+	photoSizes: string;
 	eager?: boolean;
 }) {
 	const facts = recipeFacts(recipe);
@@ -42,7 +42,7 @@ function RecipeCard({
 		>
 			{/* The photo box sits flush with the top edge, as the card does for an image first child. */}
 			<Card className="h-full pt-0">
-				<RecipeCover image={recipe.coverImage} sizes={cardPhotoSizes} eager={eager} />
+				<RecipeCover image={recipe.coverImage} sizes={photoSizes} eager={eager} />
 				<CardHeader>
 					<CardTitle>
 						<Heading id={titleId}>{recipe.title}</Heading>
@@ -82,4 +82,4 @@ function RecipeCardSkeleton() {
 	);
 }
 
-export { RecipeCard, RecipeCardSkeleton };
+export { RecipeCard, RecipeCardSkeleton, type CardHeadingTag };

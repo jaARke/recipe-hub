@@ -12,11 +12,11 @@ import {
 	recipeTotalTimeChoices,
 	type RecipeTotalTimeChoice,
 } from '@/application/search/recipe-search-dtos';
-import { recipeSearchPath } from '@/components/recipe/recipe-paths';
 import { ChoiceSelect } from '@/components/search/choice-select';
 import { HiddenSearchFields } from '@/components/search/hidden-search-fields';
 import {
-	recipeSearchHref,
+	recipeSearchFiltersKey,
+	recipeSearchModePath,
 	recipeSearchParamNames,
 	type RecipeSearchField,
 	type RecipeSearchState,
@@ -63,12 +63,19 @@ type TagOption = RecipeFacetCount & {
 
 type FilterHeadingTag = 'h2' | 'h4';
 
-// A checked tag always shows, even with no results left to count it, so it can be cleared.
-function tagOptions(state: RecipeSearchState, facetTags: readonly RecipeFacetCount[]) {
+// The tags the results carry, but not one every result has, which would change nothing. A checked
+// tag always shows, even with no results left to count it, so it can be cleared.
+function tagOptions(
+	state: RecipeSearchState,
+	facetTags: readonly RecipeFacetCount[],
+	total: number
+) {
 	const checkedKeys = new Set(state.tags.map(tagKey));
 	const facetKeys = new Set(facetTags.map((tag) => tagKey(tag.label)));
 	const options: TagOption[] = [
-		...facetTags.map((tag) => ({ ...tag, checked: checkedKeys.has(tagKey(tag.label)) })),
+		...facetTags
+			.map((tag) => ({ ...tag, checked: checkedKeys.has(tagKey(tag.label)) }))
+			.filter((option) => option.checked || option.count < total),
 		...state.tags
 			.filter((tag) => !facetKeys.has(tagKey(tag)))
 			.map((label) => ({ label, count: 0, checked: true })),
@@ -130,24 +137,26 @@ function TagCheckboxes({
 	);
 }
 
-// Applied with its button rather than on each change, so choosing several filters loads once.
-function RecipeSearchFilters({
-	idPrefix,
-	state,
-	facets,
-}: {
+type RecipeSearchFiltersProps = {
 	idPrefix: string;
 	state: RecipeSearchState;
 	facets: RecipeSearchFacets;
-}) {
-	const tags = tagOptions(state, facets.tags);
+	// How many recipes the search finds, which the tags' counts are compared with.
+	total: number;
+};
+
+// Applied with its button rather than on each change, so choosing several filters loads once. It
+// submits to the search's own mode, so Browse's filters stay on Browse and Search's keep the words.
+function RecipeSearchFilters({ idPrefix, state, facets, total }: RecipeSearchFiltersProps) {
+	const tags = tagOptions(state, facets.tags, total);
 	const source = sourceChoice(state, facets.sources);
 
 	return (
-		<Form action={recipeSearchPath} className="flex flex-col gap-6">
+		<Form action={recipeSearchModePath(state)} className="flex flex-col gap-6">
 			<HiddenSearchFields state={state} editedFields={filterFields} />
-			{/* Remounted when the search changes, so the fields show it; the button keeps focus. */}
-			<FieldGroup key={recipeSearchHref(state)} className="gap-6">
+			{/* Remounted when the words or the filters change, so the fields show them, while a new order
+			    or page keeps choices not yet applied; the button keeps focus. */}
+			<FieldGroup key={recipeSearchFiltersKey(state)} className="gap-6">
 				{tags.shown.length > 0 && (
 					<FieldSet aria-describedby={`${idPrefix}-tags-description`}>
 						<FieldLegend variant="label">Tags</FieldLegend>
@@ -246,30 +255,25 @@ function RecipeSearchFilters({
 	);
 }
 
-type RecipeSearchFiltersSidebarProps = {
-	idPrefix: string;
-	state: RecipeSearchState;
-	facets: RecipeSearchFacets;
+type RecipeSearchFiltersSidebarProps = RecipeSearchFiltersProps & {
 	headingTag: FilterHeadingTag;
 	className?: string;
 };
 
 function RecipeSearchFiltersSidebar({
-	idPrefix,
-	state,
-	facets,
 	headingTag: Heading,
 	className,
+	...filters
 }: RecipeSearchFiltersSidebarProps) {
 	return (
 		<section
-			aria-labelledby={`${idPrefix}-heading`}
+			aria-labelledby={`${filters.idPrefix}-heading`}
 			className={cn('flex flex-col gap-6', className)}
 		>
-			<Heading id={`${idPrefix}-heading`} className="font-heading text-xl font-semibold">
+			<Heading id={`${filters.idPrefix}-heading`} className="font-heading text-xl font-semibold">
 				Filters
 			</Heading>
-			<RecipeSearchFilters idPrefix={idPrefix} state={state} facets={facets} />
+			<RecipeSearchFilters {...filters} />
 		</section>
 	);
 }

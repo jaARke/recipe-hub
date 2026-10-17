@@ -34,6 +34,24 @@ async function openMenu(session: Promise<HeaderMember | null>): Promise<Locator>
 	return menu;
 }
 
+// The sections the menu marks as current, by name.
+function currentSections(menu: Locator): (string | null)[] {
+	return menu
+		.getByRole('group', { name: 'Navigation' })
+		.getByRole('menuitem')
+		.elements()
+		.filter((item) => item.hasAttribute('aria-current'))
+		.map((item) => item.textContent);
+}
+
+// A recipe opened from the list at the URL, as the tab's history and storage record it.
+function openRecipeFrom(listUrl: string) {
+	location.pathname = '/recipes/lemon-bars';
+	const openerUrl = `${window.location.origin}${listUrl}`;
+	stubTabNavigation([openerUrl, `${window.location.origin}/recipes/lemon-bars`]);
+	writeTabStorage('opened-from:/recipes/lemon-bars', openerUrl);
+}
+
 function itemNames(group: Locator, role: 'menuitem' | 'menuitemradio' = 'menuitem'): string[] {
 	return group
 		.getByRole(role)
@@ -140,5 +158,33 @@ describe('SiteMenu', () => {
 		await expect
 			.element(menu.getByRole('menuitem', { name: 'Browse' }))
 			.not.toHaveAttribute('aria-current');
+	});
+
+	it('marks no section on search, where the field holding the words marks it', async () => {
+		location.pathname = '/search';
+		const menu = await openMenu(Promise.resolve(admin));
+
+		await expect.element(menu.getByRole('menuitem', { name: 'Admin' })).toBeVisible();
+		expect(currentSections(menu)).toEqual([]);
+	});
+
+	it('marks Browse as the section of a recipe opened from filtered Browse', async () => {
+		openRecipeFrom('/?tag=Dessert');
+		const menu = await openMenu(Promise.resolve(null));
+
+		await expect
+			.element(menu.getByRole('menuitem', { name: 'Browse' }))
+			.toHaveAttribute('aria-current', 'true');
+		expect(currentSections(menu)).toEqual(['Browse']);
+	});
+
+	it('marks no section on a recipe opened from a search', async () => {
+		openRecipeFrom('/search?q=lemon&tag=Dessert');
+		const menu = await openMenu(Promise.resolve(null));
+
+		await expect
+			.element(menu.getByRole('menuitem', { name: 'Browse' }))
+			.not.toHaveAttribute('aria-current');
+		expect(currentSections(menu)).toEqual([]);
 	});
 });

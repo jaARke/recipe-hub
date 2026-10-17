@@ -1,7 +1,9 @@
 import 'server-only';
 import { cacheLife, cacheTag } from 'next/cache';
+import { searchRecipes } from '@/app/_lib/search-recipes';
 import type { RecipeSort } from '@/application/ports/recipe-repository';
 import type { PublicRecipeDto, RecipeSummaryPage } from '@/application/recipes/recipe-dtos';
+import type { RecipeSearchInput, RecipeSearchPage } from '@/application/search/recipe-search-dtos';
 import { defaultListSort } from '@/components/recipe/recipe-list-params';
 import { getRecipeService } from '@/composition/services';
 import type { MemberId } from '@/domain/member/member';
@@ -47,6 +49,27 @@ export async function getCachedRecipePage(
 		offset: (page - 1) * settings.display.recipesPerPage,
 		sort,
 	});
+}
+
+// Browse's lists, read through search for the counts its filters show: each filter set, order, and
+// page is its own entry. Null for input search refuses. Tagged with each member the filters name, so
+// a rename reaches them.
+export async function getCachedRecipeSearchPage(
+	input: RecipeSearchInput
+): Promise<RecipeSearchPage | null> {
+	'use cache: remote';
+	cacheTag(recipeCacheTags.list);
+	// A date filter's window moves with the clock, so its lists refresh within the hour.
+	if (input.addedWithin === undefined) {
+		cacheLife('days');
+	} else {
+		cacheLife('hours');
+	}
+	const page = await searchRecipes(input);
+	if (page !== null) {
+		cacheTag(...page.facets.contributors.map(({ memberId }) => recipeCacheTags.member(memberId)));
+	}
+	return page;
 }
 
 // The recipes a recipe's pages prerender for, its page and its cooking view: the list's first page.

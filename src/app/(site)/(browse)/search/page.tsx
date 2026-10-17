@@ -1,19 +1,15 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
-import { InvalidRecipeSearchError } from '@/application/search/errors';
-import type { RecipeSearchInput, RecipeSearchPage } from '@/application/search/recipe-search-dtos';
+import { searchRecipes } from '@/app/_lib/search-recipes';
 import { PageContainer } from '@/components/layout/page-container';
-import { headerSearchFormId } from '@/components/search/header-search-bar';
-import { HiddenSearchFields } from '@/components/search/hidden-search-fields';
-import { KeptPageFields } from '@/components/search/kept-page-fields';
+import { HeaderSearchFields } from '@/components/search/header-search-bar';
 import {
 	RecipeSearch,
 	RecipeSearchHint,
 	RecipeSearchSkeleton,
 } from '@/components/search/recipe-search';
 import { parseRecipeSearchParams, toRecipeSearchInput } from '@/components/search/search-params';
-import { getRecipeSearchService } from '@/composition/services';
 import { settings } from '@/lib/settings';
 
 // Results pages stay out of search engines even once recipes are indexed; their links are followed.
@@ -22,19 +18,8 @@ export const metadata: Metadata = {
 	robots: { index: false, follow: true },
 };
 
-// Input the service refuses, such as an overlong query, is a bad URL like any other.
-async function searchRecipes(input: RecipeSearchInput): Promise<RecipeSearchPage> {
-	try {
-		return await getRecipeSearchService().searchRecipes(input);
-	} catch (error) {
-		if (error instanceof InvalidRecipeSearchError) {
-			notFound();
-		}
-		throw error;
-	}
-}
-
-// Not cached: every query and filter makes its own URL, so entries would rarely be reused.
+// Not cached: every query and filter makes its own URL, so entries would rarely be reused. The proxy
+// sends a search without words to Browse.
 async function SearchResults({ searchParams }: Pick<PageProps<'/search'>, 'searchParams'>) {
 	const state = parseRecipeSearchParams(await searchParams);
 	if (state === null) {
@@ -42,6 +27,9 @@ async function SearchResults({ searchParams }: Pick<PageProps<'/search'>, 'searc
 	}
 
 	const results = await searchRecipes(toRecipeSearchInput(state, settings.display.recipesPerPage));
+	if (results === null) {
+		notFound();
+	}
 	const pageCount = Math.max(1, Math.ceil(results.total / settings.display.recipesPerPage));
 	if (state.page > pageCount) {
 		notFound();
@@ -49,11 +37,7 @@ async function SearchResults({ searchParams }: Pick<PageProps<'/search'>, 'searc
 
 	return (
 		<>
-			{/* The header's field holds the query here, and these join its form, so a new query keeps
-			    the filters and the order. */}
-			<KeptPageFields>
-				<HiddenSearchFields state={state} editedFields={['text']} form={headerSearchFormId} />
-			</KeptPageFields>
+			<HeaderSearchFields state={state} />
 			<RecipeSearch state={state} results={results} pageCount={pageCount} headingLevel={2} />
 		</>
 	);
@@ -66,7 +50,7 @@ export default function SearchPage({ searchParams }: PageProps<'/search'>) {
 				<h1 className="font-heading text-4xl font-semibold">Search</h1>
 				<RecipeSearchHint />
 			</div>
-			<Suspense fallback={<RecipeSearchSkeleton />}>
+			<Suspense fallback={<RecipeSearchSkeleton mode="search" />}>
 				<SearchResults searchParams={searchParams} />
 			</Suspense>
 		</PageContainer>

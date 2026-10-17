@@ -6,3 +6,13 @@ export function hrefWithParams(path: string, params: URLSearchParams): string {
 	const query = params.toString();
 	return query === '' ? path : `${path}?${query}`;
 }
+
+// A URL's query as Next.js passes it to a page, for code that reads a request before the page does.
+export function routeSearchParams(params: URLSearchParams): RouteSearchParams {
+	const routeParams: RouteSearchParams = {};
+	for (const [name, value] of params) {
+		const existing = routeParams[name];
+		routeParams[name] = existing === undefined ? value : [existing, value].flat();
+	}
+	return routeParams;
+}

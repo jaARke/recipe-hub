@@ -7,12 +7,7 @@ import type { RecipeSummaryPage } from '@/application/recipes/recipe-dtos';
 import { DeviceFavoritesNote } from '@/components/favorites/device-favorites-note';
 import { FavoritesEmptyState } from '@/components/favorites/favorites-empty-state';
 import { PageContainer } from '@/components/layout/page-container';
-import { RecipeCard } from '@/components/recipe/recipe-card';
-import {
-	firstScreenCardCount,
-	RecipeGrid,
-	RecipeGridSkeleton,
-} from '@/components/recipe/recipe-grid';
+import { RecipeGrid, RecipeGridSkeleton } from '@/components/recipe/recipe-grid';
 import { RecipeListHeading } from '@/components/recipe/recipe-list-heading';
 import { favoriteListHref, parsePageParam } from '@/components/recipe/recipe-list-params';
 import { RecipePagination } from '@/components/recipe/recipe-pagination';
@@ -68,13 +63,7 @@ async function FavoriteList({ searchParams }: Pick<PageProps<'/favorites'>, 'sea
 
 	return (
 		<>
-			<RecipeGrid>
-				{recipes.map((recipe, index) => (
-					<li key={recipe.id}>
-						<RecipeCard recipe={recipe} headingTag="h2" eager={index < firstScreenCardCount} />
-					</li>
-				))}
-			</RecipeGrid>
+			<RecipeGrid layout="fullWidth" recipes={recipes} headingTag="h2" />
 			{pageCount > 1 && (
 				<RecipePagination
 					page={page}
@@ -107,7 +96,7 @@ export default function FavoritesPage({ searchParams }: PageProps<'/favorites'>)
 					<SignedOutFavoritesNote />
 				</Suspense>
 			</div>
-			<Suspense fallback={<RecipeGridSkeleton />}>
+			<Suspense fallback={<RecipeGridSkeleton layout="fullWidth" />}>
 				<FavoriteList searchParams={searchParams} />
 			</Suspense>
 		</PageContainer>

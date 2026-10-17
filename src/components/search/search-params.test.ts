@@ -2,27 +2,26 @@ import { describe, expect, it } from 'vitest';
 import {
 	appliedFilterCount,
 	carriedSearchParams,
+	misplacedRecipeSearchHref,
 	parseRecipeSearchParams,
+	recipeSearchFiltersKey,
 	recipeSearchHref,
+	recipeSearchModePath,
 	recipeSearchSortsFor,
 	toRecipeSearchInput,
 	withoutFilters,
+	withoutText,
 	type RecipeSearchState,
 } from '@/components/search/search-params';
-import type { RouteSearchParams } from '@/lib/url-query';
-
-// A query string as Next.js passes it to a page: a repeated parameter becomes an array.
-function routeParams(query: string): RouteSearchParams {
-	const params: RouteSearchParams = {};
-	for (const [name, value] of new URLSearchParams(query)) {
-		const existing = params[name];
-		params[name] = existing === undefined ? value : [existing, value].flat();
-	}
-	return params;
-}
+import { routeSearchParams } from '@/lib/url-query';
 
 function parse(query: string): RecipeSearchState | null {
-	return parseRecipeSearchParams(routeParams(query));
+	return parseRecipeSearchParams(routeSearchParams(new URLSearchParams(query)));
+}
+
+function misplaced(path: string): string | undefined {
+	const url = new URL(path, 'https://recipes.example.com');
+	return misplacedRecipeSearchHref(url.pathname, routeSearchParams(url.searchParams));
 }
 
 const adaId = '0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e';
@@ -111,8 +110,17 @@ describe('parseRecipeSearchParams', () => {
 });
 
 describe('recipeSearchHref', () => {
-	it('links the bare search page when nothing is asked for', () => {
-		expect(recipeSearchHref({ tags: [], sort: 'newest', page: 1 })).toBe('/search');
+	it('links bare Browse when nothing is asked for', () => {
+		expect(recipeSearchHref({ tags: [], sort: 'newest', page: 1 })).toBe('/');
+	});
+
+	it('links Browse with its filters without words, and Search with them', () => {
+		expect(recipeSearchHref({ tags: ['Dessert', 'Make ahead'], sort: 'newest', page: 1 })).toBe(
+			'/?tag=Dessert&tag=Make+ahead'
+		);
+		expect(recipeSearchHref({ text: 'lemon', tags: ['Dessert'], sort: 'relevance', page: 1 })).toBe(
+			'/search?q=lemon&tag=Dessert'
+		);
 	});
 
 	it('lists parameters in a fixed order and leaves out the default order and first page', () => {
@@ -125,15 +133,48 @@ describe('recipeSearchHref', () => {
 		expect(recipeSearchHref({ text: 'soup', tags: [], sort: 'newest', page: 1 })).toBe(
 			'/search?q=soup&sort=newest'
 		);
-		expect(recipeSearchHref({ tags: [], sort: 'title', page: 3 })).toBe(
-			'/search?sort=title&page=3'
-		);
+		expect(recipeSearchHref({ tags: [], sort: 'title', page: 3 })).toBe('/?sort=title&page=3');
 	});
 
 	it('round-trips through the parser', () => {
 		const query = new URL(recipeSearchHref(fullState), 'https://recipes.example.com').search;
 
 		expect(parse(query)).toEqual(fullState);
+	});
+});
+
+describe('recipeSearchModePath', () => {
+	it('submits a search without words to Browse and one with them to Search', () => {
+		expect(recipeSearchModePath({})).toBe('/');
+		expect(recipeSearchModePath({ text: 'lemon' })).toBe('/search');
+	});
+});
+
+describe('misplacedRecipeSearchHref', () => {
+	it('sends a search without words to Browse with its filters', () => {
+		expect(misplaced('/search?tag=Dessert')).toBe('/?tag=Dessert');
+		expect(misplaced('/search')).toBe('/');
+	});
+
+	it('sends an emptied search to Browse with its filters and its order, its default left out', () => {
+		expect(misplaced('/search?q=&tag=Dessert&sort=title')).toBe('/?tag=Dessert&sort=title');
+		expect(misplaced('/search?q=+&tag=Dessert&sort=newest')).toBe('/?tag=Dessert');
+	});
+
+	it('sends Browse given words to Search with its filters', () => {
+		expect(misplaced('/?q=lemon')).toBe('/search?q=lemon');
+		expect(misplaced('/?q=lemon&tag=Dessert')).toBe('/search?q=lemon&tag=Dessert');
+	});
+
+	it('leaves Browse without words and Search with them where they are', () => {
+		expect(misplaced('/?tag=Dessert&sort=title')).toBeUndefined();
+		expect(misplaced('/?q=')).toBeUndefined();
+		expect(misplaced('/search?q=lemon&tag=Dessert')).toBeUndefined();
+	});
+
+	it('leaves parameters it refuses to the page, which answers them with a 404', () => {
+		expect(misplaced('/search?sort=relevance&tag=Dessert')).toBeUndefined();
+		expect(misplaced('/?q=lemon&q=lime')).toBeUndefined();
 	});
 });
 
@@ -182,6 +223,37 @@ describe('withoutFilters', () => {
 			sort: 'title',
 			page: 1,
 		});
+	});
+});
+
+describe('withoutText', () => {
+	it('keeps the filters and returns to the first page', () => {
+		expect(withoutText(fullState)).toEqual({ ...fullState, text: undefined, page: 1 });
+	});
+
+	it('turns best match, which ranks by the words, into newest first', () => {
+		expect(withoutText({ text: 'lemon', tags: ['Dessert'], sort: 'relevance', page: 2 })).toEqual({
+			text: undefined,
+			tags: ['Dessert'],
+			sort: 'newest',
+			page: 1,
+		});
+	});
+});
+
+describe('recipeSearchFiltersKey', () => {
+	it('stays the same when only the order or the page changes', () => {
+		expect(recipeSearchFiltersKey({ ...fullState, sort: 'newest', page: 1 })).toBe(
+			recipeSearchFiltersKey(fullState)
+		);
+	});
+
+	it('changes with the words or a filter', () => {
+		const key = recipeSearchFiltersKey(fullState);
+
+		expect(recipeSearchFiltersKey({ ...fullState, text: 'butter' })).not.toBe(key);
+		expect(recipeSearchFiltersKey({ ...fullState, tags: ['Baking'] })).not.toBe(key);
+		expect(recipeSearchFiltersKey({ ...fullState, addedWithin: undefined })).not.toBe(key);
 	});
 });
 

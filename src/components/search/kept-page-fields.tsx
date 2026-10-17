@@ -3,8 +3,8 @@
 import * as React from 'react';
 import { useHydrated } from '@/components/forms/use-hydrated';
 
-// Fields on a page that join a form outside it, as the search page's join the header's. Next keeps
-// a page the member leaves, hidden, and its fields would still submit with that form, so their
+// Fields on a page that join a form outside it, as Browse's and Search's join the header's. Next
+// keeps a page the member leaves, hidden, and its fields would still submit with that form, so their
 // fieldset is disabled as the page hides and enabled as it shows: a disabled fieldset's fields
 // never submit. Written to the DOM in the layout effect, as useTransientState resets, since a
 // hidden page re-renders at low priority and the form could submit first.
