@@ -9,6 +9,12 @@ const logMessageRestriction = {
 	message: 'Log a constant message and put values in the fields argument.',
 };
 
+const listRoleRestriction = {
+	selector: "JSXOpeningElement[name.name=/^(ul|ol)$/]:not(:has(> JSXAttribute[name.name='role']))",
+	message:
+		'Give each ul and ol role="list": Safari exposes a list without visible markers as a plain group, and an explicit role keeps it a list.',
+};
+
 const actionStateMessage =
 	'Call useFormAction from src/components/forms/use-form-action.ts, so what an attempt said lasts only while its page is shown.';
 
@@ -72,11 +78,12 @@ const eslintConfig = defineConfig([
 	{
 		files: ['src/**/*.{ts,tsx}', 'scripts/**/*.ts'],
 		rules: {
-			// A namespace import of React is everywhere, and no-restricted-imports would refuse it along
-			// with the named import, so the named import is matched here.
 			'no-restricted-syntax': [
 				'error',
 				logMessageRestriction,
+				listRoleRestriction,
+				// A namespace import of React is everywhere, and no-restricted-imports would refuse it along
+				// with the named import, so the named import is matched here.
 				{
 					selector:
 						"ImportDeclaration[source.value='react'] > ImportSpecifier[imported.name='useActionState']",
@@ -89,7 +96,7 @@ const eslintConfig = defineConfig([
 		// The one caller of useActionState. A later block replaces a rule's options rather than merging
 		// them, so this one restates the rest.
 		files: ['src/components/forms/use-form-action.ts'],
-		rules: { 'no-restricted-syntax': ['error', logMessageRestriction] },
+		rules: { 'no-restricted-syntax': ['error', logMessageRestriction, listRoleRestriction] },
 	},
 	{
 		// Entry points outside Next read their own variables: drizzle-kit's config, tsx scripts, and

@@ -170,6 +170,7 @@ function FilmstripRow({
 			{/* On a phone the row runs to the screen's edges and starts at the column's. It is padded so
 			an image's focus ring shows inside it. */}
 			<ul
+				role="list"
 				ref={rowRef}
 				className="-mx-4 -my-1 flex snap-x snap-mandatory scroll-px-4 [scrollbar-width:thin] items-center gap-3 overflow-x-auto px-4 py-1 sm:-mx-1 sm:scroll-px-1 sm:px-1"
 			>

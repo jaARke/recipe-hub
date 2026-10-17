@@ -90,7 +90,7 @@ export default function DesignReferencePage() {
 					</p>
 				</div>
 				<nav aria-label="Design reference sections">
-					<ul className="flex flex-wrap gap-2">
+					<ul role="list" className="flex flex-wrap gap-2">
 						{sections.map((section) => (
 							<li key={section.id}>
 								<a

@@ -27,7 +27,7 @@ function BrandSpecimens() {
 				<Lockup />
 			</Specimen>
 			<Specimen label="Wordmark: Shantell Sans outlined, filled with the text color">
-				<ul className="flex flex-col gap-6">
+				<ul role="list" className="flex flex-col gap-6">
 					{wordmarkHeights.map((height) => (
 						<li key={height} className="flex flex-col items-start gap-2">
 							{/* The largest outgrows a phone's column, so it scales down to fit. */}
@@ -38,7 +38,7 @@ function BrandSpecimens() {
 				</ul>
 			</Specimen>
 			<Specimen label="Mascot poses: each its own die-cut, shown at lg">
-				<ul className="flex flex-wrap items-start gap-8">
+				<ul role="list" className="flex flex-wrap items-start gap-8">
 					{(Object.keys(mascotPoseUses) as MascotPose[]).map((pose) => (
 						<li key={pose} className="flex max-w-40 flex-col gap-2">
 							<Mascot pose={pose} size="lg" />
@@ -50,7 +50,7 @@ function BrandSpecimens() {
 				</ul>
 			</Specimen>
 			<Specimen label="Mascot sizes: the die-cut keeps its ink outline on both themes">
-				<ul className="flex flex-wrap items-end gap-8">
+				<ul role="list" className="flex flex-wrap items-end gap-8">
 					{(Object.keys(mascotSizeUses) as MascotSize[]).map((size) => (
 						<li key={size} className="flex flex-col gap-2">
 							<Mascot size={size} />

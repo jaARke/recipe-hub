@@ -40,7 +40,7 @@ function ButtonSpecimen() {
 	return (
 		<div className="flex flex-col gap-6">
 			<Specimen label="Variants by size: xs, sm, default, lg, then disabled">
-				<ul className="flex flex-col gap-6">
+				<ul role="list" className="flex flex-col gap-6">
 					{buttonVariantNames.map((variant) => (
 						<li key={variant} className="flex flex-col gap-2">
 							<SpecimenLabel>variant=&quot;{variant}&quot;</SpecimenLabel>
@@ -93,7 +93,7 @@ function ToggleSpecimen() {
 	return (
 		<div className="flex flex-col gap-6">
 			<Specimen label="Variants by size: sm, default, lg, then disabled. Press one to fill its heart">
-				<ul className="flex flex-col gap-6">
+				<ul role="list" className="flex flex-col gap-6">
 					{toggleVariantNames.map((variant) => (
 						<li key={variant} className="flex flex-col gap-2">
 							<SpecimenLabel>variant=&quot;{variant}&quot;</SpecimenLabel>
@@ -130,7 +130,7 @@ function BadgeSpecimen() {
 	return (
 		<div className="grid gap-6 md:grid-cols-2">
 			<Specimen label="Variants">
-				<ul className="flex flex-wrap items-center gap-3">
+				<ul role="list" className="flex flex-wrap items-center gap-3">
 					{badgeVariantNames.map((variant) => (
 						<li key={variant}>
 							<Badge variant={variant}>{variant}</Badge>

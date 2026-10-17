@@ -303,6 +303,22 @@ describe('CookingView', () => {
 		expect(location.search).toBe('?step=3');
 	});
 
+	it('names its checklist and Steps’ list lists, which Safari takes for groups without markers', async () => {
+		await render(<CookingView recipe={potRoast} />);
+
+		await expect
+			.element(
+				shown()
+					.getByRole('list')
+					.filter({ has: page.getByRole('checkbox', { name: '1 tablespoon flour' }) })
+			)
+			.toHaveAttribute('role', 'list');
+		await button('Steps').click();
+		await expect
+			.element(page.getByRole('dialog', { name: 'Steps' }).getByRole('list'))
+			.toHaveAttribute('role', 'list');
+	});
+
 	it('keeps the checks in the tab for this version of the recipe, through the finish', async () => {
 		const { unmount } = await render(<CookingView recipe={potRoast} />);
 

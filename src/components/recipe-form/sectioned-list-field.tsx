@@ -357,7 +357,7 @@ function SectionedListField({
 			{listNote !== undefined && <FieldNote id={ids.note} name={legend} {...listNote} />}
 			<div className="flex flex-col gap-3">
 				{rows.length > 0 && (
-					<ul aria-label={legend} className="flex flex-col gap-2">
+					<ul role="list" aria-label={legend} className="flex flex-col gap-2">
 						{rows.map((row, index) => renderRow(row, index))}
 					</ul>
 				)}

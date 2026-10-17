@@ -76,7 +76,7 @@ function ReferenceSubsectionNav({
 }) {
 	return (
 		<nav aria-label={label}>
-			<ul className="flex flex-wrap gap-1">
+			<ul role="list" className="flex flex-wrap gap-1">
 				{subsections.map((subsection) => (
 					<li key={subsection.id}>
 						<a

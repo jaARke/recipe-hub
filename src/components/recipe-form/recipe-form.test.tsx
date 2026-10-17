@@ -543,6 +543,17 @@ describe('RecipeForm’s photos', () => {
 			{ name: 'Photo 1', status: 'Cover photo' },
 		]);
 	});
+
+	it('names its photos a list, which Safari takes for a group without markers', async () => {
+		await renderForm({
+			...lemonBars,
+			images: [{ role: 'dish', pathname: 'dish/development/bars.jpg' }],
+		});
+
+		await expect
+			.element(page.getByRole('list', { name: 'Photos' }))
+			.toHaveAttribute('role', 'list');
+	});
 });
 
 describe('RecipeForm’s lists', () => {
@@ -568,6 +579,16 @@ describe('RecipeForm’s lists', () => {
 		await page.getByRole('button', { name: `Actions for ${row}` }).click();
 		await page.getByRole('menuitem', { name: action }).click();
 	}
+
+	it('names each list of rows a list, which Safari takes for a group without markers', async () => {
+		await renderForm(lemonBars);
+
+		for (const legend of ['Ingredients', 'Steps']) {
+			await expect
+				.element(page.getByRole('list', { name: legend }))
+				.toHaveAttribute('role', 'list');
+		}
+	});
 
 	it('shows how a line without an amount reads once tidied, and nothing when it reads as typed', async () => {
 		await renderForm({

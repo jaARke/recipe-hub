@@ -27,7 +27,7 @@ export default function PrivacyPage() {
 				</p>
 			</div>
 			<PageSection id="privacy-requests" title="Access requests">
-				<ul className={listClassName}>
+				<ul role="list" className={listClassName}>
 					<li>
 						The request form asks for your name, how you know us, and, if you choose, an email
 						address for your invite.
@@ -46,7 +46,7 @@ export default function PrivacyPage() {
 				</ul>
 			</PageSection>
 			<PageSection id="privacy-accounts" title="Accounts">
-				<ul className={listClassName}>
+				<ul role="list" className={listClassName}>
 					<li>Your display name is public. It appears beside recipes you add.</li>
 					<li>
 						Your email address is private. Sign-in codes are sent to it, and admins can see it.
@@ -71,7 +71,7 @@ export default function PrivacyPage() {
 				</ul>
 			</PageSection>
 			<PageSection id="privacy-recipes" title="Recipes and photos">
-				<ul className={listClassName}>
+				<ul role="list" className={listClassName}>
 					<li>
 						A recipe, its dish photos, and its scans of the original are public once the recipe is
 						saved, so anyone can see them, signed in or not.
@@ -95,7 +95,7 @@ export default function PrivacyPage() {
 				</ul>
 			</PageSection>
 			<PageSection id="privacy-imports" title="Importing recipes">
-				<ul className={listClassName}>
+				<ul role="list" className={listClassName}>
 					<li>
 						To read a recipe you import, the site may send its photos or the text of its web page to
 						an AI model through Vercel’s AI Gateway. Neither the Gateway nor the model’s provider
@@ -124,7 +124,7 @@ export default function PrivacyPage() {
 				</ul>
 			</PageSection>
 			<PageSection id="privacy-cookies" title="Cookies and browser storage">
-				<ul className={listClassName}>
+				<ul role="list" className={listClassName}>
 					<li>
 						Signing in sets a cookie that keeps you signed in. Adding or using a passkey sets a
 						short-lived cookie for that step.
@@ -170,7 +170,7 @@ export default function PrivacyPage() {
 				</ul>
 			</PageSection>
 			<PageSection id="privacy-services" title="Services the site uses">
-				<ul className={listClassName}>
+				<ul role="list" className={listClassName}>
 					<li>Email is sent through Resend.</li>
 					<li>
 						The site is hosted by Vercel. Its database is hosted by Neon, and photos and scans are

@@ -171,7 +171,7 @@ type MemberListProps = {
 
 function MemberList({ members, makeAdmin, removeAdmin, removeMember }: MemberListProps) {
 	return (
-		<ul className="divide-y">
+		<ul role="list" className="divide-y">
 			{members.map((member) => (
 				<MemberRow
 					key={member.id}

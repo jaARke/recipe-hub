@@ -116,7 +116,7 @@ function AttachmentSpecimen() {
 	return (
 		<div className="flex flex-col gap-6">
 			<Specimen label="States: idle, uploading, processing, error, done">
-				<ul className="flex flex-wrap gap-3">
+				<ul role="list" className="flex flex-wrap gap-3">
 					{attachmentStates.map((attachment) => (
 						<li key={attachment.state}>
 							<SampleAttachment {...attachment} />
@@ -125,7 +125,7 @@ function AttachmentSpecimen() {
 				</ul>
 			</Specimen>
 			<Specimen label='orientation="vertical"'>
-				<ul className="flex flex-wrap gap-3">
+				<ul role="list" className="flex flex-wrap gap-3">
 					{attachmentStates.map((attachment) => (
 						<li key={attachment.state}>
 							<SampleAttachment {...attachment} orientation="vertical" />
@@ -134,7 +134,7 @@ function AttachmentSpecimen() {
 				</ul>
 			</Specimen>
 			<Specimen label="Sizes: default, sm, xs">
-				<ul className="flex flex-wrap items-center gap-3">
+				<ul role="list" className="flex flex-wrap items-center gap-3">
 					{attachmentSizes.map((size) => (
 						<li key={size}>
 							<SampleAttachment

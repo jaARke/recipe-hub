@@ -296,6 +296,12 @@ describe('RecipeImageViewer', () => {
 		await expect.element(caption()).toHaveTextContent('Photo 2 of 3. Bread on a board');
 	});
 
+	it('names the strip of thumbnails a list, which Safari takes for a group without markers', async () => {
+		await openViewer();
+
+		await expect.element(viewer().getByRole('list')).toHaveAttribute('role', 'list');
+	});
+
 	it('centers the strip of thumbnails from sm only while the row fits, so an overflowing row starts at its first', async () => {
 		await resizeScreen(1024, 768);
 		const { rerender } = await openViewer();

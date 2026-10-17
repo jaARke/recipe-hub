@@ -13,7 +13,7 @@ const recipeKey = 'opened-from:/recipes/lemon-bars';
 async function renderList() {
 	await render(
 		<RecipeListLinks>
-			<ul>
+			<ul role="list">
 				<li>
 					<Link href="/recipes/lemon-bars">
 						<h3>Lemon bars</h3>

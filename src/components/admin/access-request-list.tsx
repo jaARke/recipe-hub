@@ -180,7 +180,7 @@ function AccessRequestList({
 			{requests.length === 0 ? (
 				<AccessRequestsEmptyState />
 			) : (
-				<ul className="flex flex-col gap-6">
+				<ul role="list" className="flex flex-col gap-6">
 					{requests.map((request) => (
 						<li key={request.id}>
 							<AccessRequestCard

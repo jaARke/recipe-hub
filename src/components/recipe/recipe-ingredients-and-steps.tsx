@@ -83,6 +83,7 @@ function IngredientSectionList({
 		<div className="flex flex-col gap-3 print:break-inside-avoid">
 			<SectionHeading heading={section.heading} tag={headingTag} />
 			<ul
+				role="list"
 				style={indentStyle}
 				className={cn(recipeTextStyles.body, 'list-disc space-y-2', listMarkerClassName)}
 			>
@@ -129,6 +130,7 @@ function InstructionSectionList({
 		<div className="flex flex-col gap-3">
 			<SectionHeading heading={section.heading} tag={headingTag} />
 			<ol
+				role="list"
 				start={section.steps[0]?.number}
 				style={indentStyle}
 				className={cn(recipeTextStyles.body, 'list-decimal space-y-4', listMarkerClassName)}

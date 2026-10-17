@@ -57,6 +57,14 @@ describe('RecipeDetail’s ruled block', () => {
 		await expect.element(page.getByRole('link', { name: 'Soup' })).toBeInTheDocument();
 	});
 
+	it('names its tags a list, which Safari takes for a group without markers', async () => {
+		await render(<RecipeDetail recipe={soup()} headingLevel={1} />);
+
+		await expect
+			.element(page.getByRole('list').filter({ has: page.getByRole('link', { name: 'Soup' }) }))
+			.toHaveAttribute('role', 'list');
+	});
+
 	it('labels what a recipe makes by its verb', async () => {
 		await render(
 			<RecipeDetail
@@ -222,6 +230,18 @@ describe('RecipeDetail’s filmstrips', () => {
 			'(min-width: 640px) min(481px, 512px), min(361px, 82vw)',
 			'(min-width: 640px) min(427px, 512px), min(320px, 82vw)',
 		]);
+	});
+
+	it('names each row a list, which Safari takes for a group without markers', async () => {
+		await render(<RecipeDetail recipe={soupWith([wideSoup, squarerSoup])} headingLevel={1} />);
+
+		await expect
+			.element(
+				page
+					.getByRole('list')
+					.filter({ has: page.getByRole('button', { name: 'View photo 1 of 2' }) })
+			)
+			.toHaveAttribute('role', 'list');
 	});
 
 	it('gives a photo stored before sizes a 3:2 box, and shows it whole in it', async () => {

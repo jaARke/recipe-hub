@@ -15,6 +15,14 @@ afterEach(() => {
 });
 
 describe('PasskeyList', () => {
+	it('names its list a list, which Safari takes for a group without markers', async () => {
+		await render(
+			<PasskeyList passkeys={passkeys} renamePasskey={succeed} removePasskey={succeed} />
+		);
+
+		await expect.element(page.getByRole('list')).toHaveAttribute('role', 'list');
+	});
+
 	it('confirms a rename in a toast, as a removal is, once its dialog closes', async () => {
 		const add = vi.spyOn(toast, 'add');
 		await render(

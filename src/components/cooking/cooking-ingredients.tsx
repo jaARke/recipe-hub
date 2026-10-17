@@ -61,7 +61,7 @@ function IngredientChecklist({
 					{section.heading !== undefined && (
 						<Heading className={cn('pb-1 font-semibold', sizes.heading)}>{section.heading}</Heading>
 					)}
-					<ul className="flex flex-col">
+					<ul role="list" className="flex flex-col">
 						{section.lines.map((line, lineIndex) => {
 							const row = ingredientCheckKey(sectionIndex, lineIndex);
 							const isChecked = checked.has(row);

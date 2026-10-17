@@ -103,6 +103,12 @@ describe('DraftList', () => {
 		]);
 	});
 
+	it('names its list a list, which Safari takes for a group without markers', async () => {
+		await render(<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={vi.fn()} />);
+
+		await expect.element(page.getByRole('list')).toHaveAttribute('role', 'list');
+	});
+
 	it('says where a draft saved from an import came from once it opens on its own', async () => {
 		await render(
 			<DraftList

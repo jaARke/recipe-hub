@@ -48,7 +48,7 @@ function AdminNavItem({ member, ...place }: MainNavProps & MainNavPlace) {
 function MainNavLinks({ member, ...place }: MainNavProps & MainNavPlace) {
 	return (
 		<nav aria-label="Main">
-			<ul className="flex items-center gap-1">
+			<ul role="list" className="flex items-center gap-1">
 				{navItems.map((item) => (
 					<li key={item.href}>
 						<MainNavLink item={item} {...place} />

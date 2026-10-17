@@ -100,7 +100,7 @@ function DraftList({ drafts, now, memberId, deleteDraft }: DraftListProps) {
 	}
 
 	return (
-		<ul className="divide-y">
+		<ul role="list" className="divide-y">
 			{drafts.map((draft) => {
 				const name = draft.title ?? untitled;
 				const savedAt = draft.kind === 'saved' ? draft.savedAt : draft.importedAt;
