@@ -12,13 +12,11 @@ import {
 	favoritesPath,
 	recipeEditPath,
 	recipeListPath,
-	recipeSearchPath,
 } from '@/components/recipe/recipe-paths';
-import { recipeSearchParamNames } from '@/components/search/search-params';
-import { hrefWithParams } from '@/lib/url-query';
 import { test as setup } from './support/fixtures';
 import { waitForHydration } from './support/hydration';
 import { sampleRecipe } from './support/sample-recipe';
+import { sampleSearchPath } from './support/sample-search';
 import { seedLinkImportDraft } from './support/test-imports';
 
 // Long enough for `next dev` to compile a page's server and client code on its first request.
@@ -29,8 +27,7 @@ const signedOutPaths = [
 	sampleRecipe.path,
 	sampleRecipe.cookPath,
 	favoritesPath,
-	// A search without words is Browse, so the search page compiles for one with words.
-	hrefWithParams(recipeSearchPath, new URLSearchParams({ [recipeSearchParamNames.text]: 'soup' })),
+	sampleSearchPath,
 	signInPath,
 	requestAccessPath,
 	privacyPath,
