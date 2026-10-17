@@ -377,6 +377,296 @@ describe('scaleIngredientLine', () => {
 
 	it.each<[string, number, ScaledParts]>([
 		[
+			'1 cup flour plus one to 2 tablespoons',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour plus 2 to 4 tablespoons' },
+		],
+		[
+			'1 cup flour plus one to 2 tablespoons',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour plus 1½ to 3 teaspoons' },
+		],
+		[
+			'1 cup flour plus 1 to two tablespoons',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour plus 2 to 4 tablespoons' },
+		],
+		[
+			'1 cup flour plus 1 to two tablespoons',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour plus 1½ to 3 teaspoons' },
+		],
+		[
+			'1 cup flour plus 1 to 2 tablespoons',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour plus 2 to 4 tablespoons' },
+		],
+		[
+			'1 cup flour plus 1 to 2 tablespoons',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour plus 1½ to 3 teaspoons' },
+		],
+		[
+			'1 cup flour plus 1-2 tablespoons',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour plus 2 to 4 tablespoons' },
+		],
+		[
+			'1 cup flour plus 1-2 tablespoons',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour plus 1½ to 3 teaspoons' },
+		],
+		[
+			'1 cup flour plus 1 or 2 tablespoons',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour plus 2 to 4 tablespoons' },
+		],
+		[
+			'1 cup flour plus 1 or 2 tablespoons',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour plus 1½ to 3 teaspoons' },
+		],
+		[
+			'1 cup flour plus one or two tablespoons',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour plus 2 to 4 tablespoons' },
+		],
+		[
+			'1 cup flour plus one or two tablespoons',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour plus 1½ to 3 teaspoons' },
+		],
+		[
+			'1 cup flour plus ½ to ¾ cup',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour plus 1 to 1½ cups' },
+		],
+		[
+			'1 cup flour plus ½ to ¾ cup',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour plus 4 to 6 tablespoons' },
+		],
+		[
+			'1 cup flour plus ½ to one tablespoon',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour plus 1 to 2 tablespoons' },
+		],
+		[
+			'1 cup flour plus ½ to one tablespoon',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour plus ¾ to 1½ teaspoons' },
+		],
+		[
+			'1 cup flour plus one to 1½ tablespoons',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour plus 2 to 3 tablespoons' },
+		],
+		[
+			'1 cup flour plus one to 1½ tablespoons',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour plus 1½ to 2¼ teaspoons' },
+		],
+		[
+			'1 cup flour plus 1 and 1/2 tablespoons',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour plus 3 tablespoons' },
+		],
+		[
+			'1 cup flour plus 1 and 1/2 tablespoons',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour plus 2¼ teaspoons' },
+		],
+		[
+			'1 cup flour, plus one to 2 tablespoons for dusting',
+			2,
+			{
+				amount: { min: 2 },
+				unit: 'cups',
+				item: 'flour',
+				preparation: 'plus 2 to 4 tablespoons for dusting',
+			},
+		],
+		[
+			'1 cup flour, plus one to 2 tablespoons for dusting',
+			1 / 2,
+			{
+				amount: { min: 0.5 },
+				unit: 'cup',
+				item: 'flour',
+				preparation: 'plus 1½ to 3 teaspoons for dusting',
+			},
+		],
+		[
+			'1 cup flour plus one to 2',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour plus 2 to 4' },
+		],
+		[
+			'1 cup flour plus one to 2',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour plus ½ to 1' },
+		],
+		['2 eggs plus one to 2 yolks', 2, { amount: { min: 4 }, item: 'eggs plus 2 to 4 yolks' }],
+		['2 eggs plus one to 2 yolks', 1 / 2, { amount: { min: 1 }, item: 'egg plus ½ to 1 yolk' }],
+		[
+			'1 cup chopped onion (one to 2 medium)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'chopped onion (2 to 4 medium)' },
+		],
+		[
+			'1 cup chopped onion (one to 2 medium)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'chopped onion (½ to 1 medium)' },
+		],
+	])('reads the range in "%s" whole and scales both its ends by %s', (text, factor, parts) => {
+		expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+			line: { text, ...parts },
+		});
+	});
+
+	it.each<[string, number, ScaledParts, IngredientLineSpan[]]>([
+		[
+			'1 cup flour plus two to 1 tablespoon',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour plus two to 1 tablespoon' },
+			[{ field: 'item', start: 11, end: 19 }],
+		],
+		[
+			'1 cup flour plus two to 1 tablespoon',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour plus two to 1 tablespoon' },
+			[{ field: 'item', start: 11, end: 19 }],
+		],
+		[
+			'1 cup flour plus one to 1/2 cup',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour plus one to 1/2 cup' },
+			[{ field: 'item', start: 11, end: 21 }],
+		],
+		[
+			'1 cup flour plus one to 1/2 cup',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour plus one to 1/2 cup' },
+			[{ field: 'item', start: 11, end: 21 }],
+		],
+		[
+			'1 cup flour plus 12 to fifteen tablespoons',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour plus 12 to fifteen tablespoons' },
+			[{ field: 'item', start: 11, end: 24 }],
+		],
+		[
+			'1 cup flour plus 12 to fifteen tablespoons',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour plus 12 to fifteen tablespoons' },
+			[{ field: 'item', start: 11, end: 24 }],
+		],
+		[
+			'2 eggs plus twelve to fifteen yolks',
+			2,
+			{ amount: { min: 4 }, item: 'eggs plus twelve to fifteen yolks' },
+			[{ field: 'item', start: 10, end: 27 }],
+		],
+		[
+			'2 eggs plus twelve to fifteen yolks',
+			1 / 2,
+			{ amount: { min: 1 }, item: 'egg plus twelve to fifteen yolks' },
+			[{ field: 'item', start: 9, end: 26 }],
+		],
+		[
+			'1 cup water plus a tablespoon or two',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'water plus a tablespoon or two' },
+			[{ field: 'item', start: 11, end: 30 }],
+		],
+		[
+			'1 cup water plus a tablespoon or two',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'water plus a tablespoon or two' },
+			[{ field: 'item', start: 11, end: 30 }],
+		],
+		[
+			'1 cup flour plus 2 tablespoons to 1',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour plus 2 tablespoons to 1' },
+			[{ field: 'item', start: 11, end: 29 }],
+		],
+		[
+			'1 cup flour plus 2 tablespoons to 1',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour plus 2 tablespoons to 1' },
+			[{ field: 'item', start: 11, end: 29 }],
+		],
+		[
+			'1 cup flour (a cup or two)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour (a cup or two)' },
+			[{ field: 'item', start: 7, end: 19 }],
+		],
+		[
+			'1 cup flour (a cup or two)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour (a cup or two)' },
+			[{ field: 'item', start: 7, end: 19 }],
+		],
+	])(
+		'leaves the range in "%s", which it cannot read, as written and marks it unscaled by %s',
+		(text, factor, parts, amounts) => {
+			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+				line: { text, ...parts },
+				unscaled: { amounts },
+			});
+		}
+	);
+
+	it.each<[string, number, ScaledParts]>([
+		['2 eggs plus 1 or more yolks', 2, { amount: { min: 4 }, item: 'eggs plus 2 or more yolks' }],
+		[
+			'2 eggs plus 1 or more yolks',
+			1 / 2,
+			{ amount: { min: 1 }, item: 'egg plus ½ or more yolks' },
+		],
+		[
+			'2 tablespoons butter, plus 1 to grease the pan',
+			2,
+			{
+				amount: { min: 0.25 },
+				unit: 'cup',
+				item: 'butter',
+				preparation: 'plus 2 to grease the pan',
+			},
+		],
+		[
+			'1 cup flour plus 1 tablespoon or 2 eggs',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour plus 2 tablespoons or 4 eggs' },
+		],
+		[
+			'1 cup flour plus 1 tablespoon or 2 eggs',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour plus 1½ teaspoons or 1 egg' },
+		],
+		[
+			'2 tablespoons butter, plus 1 to grease the pan',
+			1 / 2,
+			{
+				amount: { min: 1 },
+				unit: 'tablespoon',
+				item: 'butter',
+				preparation: 'plus ½ to grease the pan',
+			},
+		],
+	])(
+		'scales the count in "%s", whose "or" or "to" ends no range, by %s without a mark',
+		(text, factor, parts) => {
+			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+				line: { text, ...parts },
+			});
+		}
+	);
+
+	it.each<[string, number, ScaledParts]>([
+		[
 			'8 ounces frozen or fresh green peas (about 1 ¾ cups, optional)',
 			2,
 			{
@@ -480,6 +770,29 @@ describe('scaleIngredientLine', () => {
 		],
 		['8 oz. pasta (half a box)', 2, { amount: { min: 16 }, unit: 'oz.', item: 'pasta (1 box)' }],
 		['8 oz. pasta (half a box)', 1 / 2, { amount: { min: 4 }, unit: 'oz.', item: 'pasta (¼ box)' }],
+		[
+			'1 cup chopped onion (about 2 onions)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'chopped onion (about 4 onions)' },
+		],
+		[
+			'1 cup chopped onion (about 2 onions)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'chopped onion (about 1 onion)' },
+		],
+		// A C after one digit is a cup, as old cards write it.
+		['2 sticks (1 C) butter', 2, { amount: { min: 4 }, unit: 'sticks (2 C)', item: 'butter' }],
+		['2 sticks (1 C) butter', 1 / 2, { amount: { min: 1 }, unit: 'stick (½ C)', item: 'butter' }],
+		[
+			'1 cup flour (or 1 C whole wheat)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour (or 2 C whole wheat)' },
+		],
+		[
+			'1 cup flour (or 1 C whole wheat)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour (or ½ C whole wheat)' },
+		],
 	])(
 		'scales the second amount or the equivalent in "%s", measured by volume or weight, by %s',
 		(text, factor, parts) => {
@@ -623,6 +936,206 @@ describe('scaleIngredientLine', () => {
 			1 / 2,
 			{ amount: { min: 0.5 }, item: 'lemon', preparation: 'cut into 8 wedges' },
 		],
+		['1 cup milk (2% fat)', 2, { amount: { min: 2 }, unit: 'cups', item: 'milk (2% fat)' }],
+		['1 cup milk (2% fat)', 1 / 2, { amount: { min: 0.5 }, unit: 'cup', item: 'milk (2% fat)' }],
+		['1 cup milk (2 percent)', 2, { amount: { min: 2 }, unit: 'cups', item: 'milk (2 percent)' }],
+		[
+			'1 cup milk (2 percent)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'milk (2 percent)' },
+		],
+		['1 cup milk (1% or 2%)', 2, { amount: { min: 2 }, unit: 'cups', item: 'milk (1% or 2%)' }],
+		[
+			'1 cup milk (1% or 2%)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'milk (1% or 2%)' },
+		],
+		[
+			'4 ounces chocolate (85% cacao)',
+			2,
+			{ amount: { min: 8 }, unit: 'ounces', item: 'chocolate (85% cacao)' },
+		],
+		[
+			'4 ounces chocolate (85% cacao)',
+			1 / 2,
+			{ amount: { min: 2 }, unit: 'ounces', item: 'chocolate (85% cacao)' },
+		],
+		[
+			'4 ounces chocolate, 70% dark',
+			2,
+			{ amount: { min: 8 }, unit: 'ounces', item: 'chocolate', preparation: '70% dark' },
+		],
+		[
+			'4 ounces chocolate, 70% dark',
+			1 / 2,
+			{ amount: { min: 2 }, unit: 'ounces', item: 'chocolate', preparation: '70% dark' },
+		],
+		['1 cup water (110 F)', 2, { amount: { min: 2 }, unit: 'cups', item: 'water (110 F)' }],
+		['1 cup water (110 F)', 1 / 2, { amount: { min: 0.5 }, unit: 'cup', item: 'water (110 F)' }],
+		['1 cup water (110F)', 2, { amount: { min: 2 }, unit: 'cups', item: 'water (110F)' }],
+		['1 cup water (110F)', 1 / 2, { amount: { min: 0.5 }, unit: 'cup', item: 'water (110F)' }],
+		['1 cup water (45 C)', 2, { amount: { min: 2 }, unit: 'cups', item: 'water (45 C)' }],
+		['1 cup water (45 C)', 1 / 2, { amount: { min: 0.5 }, unit: 'cup', item: 'water (45 C)' }],
+		['1 cup water (110F/45C)', 2, { amount: { min: 2 }, unit: 'cups', item: 'water (110F/45C)' }],
+		[
+			'1 cup water (110F/45C)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'water (110F/45C)' },
+		],
+		[
+			'1 cup water (40 to 45 C)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'water (40 to 45 C)' },
+		],
+		[
+			'1 cup water (40 to 45 C)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'water (40 to 45 C)' },
+		],
+		['1 cup water (105-115 F)', 2, { amount: { min: 2 }, unit: 'cups', item: 'water (105-115 F)' }],
+		[
+			'1 cup water (105-115 F)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'water (105-115 F)' },
+		],
+		[
+			'1 cup water (350 degrees)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'water (350 degrees)' },
+		],
+		[
+			'1 cup water (350 degrees)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'water (350 degrees)' },
+		],
+		['1 cup water (110 deg F)', 2, { amount: { min: 2 }, unit: 'cups', item: 'water (110 deg F)' }],
+		[
+			'1 cup water (110 deg F)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'water (110 deg F)' },
+		],
+		[
+			'1 cup water, heated to 110 F',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'water', preparation: 'heated to 110 F' },
+		],
+		[
+			'1 cup water, heated to 110 F',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'water', preparation: 'heated to 110 F' },
+		],
+		[
+			'2 eggs, at room temperature (70 F)',
+			2,
+			{ amount: { min: 4 }, item: 'eggs', preparation: 'at room temperature (70 F)' },
+		],
+		[
+			'2 eggs, at room temperature (70 F)',
+			1 / 2,
+			{ amount: { min: 1 }, item: 'egg', preparation: 'at room temperature (70 F)' },
+		],
+		[
+			'1 cup simple syrup (1:1)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'simple syrup (1:1)' },
+		],
+		[
+			'1 cup simple syrup (1:1)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'simple syrup (1:1)' },
+		],
+		[
+			'1 cup brine (1:16 salt to water)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'brine (1:16 salt to water)' },
+		],
+		[
+			'1 cup brine (1:16 salt to water)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'brine (1:16 salt to water)' },
+		],
+		[
+			'1 cup simple syrup (1 part sugar to 1 part water)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'simple syrup (1 part sugar to 1 part water)' },
+		],
+		[
+			'1 cup simple syrup (1 part sugar to 1 part water)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'simple syrup (1 part sugar to 1 part water)' },
+		],
+		['2 eggs (size 2)', 2, { amount: { min: 4 }, item: 'eggs (size 2)' }],
+		['2 eggs (size 2)', 1 / 2, { amount: { min: 1 }, item: 'egg (size 2)' }],
+		['1 kg flour (tipo 00)', 2, { amount: { min: 2 }, unit: 'kg', item: 'flour (tipo 00)' }],
+		['1 kg flour (tipo 00)', 1 / 2, { amount: { min: 0.5 }, unit: 'kg', item: 'flour (tipo 00)' }],
+		['1 (No. 10) can tomatoes', 2, { amount: { min: 2 }, item: '(No. 10) cans tomatoes' }],
+		['1 (No. 10) can tomatoes', 1 / 2, { amount: { min: 0.5 }, item: '(No. 10) can tomatoes' }],
+		[
+			'1 cup cheddar (aged 18 months)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'cheddar (aged 18 months)' },
+		],
+		[
+			'1 cup cheddar (aged 18 months)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'cheddar (aged 18 months)' },
+		],
+		[
+			'1 cup flour, sifted 2 times',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour', preparation: 'sifted 2 times' },
+		],
+		[
+			'1 cup flour, sifted 2 times',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour', preparation: 'sifted 2 times' },
+		],
+		['1 cup water (2)', 2, { amount: { min: 2 }, unit: 'cups', item: 'water (2)' }],
+		['1 cup water (2)', 1 / 2, { amount: { min: 0.5 }, unit: 'cup', item: 'water (2)' }],
+		['1 cup water (one to 2)', 2, { amount: { min: 2 }, unit: 'cups', item: 'water (one to 2)' }],
+		[
+			'1 cup water (one to 2)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'water (one to 2)' },
+		],
+		[
+			'1 cup chopped onion (about 2)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'chopped onion (about 2)' },
+		],
+		[
+			'1 cup chopped onion (about 2)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'chopped onion (about 2)' },
+		],
+		[
+			'1 pound ground beef (80/20)',
+			2,
+			{ amount: { min: 2 }, unit: 'pounds', item: 'ground beef (80/20)' },
+		],
+		[
+			'1 pound ground beef (80/20)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'pound', item: 'ground beef (80/20)' },
+		],
+		['1 lb 80/20 ground beef', 2, { amount: { min: 2 }, unit: 'lb', item: '80/20 ground beef' }],
+		[
+			'1 lb 80/20 ground beef',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'lb', item: '80/20 ground beef' },
+		],
+		['1 cup vodka (80 proof)', 2, { amount: { min: 2 }, unit: 'cups', item: 'vodka (80 proof)' }],
+		[
+			'1 cup vodka (80 proof)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'vodka (80 proof)' },
+		],
+		['1 cup flour (T55)', 2, { amount: { min: 2 }, unit: 'cups', item: 'flour (T55)' }],
+		['1 cup flour (T55)', 1 / 2, { amount: { min: 0.5 }, unit: 'cup', item: 'flour (T55)' }],
+		['1 kg 00 flour', 2, { amount: { min: 2 }, unit: 'kg', item: '00 flour' }],
+		['1 kg 00 flour', 1 / 2, { amount: { min: 0.5 }, unit: 'kg', item: '00 flour' }],
+		['1 cup 5-minute rice', 2, { amount: { min: 2 }, unit: 'cups', item: '5-minute rice' }],
+		['1 cup 5-minute rice', 1 / 2, { amount: { min: 0.5 }, unit: 'cup', item: '5-minute rice' }],
 	])(
 		'keeps the number in "%s", which is no amount, by %s without a mark',
 		(text, factor, parts) => {

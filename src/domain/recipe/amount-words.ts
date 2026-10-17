@@ -1,18 +1,17 @@
-// Amounts written in words at the start of a line, read from a closed vocabulary: the numbers one to
-// twelve; half, third, quarter, and fourth after a number or an article ("one-half", "a quarter",
-// "two thirds") or alone ("half cup"); "half a" and "half an"; a whole number and a fraction ("two
-// and a half", "1 and 1/2"); a range of two joined by "to" or "or"; and "a" or "an". A whole or
-// mixed number stands alone ("two eggs"), while an article or a fraction counts only before a unit
-// the unit table reads ("a pinch of salt"), which the parser checks, so "a few", "a little", "a
-// couple", and "an onion" read nothing. Left out on purpose: numbers past twelve and compounds such
-// as "twenty-four", which recipes write in numerals; "halves", which names pieces ("pecan halves")
-// more often than an amount; "half and half", which names the cream however it is written; and words
-// past the start of a line ("plus two tablespoons"), which the scaler marks instead. Hand-written,
-// since words-to-numbers reads every "a" as 1,
-// @insomnia-dev/words-to-numbers reads whole numbers only, and compromise misreads "one-half" and
-// would add 143 KB to the recipe form.
+// Amounts written in words at the start of a text, read from a closed vocabulary: the numbers one
+// to twelve; half, third, quarter, and fourth after a number or an article ("one-half", "a
+// quarter", "two thirds") or alone ("half cup"); "half a" and "half an"; a whole number and a
+// fraction ("two and a half", "1 and 1/2"); a range of two joined by "to" or "or", either end of
+// which may be in numerals ("one to 2", "½ to one"); and "a" or "an". A whole or mixed number
+// stands alone ("two eggs"), while an article or a fraction counts only before a unit the unit
+// table reads ("a pinch of salt"), which the parser checks, so "a few", "a little", "a couple", and
+// "an onion" read nothing. Left out on purpose: numbers past twelve and compounds such as
+// "twenty-four", which recipes write in numerals; "halves", which names pieces ("pecan halves")
+// more often than an amount; and "half and half", which names the cream however it is written.
+// Hand-written, since words-to-numbers reads every "a" as 1, @insomnia-dev/words-to-numbers reads
+// whole numbers only, and compromise misreads "one-half" and would add 143 KB to the recipe form.
 
-type AmountWords = {
+export type AmountWords = {
 	// The amount as the line writes it.
 	written: string;
 	// The same amount as the library reads it: "2 1/2" for "two and a half".
@@ -23,7 +22,7 @@ type AmountWords = {
 
 type Quantity = Pick<AmountWords, 'written' | 'numerals'>;
 
-// One end of a range, and whether it is a whole or mixed number, which stands alone.
+// One end of a range, and whether it stands alone, as a whole or mixed number or numerals do.
 type RangeEnd = Quantity & { whole: boolean };
 
 // A word that opens an approximate amount, as in "About 50" or "approx. 2".
@@ -31,7 +30,11 @@ export const approximationWord =
 	/^(?:about|approximately|approx|around|roughly|nearly|almost|up\s+to)\b\.?\s*/iu;
 
 // The vulgar fractions an amount may be written with: "½", "⅔".
-export const vulgarFractions = '[¼-¾⅐-⅞]';
+const vulgarFractions = '[¼-¾⅐-⅞]';
+
+// One quantity in numerals: a fraction or mixed number, a vulgar fraction, a decimal, or a whole
+// number.
+export const numeralQuantity = String.raw`(?:\d+(?:\s+\d+)?\s*[/⁄]\s*\d+|\d*\s*${vulgarFractions}|\d*\.\d+|\d+)`;
 
 const wholeNumbers = {
 	one: 1,
@@ -75,6 +78,10 @@ export const wholeNumberWords: readonly string[] = Object.keys(wholeNumbers);
 // Every word that spells out a number or a part of one.
 export const numberWords: readonly string[] = [...wholeNumberWords, ...Object.keys(fractionWords)];
 
+// The number words past twelve, which it does not read, though one may still end a range: "12 to
+// fifteen", "one to twenty-four".
+export const unreadNumberWord = String.raw`(?:(?:thir|four|fif|six|seven|eigh|nine)teen|(?:twen|thir|for|fif|six|seven|eigh|nine)ty)(?:-\p{L}+)?(?!\p{L})`;
+
 function anyWord(words: readonly string[]): string {
 	return String.raw`(?:${words.join('|')})(?!\p{L})`;
 }
@@ -82,10 +89,13 @@ function anyWord(words: readonly string[]): string {
 const wholeWord = anyWord(Object.keys(wholeNumbers));
 const article = anyWord(amountArticles);
 
-// A quantity ends where a word does, so "two-inch" and "half-and-half" open with none.
-const quantityEnd = String.raw`(?=\s|$)`;
+// A quantity ends where a word does, or before punctuation that closes it, so "two-inch",
+// "half-and-half", and "1,5" open with none, while "(one to 2)" holds a range.
+const quantityEnd = String.raw`(?=\s|$|[);]|,(?!\d))`;
 
-const wholePattern = new RegExp(String.raw`^(?:${wholeWord}|\d+)${quantityEnd}`, 'iu');
+const wholePattern = new RegExp(String.raw`^${wholeWord}${quantityEnd}`, 'iu');
+
+const numeralPattern = new RegExp(String.raw`^${numeralQuantity}${quantityEnd}`, 'u');
 
 const countedFractionPattern = new RegExp(
 	String.raw`^(${article}|${wholeWord})[\s-]+(${anyWord(Object.keys(fractionWords))})${quantityEnd}`,
@@ -182,9 +192,12 @@ function readRangeEnd(text: string): RangeEnd | undefined {
 	}
 
 	const whole = wholePattern.exec(text)?.[0];
-	return whole === undefined
-		? undefined
-		: { written: whole, numerals: wholeNumerals(whole), whole: true };
+	if (whole !== undefined) {
+		return { written: whole, numerals: wholeNumerals(whole), whole: true };
+	}
+
+	const numerals = numeralPattern.exec(text)?.[0];
+	return numerals === undefined ? undefined : { written: numerals, numerals, whole: true };
 }
 
 // Numerals the library reads as they are need no rewriting: "2 to 3".

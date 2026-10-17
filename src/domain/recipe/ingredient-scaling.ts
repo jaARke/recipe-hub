@@ -18,7 +18,9 @@ import {
 	approximationWord,
 	numberWords,
 	readAmountWords,
+	unreadNumberWord,
 	wholeNumberWords,
+	type AmountWords,
 } from '@/domain/recipe/amount-words';
 import type { IngredientLine, IngredientLineSpan } from '@/domain/recipe/ingredient';
 import { amountOfQuantities, parseAmountText } from '@/domain/recipe/ingredient-parser';
@@ -406,10 +408,26 @@ const wholeNumberWord = new RegExp(
 // Where a word starts, as an amount in words does.
 const wordStart = /(?<![\p{L}-])\p{L}/gu;
 
+// Where a number may start: a numeral not inside another, or a word.
+const numberStart = new RegExp(String.raw`(?<![\p{N}.,/⁄])\p{N}|${wordStart.source}`, 'gu');
+
 // Numerals read as one amount, joined into a mixed number or a range as a line's amount is: "1 1/2",
 // "2-3", "2 to 3". A run ends on a numeral, so "plus 1, beaten" holds "1".
 const numeralRun =
 	/\p{N}(?:[\p{N}.,/⁄]*\p{N})?(?:(?:\s+|\s*[-\u2013\u2014]\s*|\s+(?:to|or)\s+)\p{N}(?:[\p{N}.,/⁄]*\p{N})?)*/giu;
+
+// After a count, the words that join it to a range's end in words past those it reads: "12 to
+// fifteen". "or more" and "to grease" end no range.
+const unreadRangeEnd = new RegExp(
+	String.raw`^(?:\s+(?:to|or)\s+|\s*[-\u2013\u2014]\s*)${unreadNumberWord}`,
+	'iu'
+);
+
+// A count a range word joins to a measurement's unit, counting nothing of its own, ends the
+// measurement's range in that unit: "a tablespoon or two", "2 tablespoons to 1", but not "1
+// tablespoon or 2 eggs".
+const rangeWordAfterUnit = /^\s+(?:to|or)\s+$/iu;
+const countsNothing = /^\s*(?:$|[),;]|of(?!\p{L}))/iu;
 
 function overlaps(span: TextSpan, other: TextSpan): boolean {
 	return span.start < other.end && other.start < span.end;
@@ -427,15 +445,10 @@ function measurementNumber(measurement: Measurement): WrittenNumber {
 function amountInWords(
 	text: string,
 	start: number,
+	words: AmountWords,
 	lengths: readonly TextSpan[]
 ): WrittenNumber | undefined {
-	const rest = text.slice(start);
-	const words = readAmountWords(rest);
-	if (words === undefined) {
-		return undefined;
-	}
-
-	const after = rest.slice(words.written.length);
+	const after = text.slice(start + words.written.length);
 	const unitFollows = readUnit(after.trimStart()) !== undefined;
 	if (!unitFollows && !/\s/u.test(words.written)) {
 		return undefined;
@@ -456,50 +469,113 @@ function amountInWords(
 	return amount === undefined ? { start, end } : { start, end, amount };
 }
 
+// The amounts written in words and numerals together, read whole before the library reads their
+// numerals alone, so a range scales at both ends or neither: "one to 2 tablespoons", "½ to one", "1
+// and 1/2 cups". One read past a length is the length's.
+function mixedAmounts(text: string, lengths: readonly TextSpan[]): WrittenNumber[] {
+	const found: WrittenNumber[] = [];
+	for (const { index: start } of text.matchAll(numberStart)) {
+		const words = readAmountWords(text.slice(start));
+		const number =
+			words === undefined || !/\p{N}/u.test(words.written)
+				? undefined
+				: amountInWords(text, start, words, lengths);
+		if (number !== undefined && ![...lengths, ...found].some((taken) => overlaps(number, taken))) {
+			found.push(number);
+		}
+	}
+
+	return found;
+}
+
+// A count with the amount it reads as, or, before a range's end it did not read with it, the range
+// as written, which reads as none.
+function countIn(text: string, span: TextSpan, amount: Amount | undefined): WrittenNumber {
+	const unread = unreadRangeEnd.exec(text.slice(span.end))?.[0];
+	if (unread !== undefined) {
+		return { start: span.start, end: span.end + unread.length };
+	}
+
+	return amount === undefined ? span : { ...span, amount };
+}
+
 // The numbers in text other than lengths, which stay true at any scale: the "2" in "cut into 2-inch
-// pieces" is none. A number is a measurement with its unit, a run of numerals, or an amount in words.
+// pieces" is none. A number is an amount in words and numerals, a measurement with its unit, a run
+// of numerals, or an amount in words.
 function writtenNumbers(text: string): WrittenNumber[] {
 	const measurements = extractMeasurements(text, readingOptions);
 	const lengths = measurements
 		.filter((measurement) => measurement.unitType === 'length')
 		.map(({ startIndex, endIndex }) => ({ start: startIndex, end: endIndex }));
-	const found = measurements
-		.filter((measurement) => measurement.unitType !== 'length')
-		.map(measurementNumber);
-	// Every measurement blanked, so no numeral or word in one is read again, and a run of numerals stops
-	// before one: "4 8-ounce links" counts 4.
-	const rest = measurements.reduce(
-		(blanked, { startIndex, endIndex }) =>
-			`${blanked.slice(0, startIndex)}${' '.repeat(endIndex - startIndex)}${blanked.slice(endIndex)}`,
+	const mixed = mixedAmounts(text, lengths);
+	const found = [
+		...mixed,
+		...measurements
+			.filter((measurement) => measurement.unitType !== 'length')
+			.map(measurementNumber)
+			.filter((number) => !mixed.some((amount) => overlaps(number, amount))),
+	];
+	// Every number found so far blanked, so no numeral or word in one is read again, and a run of
+	// numerals stops before one: "4 8-ounce links" counts 4.
+	const rest = [...lengths, ...found].reduce(
+		(blanked, { start, end }) =>
+			`${blanked.slice(0, start)}${' '.repeat(end - start)}${blanked.slice(end)}`,
 		text
 	);
 	const isFree = (span: TextSpan) => ![...lengths, ...found].some((taken) => overlaps(span, taken));
 
 	for (const { 0: run, index: start } of rest.matchAll(numeralRun)) {
 		const span = { start, end: start + run.length };
-		const amount = parseAmountText(run);
 		if (isFree(span)) {
-			found.push(amount === undefined ? span : { ...span, amount });
+			found.push(countIn(text, span, parseAmountText(run)));
 		}
 	}
 
 	for (const { index: start } of rest.matchAll(wordStart)) {
-		const words = amountInWords(rest, start, lengths);
-		if (words !== undefined && isFree(words)) {
-			found.push(words);
+		const words = readAmountWords(rest.slice(start));
+		const number = words === undefined ? undefined : amountInWords(rest, start, words, lengths);
+		if (number !== undefined && isFree(number)) {
+			found.push(number);
 		}
 	}
 
 	for (const { 0: written, index: start } of rest.matchAll(wholeNumberWord)) {
 		const span = { start, end: start + written.length };
 		const numerals = readAmountWords(written)?.numerals;
-		const amount = numerals === undefined ? undefined : parseAmountText(numerals);
 		if (isFree(span)) {
-			found.push(amount === undefined ? span : { ...span, amount });
+			found.push(
+				countIn(text, span, numerals === undefined ? undefined : parseAmountText(numerals))
+			);
 		}
 	}
 
-	return found.sort((a, b) => a.start - b.start);
+	return withRangesAfterUnits(text, found);
+}
+
+// The numbers in order, with each measurement whose range ends after its unit read as no amount,
+// since the end's unit moves with the measurement's: "a tablespoon or two" at half is not "1½
+// teaspoons or 1".
+function withRangesAfterUnits(text: string, numbers: readonly WrittenNumber[]): WrittenNumber[] {
+	const read: WrittenNumber[] = [];
+	for (const number of [...numbers].sort((a, b) => a.start - b.start)) {
+		const previous = read[read.length - 1];
+		if (
+			previous?.measurement !== undefined &&
+			number.measurement === undefined &&
+			rangeWordAfterUnit.test(text.slice(previous.end, number.start)) &&
+			countsNothing.test(text.slice(number.end))
+		) {
+			read[read.length - 1] = {
+				start: previous.start,
+				end: number.end,
+				measurement: previous.measurement,
+			};
+		} else {
+			read.push(number);
+		}
+	}
+
+	return read;
 }
 
 // Text gives an amount when it holds a number other than a length or opens with an amount in words,
@@ -509,12 +585,44 @@ export function givesAmount(text: string): boolean {
 	return writtenNumbers(text).length > 0 || readAmountWords(text) !== undefined;
 }
 
-// What makes a number no amount: after it, a temperature, a time, or a pan's other side ("110°F", "5
-// minutes", "9x13"); before it, a can's size, a note's number, or what something is cut into ("#10
-// can", "Note 2", "divided into 3 portions").
+// What makes a number no amount. Before it: a can's size, a note's or a step's number, a grade or a
+// strength, a ratio's first term, or what something is cut into ("#10 can", "No. 10 can", "Note 2",
+// "size 2", "tipo 00", "T55", "pH 7", "1:16", "divided into 3 portions"). After it, alone or joined
+// by a hyphen: a temperature, a time, a share, a ratio, a strength, a count of times, or a pan's
+// other side ("110°F", "110 F", "350 degrees", "5-minute", "aged 18 months", "2% fat", "1:1", "1
+// part sugar", "80 proof", "sifted 2 times", "2x", "9x13").
+const noAmountBefore =
+	/(?:[#\p{L}]|\p{N}\s*[x×:]\s*|(?<!\p{L})(?:note|step|size|type|tipo|grade|no\.|number|ph)\s*|(?<!\p{L})into\s+)$/iu;
 const noAmountAfter =
-	/^\s*(?:[°º]|degrees?(?!\p{L})|(?:sec(?:ond)?|min(?:ute)?|h(?:ou)?r)s?(?!\p{L})|[x×]\s*\p{N})/iu;
-const noAmountBefore = /(?:#|\p{N}\s*[x×]\s*|(?<!\p{L})(?:note|step)\s*|(?<!\p{L})into\s+)$/iu;
+	/^[\s\-\u2010-\u2015]*(?:[°º˚%]|:\s*\p{N}|[x×](?![\p{L}-])|f(?![\p{L}\p{N}])|(?:deg(?:ree)?|sec(?:ond)?|min(?:ute)?|h(?:ou)?r|day|week|month|y(?:ea)?r|part|time)s?(?!\p{L})|(?:per\s?cent|fahrenheit|celsius|centigrade|ratio|proof)(?!\p{L}))/iu;
+// A C after two digits or more is a temperature in Celsius ("45 C", "40 to 45 C"), where one after
+// a single digit is a cup, as old cards write it ("1 C").
+const celsius = /^\d{2,}(?:\s*(?:[-\u2013\u2014]|to|or)\s*\d{2,})?\s*C(?![\p{L}.])/u;
+// A number written in zeros is a grade, as in "00 flour", and a fraction no smaller than one a
+// ratio, as in "80/20 ground beef": a recipe writes neither as an amount.
+const zeros = /^0+$/u;
+const fraction = /^(\d+)\s*[/⁄]\s*(\d+)$/u;
+// A number alone in parentheses, after any word such as "about", names nothing it counts: "(2)",
+// "(about 2)".
+const closesAlone = /^\s*[),;]/u;
+
+function isGradeOrRatio(written: string): boolean {
+	const [, numerator, denominator] = fraction.exec(written) ?? [];
+	return zeros.test(written) || Number(numerator) >= Number(denominator);
+}
+
+// Whether a number is no amount, so right as written at any scale.
+function isNoAmount(number: WrittenNumber, text: string): boolean {
+	const before = text.slice(0, number.start);
+	const after = text.slice(number.end);
+	return (
+		noAmountBefore.test(before) ||
+		noAmountAfter.test(after) ||
+		celsius.test(text.slice(number.start)) ||
+		isGradeOrRatio(text.slice(number.start, number.end)) ||
+		(number.measurement === undefined && opensParentheses(before) && closesAlone.test(after))
+	);
+}
 
 // A word right before a number that joins a second amount to the first: "1 egg plus 1 yolk", "2
 // tomatoes or 1 can", "(or 1 tsp dried)".
@@ -595,11 +703,7 @@ function opensParentheses(before: string): boolean {
 function treatmentOf(number: WrittenNumber, text: string, context: LineContext): Treatment {
 	const before = text.slice(0, number.start);
 	const after = text.slice(number.end);
-	if (
-		noAmountBefore.test(before) ||
-		noAmountAfter.test(after) ||
-		isSizeOfEach(number, before, after, context)
-	) {
+	if (isNoAmount(number, text) || isSizeOfEach(number, before, after, context)) {
 		return 'keep';
 	}
 
@@ -682,6 +786,11 @@ function scaleWrittenText(text: string, context: LineContext, agreement?: Agreem
 	const unscaled: TextSpan[] = [];
 	let headEnd = text.length;
 	for (const number of writtenNumbers(text)) {
+		const joined = joinedAfter.exec(text.slice(0, number.start));
+		if (joined !== null) {
+			headEnd = Math.min(headEnd, joined.index);
+		}
+
 		const treatment = treatmentOf(number, text, context);
 		const scaled = treatment === 'scale' ? scaledNumber(number, context.factor) : undefined;
 		const span = { start: number.start, end: number.end };
@@ -699,11 +808,6 @@ function scaleWrittenText(text: string, context: LineContext, agreement?: Agreem
 			if (inflected !== undefined) {
 				edits.push(shifted(inflected, counted.start));
 			}
-		}
-
-		const joined = joinedAfter.exec(text.slice(0, number.start));
-		if (joined !== null) {
-			headEnd = Math.min(headEnd, joined.index);
 		}
 	}
 

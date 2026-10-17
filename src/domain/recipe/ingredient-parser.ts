@@ -1,6 +1,6 @@
 import { parseIngredient, type ParseIngredientOptions } from 'parse-ingredient';
 import type { Amount } from '@/domain/recipe/amount';
-import { approximationWord, readAmountWords, vulgarFractions } from '@/domain/recipe/amount-words';
+import { approximationWord, numeralQuantity, readAmountWords } from '@/domain/recipe/amount-words';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
 import { readingOptions, readUnit, sizes, splitUnitMarker } from '@/domain/recipe/ingredient-units';
 import { withoutListMarkers } from '@/domain/recipe/list-markers';
@@ -32,16 +32,13 @@ export const exampleIngredientLine = '3 ribs celery, sliced';
 // Punctuation that only ends a line, as in "2 cups flour;". A period that ends a unit stays.
 const lineEndPunctuation = ';,.';
 
-// One quantity as written: a fraction or mixed number, a vulgar fraction, a decimal, or a whole number.
-const quantitySource = String.raw`(?:\d+(?:\s+\d+)?\s*[/⁄]\s*\d+|\d*\s*${vulgarFractions}|\d*\.\d+|\d+)`;
-
 // The ways the library joins a range's two quantities: a dash, or "to" or "or".
 const rangeDash = String.raw`[-\u2013\u2014]`;
 const rangeWord = '(?:to|or)';
 
 // A quantity, or a range of two joined the way the library joins them.
 const amountPattern = new RegExp(
-	String.raw`^${quantitySource}(?:(?:\s*${rangeDash}\s*|\s+${rangeWord}\s+)${quantitySource})?$`,
+	String.raw`^${numeralQuantity}(?:(?:\s*${rangeDash}\s*|\s+${rangeWord}\s+)${numeralQuantity})?$`,
 	'iu'
 );
 

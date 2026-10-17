@@ -255,6 +255,9 @@ describe('parseIngredientLine', () => {
 			{ amount: { min: 1, max: 1.5 }, unit: 'cups', item: 'stock' },
 		],
 		['one half-pint jar cream', { amount: { min: 1 }, item: 'half-pint jar cream' }],
+		['½ to one cup flour', { amount: { min: 0.5, max: 1 }, unit: 'cup', item: 'flour' }],
+		['one to 1½ cups flour', { amount: { min: 1, max: 1.5 }, unit: 'cups', item: 'flour' }],
+		['1.5 to two cups flour', { amount: { min: 1.5, max: 2 }, unit: 'cups', item: 'flour' }],
 	])('reads the amount in words in "%s"', (text, parts) => {
 		expect(parseIngredientLine(text)).toStrictEqual({ text, ...parts });
 	});
@@ -319,6 +322,7 @@ describe('parseIngredientLine', () => {
 		'3-1 cups milk',
 		'1-1/2-inch piece ginger',
 		'1e3 g flour',
+		'one to 1/2 cup flour',
 	])('reads no amount in "%s" and keeps the line as its item', (text) => {
 		expect(parseIngredientLine(text)).toStrictEqual({ text, item: text });
 	});
