@@ -13,6 +13,7 @@ import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repo
 import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { DrizzleSavedDraftRepository } from '@/infrastructure/db/drizzle-saved-draft-repository';
+import { poolDeadlines } from '@/infrastructure/db/pool-deadlines';
 import { rateLimits, sessions, verifications } from '@/infrastructure/db/schema';
 import { BlobImageStore } from '@/infrastructure/storage/blob-image-store';
 import { seedImageEnvironment } from '@/lib/image-paths';
@@ -112,7 +113,7 @@ if (env.VERCEL_ENV === 'production') {
 	guardProductionDatabase(connectionString, env);
 	logger.info('Seeding started', { databaseHost: new URL(connectionString).hostname });
 
-	const pool = new Pool({ connectionString });
+	const pool = new Pool({ connectionString, ...poolDeadlines });
 	try {
 		await withSeedLock(pool, async () => {
 			const db = drizzle({ client: pool });
