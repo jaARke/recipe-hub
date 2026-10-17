@@ -7,9 +7,10 @@ function Spinner({ className, ...props }: React.ComponentProps<'svg'>) {
 	return (
 		<Loader2Icon
 			data-slot="spinner"
-			role="status"
-			aria-live="polite"
-			aria-label="Loading"
+			// A status only when labelled with what loads, since one in a pending button joins its name.
+			{...(props['aria-label'] === undefined
+				? { 'aria-hidden': true }
+				: { role: 'status', 'aria-live': 'polite' })}
 			className={cn('size-4 animate-spin', className)}
 			{...props}
 		/>

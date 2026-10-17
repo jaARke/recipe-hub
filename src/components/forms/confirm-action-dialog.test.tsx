@@ -62,8 +62,11 @@ describe('ConfirmActionDialog', () => {
 
 		await page.getByRole('button', { name: 'Decline' }).click();
 		await dialog().getByRole('button', { name: 'Decline request' }).click();
+		const confirming = dialog().getByRole('button', { name: 'Declining' });
+		// Named by its pending label alone, which says it waits, without its spinner's "Loading".
+		await expect.element(confirming).toHaveAccessibleName('Declining');
 		// Focus stays on the confirming button as it waits, where a key could press it again.
-		await expect.element(dialog().getByRole('button', { name: /Declining$/ })).toHaveFocus();
+		await expect.element(confirming).toHaveFocus();
 		await userEvent.keyboard('{Enter}');
 		await userEvent.keyboard('{Escape}');
 
