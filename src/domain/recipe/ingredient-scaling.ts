@@ -171,7 +171,8 @@ const metricSteps = {
 	liter: 0.05,
 } as const satisfies Record<MetricUnit, number>;
 
-// Whole grams and milliliters go to the nearest 5 from 100.
+// Whole grams and milliliters go to the nearest half below 10, as in "2.5 g", and to the nearest 5
+// from 100.
 const wholeMetricStepFrom100 = 5;
 
 function metricRounding(unit: MetricUnit): Rounding {
@@ -182,7 +183,13 @@ function metricRounding(unit: MetricUnit): Rounding {
 
 	const wholes = toSteps(1);
 	const fives = toSteps(wholeMetricStepFrom100);
-	return (value) => (value < 100 ? wholes(value) : fives(value));
+	return (value) => {
+		if (value < 10) {
+			return halves(value);
+		}
+
+		return value < 100 ? wholes(value) : fives(value);
+	};
 }
 
 function isRoundedUnit(unit: string): unit is RoundedUnit {
@@ -299,11 +306,23 @@ function volumeReading(exact: Amount, own: UsVolumeUnit): Reading {
 	return closest ?? kept ?? readingIn(own, exact);
 }
 
-// Pounds move down to ounces off their quarter steps; mass never moves up.
-function poundReading(exact: Amount): Reading {
-	const kept = readingIn('pound', exact);
-	const ounces = convert(exact, 'pound', 'ounce');
-	return kept.error <= keptTolerance || ounces === undefined ? kept : readingIn('ounce', ounces);
+// Off its steps, a unit moves down to the next one its system measures in, so a range too small for
+// its steps keeps both ends: "¼ to ½ stick" at half is "1 to 2 tablespoons". Outside US volume, a
+// unit never moves up, and one with nothing below it keeps its smallest step: "¼ to ½ ounce" at half
+// is "¼ ounce".
+const smallerUnits = {
+	pound: 'ounce',
+	'fluid ounce': 'tablespoon',
+	stick: 'tablespoon',
+	kilogram: 'gram',
+	liter: 'milliliter',
+	deciliter: 'milliliter',
+	centiliter: 'milliliter',
+} as const satisfies Record<string, string>;
+type DescendingUnit = keyof typeof smallerUnits;
+
+function isDescendingUnit(unit: string): unit is DescendingUnit {
+	return Object.hasOwn(smallerUnits, unit);
 }
 
 function measureAt(exact: Amount, unit: string | undefined): Reading {
@@ -311,7 +330,14 @@ function measureAt(exact: Amount, unit: string | undefined): Reading {
 		return volumeReading(exact, unit);
 	}
 
-	return unit === 'pound' ? poundReading(exact) : readingIn(unit, exact);
+	const kept = readingIn(unit, exact);
+	if (unit === undefined || !isDescendingUnit(unit) || kept.error <= keptTolerance) {
+		return kept;
+	}
+
+	const smaller = smallerUnits[unit];
+	const moved = convert(exact, unit, smaller);
+	return moved === undefined ? kept : measureAt(moved, smaller);
 }
 
 function unitNamed(unit: string, amount: Amount): string {
@@ -366,10 +392,19 @@ function quantityText(measurement: Measurement): string {
 	return text.slice(0, text.length - unitOfMeasure.length).replace(/[\s\-\u2010-\u2015]+$/u, '');
 }
 
+// A comma before one or two digits is a decimal point, and one before three separates thousands:
+// "1,5 kg" is 1.5 kg, and "1,500 g" 1500 g. The library reads every comma as a thousands separator,
+// so text is read with each decimal comma as a point, which keeps every offset where it is written.
+const decimalComma = /(?<=\d),(?=\d{1,2}(?!\d))/gu;
+
+function withDecimalPoints(text: string): string {
+	return text.replace(decimalComma, '.');
+}
+
 // The measurements in the text that scale. A length stays true at any scale, and a quantity the
 // parser would not read as an amount stays as written.
 function scalableMeasurements(text: string): ReadMeasurement[] {
-	return extractMeasurements(text, readingOptions).flatMap((measurement) => {
+	return extractMeasurements(withDecimalPoints(text), readingOptions).flatMap((measurement) => {
 		if (measurement.unitType === 'length') {
 			return [];
 		}
@@ -512,7 +547,8 @@ function countIn(text: string, span: TextSpan, amount: Amount | undefined): Writ
 // The numbers in text other than lengths, which stay true at any scale: the "2" in "cut into 2-inch
 // pieces" is none. A number is an amount in words and numerals, a measurement with its unit, a run
 // of numerals, or an amount in words.
-function writtenNumbers(text: string): WrittenNumber[] {
+function writtenNumbers(written: string): WrittenNumber[] {
+	const text = withDecimalPoints(written);
 	const measurements = extractMeasurements(text, readingOptions);
 	const lengths = measurements
 		.filter((measurement) => measurement.unitType === 'length')
@@ -621,17 +657,23 @@ const noAmountAfter =
 // A C after two digits or more, with any decimals, is a temperature in Celsius ("45 C", "40.5 C", "40
 // to 45 C", "between 40 and 45 C"), where one after a single digit is a cup, as old cards write it
 // ("1 C"). Old cards also write a cup "C.", so with a period it is Celsius only after a word that
-// sets a temperature, a cup before a word ("12 C. flour", "(12 C. Water)", "Add 12 C. Flour"), and
-// either where nothing tells an abbreviation's period from a sentence's ("(12 C.)").
+// sets a temperature or before "oven" ("Bake in a 180 C. oven"), a cup before the item it measures
+// ("12 C. flour", "(12 C. Water)", "Add 12 C. Flour"), and either where nothing tells an
+// abbreviation's period from a sentence's ("(12 C.)", "(45 C. Not hotter)").
 const celsiusDegrees = String.raw`\d{2,}(?:[.,]\d+)?`;
 const degreesC = new RegExp(
 	String.raw`^(?:[Bb]etween\s+${celsiusDegrees}\s+and\s+|${celsiusDegrees}\s*(?:[-\u2013\u2014]|to|or)\s*)?${celsiusDegrees}\s*C(?!\p{L})`,
 	'u'
 );
-const wordAfterPeriod = /^\.\s*\p{L}/u;
+const ovenAfterPeriod = /^\.\s*oven(?!\p{L})/iu;
+// An item after the period is a lowercase word or a capitalized one no lowercase word follows, as
+// in a name written in Title Case; a capitalized word before a lowercase one opens a sentence.
+const itemAfterPeriod = /^\.\s*(?:\p{Ll}|\p{Lu}\p{L}*(?!\p{L})(?!\s+\p{Ll}))/u;
 // A word that sets the temperature the degrees after it give, with any word such as "about" between:
-// "Bake at 180 C.", "Heat to about 45 C.", but not "up to 12 C.", which approximates an amount.
+// "Bake at 180 C.", "Heat to about 45 C.", but not "up to 12 C.", which approximates an amount. After
+// "reduce", it may set either: "Reduce to 12 C.", "then reduce to 180 C.".
 const temperatureWord = /(?<!\p{L})(?<!up\s+)(?:at|to)\s+/giu;
+const reducing = /(?<!\p{L})reduc(?:e[ds]?|ing)\s+$/iu;
 // A number written in zeros is a grade, as in "00 flour", and a fraction no smaller than one a
 // ratio, as in "80/20 ground beef": a recipe writes neither as an amount.
 const zeros = /^0+$/u;
@@ -644,7 +686,7 @@ const closesAlone = /^\s*[),;]/u;
 // without a unit ("one of every two", "1 in every 3", "1 of every 2 cups", "1 cup of every 2"). A
 // count of the whole is a share the scale changes ("2 of them"), as is a rate's base, which scales with
 // the amount before it ("1 tablespoon salt for every 2 cups water").
-const ofTheWhole = /^\s+of\s+(?:them|it|this|that|the|these|those)(?!\p{L})/iu;
+const ofTheWhole = /^\s*of\s+(?:them|it|this|that|the|these|those)(?!\p{L})/iu;
 const proportionTerm = String.raw`(?:\p{N}+|${wordsSource(wholeNumberWords)}(?!\p{L}))`;
 const ofEvery = String.raw`\s+(?:of|in)\s+every\s+`;
 const proportionFirstTerm = new RegExp(String.raw`^${ofEvery}${proportionTerm}`, 'iu');
@@ -658,27 +700,37 @@ function isGradeOrRatio(written: string): boolean {
 	return zeros.test(written) || Number(numerator) >= Number(denominator);
 }
 
+// Whether a fraction is a share of the whole the words after it name: "½ of them", or a line's "½ of
+// the butter".
+function isFractionOfWhole(amount: Amount | undefined, after: string): boolean {
+	return amount !== undefined && (amount.max ?? amount.min) < 1 && ofTheWhole.test(after);
+}
+
 function isShareOfWhole(
 	{ amount, measurement }: WrittenNumber,
 	before: string,
 	after: string
 ): boolean {
-	const isFraction = amount !== undefined && (amount.max ?? amount.min) < 1;
 	return (
 		proportionFirstTerm.test(after) ||
 		proportionSecondTerm.test(before) ||
-		(measurement === undefined && isFraction && ofTheWhole.test(after))
+		(measurement === undefined && isFractionOfWhole(amount, after))
 	);
 }
 
-function setsTemperature(before: string): boolean {
+// What the word that sets a temperature before degrees says they read as, if one does.
+function temperatureWordBefore(before: string): Exclude<CelsiusOrCup, 'cup'> | undefined {
 	const word = [...before.matchAll(temperatureWord)].at(-1);
 	if (word === undefined) {
-		return false;
+		return undefined;
 	}
 
 	const between = before.slice(word.index + word[0].length);
-	return between === '' || approximationWord.exec(between)?.[0] === between;
+	if (between !== '' && approximationWord.exec(between)?.[0] !== between) {
+		return undefined;
+	}
+
+	return reducing.test(before.slice(0, word.index)) ? 'either' : 'celsius';
 }
 
 // What a C after a number's degrees reads as, if one follows them.
@@ -689,11 +741,12 @@ function celsiusOrCup({ start }: WrittenNumber, text: string): CelsiusOrCup | un
 	}
 
 	const after = text.slice(start + degrees.length);
-	if (!after.startsWith('.') || setsTemperature(text.slice(0, start))) {
+	const word = temperatureWordBefore(text.slice(0, start));
+	if (!after.startsWith('.') || word === 'celsius' || ovenAfterPeriod.test(after)) {
 		return 'celsius';
 	}
 
-	return wordAfterPeriod.test(after) ? 'cup' : 'either';
+	return word === undefined && itemAfterPeriod.test(after) ? 'cup' : 'either';
 }
 
 // Whether a number is no amount, so right as written at any scale.
@@ -901,17 +954,15 @@ function scaleWrittenText(text: string, context: LineContext, agreement?: Agreem
 		if (number.measurement === undefined) {
 			const counted = countedWordsAfter(text, number.end);
 			const inflected = inflection(text.slice(counted.start, counted.end), scaled.agreement);
-			if (inflected !== undefined) {
-				edits.push(shifted(inflected, counted.start));
-			}
+			edits.push(...inflected.map((edit) => shifted(edit, counted.start)));
 		}
 	}
 
 	const head =
 		agreement === undefined
-			? undefined
+			? []
 			: inflection(text.slice(0, headEnd).replace(/[\s,]+$/u, ''), agreement);
-	return withEdits(text, head === undefined ? edits : [head, ...edits], unscaled);
+	return withEdits(text, [...head, ...edits], unscaled);
 }
 
 // pluralize alone pluralizes mass nouns and whole phrases ("flours", "clove garlics"), so an item
@@ -954,12 +1005,10 @@ function containerInflection(words: string, scaled: Amount): Edit | undefined {
 	return undefined;
 }
 
-// The noun the words a count counts name, before any parenthetical and any word that follows the
-// noun: the last word, or, after a count above one, the last only in the plural, as "bars" in "bars
-// chocolate (70% dark)" is. "star anise" names none to change, and a size none at all: "(1 medium)".
-function nounInflection(words: string, { written, scaled }: Agreement): Edit | undefined {
-	const parenthetical = words.search(/\s+\(/u);
-	const item = parenthetical === -1 ? words : words.slice(0, parenthetical);
+// The noun an item names, before any word that follows the noun: the last word, or, after a count
+// above one, the last only in the plural, as "bulbs" in "bulbs fennel" is. "star anise" names none
+// to change, and a size none at all: "(1 medium)".
+function nounInflection(item: string, { written, scaled }: Agreement): Edit | undefined {
 	if (
 		!pluralizableItem.test(item) ||
 		item.split(' ').some((word) => joiningWords.has(word.toLowerCase()))
@@ -981,14 +1030,51 @@ function nounInflection(words: string, { written, scaled }: Agreement): Edit | u
 	};
 }
 
-// The word that takes the number a count takes, in the words it counts, when the scale crosses 1: a
-// container after its size, or else the noun. Anything the guards cannot vouch for stays as written.
-function inflection(words: string, { written, scaled }: Agreement): Edit | undefined {
-	if (isPlural(written) === isPlural(scaled)) {
-		return undefined;
+// After a count above one, a word only in the plural names what it counts though another item is
+// joined to it: the count counts the words before "and", "plus", or "with" ("eggs" in "eggs and
+// milk"), and each alternative "or" joins to them ("apples or pears"). After a count of one, a joined
+// word cannot be told from one describing the noun ("1 red or green pepper"), so the item stays as
+// written.
+const anotherItem = /\s+(?:and|plus|with)(?!\p{L})/iu;
+const alternativeSeparator = /\s+or\s+/giu;
+
+function alternativesIn(text: string): TextSpan[] {
+	const spans: TextSpan[] = [];
+	let start = 0;
+	for (const { 0: separator, index } of text.matchAll(alternativeSeparator)) {
+		spans.push({ start, end: index });
+		start = index + separator.length;
 	}
 
-	return containerInflection(words, scaled) ?? nounInflection(words, { written, scaled });
+	return [...spans, { start, end: text.length }];
+}
+
+// The nouns the words a count counts name, before any parenthetical.
+function nounInflections(words: string, agreement: Agreement): Edit[] {
+	const parenthetical = words.search(/\s+\(/u);
+	const item = parenthetical === -1 ? words : words.slice(0, parenthetical);
+	if (!isPlural(agreement.written)) {
+		const edit = nounInflection(item, agreement);
+		return edit === undefined ? [] : [edit];
+	}
+
+	const another = item.search(anotherItem);
+	const counted = another === -1 ? item : item.slice(0, another);
+	return alternativesIn(counted).flatMap(({ start, end }) => {
+		const edit = nounInflection(counted.slice(start, end), agreement);
+		return edit === undefined ? [] : [shifted(edit, start)];
+	});
+}
+
+// The words that take the number a count takes, in the words it counts, when the scale crosses 1: a
+// container after its size, or else the nouns. Anything the guards cannot vouch for stays as written.
+function inflection(words: string, agreement: Agreement): Edit[] {
+	if (isPlural(agreement.written) === isPlural(agreement.scaled)) {
+		return [];
+	}
+
+	const container = containerInflection(words, agreement.scaled);
+	return container === undefined ? nounInflections(words, agreement) : [container];
 }
 
 // A measure's unit holds an equivalent of the whole amount in parentheses, which scales with it: "24
@@ -1009,8 +1095,7 @@ function splitUnit(written: string): WrittenUnit {
 // The item in the number the scaled amount takes, when the scale crosses 1: "1 onion" doubles to "2
 // onions", and "1 (8 ounce) package cream cheese" to "2 (8 ounce) packages cream cheese".
 export function itemForAmount(item: string, written: Amount, scaled: Amount): string {
-	const edit = inflection(item, { written, scaled });
-	return edit === undefined ? item : withEdits(item, [edit], []).text;
+	return withEdits(item, inflection(item, { written, scaled }), []).text;
 }
 
 // A count at the scale, rounded as ingredients without a unit are.
@@ -1049,8 +1134,10 @@ export function scaleIngredientLine(line: IngredientLine, factor: number): Scale
 		: { factor, isMeasure, count: line.amount };
 	const exact = times(line.amount, factor);
 	const opening = openingMeasurement(line.item, isMeasure);
+	// A fraction of the whole a line opens with is right at any scale: "½ of the butter".
+	const isShare = line.unit === undefined && isFractionOfWhole(line.amount, line.item);
 
-	let measure = measureAt(exact, unit);
+	let measure: Measure = isShare ? { amount: line.amount } : measureAt(exact, unit);
 	// What the scale wrote at the item's start, before the text it went through.
 	let itemLead = '';
 	let item: ScaledText;
