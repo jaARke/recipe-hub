@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { page } from 'vitest/browser';
-import { RecipeIngredientsAndSteps } from '@/components/recipe/recipe-ingredients-and-steps';
+import {
+	RecipeIngredientsAndSteps,
+	ScaledIngredientLineText,
+} from '@/components/recipe/recipe-ingredients-and-steps';
 import type { IngredientSection } from '@/domain/recipe/ingredient';
 import { parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import type { InstructionSection } from '@/domain/recipe/instruction';
@@ -160,7 +163,8 @@ describe('RecipeIngredientsAndSteps at a scale', () => {
 				'12 to fifteen apples',
 				'Half and half',
 				'1 can artichoke quarters',
-				'1 egg plus 1 yolk',
+				'2 sweet potatoes (about 1 pound)',
+				'1 cup of flour plus a tablespoon',
 				'Salt to taste',
 			].map(parseIngredientLine),
 		},
@@ -176,16 +180,50 @@ describe('RecipeIngredientsAndSteps at a scale', () => {
 		/>
 	);
 
-	it('marks a line it left whole "Not scaled", shows a line it scaled in part as written, and marks no other', async () => {
+	it('marks a line it left whole "Not scaled", underlines an amount it left unscaled with a note beneath, and keeps the words a line writes between its parts', async () => {
 		await render(doubled);
 
-		expect(listItems().slice(0, 5)).toEqual([
+		expect(listItems().slice(0, 6)).toEqual([
 			'12 to fifteen applesNot scaled',
 			'Half and half',
 			'2 cans artichoke quarters',
-			'2 egg plus 1 yolkAs written: 1 egg plus 1 yolk',
+			'4 sweet potatoes (about 1 pound (not scaled))Underlined amount not scaled',
+			'2 cups of flour plus 2 tablespoons',
 			'Salt to taste',
 		]);
+		await expect
+			.element(page.getByText('1 pound', { exact: true }))
+			.toHaveStyle({ textDecorationLine: 'underline', textDecorationStyle: 'dotted' });
+		await expect.element(page.getByText('(not scaled)')).toHaveClass('sr-only');
+		await expect
+			.element(page.getByText('Underlined amount not scaled'))
+			.toHaveAttribute('aria-hidden', 'true');
+	});
+
+	it('names an amount it left unscaled where the line labels a checkbox, as a checklist’s does, without the note', async () => {
+		const line = parseIngredientLine('2 sweet potatoes (about 1 pound)');
+		await render(
+			<label>
+				<input type="checkbox" />
+				<ScaledIngredientLineText line={line} factor={2} />
+			</label>
+		);
+
+		// The hidden words sit out of the flow, as a block, which a name sets apart with spaces.
+		await expect
+			.element(page.getByRole('checkbox'))
+			.toHaveAccessibleName('4 sweet potatoes (about 1 pound (not scaled) )');
+	});
+
+	it('notes amounts in the plural when it left more than one unscaled', async () => {
+		await render(
+			<ScaledIngredientLineText
+				line={parseIngredientLine('2 trout (12 ounces), about 1½ pounds')}
+				factor={2}
+			/>
+		);
+
+		await expect.element(page.getByText('Underlined amounts not scaled')).toBeInTheDocument();
 	});
 
 	it('notes under Steps that their amounts are the recipe’s own', async () => {

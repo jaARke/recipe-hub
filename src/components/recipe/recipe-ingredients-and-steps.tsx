@@ -12,8 +12,8 @@ import {
 	type RecipeSubsectionTag,
 } from '@/components/recipe/recipe-text-styles';
 import { Badge } from '@/components/ui/badge';
-import type { IngredientSection } from '@/domain/recipe/ingredient';
-import { scaleIngredientLine, type ScaledIngredientLine } from '@/domain/recipe/ingredient-scaling';
+import type { IngredientLine, IngredientSection } from '@/domain/recipe/ingredient';
+import { scaleIngredientLine } from '@/domain/recipe/ingredient-scaling';
 import type { InstructionSection } from '@/domain/recipe/instruction';
 import { formatStepsNoteCount, type RecipeYield } from '@/domain/recipe/recipe-yield';
 
@@ -38,24 +38,42 @@ function listIndentStyle(lastNumber: number): React.CSSProperties {
 	return { paddingLeft: `calc(${characters} * ${listMarkerCharacterWidth})` };
 }
 
-// An ingredient at a scale. A line the scale left whole though it gives an amount says so, and one it
-// scaled only in part shows the line as written beneath; at the recipe's own scale, or with nothing
-// to scale, a line has no mark.
-function ScaledIngredientLineText({
-	scaled: { line, unscaled },
-}: {
-	scaled: ScaledIngredientLine;
-}) {
+// An amount the scale left unscaled, underlined in dots, which print and stay apart from a checked
+// row's strike-through, and named so to a screen reader.
+function unscaledAmount(text: React.ReactNode): React.ReactNode {
 	return (
 		<>
-			<IngredientLineText line={line} />
+			<span className="underline decoration-foreground decoration-dotted decoration-2 underline-offset-[0.22em] [text-decoration-skip-ink:none]">
+				{text}
+			</span>
+			<span className="sr-only">{' (not scaled)'}</span>
+		</>
+	);
+}
+
+// An ingredient at a scale. A line the scale left whole though it gives an amount says so, and the
+// amounts it left unscaled in a line it scaled are underlined, with a note beneath that a screen reader
+// skips, having heard each named; at the recipe's own scale, or with nothing to scale, a line has no
+// mark.
+function ScaledIngredientLineText({ line, factor }: { line: IngredientLine; factor: number }) {
+	const { line: scaled, unscaled } = scaleIngredientLine(line, factor);
+	const amounts = unscaled === undefined || unscaled === 'whole' ? [] : unscaled.amounts;
+	return (
+		<>
+			<IngredientLineText
+				line={scaled}
+				written={line}
+				marks={{ spans: amounts, render: unscaledAmount }}
+			/>
 			{unscaled === 'whole' && (
 				<Badge variant="secondary" className="ml-2 align-middle">
 					Not scaled
 				</Badge>
 			)}
-			{unscaled === 'part' && (
-				<span className="block text-base text-muted-foreground">As written: {line.text}</span>
+			{amounts.length > 0 && (
+				<span aria-hidden="true" className="block text-base text-muted-foreground">
+					{amounts.length === 1 ? 'Underlined amount not scaled' : 'Underlined amounts not scaled'}
+				</span>
 			)}
 		</>
 	);
@@ -89,7 +107,7 @@ function IngredientSectionList({
 			>
 				{section.lines.map((line, index) => (
 					<li key={index} className={listItemClassName}>
-						<ScaledIngredientLineText scaled={scaleIngredientLine(line, factor)} />
+						<ScaledIngredientLineText line={line} factor={factor} />
 					</li>
 				))}
 			</ul>

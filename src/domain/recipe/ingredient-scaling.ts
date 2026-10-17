@@ -14,13 +14,19 @@ import {
 import pluralize from 'pluralize';
 import type { Amount } from '@/domain/recipe/amount';
 import { formatAmount } from '@/domain/recipe/amount-format';
-import { numberWords, readAmountWords, wholeNumberWords } from '@/domain/recipe/amount-words';
-import type { IngredientLine } from '@/domain/recipe/ingredient';
-import { amountOfQuantities } from '@/domain/recipe/ingredient-parser';
+import {
+	approximationWord,
+	numberWords,
+	readAmountWords,
+	wholeNumberWords,
+} from '@/domain/recipe/amount-words';
+import type { IngredientLine, IngredientLineSpan } from '@/domain/recipe/ingredient';
+import { amountOfQuantities, parseAmountText } from '@/domain/recipe/ingredient-parser';
 import {
 	isMetricUnit,
 	readingOptions,
 	readUnit,
+	sizes,
 	splitUnitMarker,
 	unitDefinitions,
 	type MetricUnit,
@@ -28,9 +34,9 @@ import {
 
 // What the scale left unscaled that a cook would scale: the whole line, when nothing in it was read
 // though it gives an amount ("a few sprigs thyme", "Juice of 1 lemon"), which the page marks "Not
-// scaled"; or part of it, when text the scale could not read still holds a number ("1 egg plus 1
-// yolk"), which the page shows with the original, the line's text, beneath.
-export type UnscaledPart = 'whole' | 'part';
+// scaled"; or the amounts in it the scale could not vouch for, such as the "1 pound" in "2 sweet
+// potatoes (about 1 pound)", which may be each potato's or both, and which the page marks in place.
+export type UnscaledPart = 'whole' | { amounts: readonly IngredientLineSpan[] };
 
 export type ScaledIngredientLine = {
 	// The line at the scale, in the shape the recipe page renders; its text stays the original.
@@ -38,6 +44,38 @@ export type ScaledIngredientLine = {
 	// Absent when the scale read everything a cook would scale, as in "Salt to taste".
 	unscaled?: UnscaledPart;
 };
+
+// A run of text by its offsets.
+type TextSpan = { start: number; end: number };
+
+// The text a span covers, replaced.
+type Edit = TextSpan & { replacement: string };
+
+// Text the scale went through, at the scale, with the amounts in it the scale left unscaled.
+type ScaledText = { text: string; unscaled: TextSpan[] };
+
+// A number in text the scale left as written, with the amount it reads as where it reads as one, and
+// the measurement it gives with a unit after it: "1 ¾ cups", or "a quarter cup" read as "1/4 cup".
+type WrittenNumber = TextSpan & {
+	amount?: Amount;
+	measurement?: Measurement;
+};
+
+// What a line tells the scale about the numbers its text leaves as written.
+type LineContext = {
+	factor: number;
+	// Measured by volume or weight, so a second amount, or an equivalent of the line's, scales with it.
+	isMeasure: boolean;
+	// The count a line without a measure gives, as written: the 1 in "1 whole chicken" or "1 can".
+	count?: Amount;
+};
+
+// What the scale does with a number its text leaves as written: scales it, keeps it as right at any
+// scale, or keeps it and marks it unscaled.
+type Treatment = 'scale' | 'keep' | 'unscaled';
+
+// The amounts the words a count counts agree with: as written, and at the scale.
+type Agreement = { written: Amount; scaled: Amount };
 
 type Rounding = (value: number) => number;
 
@@ -111,6 +149,8 @@ const unitRoundings = {
 	'fluid ounce': halves,
 	ounce: quarters,
 	pound: quarters,
+	// A stick's wrapper marks its tablespoons, two to a quarter.
+	stick: quarters,
 } as const satisfies Record<string, Rounding>;
 type RoundedUnit = keyof typeof unitRoundings;
 
@@ -333,23 +373,6 @@ function writeMeasurement(measurement: Measurement, measure: Measure): string {
 	return `${formatAmount(measure.amount, unit)} ${unit}`;
 }
 
-// The text with each measurement that scales at the scale, and the text the scale left as written:
-// "(340 g)" doubles to "(680 g)".
-function scaleMeasurements(text: string, factor: number): { scaled: string; unread: string } {
-	let scaled = '';
-	let unread = '';
-	let last = 0;
-	for (const { measurement, amount } of scalableMeasurements(text)) {
-		const before = text.slice(last, measurement.startIndex);
-		const measure = measureAt(times(amount, factor), measurement.unitOfMeasureID);
-		scaled += `${before}${writeMeasurement(measurement, measure)}`;
-		unread += `${before} `;
-		last = measurement.endIndex;
-	}
-
-	return { scaled: `${scaled}${text.slice(last)}`, unread: `${unread}${text.slice(last)}` };
-}
-
 const openingPrefix = /^(?:plus\s+|\+\s*)/iu;
 
 // A measurement opens the item after "plus" or "+", or right after a measure's unit as a second unit
@@ -377,44 +400,318 @@ function wordsSource(words: readonly string[]): string {
 // yolk", "twelve to fifteen", or "one-half". "five-spice" holds none.
 const wholeNumberWord = new RegExp(
 	String.raw`(?<![\p{L}-])${wordsSource(wholeNumberWords)}(?:-${wordsSource(numberWords)})*(?![\p{L}-])`,
-	'iu'
+	'giu'
 );
 
 // Where a word starts, as an amount in words does.
 const wordStart = /(?<![\p{L}-])\p{L}/gu;
 
-// An amount in words counts where a fraction comes with its article ("half a lemon", "a half lime") or
-// a unit follows it ("plus a quarter cup", "plus a tablespoon"); a bare article or fraction names rather
-// than counts: "half and half", "cut in half", "artichoke quarters".
-function holdsAmountWords(text: string): boolean {
-	return Array.from(text.matchAll(wordStart), (match) => text.slice(match.index)).some((rest) => {
-		const words = readAmountWords(rest);
-		return (
-			words !== undefined &&
-			(/\s/u.test(words.written) ||
-				readUnit(rest.slice(words.written.length).trimStart()) !== undefined)
-		);
-	});
+// Numerals read as one amount, joined into a mixed number or a range as a line's amount is: "1 1/2",
+// "2-3", "2 to 3". A run ends on a numeral, so "plus 1, beaten" holds "1".
+const numeralRun =
+	/\p{N}(?:[\p{N}.,/⁄]*\p{N})?(?:(?:\s+|\s*[-\u2013\u2014]\s*|\s+(?:to|or)\s+)\p{N}(?:[\p{N}.,/⁄]*\p{N})?)*/giu;
+
+function overlaps(span: TextSpan, other: TextSpan): boolean {
+	return span.start < other.end && other.start < span.end;
 }
 
-// Whether text the scale left as written still holds a number other than a length: the "2" in
-// "cut into 2-inch pieces" stays true at any scale.
-function holdsNumber(text: string): boolean {
-	let rest = text;
-	for (const measurement of extractMeasurements(text, readingOptions).reverse()) {
-		if (measurement.unitType === 'length') {
-			rest = `${rest.slice(0, measurement.startIndex)} ${rest.slice(measurement.endIndex)}`;
+function measurementNumber(measurement: Measurement): WrittenNumber {
+	const { quantity, quantity2, startIndex: start, endIndex: end } = measurement;
+	const amount = amountOfQuantities(quantity, quantity2, quantityText(measurement));
+	return amount === undefined ? { start, end, measurement } : { start, end, amount, measurement };
+}
+
+// An amount in words at the start of the text, where it counts: with its article or fraction ("half a
+// lemon", "a half lime"), or with a unit after it ("a quarter cup", "a tablespoon"). A bare article or
+// fraction names rather than counts: "half and half", "cut in half", "artichoke quarters".
+function amountInWords(
+	text: string,
+	start: number,
+	lengths: readonly TextSpan[]
+): WrittenNumber | undefined {
+	const rest = text.slice(start);
+	const words = readAmountWords(rest);
+	if (words === undefined) {
+		return undefined;
+	}
+
+	const after = rest.slice(words.written.length);
+	const unitFollows = readUnit(after.trimStart()) !== undefined;
+	if (!unitFollows && !/\s/u.test(words.written)) {
+		return undefined;
+	}
+
+	const end = start + words.written.length;
+	const [measure] = unitFollows ? scalableMeasurements(`${words.numerals}${after}`) : [];
+	const withUnit =
+		measure === undefined || measure.measurement.startIndex !== 0
+			? undefined
+			: { start, end: end + measure.measurement.endIndex - words.numerals.length, ...measure };
+	// A unit read past a length is the length's: "a 2-inch piece" counts no pieces.
+	if (withUnit !== undefined && !lengths.some((length) => overlaps(withUnit, length))) {
+		return withUnit;
+	}
+
+	const amount = parseAmountText(words.numerals);
+	return amount === undefined ? { start, end } : { start, end, amount };
+}
+
+// The numbers in text other than lengths, which stay true at any scale: the "2" in "cut into 2-inch
+// pieces" is none. A number is a measurement with its unit, a run of numerals, or an amount in words.
+function writtenNumbers(text: string): WrittenNumber[] {
+	const measurements = extractMeasurements(text, readingOptions);
+	const lengths = measurements
+		.filter((measurement) => measurement.unitType === 'length')
+		.map(({ startIndex, endIndex }) => ({ start: startIndex, end: endIndex }));
+	const found = measurements
+		.filter((measurement) => measurement.unitType !== 'length')
+		.map(measurementNumber);
+	// Every measurement blanked, so no numeral or word in one is read again, and a run of numerals stops
+	// before one: "4 8-ounce links" counts 4.
+	const rest = measurements.reduce(
+		(blanked, { startIndex, endIndex }) =>
+			`${blanked.slice(0, startIndex)}${' '.repeat(endIndex - startIndex)}${blanked.slice(endIndex)}`,
+		text
+	);
+	const isFree = (span: TextSpan) => ![...lengths, ...found].some((taken) => overlaps(span, taken));
+
+	for (const { 0: run, index: start } of rest.matchAll(numeralRun)) {
+		const span = { start, end: start + run.length };
+		const amount = parseAmountText(run);
+		if (isFree(span)) {
+			found.push(amount === undefined ? span : { ...span, amount });
 		}
 	}
 
-	return /\p{N}/u.test(rest) || wholeNumberWord.test(rest) || holdsAmountWords(rest);
+	for (const { index: start } of rest.matchAll(wordStart)) {
+		const words = amountInWords(rest, start, lengths);
+		if (words !== undefined && isFree(words)) {
+			found.push(words);
+		}
+	}
+
+	for (const { 0: written, index: start } of rest.matchAll(wholeNumberWord)) {
+		const span = { start, end: start + written.length };
+		const numerals = readAmountWords(written)?.numerals;
+		const amount = numerals === undefined ? undefined : parseAmountText(numerals);
+		if (isFree(span)) {
+			found.push(amount === undefined ? span : { ...span, amount });
+		}
+	}
+
+	return found.sort((a, b) => a.start - b.start);
 }
 
-// Text gives an amount when it holds a number or opens with an amount in words, read or not: "a few
-// sprigs thyme", "half a lemon". It marks a line the parser read nothing in, and a step whose own
-// amounts a scaled recipe's note speaks for.
+// Text gives an amount when it holds a number other than a length or opens with an amount in words,
+// read or not: "a few sprigs thyme", "half a lemon". It marks a line the parser read nothing in, and a
+// step whose own amounts a scaled recipe's note speaks for.
 export function givesAmount(text: string): boolean {
-	return holdsNumber(text) || readAmountWords(text) !== undefined;
+	return writtenNumbers(text).length > 0 || readAmountWords(text) !== undefined;
+}
+
+// What makes a number no amount: after it, a temperature, a time, or a pan's other side ("110°F", "5
+// minutes", "9x13"); before it, a can's size, a note's number, or what something is cut into ("#10
+// can", "Note 2", "divided into 3 portions").
+const noAmountAfter =
+	/^\s*(?:[°º]|degrees?(?!\p{L})|(?:sec(?:ond)?|min(?:ute)?|h(?:ou)?r)s?(?!\p{L})|[x×]\s*\p{N})/iu;
+const noAmountBefore = /(?:#|\p{N}\s*[x×]\s*|(?<!\p{L})(?:note|step)\s*|(?<!\p{L})into\s+)$/iu;
+
+// A word right before a number that joins a second amount to the first: "1 egg plus 1 yolk", "2
+// tomatoes or 1 can", "(or 1 tsp dried)".
+const joinedAfter = /(?:(?<!\p{L})(?:plus|or|and)\s+|\+\s*)$/iu;
+const joiningWord = /(?<!\p{L})(?:plus|or|and)(?!\p{L})|\+/iu;
+
+// A size that says it is each item's, before a comma or parenthesis ends it: "(6 ounces each)".
+const sizeOfEach = /^[^(),;]*(?<!\p{L})each(?!\p{L})/iu;
+
+// A count of one right before a size, with any container it counts and the parenthesis that opens the
+// size: "or 1 (14-ounce can)", "or 1 can (14 ounces)".
+const oneBefore = /(?:^|[\s(])(?:1|one|an?)(?:\s+(\p{L}+))?\s*\(?\s*$/iu;
+
+// A container after a size in parentheses, or in them after it: "(8 ounce) package", "(14-ounce can)".
+const containerAfterSize = [/^\)\s*(\p{L}+)/u, /^\s+(\p{L}+)\)/u];
+
+// The count unit a word names, as a container does: "package", "cans".
+function containerUnit(word: string): string | undefined {
+	const unit = readUnit(word);
+	return unit !== undefined && unitDefinitions[unit]?.type === 'count' ? unit : undefined;
+}
+
+// A size joined to its unit by a hyphen, as in "14-ounce can", names a size rather than an amount.
+function isHyphenated(measurement: Measurement): boolean {
+	const { text, unitOfMeasure } = measurement;
+	const quantityEnd = quantityText(measurement).length;
+	return /[-\u2010-\u2015]/u.test(text.slice(quantityEnd, text.length - unitOfMeasure.length));
+}
+
+function isOne(amount: Amount | undefined): boolean {
+	return amount?.min === 1 && amount.max === undefined;
+}
+
+// Whether a number is the size of each item, which is right at any scale: a size that says so ("4
+// chicken breasts (6 ounces each)"), a hyphenated one ("14-ounce"), one in a container's parentheses
+// ("1 (8 ounce) package"), or one after a count of one, either a "1" right before it or, before any word
+// joins another amount, the line's own ("1 whole chicken, about 4 pounds").
+function isSizeOfEach(
+	{ measurement }: WrittenNumber,
+	before: string,
+	after: string,
+	context: LineContext
+): boolean {
+	if (sizeOfEach.test(after)) {
+		return true;
+	}
+
+	if (measurement === undefined) {
+		return false;
+	}
+
+	const container = containerAfterSize
+		.map((pattern) => pattern.exec(after)?.[1])
+		.find((word) => word !== undefined);
+	const one = oneBefore.exec(before);
+	const counted = one?.[1];
+	return (
+		isHyphenated(measurement) ||
+		(container !== undefined && containerUnit(container) !== undefined) ||
+		(one !== null && (counted === undefined || containerUnit(counted) !== undefined)) ||
+		(isOne(context.count) && !joiningWord.test(before))
+	);
+}
+
+// Whether a number opens what parentheses hold, after a word such as "about": "(1 medium)", "(about 6
+// medium)".
+function opensParentheses(before: string): boolean {
+	const open = before.lastIndexOf('(');
+	const inside = before.slice(open + 1);
+	return open !== -1 && (inside.trim() === '' || approximationWord.exec(inside)?.[0] === inside);
+}
+
+// What the scale does with a number its text leaves as written. It keeps what is no amount and the
+// size of each item; it scales an amount a word joins to the line's ("1 egg plus 1 yolk") and, in a
+// line measured by volume or weight, a second amount or an equivalent of the line's ("(about 1 ¾
+// cups)", "(1 medium)"); and it marks the rest unscaled, such as a size after a count above one ("2
+// sweet potatoes (about 1 pound)") or a total on a count's unit ("2 envelopes (4½ teaspoons)").
+function treatmentOf(number: WrittenNumber, text: string, context: LineContext): Treatment {
+	const before = text.slice(0, number.start);
+	const after = text.slice(number.end);
+	if (
+		noAmountBefore.test(before) ||
+		noAmountAfter.test(after) ||
+		isSizeOfEach(number, before, after, context)
+	) {
+		return 'keep';
+	}
+
+	const isSecondAmount =
+		context.isMeasure && (number.measurement !== undefined || opensParentheses(before));
+	return joinedAfter.test(before) || isSecondAmount ? 'scale' : 'unscaled';
+}
+
+// A number at the scale, written as the scaler writes amounts, with the amounts the words it counts
+// agree with; nothing where it reads as no amount.
+function scaledNumber(
+	{ amount, measurement }: WrittenNumber,
+	factor: number
+): { text: string; agreement: Agreement } | undefined {
+	if (amount === undefined) {
+		return undefined;
+	}
+
+	if (measurement !== undefined) {
+		const measure = measureAt(times(amount, factor), measurement.unitOfMeasureID);
+		return {
+			text: writeMeasurement(measurement, measure),
+			agreement: { written: amount, scaled: measure.amount },
+		};
+	}
+
+	const count = scaleCount(amount, factor);
+	return { text: formatAmount(count), agreement: { written: amount, scaled: count } };
+}
+
+// The words a count counts, after it, up to a comma, a closing parenthesis, or a word that joins
+// another amount: "yolk" in "plus 1 yolk, beaten", "(14-ounce can) chopped tomatoes" after "or 1".
+const countedWords =
+	/^(\s*)((?:\([^()]*\)|[^(),;])*?)(?=\s*(?:[),;]|(?<!\p{L})(?:plus|or|and|with)(?!\p{L})|\+|$))/iu;
+
+function countedWordsAfter(text: string, end: number): TextSpan {
+	const [, space = '', words = ''] = countedWords.exec(text.slice(end)) ?? [];
+	const start = end + space.length;
+	return { start, end: start + words.length };
+}
+
+// The text with the edits made, leaving out any that overlaps a span or an earlier edit, and the spans
+// moved to where their text lands.
+function withEdits(text: string, edits: readonly Edit[], spans: readonly TextSpan[]): ScaledText {
+	const made: Edit[] = [];
+	for (const edit of [...edits].sort((a, b) => a.start - b.start)) {
+		if (![...made, ...spans].some((taken) => overlaps(edit, taken))) {
+			made.push(edit);
+		}
+	}
+
+	let edited = '';
+	let last = 0;
+	for (const { start, end, replacement } of made) {
+		edited += `${text.slice(last, start)}${replacement}`;
+		last = end;
+	}
+
+	const moved = (offset: number) =>
+		made.reduce(
+			(at, { start, end, replacement }) =>
+				end <= offset ? at + replacement.length - (end - start) : at,
+			offset
+		);
+	return {
+		text: `${edited}${text.slice(last)}`,
+		unscaled: spans.map(({ start, end }) => ({ start: moved(start), end: moved(end) })),
+	};
+}
+
+function shifted(edit: Edit, by: number): Edit {
+	return { ...edit, start: edit.start + by, end: edit.end + by };
+}
+
+// Text the scale left as written, at the scale: each number it can vouch for scaled, with the words a
+// count counts agreeing, and each it cannot marked unscaled. Given the line's own amounts, the words
+// before the first amount another word joins agree with them: "egg" in "egg plus 1 yolk".
+function scaleWrittenText(text: string, context: LineContext, agreement?: Agreement): ScaledText {
+	const edits: Edit[] = [];
+	const unscaled: TextSpan[] = [];
+	let headEnd = text.length;
+	for (const number of writtenNumbers(text)) {
+		const treatment = treatmentOf(number, text, context);
+		const scaled = treatment === 'scale' ? scaledNumber(number, context.factor) : undefined;
+		const span = { start: number.start, end: number.end };
+		if (scaled === undefined) {
+			if (treatment !== 'keep') {
+				unscaled.push(span);
+			}
+			continue;
+		}
+
+		edits.push({ ...span, replacement: scaled.text });
+		if (number.measurement === undefined) {
+			const counted = countedWordsAfter(text, number.end);
+			const inflected = inflection(text.slice(counted.start, counted.end), scaled.agreement);
+			if (inflected !== undefined) {
+				edits.push(shifted(inflected, counted.start));
+			}
+		}
+
+		const joined = joinedAfter.exec(text.slice(0, number.start));
+		if (joined !== null) {
+			headEnd = Math.min(headEnd, joined.index);
+		}
+	}
+
+	const head =
+		agreement === undefined
+			? undefined
+			: inflection(text.slice(0, headEnd).replace(/[\s,]+$/u, ''), agreement);
+	return withEdits(text, head === undefined ? edits : [head, ...edits], unscaled);
 }
 
 // pluralize alone pluralizes mass nouns and whole phrases ("flours", "clove garlics"), so an item
@@ -422,8 +719,66 @@ export function givesAmount(text: string): boolean {
 const pluralizableItem = /^\p{L}+(?: \p{L}+){0,2}$/u;
 const joiningWords = new Set(['and', 'or', 'plus', 'with']);
 
-// A measure's unit holds an equivalent of the whole amount in parentheses, which scales with it; a
-// count's holds the size of each, which does not: "24 oz (680 g)", "2 cans (14 ounces)".
+// A container after its size, which takes the count's number in place of the item: "(8 ounce)
+// package", "half-pint jar", and within the parentheses, "(14-ounce can)".
+const sizedContainers = [
+	/^(?:\([^()]*\)|\S+-\S+)\s+(\p{L}+)(?![\p{L}-])/u,
+	/^\([^()]*\s(\p{L}+)\)/u,
+];
+
+function containerInflection(words: string, scaled: Amount): Edit | undefined {
+	for (const pattern of sizedContainers) {
+		const match = pattern.exec(words);
+		const container = match?.[1];
+		const unit = container === undefined ? undefined : containerUnit(container);
+		if (match !== null && container !== undefined && unit !== undefined) {
+			const start = match[0].lastIndexOf(container);
+			return {
+				start,
+				end: start + container.length,
+				replacement: unitInNumber(container, unit, scaled),
+			};
+		}
+	}
+
+	return undefined;
+}
+
+// The noun that ends the words before any parenthetical: "potatoes" in "sweet potatoes (about 1
+// pound)". A size names no noun: "(1 medium)".
+function nounInflection(words: string, scaled: Amount): Edit | undefined {
+	const parenthetical = words.search(/\s+\(/u);
+	const item = parenthetical === -1 ? words : words.slice(0, parenthetical);
+	const nounStart = item.lastIndexOf(' ') + 1;
+	const noun = item.slice(nounStart);
+	if (
+		!pluralizableItem.test(item) ||
+		item.split(' ').some((word) => joiningWords.has(word.toLowerCase())) ||
+		sizes.includes(noun.toLowerCase())
+	) {
+		return undefined;
+	}
+
+	return {
+		start: nounStart,
+		end: item.length,
+		replacement: isPlural(scaled) ? pluralize.plural(noun) : pluralize.singular(noun),
+	};
+}
+
+// The word that takes the number a count takes, in the words it counts, when the scale crosses 1: a
+// container after its size, or else the noun. Anything the guards cannot vouch for stays as written.
+function inflection(words: string, { written, scaled }: Agreement): Edit | undefined {
+	if (isPlural(written) === isPlural(scaled)) {
+		return undefined;
+	}
+
+	return containerInflection(words, scaled) ?? nounInflection(words, scaled);
+}
+
+// A measure's unit holds an equivalent of the whole amount in parentheses, which scales with it: "24
+// oz (680 g)". A count's holds the size of each, or a total the scale cannot tell from one above a
+// count of one: "1 can (14 ounces)", "2 envelopes (4½ teaspoons)".
 const measureTypes: ReadonlySet<UnitType> = new Set(['volume', 'mass']);
 
 const unitWithNote = /^(.*?)(\s*)(\([^()]*\))$/u;
@@ -436,27 +791,29 @@ function splitUnit(written: string): WrittenUnit {
 		: { marker, name, gap, note };
 }
 
-// The item in the number the scaled amount takes, when the scale crosses 1: "1 onion" doubles to
-// "2 onions". Anything the guards cannot vouch for stays as written.
+// The item in the number the scaled amount takes, when the scale crosses 1: "1 onion" doubles to "2
+// onions", and "1 (8 ounce) package cream cheese" to "2 (8 ounce) packages cream cheese".
 export function itemForAmount(item: string, written: Amount, scaled: Amount): string {
-	const words = item.split(' ');
-	if (
-		isPlural(written) === isPlural(scaled) ||
-		!pluralizableItem.test(item) ||
-		words.some((word) => joiningWords.has(word.toLowerCase()))
-	) {
-		return item;
-	}
-
-	const nounStart = item.lastIndexOf(' ') + 1;
-	const noun = item.slice(nounStart);
-	const inflected = isPlural(scaled) ? pluralize.plural(noun) : pluralize.singular(noun);
-	return `${item.slice(0, nounStart)}${inflected}`;
+	const edit = inflection(item, { written, scaled });
+	return edit === undefined ? item : withEdits(item, [edit], []).text;
 }
 
 // A count at the scale, rounded as ingredients without a unit are.
 export function scaleCount(amount: Amount, factor: number): Amount {
 	return readingIn(undefined, times(amount, factor)).amount;
+}
+
+// The unscaled amounts in text the scale went through, placed in their field after what comes first.
+function spansIn(
+	field: IngredientLineSpan['field'],
+	lead: string,
+	{ unscaled }: ScaledText
+): IngredientLineSpan[] {
+	return unscaled.map(({ start, end }) => ({
+		field,
+		start: lead.length + start,
+		end: lead.length + end,
+	}));
 }
 
 export function scaleIngredientLine(line: IngredientLine, factor: number): ScaledIngredientLine {
@@ -472,17 +829,21 @@ export function scaleIngredientLine(line: IngredientLine, factor: number): Scale
 	const unit = written === undefined ? undefined : readUnit(written.name);
 	const type = unit === undefined ? undefined : unitDefinitions[unit]?.type;
 	const isMeasure = type !== undefined && measureTypes.has(type);
+	const context: LineContext = isMeasure
+		? { factor, isMeasure }
+		: { factor, isMeasure, count: line.amount };
 	const exact = times(line.amount, factor);
 	const opening = openingMeasurement(line.item, isMeasure);
-	const unread = [line.preparation ?? ''];
 
 	let measure = measureAt(exact, unit);
-	let item = line.item;
+	// What the scale wrote at the item's start, before the text it went through.
+	let itemLead = '';
+	let item: ScaledText;
 	if (opening === undefined) {
-		if (line.unit === undefined) {
-			item = itemForAmount(line.item, line.amount, measure.amount);
-		}
-		unread.push(line.item);
+		// A count without a unit counts the item, which agrees with it: "1 onion" doubles to "2 onions".
+		const agreement =
+			line.unit === undefined ? { written: line.amount, scaled: measure.amount } : undefined;
+		item = scaleWrittenText(line.item, context, agreement);
 	} else {
 		const { prefix, measurement, amount, rest } = opening;
 		const second = times(amount, factor);
@@ -493,37 +854,42 @@ export function scaleIngredientLine(line: IngredientLine, factor: number): Scale
 		if (together !== undefined && together.unit !== unit) {
 			// Parts that move to another unit read as one amount: "1 lb 2 oz" at a third is "6 ounces".
 			measure = together;
-			item = rest.trimStart();
+			item = scaleWrittenText(rest.trimStart(), context);
 		} else {
 			// Each part keeps its unit: "2 cups plus 2 tablespoons" doubles to "4 cups plus 4 tablespoons".
 			if (together !== undefined) {
 				measure = readingIn(unit, exact);
 			}
 			const secondMeasure = readingIn(measurement.unitOfMeasureID, second);
-			item = `${prefix}${writeMeasurement(measurement, secondMeasure)}${rest}`;
+			itemLead = `${prefix}${writeMeasurement(measurement, secondMeasure)}`;
+			item = scaleWrittenText(rest, context);
 		}
-		unread.push(`${prefix} ${rest}`);
 	}
 
-	let scaledUnit: string | undefined;
+	const preparation =
+		line.preparation === undefined ? undefined : scaleWrittenText(line.preparation, context);
+	// The unit's name at the scale, before the note in parentheses the scale goes through.
+	let unitLead = '';
+	let note: ScaledText | undefined;
 	if (written !== undefined) {
-		const name = `${written.marker}${unitText(written.name, unit, measure)}`;
-		if (written.note === undefined) {
-			scaledUnit = name;
-		} else if (isMeasure) {
-			const equivalent = scaleMeasurements(written.note, factor);
-			scaledUnit = `${name}${written.gap}${equivalent.scaled}`;
-			unread.push(equivalent.unread);
-		} else {
-			scaledUnit = `${name}${written.gap}${written.note}`;
+		unitLead = `${written.marker}${unitText(written.name, unit, measure)}`;
+		if (written.note !== undefined) {
+			unitLead = `${unitLead}${written.gap}`;
+			note = scaleWrittenText(written.note, context);
 		}
 	}
 
+	const amounts = [
+		...(note === undefined ? [] : spansIn('unit', unitLead, note)),
+		...spansIn('item', itemLead, item),
+		...(preparation === undefined ? [] : spansIn('preparation', '', preparation)),
+	];
 	const scaled: IngredientLine = {
 		...line,
 		amount: measure.amount,
-		...(scaledUnit === undefined ? {} : { unit: scaledUnit }),
-		item,
+		...(written === undefined ? {} : { unit: `${unitLead}${note?.text ?? ''}` }),
+		item: `${itemLead}${item.text}`,
+		...(preparation === undefined ? {} : { preparation: preparation.text }),
 	};
-	return unread.some(holdsNumber) ? { line: scaled, unscaled: 'part' } : { line: scaled };
+	return amounts.length === 0 ? { line: scaled } : { line: scaled, unscaled: { amounts } };
 }

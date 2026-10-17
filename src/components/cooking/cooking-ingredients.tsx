@@ -8,7 +8,6 @@ import type { RecipeScale } from '@/components/cooking/use-cooking-url';
 import { ScaledIngredientLineText } from '@/components/recipe/recipe-ingredients-and-steps';
 import { RecipeParagraphs } from '@/components/recipe/recipe-paragraphs';
 import { Checkbox } from '@/components/ui/checkbox';
-import { scaleIngredientLine } from '@/domain/recipe/ingredient-scaling';
 import { formatScaledYield } from '@/domain/recipe/recipe-yield';
 
 type CookingHeadingTag = 'h2' | 'h3';
@@ -81,7 +80,7 @@ function IngredientChecklist({
 												isChecked && 'text-muted-foreground line-through decoration-1'
 											)}
 										>
-											<ScaledIngredientLineText scaled={scaleIngredientLine(line, factor)} />
+											<ScaledIngredientLineText line={line} factor={factor} />
 										</span>
 									</label>
 								</li>
