@@ -3,11 +3,17 @@ import { test as base } from '@playwright/test';
 import { like } from 'drizzle-orm';
 import type { Member, MemberRole } from '@/domain/member/member';
 import { rateLimits } from '@/infrastructure/db/schema';
-import { openDevelopDatabase, type DevelopDatabase } from './develop-database';
+import {
+	openDevelopDatabase,
+	reportQueryErrorsWithoutParameters,
+	type DevelopDatabase,
+} from './develop-database';
 import { createEndToEndAuth, type EndToEndAuth } from './end-to-end-auth';
 import { createTestMember, deleteTestMember, type TestMemberInbox } from './test-members';
 
 type WorkerFixtures = {
+	// The dev server's database and the suites' Better Auth on it. Tests use them through e2e/support's
+	// functions, which report a failed query without its parameters.
 	develop: Pick<DevelopDatabase, 'db'> & { auth: EndToEndAuth };
 };
 
@@ -50,7 +56,9 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 		try {
 			await use(address);
 		} finally {
-			await develop.db.delete(rateLimits).where(like(rateLimits.key, `${address}|%`));
+			await reportQueryErrorsWithoutParameters(() =>
+				develop.db.delete(rateLimits).where(like(rateLimits.key, `${address}|%`))
+			);
 		}
 	},
 	// The dev server keeps a forwarded address it is sent, and Better Auth trusts one lone address.

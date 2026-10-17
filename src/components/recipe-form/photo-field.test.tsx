@@ -132,10 +132,14 @@ describe('PhotoField', () => {
 			file: uploaded[0],
 		});
 		const drawn = await createImageBitmap(uploaded[0] as File);
-		expect({ type: uploaded[0]?.type, width: drawn.width, height: drawn.height }).toEqual({
-			type: 'image/jpeg',
-			width: 2400,
-			height: 1800,
-		});
+		try {
+			expect({ type: uploaded[0]?.type, width: drawn.width, height: drawn.height }).toEqual({
+				type: 'image/jpeg',
+				width: 2400,
+				height: 1800,
+			});
+		} finally {
+			drawn.close();
+		}
 	});
 });

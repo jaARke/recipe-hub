@@ -3,8 +3,9 @@ import { inspect, type InspectOptionsStylized } from 'node:util';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { queryErrorCause, withoutQueryParameters } from '@/lib/errors';
 
-// The query's SQL and what failed, as an error Node prints the usual way.
-function printableQueryError(error: DrizzleQueryError): Error {
+// The query's SQL and what failed, as an error Node prints the usual way. The end-to-end suites
+// report their failed queries as this too (e2e/support/develop-database.ts).
+export function printableQueryError(error: DrizzleQueryError): Error {
 	const message = withoutQueryParameters(error.message);
 	const cause = queryErrorCause(error);
 	const printable = new Error(message, cause === undefined ? undefined : { cause });

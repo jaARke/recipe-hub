@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { page } from 'vitest/browser';
-import type { FormAction } from '@/components/forms/form-state';
+import type { FormAction, FormState } from '@/components/forms/form-state';
+import { heldResult } from '@/components/forms/testing/held-result';
 import type { PhotoUploader } from '@/components/recipe-form/photo-upload';
 import { scanUploadsFromForm } from '@/components/recipe-import/recipe-import-forms';
 import { ScanImportForm } from '@/components/recipe-import/scan-import-form';
@@ -72,7 +73,8 @@ describe('ScanImportForm', () => {
 
 	it('no longer asks for a photo once one is stored, while the import reads it', async () => {
 		// The import is still reading when the test ends.
-		const action = vi.fn<FormAction>(() => new Promise(() => {}));
+		const { promise } = heldResult<FormState>({ status: 'success' });
+		const action = vi.fn<FormAction>(() => promise);
 		await renderForm(action, async () => {});
 
 		await readRecipeButton().click();
@@ -86,7 +88,8 @@ describe('ScanImportForm', () => {
 	});
 
 	it('sends each page as it uploaded, with the size it was drawn at', async () => {
-		const action = vi.fn<FormAction>(() => new Promise(() => {}));
+		const { promise } = heldResult<FormState>({ status: 'success' });
+		const action = vi.fn<FormAction>(() => promise);
 		const uploader = vi.fn<PhotoUploader>(async () => {});
 		await renderForm(action, uploader);
 
@@ -103,7 +106,10 @@ describe('ScanImportForm', () => {
 		const [pathname, uploaded] = uploader.mock.calls[0] ?? [];
 		expect(pathname).toBe(scans[0]?.pathname);
 		const bitmap = await createImageBitmap(uploaded ?? new Blob());
-		expect({ width: bitmap.width, height: bitmap.height }).toEqual(drawnSize);
-		bitmap.close();
+		try {
+			expect({ width: bitmap.width, height: bitmap.height }).toEqual(drawnSize);
+		} finally {
+			bitmap.close();
+		}
 	});
 });

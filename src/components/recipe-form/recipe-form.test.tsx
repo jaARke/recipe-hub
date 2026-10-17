@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { page, userEvent, type Locator } from 'vitest/browser';
 import type { FormAction, FormState } from '@/components/forms/form-state';
+import { heldResult } from '@/components/forms/testing/held-result';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import { HeldDraftProvider } from '@/components/recipe-form/held-draft';
 import { RecipeForm, type RecipeFormDrafts } from '@/components/recipe-form/recipe-form';
@@ -1491,7 +1492,12 @@ describe('RecipeForm’s drafts', () => {
 	});
 
 	it('keeps what is typed while a draft saves under the version that save made', async () => {
-		const saved = Promise.withResolvers<FormState<SavedDraftResult>>();
+		const saved = heldResult<FormState<SavedDraftResult>>({
+			status: 'success',
+			draftId,
+			savedAt,
+			expiresAt,
+		});
 		const save = vi.fn<FormAction<SavedDraftResult>>(() => saved.promise);
 		const openedAt = new Date('2026-10-15T12:00:00.000Z');
 		await render(

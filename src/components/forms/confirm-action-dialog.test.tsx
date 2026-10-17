@@ -7,6 +7,7 @@ import {
 	useConfirmActionDialogOpener,
 } from '@/components/forms/confirm-action-dialog';
 import type { FormAction, FormState } from '@/components/forms/form-state';
+import { heldResult } from '@/components/forms/testing/held-result';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 
 const declineProps = {
@@ -54,7 +55,7 @@ function OpenedElsewhere({ action }: { action: FormAction }) {
 
 describe('ConfirmActionDialog', () => {
 	it('stays open while the action runs, so it cannot be confirmed twice', async () => {
-		const { promise, resolve } = Promise.withResolvers<FormState>();
+		const { promise, resolve } = heldResult<FormState>({ status: 'success' });
 		const action = vi.fn<FormAction>(() => promise);
 		await render(declineDialog(action));
 		// Read while closed: the open dialog takes the rest of the page out of the accessibility tree.
@@ -72,8 +73,7 @@ describe('ConfirmActionDialog', () => {
 
 		await expect.element(dialog().getByRole('button', { name: 'Keep request' })).toBeDisabled();
 		expect(trigger.getAttribute('aria-expanded')).toBe('true');
-		// Ended, since React holds back every later transition, a later test's among them, until it
-		// ends, and since a second submit would wait in React's queue until then.
+		// Ended before the count is read, since a second submit would wait in React's queue until then.
 		resolve({ status: 'success' });
 		await expect.element(dialog()).not.toBeInTheDocument();
 		expect(action).toHaveBeenCalledOnce();
@@ -93,7 +93,7 @@ describe('ConfirmActionDialog', () => {
 	});
 
 	it('stays open while its action runs as its page hides, and shows a refusal that arrives meanwhile', async () => {
-		const { promise, resolve } = Promise.withResolvers<FormState>();
+		const { promise, resolve } = heldResult<FormState>({ status: 'success' });
 		const keptPage = await renderKeptPage(declineDialog(() => promise));
 
 		await page.getByRole('button', { name: 'Decline' }).click();

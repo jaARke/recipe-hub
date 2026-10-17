@@ -5,6 +5,7 @@ import { render } from 'vitest-browser-react';
 import { page } from 'vitest/browser';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FieldErrors, FormAction, FormState } from '@/components/forms/form-state';
+import { heldResult } from '@/components/forms/testing/held-result';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import { useFormAction } from '@/components/forms/use-form-action';
 
@@ -107,7 +108,7 @@ describe('useFormAction', () => {
 	});
 
 	it('shows a result that arrives while its page is hidden', async () => {
-		const { promise, resolve } = Promise.withResolvers<FormState>();
+		const { promise, resolve } = heldResult<FormState>({ status: 'success' });
 		const action = vi.fn<FormAction>().mockImplementationOnce(refuse).mockReturnValueOnce(promise);
 		const keptPage = await renderKeptPage(<ProbeForm action={action} />);
 

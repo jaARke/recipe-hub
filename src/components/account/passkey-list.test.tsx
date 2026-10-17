@@ -3,6 +3,7 @@ import { render } from 'vitest-browser-react';
 import { page, userEvent } from 'vitest/browser';
 import { PasskeyList } from '@/components/account/passkey-list';
 import type { FormAction, FormState } from '@/components/forms/form-state';
+import { heldResult } from '@/components/forms/testing/held-result';
 import { toast } from '@/components/ui/toast';
 
 const passkeys = [{ id: 'passkey-1', name: 'Work laptop', createdAt: null }];
@@ -83,7 +84,7 @@ describe('PasskeyList', () => {
 	});
 
 	it('keeps the rename dialog open while the name saves, so it cannot be sent twice', async () => {
-		const { promise, resolve } = Promise.withResolvers<FormState>();
+		const { promise, resolve } = heldResult<FormState>({ status: 'success' });
 		const rename = vi.fn<FormAction>(() => promise);
 		await render(
 			<PasskeyList passkeys={passkeys} renamePasskey={rename} removePasskey={succeed} />

@@ -42,14 +42,6 @@ function scrollFormEndToMiddle() {
 	);
 }
 
-// Resolves in the frame after the next, by when the observers have measured the next one, so they
-// report a later change against where things stood in it.
-function afterNextFrame(): Promise<void> {
-	return new Promise((resolve) => {
-		requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-	});
-}
-
 describe('ActionBar', () => {
 	it('is held at the screen’s bottom while its place at the form’s end is below the screen', async () => {
 		await render(recipeForm(<p>3 to check</p>));
@@ -75,12 +67,12 @@ describe('ActionBar', () => {
 		await render(recipeForm(<p>3 to check</p>));
 		await expect.element(bar()).toHaveAttribute('data-held');
 
-		// Read down to its place and past it, the form's end leaving across the screen's top as a frame
-		// is drawn.
+		// Read down to its place and past it. Once the observer reports the form's end leaving across
+		// the screen's top, the bar is held, where its look shows nothing off the screen.
 		scrollFormEndToMiddle();
 		await expect.element(bar()).not.toHaveAttribute('data-held');
 		window.scrollTo(0, document.documentElement.scrollHeight);
-		await afterNextFrame();
+		await expect.element(bar()).toHaveAttribute('data-held');
 		expect(bar().getBoundingClientRect().bottom).toBeLessThan(0);
 
 		// Back to the top in one scroll, as Home or a restored scroll moves, with the form's end on the

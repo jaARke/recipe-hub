@@ -25,7 +25,9 @@ afterEach(() => {
 });
 
 // Holds back each page load until the test ends, since one would replace the test's own frame, and
-// lists them; a test cannot spy on Location, whose members are unforgeable.
+// lists them; a test cannot spy on Location, whose members are unforgeable. A click on a link with a
+// key held, which would load its page in a tab or window nothing closes, loads nothing: its default
+// is cancelled once it bubbles to the document, after the page's own handlers have seen it.
 export function holdPageLoads(): readonly HeldPageLoad[] {
 	const navigation = (globalThis as unknown as { navigation: TabNavigation }).navigation;
 	const loads: HeldPageLoad[] = [];
@@ -36,7 +38,17 @@ export function holdPageLoads(): readonly HeldPageLoad[] {
 			event.preventDefault();
 		}
 	};
+	const cancelModifiedLinkClick = (event: MouseEvent) => {
+		const modified = event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
+		if (modified && event.target instanceof Element && event.target.closest('a[href]') !== null) {
+			event.preventDefault();
+		}
+	};
 	navigation.addEventListener('navigate', hold);
-	releases.push(() => navigation.removeEventListener('navigate', hold));
+	document.addEventListener('click', cancelModifiedLinkClick);
+	releases.push(() => {
+		navigation.removeEventListener('navigate', hold);
+		document.removeEventListener('click', cancelModifiedLinkClick);
+	});
 	return loads;
 }

@@ -4,6 +4,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { MemberId } from '@/domain/member/member';
 import { betterAuthOptions, type AuthAccountHooks } from '@/infrastructure/auth/better-auth';
 import { devServerUrl } from './dev-server';
+import { reportQueryErrorsWithoutParameters } from './develop-database';
 import { endToEndEnv } from './env';
 
 // The instance mints sessions and reads codes in the test process and serves no request, so nothing
@@ -39,19 +40,23 @@ export function createEndToEndAuth(db: NodePgDatabase) {
 
 	return {
 		// A new session for the member, as the cookies signing in on the dev server sets.
-		async sessionCookies(memberId: MemberId): Promise<TestCookie[]> {
-			const { test } = await auth.$context;
-			return test.getCookies({ userId: memberId, domain: devServerUrl.hostname });
+		sessionCookies(memberId: MemberId): Promise<TestCookie[]> {
+			return reportQueryErrorsWithoutParameters(async () => {
+				const { test } = await auth.$context;
+				return test.getCookies({ userId: memberId, domain: devServerUrl.hostname });
+			});
 		},
 
 		// The sign-in code the dev server stored for the address, or null before it stores one. A call
 		// names the host, which Better Auth resolves its base URL from among the allowed hosts.
-		async signInCode(email: string): Promise<string | null> {
-			const { otp } = await auth.api.getVerificationOTP({
-				query: { email, type: 'sign-in' },
-				headers: new Headers({ host: devServerUrl.host }),
+		signInCode(email: string): Promise<string | null> {
+			return reportQueryErrorsWithoutParameters(async () => {
+				const { otp } = await auth.api.getVerificationOTP({
+					query: { email, type: 'sign-in' },
+					headers: new Headers({ host: devServerUrl.host }),
+				});
+				return otp;
 			});
-			return otp;
 		},
 	};
 }

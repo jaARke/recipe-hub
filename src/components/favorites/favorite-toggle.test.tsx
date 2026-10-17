@@ -1,24 +1,18 @@
-import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { page, type Locator } from 'vitest/browser';
 import { FavoriteToggle } from '@/components/favorites/favorite-toggle';
 import type { FormState } from '@/components/forms/form-state';
+import { heldResult } from '@/components/forms/testing/held-result';
 import { toast } from '@/components/ui/toast';
 
 const recipeId = '0199c7a4-6b1e-7a3c-9d2f-1a2b3c4d5e6f';
 
-// An action that answers only when the test says so, or as the test ends, since React holds every
-// later transition until a pending action settles.
+// An action that answers only when the test says so, or as the test ends.
 function heldAction() {
-	let answer: (result: FormState) => void = () => {};
-	const action = vi.fn<(recipeId: string, favorite: boolean) => Promise<FormState>>(
-		() =>
-			new Promise((resolve) => {
-				answer = resolve;
-			})
-	);
-	onTestFinished(() => answer({ status: 'success' }));
-	return { action, answer: (result: FormState) => answer(result) };
+	const { promise, resolve } = heldResult<FormState>({ status: 'success' });
+	const action = vi.fn<(recipeId: string, favorite: boolean) => Promise<FormState>>(() => promise);
+	return { action, answer: resolve };
 }
 
 // The toggle, named by its label whether pressed or not.
