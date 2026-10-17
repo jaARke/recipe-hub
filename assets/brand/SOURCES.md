@@ -16,7 +16,7 @@ Where each brand file comes from. Derivatives are made once from their source an
 | `public/icon-192.png`, `public/icon-512.png` | The mascot at 192 and 512 px, RGBA PNG, as provided with the artwork | the web manifest, purpose `any` |
 | `public/icon-maskable-512.png` | The mascot inside the central 80% circle of a cream square, 512 px opaque PNG | the web manifest, purpose `maskable` |
 | `assets/brand/mascot-card.png` | The grin's die-cut at 320 px, RGBA PNG | the share cards, read at module scope |
-| `public/email/lockup.png` | The header's lockup at 1.25 times its size, at 2x on a cream badge, 526 × 140 px opaque PNG | email headers, at 263 × 70 px |
+| `public/email/lockup.png` | The header's lockup at 1.25 times its size, at 2x, each part with a cream edge, trimmed to them, 466 × 70 px RGBA PNG | email headers, at 233 × 35 px |
 | `assets/fonts/fraunces-soft-semibold.ttf` | Fraunces at the headings' weight, a static Latin subset | the share cards' recipe titles |
 | `assets/fonts/hanken-grotesk-regular.ttf` | Hanken Grotesk Regular, a Latin subset | the share cards' body text |
 
@@ -114,9 +114,17 @@ The grin's die-cut, resized with Lanczos3 to 320 × 320 px, twice the 160 px the
 
 ## The email lockup
 
-The header's `Lockup` at 1.25 times its size, at 2x, made with `sharp` 0.35.5: the grin's die-cut resized with Lanczos3 to 80 × 80 px, and `wordmarkOutline` 50 px high (364.65 px wide) in `#241c17`, the light theme's foreground, which the header's wordmark takes, 20 px to the die-cut's right. They sit on a solid `#fdfaf3` badge with 30 px of padding, its width rounded up to an even number of pixels so that half of it is whole, and the content centered in it to the nearest pixel: 526 × 140 px, the die-cut at 31, 30 and the outline's top at 45. The outline is rasterized by `sharp` from an SVG the size of the badge, holding the path translated to its place and scaled by 50 / 860. Remove the alpha channel and write an RGB PNG at compression level 9.
+The header's `Lockup` at 1.25 times its size, at 2x, transparent around its parts, made with `sharp` 0.35.5. Gmail's dark mode repaints an email's background and leaves its images alone, so one image must read on light and dark backgrounds: the mascot keeps the die-cut's cream edge, and the wordmark gets one built the same way. The parts are placed on a transparent 526 × 140 px working canvas, which is then trimmed to them.
 
-An email shows it at 263 × 70 px (its `width` and `height`), with `siteName` as its alt text. Its wordmark stands 25 px tall there, its capitals about 22 px and its lowercase about 15 px, so it reads larger than the heading's 24 px Georgia, whose capitals are about 17 px and lowercase about 12 px.
+1. The mascot: the grin's die-cut resized with Lanczos3 to 80 × 80 px, at 31, 30.
+2. The wordmark: `wordmarkOutline` in `#241c17`, the light theme's foreground, which the header's wordmark takes, 50 px high (364.65 px wide) with its top left at 131, 45, 20 px to the die-cut's right. It is built at the die-cut's working scale, 16.25 times the working canvas's (the die-cut's 1300 px square becomes its 80 px), so its edge takes the die-cut's numbers and comes out as wide as the mascot's as drawn, about 2.5 px. Rasterize the path with `sharp` on a transparent 6175 × 975 px canvas, which is the working canvas's 380 × 60 px area at 124, 40 at that scale, translated to 113.75, 81.25 and scaled by 812.5 / 860.
+3. Its edge: step 3 of the die-cut on that canvas's alpha (threshold at 128, Gaussian-blur with sigma 20, set every value of 6 or more to 255 and the rest to 0, blur with sigma 1), used as the alpha of a solid `#fdfaf3`. Composite the wordmark over the edge and resize to 380 × 60 px with Lanczos3.
+4. Composite the mascot and the wordmark's area, at 124, 40, on the working canvas.
+5. Trim to the pixels at least 8 / 255 opaque, since fainter ones are only the resampling's fringe: 466 × 69 px at 32, 36. Add a row below, so the height is even and half of it whole: 466 × 70 px. Write an RGBA PNG at compression level 9 with adaptive filtering.
+
+On the email's cream the edges disappear, and on a dark background the mascot and the wordmark read as stickers. The trim puts the mascot's edge at the image's left, in line with the heading and the text in both.
+
+An email shows it at 233 × 35 px (its `width` and `height`), with `siteName` as its alt text. Its wordmark stands 25 px tall there, its capitals about 22 px and its lowercase about 15 px, so it reads larger than the heading's 24 px Georgia, whose capitals are about 17 px and lowercase about 12 px.
 
 ## The share-card fonts
 
