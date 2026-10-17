@@ -23,7 +23,9 @@ const firstResultCount = 3;
 function RecipeSearchResultList({ children }: { children: React.ReactNode }) {
 	return (
 		<RecipeListLinks>
-			<ul className="divide-y">{children}</ul>
+			<ul role="list" className="divide-y">
+				{children}
+			</ul>
 		</RecipeListLinks>
 	);
 }

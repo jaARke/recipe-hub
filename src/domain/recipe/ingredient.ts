@@ -20,6 +20,14 @@ export function ingredientLineSchemaFor(limits: ContentLimits) {
 }
 export type IngredientLine = z.infer<ReturnType<typeof ingredientLineSchemaFor>>;
 
+// A run of a line's unit, item, or preparation, by its offsets in that field, such as an amount a
+// scale left as written.
+export type IngredientLineSpan = {
+	field: Extract<keyof IngredientLine, 'unit' | 'item' | 'preparation'>;
+	start: number;
+	end: number;
+};
+
 export function ingredientSectionSchemaFor(limits: ContentLimits) {
 	return z.object({
 		heading: limits

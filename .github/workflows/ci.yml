@@ -19,6 +19,14 @@ jobs:
           node-version-file: package.json
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps --only-shell chromium firefox webkit
       - run: pnpm lint
       - run: pnpm typecheck
-      - run: pnpm test
+      - id: unit
+        run: pnpm test:unit
+      - if: failure() && steps.unit.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vitest-results
+          path: test-results/vitest/
+          retention-days: 7

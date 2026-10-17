@@ -114,7 +114,7 @@ function PasskeyList({ passkeys, renamePasskey, removePasskey }: PasskeyListProp
 	}
 
 	return (
-		<ul className="flex flex-col divide-y">
+		<ul role="list" className="flex flex-col divide-y">
 			{passkeys.map((passkey) => {
 				const name = passkey.name || 'Passkey';
 				const added = passkey.createdAt ? formatDate(passkey.createdAt) : undefined;

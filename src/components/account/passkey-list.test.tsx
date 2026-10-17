@@ -1,8 +1,9 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page, userEvent } from 'vitest/browser';
 import { PasskeyList } from '@/components/account/passkey-list';
 import type { FormAction, FormState } from '@/components/forms/form-state';
+import { heldResult } from '@/components/forms/testing/held-result';
 import { toast } from '@/components/ui/toast';
 
 const passkeys = [{ id: 'passkey-1', name: 'Work laptop', createdAt: null }];
@@ -14,29 +15,39 @@ afterEach(() => {
 });
 
 describe('PasskeyList', () => {
+	it('names its list a list, which Safari takes for a group without markers', async () => {
+		await render(
+			<PasskeyList passkeys={passkeys} renamePasskey={succeed} removePasskey={succeed} />
+		);
+
+		await expect.element(page.getByRole('list')).toHaveAttribute('role', 'list');
+	});
+
 	it('confirms a rename in a toast, as a removal is, once its dialog closes', async () => {
 		const add = vi.spyOn(toast, 'add');
-		const user = userEvent.setup();
-		render(<PasskeyList passkeys={passkeys} renamePasskey={succeed} removePasskey={succeed} />);
+		await render(
+			<PasskeyList passkeys={passkeys} renamePasskey={succeed} removePasskey={succeed} />
+		);
 
-		await user.click(screen.getByRole('button', { name: 'Rename Work laptop' }));
-		await user.click(await screen.findByRole('button', { name: 'Save name' }));
+		await page.getByRole('button', { name: 'Rename Work laptop' }).click();
+		await page.getByRole('button', { name: 'Save name' }).click();
 
-		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		await expect.element(page.getByRole('dialog')).not.toBeInTheDocument();
 		expect(add).toHaveBeenCalledWith({ type: 'success', title: 'Passkey renamed' });
 	});
 
 	it('asks for a name at once when the new one is blank, and never sends it', async () => {
 		const rename = vi.fn(succeed);
-		const user = userEvent.setup();
-		render(<PasskeyList passkeys={passkeys} renamePasskey={rename} removePasskey={succeed} />);
+		await render(
+			<PasskeyList passkeys={passkeys} renamePasskey={rename} removePasskey={succeed} />
+		);
 
-		await user.click(screen.getByRole('button', { name: 'Rename Work laptop' }));
-		await user.clear(await screen.findByLabelText('Name'));
-		await user.click(screen.getByRole('button', { name: 'Save name' }));
+		await page.getByRole('button', { name: 'Rename Work laptop' }).click();
+		await page.getByLabelText('Name').clear();
+		await page.getByRole('button', { name: 'Save name' }).click();
 
-		expect(screen.getByText('Enter a name for the passkey.')).toBeDefined();
-		expect(document.activeElement).toBe(screen.getByLabelText('Name'));
+		await expect.element(page.getByText('Enter a name for the passkey.')).toBeVisible();
+		await expect.element(page.getByLabelText('Name')).toHaveFocus();
 		expect(rename).not.toHaveBeenCalled();
 	});
 
@@ -47,14 +58,15 @@ describe('PasskeyList', () => {
 			message: 'Use 60 characters or fewer.',
 			fieldErrors: {},
 		});
-		const user = userEvent.setup();
-		render(<PasskeyList passkeys={passkeys} renamePasskey={refuse} removePasskey={succeed} />);
+		await render(
+			<PasskeyList passkeys={passkeys} renamePasskey={refuse} removePasskey={succeed} />
+		);
 
-		await user.click(screen.getByRole('button', { name: 'Rename Work laptop' }));
-		await user.click(await screen.findByRole('button', { name: 'Save name' }));
+		await page.getByRole('button', { name: 'Rename Work laptop' }).click();
+		await page.getByRole('button', { name: 'Save name' }).click();
 
-		expect(await screen.findByText('Use 60 characters or fewer.')).toBeDefined();
-		expect(screen.getByRole('dialog')).toBeDefined();
+		await expect.element(page.getByText('Use 60 characters or fewer.')).toBeVisible();
+		await expect.element(page.getByRole('dialog')).toBeVisible();
 		expect(add).not.toHaveBeenCalled();
 	});
 
@@ -64,48 +76,55 @@ describe('PasskeyList', () => {
 			message: 'Use 60 characters or fewer.',
 			fieldErrors: {},
 		});
-		const user = userEvent.setup();
-		render(<PasskeyList passkeys={passkeys} renamePasskey={refuse} removePasskey={succeed} />);
+		await render(
+			<PasskeyList passkeys={passkeys} renamePasskey={refuse} removePasskey={succeed} />
+		);
 
-		await user.click(screen.getByRole('button', { name: 'Rename Work laptop' }));
-		await user.click(await screen.findByRole('button', { name: 'Save name' }));
-		expect(await screen.findByText('Use 60 characters or fewer.')).toBeDefined();
-		await user.click(screen.getByRole('button', { name: 'Cancel' }));
-		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-		await user.click(screen.getByRole('button', { name: 'Rename Work laptop' }));
+		await page.getByRole('button', { name: 'Rename Work laptop' }).click();
+		await page.getByRole('button', { name: 'Save name' }).click();
+		await expect.element(page.getByText('Use 60 characters or fewer.')).toBeVisible();
+		await page.getByRole('button', { name: 'Cancel' }).click();
+		await expect.element(page.getByRole('dialog')).not.toBeInTheDocument();
+		await page.getByRole('button', { name: 'Rename Work laptop' }).click();
 
-		expect(await screen.findByRole('dialog')).toBeDefined();
-		expect(screen.queryByText('Use 60 characters or fewer.')).toBeNull();
+		await expect.element(page.getByRole('dialog')).toBeVisible();
+		expect(page.getByText('Use 60 characters or fewer.').query()).toBeNull();
 	});
 
 	it('keeps the rename dialog open while the name saves, so it cannot be sent twice', async () => {
-		const { promise, resolve } = Promise.withResolvers<FormState>();
+		const { promise, resolve } = heldResult<FormState>({ status: 'success' });
 		const rename = vi.fn<FormAction>(() => promise);
-		const user = userEvent.setup();
-		render(<PasskeyList passkeys={passkeys} renamePasskey={rename} removePasskey={succeed} />);
+		await render(
+			<PasskeyList passkeys={passkeys} renamePasskey={rename} removePasskey={succeed} />
+		);
+		// Read before it opens: the open dialog takes the page from the accessibility tree.
+		const trigger = page.getByRole('button', { name: 'Rename Work laptop' }).element();
 
-		const trigger = screen.getByRole('button', { name: 'Rename Work laptop' });
-		await user.click(trigger);
-		await user.click(await screen.findByRole('button', { name: 'Save name' }));
-		await user.keyboard('{Escape}');
-		await user.click(screen.getByRole('button', { name: 'Cancel' }));
+		await page.elementLocator(trigger).click();
+		await page.getByRole('button', { name: 'Save name' }).click();
+		await expect.element(page.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+		await userEvent.keyboard('{Escape}');
+		await page.getByRole('button', { name: 'Close' }).click();
+		await page.getByLabelText('Name').click();
+		await userEvent.keyboard('{Enter}');
 
 		expect(trigger.getAttribute('aria-expanded')).toBe('true');
-		await user.click(screen.getByRole('button', { name: /Saving name$/ }));
+		// A second send would wait for the first, so the count is read once it ends.
+		resolve({ status: 'success' });
+		await expect.element(page.getByRole('dialog')).not.toBeInTheDocument();
 		expect(rename).toHaveBeenCalledOnce();
-		// Ended, since React holds back every later transition, a later test's among them, until it ends.
-		await act(async () => resolve({ status: 'success' }));
 	});
 
 	it('closes the removal dialog once the passkey is removed', async () => {
 		const add = vi.spyOn(toast, 'add');
-		const user = userEvent.setup();
-		render(<PasskeyList passkeys={passkeys} renamePasskey={succeed} removePasskey={succeed} />);
+		await render(
+			<PasskeyList passkeys={passkeys} renamePasskey={succeed} removePasskey={succeed} />
+		);
 
-		await user.click(screen.getByRole('button', { name: 'Remove Work laptop' }));
-		await user.click(await screen.findByRole('button', { name: 'Remove passkey' }));
+		await page.getByRole('button', { name: 'Remove Work laptop' }).click();
+		await page.getByRole('button', { name: 'Remove passkey' }).click();
 
-		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+		await expect.element(page.getByRole('alertdialog')).not.toBeInTheDocument();
 		expect(add).toHaveBeenCalledWith({ type: 'success', title: 'Passkey removed' });
 	});
 });

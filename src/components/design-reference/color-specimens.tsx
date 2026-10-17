@@ -140,7 +140,7 @@ function ColorSpecimens() {
 	return (
 		<div className="flex flex-col gap-10">
 			<Specimen label="Surfaces with their paired text" frame="bare">
-				<ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+				<ul role="list" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 					{colorSwatches.map((swatch) => (
 						<li key={swatch.name} className="flex flex-col overflow-hidden rounded-xl border">
 							<div className={cn('flex h-24 items-end gap-3 p-4', swatch.sampleClassName)}>
@@ -160,7 +160,7 @@ function ColorSpecimens() {
 				</ul>
 			</Specimen>
 			<Specimen label="Lines and outlines" frame="bare">
-				<ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+				<ul role="list" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 					{lineTokens.map((line) => (
 						<li
 							key={line.token.utility}

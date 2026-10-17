@@ -23,6 +23,8 @@ type RecipeImageViewerProps = RecipeImageViewerContextValue & {
 	children: React.ReactNode;
 };
 
+type BodyImport = () => Promise<typeof RecipeImageViewerBodyModule>;
+
 // Full screen in the page's own paper or ink, rather than a card over the page.
 const viewerPopupClassName =
 	'top-0 left-0 flex h-dvh max-h-none w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none bg-background p-0 text-foreground ring-0 sm:max-w-none data-open:zoom-in-100 data-closed:zoom-out-100';
@@ -36,6 +38,9 @@ const preloadOnApproach = {
 
 // The body brings the zoom and the carousel, which no page needs until a reader opens the viewer, so
 // it loads as a chunk of its own.
+const importBodyChunk: BodyImport = () => import('@/components/recipe/recipe-image-viewer-body');
+
+let importBody = importBodyChunk;
 let bodyModuleRequest: Promise<typeof RecipeImageViewerBodyModule> | undefined;
 
 const RecipeImageViewerContext = React.createContext<RecipeImageViewerContextValue | null>(null);
@@ -44,7 +49,7 @@ const RecipeImageViewerContext = React.createContext<RecipeImageViewerContextVal
 // opening. A failed request is forgotten, so the next asks again.
 function loadRecipeImageViewerBody(): Promise<typeof RecipeImageViewerBodyModule> {
 	if (bodyModuleRequest === undefined) {
-		const request = import('@/components/recipe/recipe-image-viewer-body').then(
+		const request = importBody().then(
 			(module) => {
 				// Marked settled the way React marks a promise it has seen settle, so use() renders the body
 				// at once when the viewer opens after it arrived. next/dynamic and React.lazy suspend on each
@@ -65,6 +70,13 @@ function loadRecipeImageViewerBody(): Promise<typeof RecipeImageViewerBodyModule
 // Fetches the body ahead of the viewer opening; a failure is the opening viewer's to report.
 function preloadRecipeImageViewerBody() {
 	loadRecipeImageViewerBody().catch(() => undefined);
+}
+
+// Fetches the body by the import given from now on, or the chunk's own without one, asking afresh.
+// For tests, which hold the body back with it, since a browser cannot reset the modules it loaded.
+function replaceRecipeImageViewerBodyImport(replacement: BodyImport = importBodyChunk) {
+	importBody = replacement;
+	bodyModuleRequest = undefined;
 }
 
 // Calls back once the page has loaded and the browser is next idle, unless cancelled first. A browser
@@ -259,4 +271,9 @@ function RecipeImageViewerLoading({
 	);
 }
 
-export { RecipeImageViewer, RecipeImageViewerButton, RecipeImageViewerTrigger };
+export {
+	RecipeImageViewer,
+	RecipeImageViewerButton,
+	RecipeImageViewerTrigger,
+	replaceRecipeImageViewerBodyImport,
+};

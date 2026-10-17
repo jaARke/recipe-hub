@@ -29,7 +29,7 @@ const sections = [
 		id: 'brand',
 		title: 'Brand',
 		description:
-			'The lockup, the wordmark, and the mascot at each size it is drawn. The theme toggle shows them on the dark theme.',
+			'The lockup, the wordmark, and the mascot in each pose and at each size it is drawn. The theme toggle shows them on the dark theme.',
 		Content: BrandSpecimens,
 	},
 	{
@@ -90,7 +90,7 @@ export default function DesignReferencePage() {
 					</p>
 				</div>
 				<nav aria-label="Design reference sections">
-					<ul className="flex flex-wrap gap-2">
+					<ul role="list" className="flex flex-wrap gap-2">
 						{sections.map((section) => (
 							<li key={section.id}>
 								<a

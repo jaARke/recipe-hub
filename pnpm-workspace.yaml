@@ -1,3 +1,5 @@
 allowBuilds:
   esbuild: false
   unrs-resolver: false
+patchedDependencies:
+  next@16.4.2: patches/next@16.4.2.patch

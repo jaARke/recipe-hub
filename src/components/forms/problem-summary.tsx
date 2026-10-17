@@ -51,7 +51,7 @@ function ProblemSummary({ problems }: { problems: readonly SummarizedProblem[] }
 			<TriangleAlertIcon aria-hidden="true" />
 			<AlertTitle>Fix {countThings(problems.length)} to save</AlertTitle>
 			<AlertDescription>
-				<ul className="flex list-disc flex-col gap-1 pl-4">
+				<ul role="list" className="flex list-disc flex-col gap-1 pl-4">
 					{problems.map(({ message, label, targetId }, index) => {
 						const text = label === undefined ? message : `${label}: ${message}`;
 						return (

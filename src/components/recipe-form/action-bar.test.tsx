@@ -1,69 +1,28 @@
-import { act, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as React from 'react';
+import { describe, expect, it } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page } from 'vitest/browser';
 import { ActionBar } from '@/components/recipe-form/action-bar';
 
-// Stands in for the browser's observers, which happy-dom never calls back: each test reports what the
-// browser would, for the element observed.
-function fakeObservers() {
-	const observed = { intersection: [] as Element[], resize: [] as Element[] };
-	let reportIntersection: (entry: Partial<IntersectionObserverEntry>) => void = () => {};
-	let reportResize: (blockSize: number) => void = () => {};
-	vi.stubGlobal(
-		'IntersectionObserver',
-		class {
-			constructor(callback: IntersectionObserverCallback) {
-				reportIntersection = (entry) =>
-					callback([entry as IntersectionObserverEntry], this as unknown as IntersectionObserver);
-			}
-			observe(element: Element) {
-				observed.intersection.push(element);
-			}
-			disconnect() {}
-		}
-	);
-	vi.stubGlobal(
-		'ResizeObserver',
-		class {
-			constructor(callback: ResizeObserverCallback) {
-				reportResize = (blockSize) =>
-					callback(
-						[{ borderBoxSize: [{ blockSize, inlineSize: 0 }] } as unknown as ResizeObserverEntry],
-						this as unknown as ResizeObserver
-					);
-			}
-			observe(element: Element) {
-				observed.resize.push(element);
-			}
-			disconnect() {}
-		}
-	);
-	return {
-		observed,
-		// Where the sentinel sits: on the screen, or below or above it.
-		sentinelAt: (place: 'screen' | 'below' | 'above') =>
-			act(() =>
-				reportIntersection({
-					isIntersecting: place === 'screen',
-					boundingClientRect: { top: place === 'above' ? -40 : 900 } as DOMRectReadOnly,
-				})
-			),
-		barResized: (blockSize: number) => act(() => reportResize(blockSize)),
-	};
-}
-
-function renderBar() {
-	return render(
-		<form aria-label="Recipe">
-			<ActionBar status={<p>3 to check</p>}>
-				<button type="submit">Save</button>
-			</ActionBar>
-		</form>
+// A form whose fields run past the screen's bottom, with as much page again after it.
+function recipeForm(status: React.ReactNode) {
+	return (
+		<>
+			<form aria-label="Recipe">
+				<div style={{ height: '150vh' }} />
+				<ActionBar status={status}>
+					<button type="submit">Save</button>
+				</ActionBar>
+			</form>
+			<div style={{ height: '150vh' }} />
+		</>
 	);
 }
 
 function bar(): HTMLElement {
-	const element = screen
+	const element = page
 		.getByRole('button', { name: 'Save' })
+		.element()
 		.closest<HTMLElement>('[data-action-bar]');
 	if (element === null) {
 		throw new Error('Save is in no action bar.');
@@ -71,42 +30,72 @@ function bar(): HTMLElement {
 	return element;
 }
 
-afterEach(() => {
-	vi.unstubAllGlobals();
-});
+function form() {
+	return page.getByRole('form', { name: 'Recipe' }).element();
+}
+
+// The form's end in the middle of the screen, the bar at its place there.
+function scrollFormEndToMiddle() {
+	window.scrollTo(
+		0,
+		window.scrollY + form().getBoundingClientRect().bottom - window.innerHeight / 2
+	);
+}
 
 describe('ActionBar', () => {
-	it('is held at the screen’s bottom while its place, which the sentinel marks, is below the screen', () => {
-		const { observed, sentinelAt } = fakeObservers();
-		renderBar();
+	it('is held at the screen’s bottom while its place at the form’s end is below the screen', async () => {
+		await render(recipeForm(<p>3 to check</p>));
 
-		// The sentinel follows the bar, at the end of the bar's place.
-		expect(observed.intersection).toEqual([bar().nextElementSibling]);
-		expect(bar().hasAttribute('data-held')).toBe(false);
+		await expect.element(bar()).toHaveAttribute('data-held');
+		expect(bar().getBoundingClientRect().bottom).toBe(window.innerHeight);
 
-		sentinelAt('below');
-		expect(bar().hasAttribute('data-held')).toBe(true);
+		scrollFormEndToMiddle();
+		await expect.element(bar()).not.toHaveAttribute('data-held');
+		expect(bar().getBoundingClientRect().bottom).toBe(form().getBoundingClientRect().bottom);
 
-		sentinelAt('screen');
-		expect(bar().hasAttribute('data-held')).toBe(false);
+		window.scrollTo(0, 0);
+		await expect.element(bar()).toHaveAttribute('data-held');
 
-		// Scrolled past, the bar is at its place above the screen.
-		sentinelAt('above');
-		expect(bar().hasAttribute('data-held')).toBe(false);
+		// Scrolled past, the bar leaves the screen with its form.
+		window.scrollTo(0, document.documentElement.scrollHeight);
+		expect(bar().getBoundingClientRect().bottom).toBeLessThan(0);
 	});
 
-	it('keeps its height on its form while it is shown, as it changes', () => {
-		const { observed, barResized } = fakeObservers();
-		const { unmount } = renderBar();
-		const form = screen.getByRole('form', { name: 'Recipe' });
+	it('is held again after a jump from past its place to above it, which crosses neither edge of the screen', async () => {
+		// From the page's top, where an earlier test's scroll can outlast its page.
+		window.scrollTo(0, 0);
+		await render(recipeForm(<p>3 to check</p>));
+		await expect.element(bar()).toHaveAttribute('data-held');
 
-		expect(observed.resize).toEqual([bar()]);
-		barResized(60);
-		expect(form.style.getPropertyValue('--action-bar-height')).toBe('60px');
-		barResized(108);
-		expect(form.style.getPropertyValue('--action-bar-height')).toBe('108px');
+		// Read down to its place and past it. Once the observer reports the form's end leaving across
+		// the screen's top, the bar is held, where its look shows nothing off the screen.
+		scrollFormEndToMiddle();
+		await expect.element(bar()).not.toHaveAttribute('data-held');
+		window.scrollTo(0, document.documentElement.scrollHeight);
+		await expect.element(bar()).toHaveAttribute('data-held');
+		expect(bar().getBoundingClientRect().bottom).toBeLessThan(0);
 
-		unmount();
-		expect(form.style.getPropertyValue('--action-bar-height')).toBe('');
+		// Back to the top in one scroll, as Home or a restored scroll moves, with the form's end on the
+		// screen at no point between.
+		window.scrollTo(0, 0);
+		await expect.element(bar()).toHaveAttribute('data-held');
+		expect(bar().getBoundingClientRect().bottom).toBe(window.innerHeight);
+	});
+
+	it('keeps its height on its form while it is shown, as it changes', async () => {
+		const { rerender, unmount } = await render(recipeForm(<p>3 to check</p>));
+		const recipe = form();
+		const heightOnForm = () => recipe.style.getPropertyValue('--action-bar-height');
+
+		await expect.poll(heightOnForm).toBe(`${bar().getBoundingClientRect().height}px`);
+		const oneRow = heightOnForm();
+
+		// A status too long for the row beside Save wraps the bar onto a second.
+		await rerender(recipeForm(<p>Wait for the photos to finish uploading before you save.</p>));
+		await expect.poll(heightOnForm).not.toBe(oneRow);
+		expect(heightOnForm()).toBe(`${bar().getBoundingClientRect().height}px`);
+
+		await unmount();
+		expect(heightOnForm()).toBe('');
 	});
 });

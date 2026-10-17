@@ -5,6 +5,7 @@ import { Pool } from 'pg';
 import { z } from 'zod';
 import { pinFullSslVerification } from '@/infrastructure/db/connection-string';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
+import { poolDeadlines } from '@/infrastructure/db/pool-deadlines';
 import { getLogger } from '@/lib/logger';
 import { reparseIngredients, reparseReport } from './reparse';
 
@@ -29,7 +30,7 @@ const { values: options } = parseArgs({
 });
 
 const connectionString = pinFullSslVerification(env.DATABASE_URL_UNPOOLED);
-const pool = new Pool({ connectionString });
+const pool = new Pool({ connectionString, ...poolDeadlines });
 try {
 	// The host tells production's database from develop's before anything is read.
 	logger.info('Ingredient re-parse started', {

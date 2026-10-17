@@ -84,7 +84,7 @@ function TypographySpecimens() {
 	return (
 		<div className="flex flex-col gap-10">
 			<Specimen label="Families" frame="bare">
-				<ul className="grid gap-4 md:grid-cols-3">
+				<ul role="list" className="grid gap-4 md:grid-cols-3">
 					{fontFamilies.map((font) => (
 						<li key={font.utility} className="flex flex-col gap-4 rounded-xl border bg-card p-6">
 							<div className="flex flex-col gap-1">
@@ -98,7 +98,7 @@ function TypographySpecimens() {
 				</ul>
 			</Specimen>
 			<Specimen label="Type scale: size / line height / tracking">
-				<ul className="flex flex-col divide-y">
+				<ul role="list" className="flex flex-col divide-y">
 					{typeScale.map((step) => (
 						<li
 							key={step.name}
@@ -123,7 +123,7 @@ function TypographySpecimens() {
 				</ul>
 			</Specimen>
 			<Specimen label="Recipe page hierarchy">
-				<ul className="flex flex-col gap-6">
+				<ul role="list" className="flex flex-col gap-6">
 					{hierarchy.map((level) => (
 						<li key={level.role} className="flex flex-col gap-1">
 							<SpecimenLabel>

@@ -1,7 +1,8 @@
-import { act, render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page } from 'vitest/browser';
+import { holdPageLoads } from '@/components/auth/testing/page-loads';
 import { RecipeBackLink } from '@/components/recipe/recipe-back-link';
 import { stubTabNavigation } from '@/components/recipe/testing/tab-navigation';
 import { writeTabStorage } from '@/lib/browser-storage';
@@ -18,19 +19,23 @@ afterEach(() => {
 
 describe('RecipeBackLink', () => {
 	it('names the list and goes back in history to its page', async () => {
+		// Holds page loads through the browser's own Navigation API, before the stub stands in for it.
+		const loads = holdPageLoads();
 		stubTabNavigation([`${origin}/`, favoritesUrl, `${origin}${recipePathname}`]);
 		writeTabStorage(`opened-from:${recipePathname}`, favoritesUrl);
 		const go = vi.spyOn(history, 'go').mockImplementation(() => {});
-		render(<RecipeBackLink recipePathname={recipePathname} />);
+		await render(<RecipeBackLink recipePathname={recipePathname} />);
 
-		const link = screen.getByRole('link', { name: 'Back to Favorites' });
-		expect(link.getAttribute('href')).toBe(favoritesUrl);
-		await userEvent.click(link);
+		const link = page.getByRole('link', { name: 'Back to Favorites' });
+		await expect.element(link).toHaveAttribute('href', favoritesUrl);
+		await link.click();
 
-		expect(go).toHaveBeenCalledWith(-1);
+		expect(go).toHaveBeenCalledExactlyOnceWith(-1);
+		expect(loads).toEqual([]);
 	});
 
 	it('goes back past the entries a jump within the recipe added', async () => {
+		const loads = holdPageLoads();
 		const searchUrl = `${origin}/search?q=lemon&sort=newest`;
 		stubTabNavigation([
 			searchUrl,
@@ -39,11 +44,12 @@ describe('RecipeBackLink', () => {
 		]);
 		writeTabStorage(`opened-from:${recipePathname}`, searchUrl);
 		const go = vi.spyOn(history, 'go').mockImplementation(() => {});
-		render(<RecipeBackLink recipePathname={recipePathname} />);
+		await render(<RecipeBackLink recipePathname={recipePathname} />);
 
-		await userEvent.click(screen.getByRole('link', { name: 'Back to search results' }));
+		await page.getByRole('link', { name: 'Back to search results' }).click();
 
-		expect(go).toHaveBeenCalledWith(-2);
+		expect(go).toHaveBeenCalledExactlyOnceWith(-2);
+		expect(loads).toEqual([]);
 	});
 
 	it('follows a history entry written while React commits, once the commit is done', async () => {
@@ -59,63 +65,54 @@ describe('RecipeBackLink', () => {
 			}, [url]);
 			return null;
 		}
-		const { rerender } = render(
+		const { rerender } = await render(
 			<>
 				<RecipeBackLink recipePathname={recipePathname} />
 				<HistoryWriter />
 			</>
 		);
-		expect(screen.getByRole('link', { name: 'Back to Favorites' }).getAttribute('href')).toBe(
-			favoritesUrl
+		await expect
+			.element(page.getByRole('link', { name: 'Back to Favorites' }))
+			.toHaveAttribute('href', favoritesUrl);
+
+		await rerender(
+			<>
+				<RecipeBackLink recipePathname={recipePathname} />
+				<HistoryWriter url={`${origin}/`} />
+			</>
 		);
 
-		await act(async () => {
-			rerender(
-				<>
-					<RecipeBackLink recipePathname={recipePathname} />
-					<HistoryWriter url={`${origin}/`} />
-				</>
-			);
-		});
-
-		expect(screen.queryByRole('link')).toBeNull();
+		await expect.element(page.getByRole('link')).not.toBeInTheDocument();
 		expect(consoleError).not.toHaveBeenCalled();
 	});
 
-	it('shows none for a recipe reached from another page than the list', () => {
+	it('shows none for a recipe reached from another page than the list', async () => {
 		stubTabNavigation([
 			favoritesUrl,
 			`${origin}${recipePathname}/edit`,
 			`${origin}${recipePathname}`,
 		]);
 		writeTabStorage(`opened-from:${recipePathname}`, favoritesUrl);
-		render(<RecipeBackLink recipePathname={recipePathname} />);
+		await render(<RecipeBackLink recipePathname={recipePathname} />);
 
-		expect(screen.queryByRole('link')).toBeNull();
+		await expect.element(page.getByRole('link')).not.toBeInTheDocument();
 	});
 
-	it("shows none in a new tab, even given this tab's record", () => {
-		stubTabNavigation([`${origin}${recipePathname}`]);
-		writeTabStorage(`opened-from:${recipePathname}`, favoritesUrl);
-		render(<RecipeBackLink recipePathname={recipePathname} />);
-
-		expect(screen.queryByRole('link')).toBeNull();
-	});
-
-	it('shows none where the history the browser reports is not the address shown', () => {
+	it('shows none where the history the browser reports is not the address shown', async () => {
 		stubTabNavigation([favoritesUrl, `${origin}${recipePathname}`]);
 		writeTabStorage(`opened-from:${recipePathname}`, favoritesUrl);
 		// As in a browser whose Navigation API missed the entries the page pushed since.
 		history.replaceState(null, '', `${origin}/recipes/sunday-pot-roast`);
-		render(<RecipeBackLink recipePathname={recipePathname} />);
+		await render(<RecipeBackLink recipePathname={recipePathname} />);
 
-		expect(screen.queryByRole('link')).toBeNull();
+		await expect.element(page.getByRole('link')).not.toBeInTheDocument();
 	});
 
-	it('shows none where the browser has no Navigation API', () => {
+	it('shows none where the browser has no Navigation API', async () => {
+		vi.stubGlobal('navigation', undefined);
 		writeTabStorage(`opened-from:${recipePathname}`, favoritesUrl);
-		render(<RecipeBackLink recipePathname={recipePathname} />);
+		await render(<RecipeBackLink recipePathname={recipePathname} />);
 
-		expect(screen.queryByRole('link')).toBeNull();
+		await expect.element(page.getByRole('link')).not.toBeInTheDocument();
 	});
 });

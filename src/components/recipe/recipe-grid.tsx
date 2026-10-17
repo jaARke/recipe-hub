@@ -12,7 +12,9 @@ const skeletonCardCount = 6;
 function RecipeGrid({ children }: { children: React.ReactNode }) {
 	return (
 		<RecipeListLinks>
-			<ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{children}</ul>
+			<ul role="list" className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+				{children}
+			</ul>
 		</RecipeListLinks>
 	);
 }

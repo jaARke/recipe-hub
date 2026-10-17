@@ -38,8 +38,8 @@ const monospace = "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mo
 
 // public/email/lockup.png, made at twice this size (assets/brand/SOURCES.md).
 const lockupPath = '/email/lockup.png';
-const lockupWidth = 210;
-const lockupHeight = 56;
+const lockupWidth = 233;
+const lockupHeight = 35;
 
 const styles = {
 	body: { backgroundColor: colors.background, margin: 0, padding: '24px 0' },
@@ -116,9 +116,10 @@ export function EmailAction({ href, label }: { href: string; label: string }) {
 	);
 }
 
-// A column on the site's cream, the lockup on its opaque badge above it, so the lockup reads on any
-// background a client's dark mode paints. The images come from the public site, since previews ask
-// for a Vercel sign-in.
+// A column on the site's cream, the lockup above it. A client's dark mode may repaint the background
+// and leave images alone, so the lockup is transparent, its mascot and wordmark each with a cream
+// edge that disappears on the cream and outlines them on a dark background. The images come from
+// the public site, since previews ask for a Vercel sign-in.
 export function EmailLayout({
 	parts,
 	siteUrl,

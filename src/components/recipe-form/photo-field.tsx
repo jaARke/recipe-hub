@@ -575,7 +575,7 @@ function PhotoField({
 			</Empty>
 			{photos.length > 0 && (
 				<RecipeImageViewer role={role} title={legend} images={viewerImages}>
-					<ul aria-label={legend} className="flex flex-col gap-4">
+					<ul role="list" aria-label={legend} className="flex flex-col gap-4">
 						{photos.map((photo, index) => renderPhoto(photo, index))}
 					</ul>
 				</RecipeImageViewer>

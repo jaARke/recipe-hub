@@ -1,5 +1,5 @@
-import { TriangleAlertIcon } from 'lucide-react';
 import Link from 'next/link';
+import { Mascot } from '@/components/brand/mascot';
 import { PageContainer } from '@/components/layout/page-container';
 import { recipeListPath } from '@/components/recipe/recipe-paths';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -18,8 +18,8 @@ function PageErrorState({ onRetry }: { onRetry: () => void }) {
 		<PageContainer width="wide" className="py-12 sm:py-16">
 			<Empty>
 				<EmptyHeader>
-					<EmptyMedia variant="icon">
-						<TriangleAlertIcon aria-hidden="true" />
+					<EmptyMedia>
+						<Mascot pose="worried" size="xl" loading="eager" />
 					</EmptyMedia>
 					{/* EmptyTitle renders a div, so the role makes it this page's heading. */}
 					<EmptyTitle role="heading" aria-level={1}>

@@ -4,6 +4,7 @@
 		"esbenp.prettier-vscode",
 		"bradlc.vscode-tailwindcss",
 		"vitest.explorer",
+		"ms-playwright.playwright",
 		"github.vscode-github-actions"
 	]
 }

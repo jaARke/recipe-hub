@@ -7,7 +7,7 @@ import { useOnKeptPageHide } from '@/components/forms/use-on-kept-page-hide';
 // hears of it and a return through history finds it closed. A hidden page runs no animations, so
 // the closing animation would play as the page shows again: the popup and its backdrop carry
 // data-closed-by-page-hide, which globals.css takes out of rendering, and Base UI, finding no
-// animation to wait for, unmounts the popup at once.
+// animation to wait for, completes the close on its next frame (a select keeps its popup mounted).
 
 type KeptPagePopup = {
 	closedByPageHide: boolean;

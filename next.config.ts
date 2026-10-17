@@ -40,6 +40,9 @@ function nextConfig(phase: string): NextConfig {
 			// Vercel restores the previous deployment's .next/cache, and a build warmed by another
 			// tree's cache shipped that tree's design tokens with this tree's classes.
 			turbopackFileSystemCacheForBuild: false,
+			// A dev server restarted on an earlier session's cache can answer each page load with a
+			// restart of the main client entry, so the page reloads in a loop (vercel/next.js#100267).
+			turbopackFileSystemCacheForDev: false,
 		},
 		images: {
 			// Dish photos and scans through the delivery route, one pattern for each role's folder

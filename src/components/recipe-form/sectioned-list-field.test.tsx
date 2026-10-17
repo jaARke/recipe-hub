@@ -1,9 +1,16 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import * as React from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page, userEvent } from 'vitest/browser';
 import { editRecipeForm, recipeFormValues } from '@/components/recipe-form/recipe-form-values';
 import { SectionedListField } from '@/components/recipe-form/sectioned-list-field';
+import {
+	pasteText,
+	pressRedo,
+	pressUndo,
+	sendHistoryInput,
+	textControl,
+} from '@/components/recipe-form/testing/text-editing';
 import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
 
 const lemonBars: RecipeDraftContent = {
@@ -62,113 +69,92 @@ function Lists() {
 	);
 }
 
-function textbox(name: string): HTMLTextAreaElement {
-	const element = screen.getByRole('textbox', { name });
-	if (!(element instanceof HTMLTextAreaElement)) {
-		throw new Error(`${name} is no textarea.`);
-	}
-	return element;
-}
-
-// The browser's own undo or redo, sent to the field whose typing is on top of its page's stack.
-function browserHistoryInput(field: HTMLElement, inputType: 'historyUndo' | 'historyRedo') {
-	return fireEvent(
-		field,
-		new InputEvent('beforeinput', { inputType, cancelable: true, bubbles: true })
-	);
+function textbox(name: string) {
+	return page.getByRole('textbox', { name });
 }
 
 describe('SectionedListField’s undo', () => {
-	beforeEach(() => {
-		vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
-	});
-
-	afterEach(() => {
-		vi.restoreAllMocks();
-	});
-
 	it('undoes only the focused row’s typing, step by step, and redoes it', async () => {
-		const user = userEvent.setup();
-		render(<Lists />);
+		await render(<Lists />);
 
-		await user.click(textbox('Ingredient 1'));
-		await user.keyboard(', sifted');
-		await user.click(textbox('Ingredient 2'));
-		await user.keyboard(', beaten');
-		await user.click(textbox('Ingredient 1'));
-		await user.keyboard('{Home}About ');
-		expect(textbox('Ingredient 1').value).toBe('About 1 cup flour, sifted');
+		await textbox('Ingredient 1').click();
+		await userEvent.keyboard(', sifted');
+		await textbox('Ingredient 2').click();
+		await userEvent.keyboard(', beaten');
+		await textbox('Ingredient 1').click();
+		textControl(textbox('Ingredient 1')).setSelectionRange(0, 0);
+		await userEvent.keyboard('About ');
+		await expect.element(textbox('Ingredient 1')).toHaveValue('About 1 cup flour, sifted');
 
-		await user.keyboard('{Meta>}z{/Meta}');
-		expect(textbox('Ingredient 1').value).toBe('1 cup flour, sifted');
-		expect(textbox('Ingredient 1').selectionStart).toBe(0);
-		await user.keyboard('{Meta>}z{/Meta}');
-		expect(textbox('Ingredient 1').value).toBe('1 cup flour');
-		expect(textbox('Ingredient 1').selectionStart).toBe(11);
-		// With nothing left to undo here, the browser's undo of the other row never runs.
-		await user.keyboard('{Meta>}z{/Meta}');
-		expect(textbox('Ingredient 1').value).toBe('1 cup flour');
-		expect(textbox('Ingredient 2').value).toBe('2 eggs, beaten');
+		await pressUndo();
+		await expect.element(textbox('Ingredient 1')).toHaveValue('1 cup flour, sifted');
+		expect(textControl(textbox('Ingredient 1')).selectionStart).toBe(0);
+		await pressUndo();
+		await expect.element(textbox('Ingredient 1')).toHaveValue('1 cup flour');
+		expect(textControl(textbox('Ingredient 1')).selectionStart).toBe(11);
+		// With nothing left to undo here, the browser's own undo of the other row never runs.
+		await pressUndo();
+		expect(textControl(textbox('Ingredient 1')).value).toBe('1 cup flour');
+		expect(textControl(textbox('Ingredient 2')).value).toBe('2 eggs, beaten');
 
-		await user.keyboard('{Meta>}{Shift>}Z{/Shift}{/Meta}');
-		expect(textbox('Ingredient 1').value).toBe('1 cup flour, sifted');
-		await user.keyboard('{Meta>}{Shift>}Z{/Shift}{/Meta}');
-		expect(textbox('Ingredient 1').value).toBe('About 1 cup flour, sifted');
-		expect(textbox('Ingredient 2').value).toBe('2 eggs, beaten');
+		await pressRedo();
+		await expect.element(textbox('Ingredient 1')).toHaveValue('1 cup flour, sifted');
+		await pressRedo();
+		await expect.element(textbox('Ingredient 1')).toHaveValue('About 1 cup flour, sifted');
+		expect(textControl(textbox('Ingredient 2')).value).toBe('2 eggs, beaten');
 	});
 
 	it('turns the browser’s undo to the focused row, wherever the browser sends it', async () => {
-		const user = userEvent.setup();
-		render(<Lists />);
+		await render(<Lists />);
 
-		await user.click(textbox('Ingredient 1'));
-		await user.keyboard(', sifted');
-		await user.click(textbox('Step 1'));
-		await user.keyboard(' Bake.');
-		await user.click(textbox('Ingredient 1'));
+		await textbox('Ingredient 1').click();
+		await userEvent.keyboard(', sifted');
+		await textbox('Step 1').click();
+		await userEvent.keyboard(' Bake.');
+		await textbox('Ingredient 1').click();
 
-		expect(browserHistoryInput(textbox('Step 1'), 'historyUndo')).toBe(false);
-		expect(textbox('Ingredient 1').value).toBe('1 cup flour');
-		expect(textbox('Step 1').value).toBe('Mix. Bake.');
+		expect(sendHistoryInput(textbox('Step 1'), 'historyUndo')).toBe(false);
+		await expect.element(textbox('Ingredient 1')).toHaveValue('1 cup flour');
+		expect(textControl(textbox('Step 1')).value).toBe('Mix. Bake.');
 
-		expect(browserHistoryInput(textbox('Step 1'), 'historyRedo')).toBe(false);
-		expect(textbox('Ingredient 1').value).toBe('1 cup flour, sifted');
-		expect(textbox('Step 1').value).toBe('Mix. Bake.');
+		expect(sendHistoryInput(textbox('Step 1'), 'historyRedo')).toBe(false);
+		await expect.element(textbox('Ingredient 1')).toHaveValue('1 cup flour, sifted');
+		expect(textControl(textbox('Step 1')).value).toBe('Mix. Bake.');
 	});
 
 	it('never lets the browser’s undo change a row without focus', async () => {
-		const user = userEvent.setup();
-		render(<Lists />);
+		await render(<Lists />);
 
-		await user.click(textbox('Ingredient 2'));
-		await user.keyboard(', beaten');
-		await user.tab();
-		expect(document.activeElement).toBe(
-			screen.getByRole('button', { name: 'Actions for Ingredient 2' })
-		);
+		await textbox('Ingredient 2').click();
+		await userEvent.keyboard(', beaten');
+		await page.getByText('One ingredient per line.').click();
+		expect(document.activeElement).toBe(document.body);
 
-		expect(browserHistoryInput(textbox('Ingredient 2'), 'historyUndo')).toBe(false);
-		expect(textbox('Ingredient 2').value).toBe('2 eggs, beaten');
+		// Where its undo is the page's, the browser sends it to the row last typed in.
+		await pressUndo();
+
+		expect(textControl(textbox('Ingredient 2')).value).toBe('2 eggs, beaten');
 	});
 
 	it('starts a row’s undo over once the form changes its text, by a paste of lines or starting over', async () => {
-		const user = userEvent.setup();
-		render(<Lists />);
+		await render(<Lists />);
 
-		await user.click(textbox('Ingredient 2'));
-		await user.keyboard(' beaten');
-		textbox('Ingredient 2').setSelectionRange(0, 2);
-		await user.paste('1 cup milk\n1 cup cream');
-		expect(textbox('Ingredient 2').value).toBe('eggs beaten');
-		await user.click(textbox('Ingredient 2'));
-		await user.keyboard('{Meta>}z{/Meta}');
-		expect(textbox('Ingredient 2').value).toBe('eggs beaten');
+		await textbox('Ingredient 2').click();
+		await userEvent.keyboard(' beaten');
+		textControl(textbox('Ingredient 2')).setSelectionRange(0, 2);
+		await pasteText('1 cup milk\n1 cup cream');
+		await expect.element(textbox('Ingredient 4')).toHaveFocus();
+		expect(textControl(textbox('Ingredient 2')).value).toBe('eggs beaten');
+		await textbox('Ingredient 2').click();
+		await pressUndo();
+		expect(textControl(textbox('Ingredient 2')).value).toBe('eggs beaten');
 
-		await user.click(textbox('Ingredient 1'));
-		await user.keyboard(', sifted');
-		await user.click(screen.getByRole('button', { name: 'Start over' }));
-		await user.click(textbox('Ingredient 1'));
-		await user.keyboard('{Meta>}z{/Meta}');
-		expect(textbox('Ingredient 1').value).toBe('2 cups sugar');
+		await textbox('Ingredient 1').click();
+		await userEvent.keyboard(', sifted');
+		await page.getByRole('button', { name: 'Start over' }).click();
+		await expect.element(textbox('Ingredient 1')).toHaveValue('2 cups sugar');
+		await textbox('Ingredient 1').click();
+		await pressUndo();
+		expect(textControl(textbox('Ingredient 1')).value).toBe('2 cups sugar');
 	});
 });

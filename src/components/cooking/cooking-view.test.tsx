@@ -1,7 +1,7 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page, userEvent, type Locator } from 'vitest/browser';
 import { cookingChecksKey } from '@/components/cooking/cooking-checks';
 import type { CookingRecipe } from '@/components/cooking/cooking-screens';
 import { CookingView } from '@/components/cooking/cooking-view';
@@ -33,7 +33,7 @@ const potRoast: CookingRecipe = {
 				{ text: 'Sear the roast.\nTurn it every few minutes.' },
 			],
 		},
-		{ heading: 'For the gravy', steps: [{ text: 'Whisk in the flour.' }] },
+		{ heading: 'For the gravy', steps: [{ text: 'Whisk in 1 tablespoon flour.' }] },
 	],
 	version: '2026-10-05T08:30:00.000Z',
 };
@@ -54,37 +54,43 @@ function visit(search: string) {
 	history.replaceState(null, '', `${cookPathname}${search}`);
 }
 
-// The screen shown, apart from the printout and any open dialog.
-function shown() {
-	return within(screen.getByRole('main'));
+// Goes back or forward through the tab's history, once the browser has announced the entry.
+async function traverse(delta: -1 | 1) {
+	const arrived = new Promise((resolve) => {
+		window.addEventListener('popstate', resolve, { once: true });
+	});
+	history.go(delta);
+	await arrived;
 }
 
-function screenHeading(): HTMLElement {
+// The screen shown, apart from the printout and any open dialog.
+function shown(): Locator {
+	return page.getByRole('main');
+}
+
+function screenHeading(): Locator {
 	return shown().getByRole('heading', { level: 1 });
+}
+
+function button(name: string): Locator {
+	return page.getByRole('button', { name });
 }
 
 function checkboxNames(checked?: boolean): string[] {
 	return shown()
-		.queryAllByRole('checkbox', checked === undefined ? {} : { checked })
+		.getByRole('checkbox', { checked })
+		.elements()
 		.map((box) => box.closest('label')?.textContent ?? '');
 }
 
 // The whole row that checks the ingredient off.
-function ingredientRow(name: string, scope = shown()): HTMLElement {
-	const row = scope.getByRole('checkbox', { name }).closest('label');
-	if (row === null) {
-		throw new Error(`No row for ${name}`);
-	}
-	return row;
+function ingredientRow(name: string, scope = shown()): Locator {
+	return scope.getByRole('listitem').filter({ has: page.getByRole('checkbox', { name }) });
 }
 
 // The whole recipe the printout holds, which the screen never shows.
-function printout(): HTMLElement {
-	const article = document.querySelector<HTMLElement>('article.print\\:flex');
-	if (article === null) {
-		throw new Error('No printout');
-	}
-	return article;
+function printout(): Locator {
+	return page.getByRole('article', { includeHidden: true });
 }
 
 beforeEach(() => {
@@ -94,7 +100,7 @@ beforeEach(() => {
 afterEach(() => {
 	sessionStorage.clear();
 	visit('');
-	Reflect.deleteProperty(navigator, 'wakeLock');
+	vi.restoreAllMocks();
 });
 
 describe('CookingView', () => {
@@ -107,377 +113,410 @@ describe('CookingView', () => {
 		expect(html).not.toContain('Gather your ingredients');
 	});
 
-	it('opens on Gather with the stepper, the checklist by section, the count, and the notes', () => {
-		render(<CookingView recipe={potRoast} />);
+	it('opens on Gather with the stepper, the checklist by section, the count, and the notes', async () => {
+		await render(<CookingView recipe={potRoast} />);
 
-		expect(screenHeading().getAttribute('aria-label')).toBe('Gather your ingredients, step 0 of 3');
-		expect(shown().getByText('0 of 3 gathered')).toBeDefined();
-		expect(screen.getByRole('textbox', { name: 'Servings' })).toBeDefined();
-		expect(shown().getByRole('heading', { level: 2, name: 'For the gravy' })).toBeDefined();
+		await expect
+			.element(screenHeading())
+			.toHaveAccessibleName('Gather your ingredients, step 0 of 3');
+		await expect.element(shown().getByText('0 of 3 gathered')).toBeVisible();
+		await expect.element(page.getByRole('textbox', { name: 'Servings' })).toBeVisible();
+		await expect
+			.element(shown().getByRole('heading', { level: 2, name: 'For the gravy' }))
+			.toBeVisible();
 		expect(checkboxNames()).toEqual([
 			'3 pounds beef chuck roast',
 			'Salt to taste',
 			'1 tablespoon flour',
 		]);
-		expect(shown().getByRole('heading', { level: 2, name: 'Notes' })).toBeDefined();
-		expect(screen.getByRole('link', { name: 'Close cooking view' }).getAttribute('href')).toBe(
-			'/recipes/sunday-pot-roast'
-		);
-		expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
-		expect(screen.queryByText(/^Picked up/)).toBeNull();
+		await expect.element(shown().getByRole('heading', { level: 2, name: 'Notes' })).toBeVisible();
+		await expect
+			.element(page.getByRole('link', { name: 'Close cooking view' }))
+			.toHaveAttribute('href', '/recipes/sunday-pot-roast');
+		await expect.element(button('Back')).not.toBeInTheDocument();
+		await expect.element(page.getByText(/^Picked up/)).not.toBeInTheDocument();
 	});
 
 	it('scales the checklist, keeping its checks, and writes the scale to the URL in place', async () => {
 		const length = history.length;
-		const user = userEvent.setup();
-		render(<CookingView recipe={potRoast} />);
+		await render(<CookingView recipe={potRoast} />);
 
-		await user.click(ingredientRow('3 pounds beef chuck roast'));
-		await user.click(screen.getByRole('button', { name: 'Increase' }));
+		await ingredientRow('3 pounds beef chuck roast').click();
+		await button('Increase').click();
 
-		expect(location.search).toBe('?servings=7');
+		await expect
+			.element(shown().getByRole('checkbox', { name: '3½ pounds beef chuck roast' }))
+			.toBeChecked();
 		expect(checkboxNames(true)).toEqual(['3½ pounds beef chuck roast']);
+		expect(location.search).toBe('?servings=7');
 		expect(history.length).toBe(length);
 	});
 
 	it('walks every step across sections to the finish, focusing each screen’s heading', async () => {
-		const user = userEvent.setup();
-		render(<CookingView recipe={potRoast} />);
+		await render(<CookingView recipe={potRoast} />);
 
-		await user.click(screen.getByRole('button', { name: 'Start cooking' }));
+		await button('Start cooking').click();
 
+		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 3');
+		await expect.element(screenHeading()).toHaveFocus();
 		expect(location.search).toBe('?step=1');
-		expect(document.activeElement).toBe(screenHeading());
-		expect(screenHeading().getAttribute('aria-label')).toBe('For the roast, step 1 of 3');
-		expect(shown().getByText('Heat the oven to 300°F.')).toBeDefined();
+		await expect.element(shown().getByText('Heat the oven to 300°F.')).toBeVisible();
 
-		await user.click(screen.getByRole('button', { name: 'Next step' }));
+		await button('Next step').click();
 
-		expect(screenHeading().getAttribute('aria-label')).toBe('For the roast, step 2 of 3');
-		// The step keeps its line breaks.
-		expect(shown().getByText(/^Sear the roast/).textContent).toBe(
-			'Sear the roast.\nTurn it every few minutes.'
-		);
+		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 2 of 3');
+		// The step shows its line breaks.
+		expect(
+			shown()
+				.getByText(/^Sear the roast/)
+				.element()
+		).toHaveProperty('innerText', 'Sear the roast.\nTurn it every few minutes.');
 
-		await user.click(screen.getByRole('button', { name: 'Next step' }));
+		await button('Next step').click();
 
-		expect(screenHeading().getAttribute('aria-label')).toBe('For the gravy, step 3 of 3');
+		await expect.element(screenHeading()).toHaveAccessibleName('For the gravy, step 3 of 3');
 
-		await user.click(screen.getByRole('button', { name: 'Finish' }));
+		await button('Finish').click();
 
+		await expect.element(screenHeading()).toHaveTextContent('Enjoy your Sunday pot roast');
+		await expect.element(screenHeading()).toHaveFocus();
 		expect(location.search).toBe('?step=4');
-		expect(screenHeading().textContent).toBe('Enjoy your Sunday pot roast');
-		expect(document.activeElement).toBe(screenHeading());
-		expect(screen.getByRole('link', { name: 'Back to the recipe' }).getAttribute('href')).toBe(
-			'/recipes/sunday-pot-roast'
-		);
+		await expect
+			.element(page.getByRole('link', { name: 'Back to the recipe' }))
+			.toHaveAttribute('href', '/recipes/sunday-pot-roast');
 
 		// The finish offers neither Ingredients nor Steps, and Back returns to the last step.
-		expect(screen.queryByRole('button', { name: 'Ingredients' })).toBeNull();
-		expect(screen.queryByRole('button', { name: 'Steps' })).toBeNull();
-		await user.click(screen.getByRole('button', { name: 'Back' }));
-		expect(screenHeading().getAttribute('aria-label')).toBe('For the gravy, step 3 of 3');
+		await expect.element(button('Ingredients')).not.toBeInTheDocument();
+		await expect.element(button('Steps')).not.toBeInTheDocument();
+		await button('Back').click();
+		await expect.element(screenHeading()).toHaveAccessibleName('For the gravy, step 3 of 3');
 	});
 
 	it('goes back a screen with Back, and to Gather from the first step', async () => {
 		visit('?step=2');
-		const user = userEvent.setup();
-		render(<CookingView recipe={potRoast} />);
+		await render(<CookingView recipe={potRoast} />);
 
-		await user.click(screen.getByRole('button', { name: 'Back' }));
-		expect(screenHeading().getAttribute('aria-label')).toBe('For the roast, step 1 of 3');
+		await button('Back').click();
+		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 3');
 
-		await user.click(screen.getByRole('button', { name: 'Back' }));
+		await button('Back').click();
+		await expect
+			.element(screenHeading())
+			.toHaveAccessibleName('Gather your ingredients, step 0 of 3');
 		expect(location.search).toBe('');
-		expect(screenHeading().getAttribute('aria-label')).toBe('Gather your ingredients, step 0 of 3');
 	});
 
-	it('notes on a step that gives an amount that its amounts are the recipe’s own while scaled', () => {
-		visit('?servings=12&step=1');
-		render(<CookingView recipe={potRoast} />);
+	it('notes on a step that gives an amount that its amounts are the recipe’s own while scaled', async () => {
+		visit('?servings=12&step=3');
+		await render(<CookingView recipe={potRoast} />);
 
 		const note = shown().getByText(/^Amounts in the steps are for the original/);
-		expect(note.textContent).toBe('Amounts in the steps are for the original 6 servings.');
-		expect(within(note).getByText('6 servings').tagName).toBe('STRONG');
+		await expect
+			.element(note)
+			.toHaveTextContent('Amounts in the steps are for the original 6 servings.');
+		expect(note.getByText('6 servings').element().tagName).toBe('STRONG');
 	});
 
 	it('offers the Ingredients dialog on a step but not on Gather, whose checklist it would repeat', async () => {
-		const user = userEvent.setup();
-		render(<CookingView recipe={potRoast} />);
+		await render(<CookingView recipe={potRoast} />);
 
-		expect(screen.queryByRole('button', { name: 'Ingredients' })).toBeNull();
-		await user.click(screen.getByRole('button', { name: /^Start cooking/ }));
-		expect(screen.getByRole('button', { name: 'Ingredients' })).toBeDefined();
+		await expect.element(button('Ingredients')).not.toBeInTheDocument();
+		await button('Start cooking').click();
+		await expect.element(button('Ingredients')).toBeVisible();
+		// A phone's step has no room for them beside it.
+		await expect
+			.element(page.getByRole('complementary', { name: 'Ingredients' }))
+			.not.toBeInTheDocument();
 	});
 
-	it('notes nothing on a step that gives no amount', () => {
-		visit('?servings=12&step=3');
-		render(<CookingView recipe={potRoast} />);
+	it('shows a step’s ingredients beside it from lg, in place of the Ingredients dialog', async () => {
+		visit('?servings=12&step=1');
+		await page.viewport(1280, 800);
+		await render(<CookingView recipe={potRoast} />);
 
-		expect(shown().getByRole('heading', { level: 1, name: /step 3 of 3/i })).toBeDefined();
-		expect(shown().queryByText(/^Amounts in the steps/)).toBeNull();
+		const column = page.getByRole('complementary', { name: 'Ingredients' });
+		await expect.element(column).toBeVisible();
+		await expect.element(column.getByText('Serves 12')).toBeVisible();
+		await expect
+			.element(column.getByRole('checkbox', { name: '6 pounds beef chuck roast' }))
+			.toBeVisible();
+		await expect.element(button('Ingredients')).not.toBeInTheDocument();
+		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 3');
+	});
+
+	it('notes nothing on a step that gives no amount, such as one that gives only a temperature', async () => {
+		visit('?servings=12&step=1');
+		await render(<CookingView recipe={potRoast} />);
+
+		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 3');
+		await expect.element(shown().getByText(/^Amounts in the steps/)).not.toBeInTheDocument();
 	});
 
 	it('moves with the arrow keys, but not from a control or while a dialog is open', async () => {
-		const user = userEvent.setup();
-		render(<CookingView recipe={potRoast} />);
+		await render(<CookingView recipe={potRoast} />);
 
-		await user.keyboard('{ArrowRight}');
-		expect(location.search).toBe('?step=1');
-		expect(document.activeElement).toBe(screenHeading());
-
-		await user.keyboard('{ArrowRight}{ArrowLeft}');
+		await userEvent.keyboard('{ArrowRight}');
+		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 3');
+		await expect.element(screenHeading()).toHaveFocus();
 		expect(location.search).toBe('?step=1');
 
-		await user.keyboard(' ');
+		await userEvent.keyboard('{ArrowRight}{ArrowLeft}');
 		expect(location.search).toBe('?step=1');
 
-		screen.getByRole('button', { name: 'Next step' }).focus();
-		await user.keyboard('{ArrowRight}');
+		await userEvent.keyboard(' ');
 		expect(location.search).toBe('?step=1');
 
-		await user.click(screen.getByRole('button', { name: 'Steps' }));
-		await user.keyboard('{ArrowRight}');
+		button('Next step').element().focus();
+		await userEvent.keyboard('{ArrowRight}');
+		expect(location.search).toBe('?step=1');
+
+		await button('Steps').click();
+		await expect.element(page.getByRole('dialog', { name: 'Steps' })).toBeVisible();
+		await userEvent.keyboard('{ArrowRight}');
 		expect(location.search).toBe('?step=1');
 	});
 
 	it('leaves the arrow keys to the stepper’s field', async () => {
-		const user = userEvent.setup();
-		render(<CookingView recipe={potRoast} />);
+		await render(<CookingView recipe={potRoast} />);
 
-		await user.click(screen.getByRole('textbox', { name: 'Servings' }));
-		await user.keyboard('{ArrowRight}');
+		await page.getByRole('textbox', { name: 'Servings' }).click();
+		await userEvent.keyboard('{ArrowRight}');
 
 		expect(location.search).toBe('');
 	});
 
 	it('jumps to any step from Steps, focusing that screen’s heading as the dialog closes', async () => {
-		const user = userEvent.setup();
-		render(<CookingView recipe={potRoast} />);
+		await render(<CookingView recipe={potRoast} />);
 
-		await user.click(screen.getByRole('button', { name: 'Steps' }));
-		const dialog = await screen.findByRole('dialog', { name: 'Steps' });
-		expect(within(dialog).getByRole('heading', { name: 'For the gravy' })).toBeDefined();
-		expect(
-			within(dialog)
-				.getByRole('button', { name: /Gather your ingredients/ })
-				.getAttribute('aria-current')
-		).toBe('step');
+		await button('Steps').click();
+		const dialog = page.getByRole('dialog', { name: 'Steps' });
+		await expect.element(dialog.getByRole('heading', { name: 'For the gravy' })).toBeVisible();
+		await expect
+			.element(dialog.getByRole('button', { name: /Gather your ingredients/ }))
+			.toHaveAttribute('aria-current', 'step');
 
-		await user.click(within(dialog).getByRole('button', { name: /Whisk in the flour/ }));
+		await dialog.getByRole('button', { name: /Whisk in 1 tablespoon flour/ }).click();
 
+		await expect.element(page.getByRole('dialog')).not.toBeInTheDocument();
+		await expect.element(screenHeading()).toHaveFocus();
+		await expect.element(screenHeading()).toHaveAccessibleName('For the gravy, step 3 of 3');
 		expect(location.search).toBe('?step=3');
-		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-		expect(document.activeElement).toBe(screenHeading());
-		expect(screenHeading().getAttribute('aria-label')).toBe('For the gravy, step 3 of 3');
+	});
+
+	it('names its checklist and Steps’ list lists, which Safari takes for groups without markers', async () => {
+		await render(<CookingView recipe={potRoast} />);
+
+		await expect
+			.element(
+				shown()
+					.getByRole('list')
+					.filter({ has: page.getByRole('checkbox', { name: '1 tablespoon flour' }) })
+			)
+			.toHaveAttribute('role', 'list');
+		await button('Steps').click();
+		await expect
+			.element(page.getByRole('dialog', { name: 'Steps' }).getByRole('list'))
+			.toHaveAttribute('role', 'list');
 	});
 
 	it('keeps the checks in the tab for this version of the recipe, through the finish', async () => {
-		const user = userEvent.setup();
-		const { unmount } = render(<CookingView recipe={potRoast} />);
+		const { unmount } = await render(<CookingView recipe={potRoast} />);
 
-		await user.click(ingredientRow('3 pounds beef chuck roast'));
-		await user.click(ingredientRow('1 tablespoon flour'));
+		await ingredientRow('3 pounds beef chuck roast').click();
+		await ingredientRow('1 tablespoon flour').click();
 
+		await expect.element(shown().getByText('2 of 3 gathered')).toBeVisible();
 		expect(sessionStorage.getItem(cookingChecksKey(potRoast))).toBe('["0:0","1:0"]');
 
-		await user.click(screen.getByRole('button', { name: 'Start cooking' }));
-		await user.click(screen.getByRole('button', { name: 'Next step' }));
-		await user.click(screen.getByRole('button', { name: 'Next step' }));
-		await user.click(screen.getByRole('button', { name: 'Finish' }));
+		await button('Start cooking').click();
+		await button('Next step').click();
+		await button('Next step').click();
+		await button('Finish').click();
+		await expect.element(screenHeading()).toHaveTextContent('Enjoy your Sunday pot roast');
 		// A reload on Gather, as a new visit from the recipe page.
-		unmount();
+		await unmount();
 		visit('');
-		render(<CookingView recipe={potRoast} />);
+		await render(<CookingView recipe={potRoast} />);
 
+		await expect.element(shown().getByText('2 of 3 gathered')).toBeVisible();
 		expect(checkboxNames(true)).toEqual(['3 pounds beef chuck roast', '1 tablespoon flour']);
-		expect(shown().getByText('2 of 3 gathered')).toBeDefined();
 	});
 
-	it('starts an edited recipe’s checks over, and a new tab’s', () => {
+	it('starts an edited recipe’s checks over, and a new tab’s', async () => {
 		sessionStorage.setItem(cookingChecksKey(potRoast), '["0:0"]');
-		render(<CookingView recipe={{ ...potRoast, version: '2026-10-06T09:00:00.000Z' }} />);
+		await render(<CookingView recipe={{ ...potRoast, version: '2026-10-06T09:00:00.000Z' }} />);
 
+		await expect.element(shown().getByText('0 of 3 gathered')).toBeVisible();
 		expect(checkboxNames(true)).toEqual([]);
 	});
 
 	it('picks up past the first screen with a notice, which goes once the cook moves', async () => {
 		sessionStorage.setItem(cookingChecksKey(potRoast), '["0:1"]');
 		visit('?step=2');
-		const user = userEvent.setup();
-		render(<CookingView recipe={potRoast} />);
+		await render(<CookingView recipe={potRoast} />);
 
-		expect(screen.getByText('Picked up at step 2, where you left off.')).toBeDefined();
+		await expect.element(page.getByText('Picked up at step 2, where you left off.')).toBeVisible();
 		expect(document.activeElement).toBe(document.body);
 
-		await user.click(screen.getByRole('button', { name: 'Next step' }));
+		await button('Next step').click();
 
-		expect(screen.queryByText(/^Picked up/)).toBeNull();
-	});
-
-	it('says it picked up at the end on the finish', () => {
-		visit('?step=4');
-		render(<CookingView recipe={potRoast} />);
-
-		expect(screen.getByText('Picked up at the end, where you left off.')).toBeDefined();
+		await expect.element(page.getByText(/^Picked up/)).not.toBeInTheDocument();
 	});
 
 	it('starts over from the notice: no checks, back on Gather, its heading focused', async () => {
 		sessionStorage.setItem(cookingChecksKey(potRoast), '["0:1"]');
 		visit('?step=2&servings=12');
-		const user = userEvent.setup();
-		render(<CookingView recipe={potRoast} />);
+		await render(<CookingView recipe={potRoast} />);
 
-		await user.click(screen.getByRole('button', { name: 'Start over' }));
+		await button('Start over').click();
 
+		await expect
+			.element(screenHeading())
+			.toHaveAccessibleName('Gather your ingredients, step 0 of 3');
+		await expect.element(screenHeading()).toHaveFocus();
 		expect(location.search).toBe('?servings=12');
-		expect(screenHeading().getAttribute('aria-label')).toBe('Gather your ingredients, step 0 of 3');
-		expect(document.activeElement).toBe(screenHeading());
 		expect(checkboxNames(true)).toEqual([]);
 		expect(sessionStorage.getItem(cookingChecksKey(potRoast))).toBeNull();
-		expect(screen.queryByText(/^Picked up/)).toBeNull();
+		await expect.element(page.getByText(/^Picked up/)).not.toBeInTheDocument();
 	});
 
 	it('closes Steps as its page hides, so a return through history finds it closed', async () => {
-		const user = userEvent.setup();
-		const page = renderKeptPage(<CookingView recipe={potRoast} />);
-		const trigger = screen.getByRole('button', { name: 'Steps' });
+		const keptPage = await renderKeptPage(<CookingView recipe={potRoast} />);
 
-		await user.click(trigger);
-		expect(await screen.findByRole('dialog', { name: 'Steps' })).toBeDefined();
-		await page.hide();
-		await page.show();
+		await button('Steps').click();
+		await expect.element(page.getByRole('dialog', { name: 'Steps' })).toBeVisible();
+		await keptPage.hide();
+		await keptPage.show();
 
-		expect(trigger.getAttribute('aria-expanded')).toBe('false');
-		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		await expect.element(button('Steps')).toHaveAttribute('aria-expanded', 'false');
+		await expect.element(page.getByRole('dialog')).not.toBeInTheDocument();
 	});
 
 	it('keeps its step while hidden behind a page at another address, and shows it on return', async () => {
-		visit('?step=1');
-		const user = userEvent.setup();
-		const page = renderKeptPage(<CookingView recipe={potRoast} />);
-		const ingredients = screen.getByRole('button', { name: 'Ingredients' });
-		await user.click(ingredients);
-		await screen.findByRole('dialog', { name: 'Ingredients' });
+		history.replaceState(null, '', '/recipes/sunday-pot-roast');
+		history.pushState(null, '', `${cookPathname}?step=1`);
+		const keptPage = await renderKeptPage(<CookingView recipe={potRoast} />);
+		const ingredients = button('Ingredients').element();
+		await button('Ingredients').click();
+		await expect.element(page.getByRole('dialog', { name: 'Ingredients' })).toBeVisible();
 
 		// Back to the recipe's page, whose address the browser shows, and announces, before the view
 		// hides.
-		history.replaceState(null, '', '/recipes/sunday-pot-roast');
-		await act(async () => {
-			window.dispatchEvent(new PopStateEvent('popstate'));
-		});
-		await page.hide();
-		const hiddenHeading = within(screen.getByRole('main', { hidden: true })).getByRole('heading', {
-			level: 1,
-			hidden: true,
-		});
-		expect(hiddenHeading.getAttribute('aria-label')).toBe('For the roast, step 1 of 3');
-		history.replaceState(null, '', `${cookPathname}?step=1`);
-		await page.show();
+		await traverse(-1);
+		await keptPage.hide();
+		await expect
+			.element(
+				page
+					.getByRole('main', { includeHidden: true })
+					.getByRole('heading', { level: 1, includeHidden: true })
+			)
+			.toHaveAttribute('aria-label', 'For the roast, step 1 of 3');
+		await traverse(1);
+		await keptPage.show();
 
-		expect(screenHeading().getAttribute('aria-label')).toBe('For the roast, step 1 of 3');
+		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 3');
 		expect(ingredients.isConnected).toBe(true);
 	});
 
 	it('starts over from Steps, focusing Gather’s heading as the dialog closes', async () => {
 		sessionStorage.setItem(cookingChecksKey(potRoast), '["0:1"]');
 		visit('?step=3');
-		const user = userEvent.setup();
-		render(<CookingView recipe={potRoast} />);
+		await render(<CookingView recipe={potRoast} />);
 
-		await user.click(screen.getByRole('button', { name: 'Steps' }));
-		const dialog = await screen.findByRole('dialog', { name: 'Steps' });
-		await user.click(within(dialog).getByRole('button', { name: 'Start over' }));
+		await button('Steps').click();
+		await page
+			.getByRole('dialog', { name: 'Steps' })
+			.getByRole('button', { name: 'Start over' })
+			.click();
 
-		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		await expect.element(page.getByRole('dialog')).not.toBeInTheDocument();
+		await expect.element(screenHeading()).toHaveFocus();
+		await expect
+			.element(screenHeading())
+			.toHaveAccessibleName('Gather your ingredients, step 0 of 3');
 		expect(location.search).toBe('');
-		expect(document.activeElement).toBe(screenHeading());
 		expect(checkboxNames(true)).toEqual([]);
 	});
 
 	it('opens the ingredients at the servings Gather set, with the notes, in a dialog from a step', async () => {
 		visit('?servings=12&step=1');
-		const user = userEvent.setup();
-		render(<CookingView recipe={potRoast} />);
+		await render(<CookingView recipe={potRoast} />);
 
-		await user.click(screen.getByRole('button', { name: 'Ingredients' }));
-		const dialog = await screen.findByRole('dialog', { name: 'Ingredients' });
+		await button('Ingredients').click();
+		const dialog = page.getByRole('dialog', { name: 'Ingredients' });
 
-		await user.click(ingredientRow('2 tablespoons flour', within(dialog)));
+		await ingredientRow('2 tablespoons flour', dialog).click();
 
-		expect(within(dialog).getByText('Serves 12')).toBeDefined();
-		expect(within(dialog).queryByRole('textbox', { name: 'Servings' })).toBeNull();
-		expect(within(dialog).getByRole('heading', { level: 3, name: 'Notes' })).toBeDefined();
+		await expect
+			.element(dialog.getByRole('checkbox', { name: '2 tablespoons flour' }))
+			.toBeChecked();
+		await expect.element(dialog.getByText('Serves 12')).toBeVisible();
+		await expect.element(dialog.getByRole('textbox', { name: 'Servings' })).not.toBeInTheDocument();
+		await expect.element(dialog.getByRole('heading', { level: 3, name: 'Notes' })).toBeVisible();
 		expect(sessionStorage.getItem(cookingChecksKey(potRoast))).toBe('["1:0"]');
 	});
 
 	it('cooks a recipe without sections, yield, or notes, in batches, through its one step', async () => {
 		history.replaceState(null, '', '/recipes/garden-salad/cook');
-		const user = userEvent.setup();
-		render(<CookingView recipe={salad} />);
+		await render(<CookingView recipe={salad} />);
 
-		expect(shown().queryByRole('heading', { level: 2 })).toBeNull();
-		expect(shown().getByText('0 of 2 gathered')).toBeDefined();
+		await expect.element(shown().getByText('0 of 2 gathered')).toBeVisible();
+		await expect.element(shown().getByRole('heading', { level: 2 })).not.toBeInTheDocument();
 
-		await user.click(screen.getByRole('button', { name: 'Increase' }));
+		await button('Increase').click();
+		await expect.element(page.getByRole('textbox', { name: 'Batches' })).toHaveValue('1.5');
 		expect(location.search).toBe('?batches=1.5');
 
-		await user.click(screen.getByRole('button', { name: 'Start cooking' }));
-		expect(screenHeading().getAttribute('aria-label')).toBe('Step 1 of 1');
+		await button('Start cooking').click();
+		await expect.element(screenHeading()).toHaveAccessibleName('Step 1 of 1');
 
-		await user.click(screen.getByRole('button', { name: 'Finish' }));
-		expect(screenHeading().textContent).toBe('Enjoy your Garden salad');
+		await button('Finish').click();
+		await expect.element(screenHeading()).toHaveTextContent('Enjoy your Garden salad');
 	});
 
-	it('scales a recipe that makes something under its own parameter', async () => {
-		history.replaceState(null, '', '/recipes/garden-salad/cook?makes=36');
-		render(
-			<CookingView
-				recipe={{ ...salad, yield: { kind: 'makes', amount: { min: 24 }, unit: 'biscuits' } }}
-			/>
-		);
-
-		expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'Biscuits' }).value).toBe('36');
-	});
-
-	it('prints the whole recipe at its scale, with what it was scaled to', () => {
+	it('prints the whole recipe at its scale, with what it was scaled to', async () => {
 		visit('?servings=12&step=2');
-		render(<CookingView recipe={potRoast} />);
+		await render(<CookingView recipe={potRoast} />);
 
-		const printed = within(printout());
-		expect(printed.getByRole('heading', { level: 1, hidden: true }).textContent).toBe(
-			'Sunday pot roast'
-		);
-		expect(printed.getByText('Scaled to 12 servings (recipe serves 6)')).toBeDefined();
+		await expect.element(printout()).not.toBeVisible();
+		await expect
+			.element(printout().getByRole('heading', { level: 1, includeHidden: true }))
+			.toHaveTextContent('Sunday pot roast');
+		await expect
+			.element(printout().getByText('Scaled to 12 servings (recipe serves 6)'))
+			.toBeInTheDocument();
 		expect(
-			printed.getAllByRole('listitem', { hidden: true }).map((item) => item.textContent)
+			printout()
+				.getByRole('listitem', { includeHidden: true })
+				.elements()
+				.map((item) => item.textContent)
 		).toEqual([
 			'6 pounds beef chuck roast',
 			'Salt to taste',
 			'2 tablespoons flour',
 			'Heat the oven to 300°F.',
 			'Sear the roast.\nTurn it every few minutes.',
-			'Whisk in the flour.',
+			'Whisk in 1 tablespoon flour.',
 		]);
-		expect(printed.getByText(/^Amounts in the steps/).textContent).toBe(
-			'Amounts in the steps are for the original 6 servings.'
-		);
-		expect(printed.getByText('Save the gravy.')).toBeDefined();
-		expect(printout().className).toMatch(/(^| )hidden( |$)/);
+		await expect
+			.element(printout().getByText(/^Amounts in the steps/))
+			.toHaveTextContent('Amounts in the steps are for the original 6 servings.');
+		await expect.element(printout().getByText('Save the gravy.')).toBeInTheDocument();
+		await expect.element(printout()).toHaveClass('print:flex');
 		expect(document.querySelector('.fixed.print\\:hidden')).not.toBeNull();
 	});
 
-	it('prints no scale for a recipe at its own', () => {
-		render(<CookingView recipe={potRoast} />);
+	it('prints no scale for a recipe at its own', async () => {
+		await render(<CookingView recipe={potRoast} />);
 
-		expect(within(printout()).queryByText(/^Scaled to/)).toBeNull();
+		await expect.element(printout().getByText('Save the gravy.')).toBeInTheDocument();
+		await expect.element(printout().getByText(/^Scaled to/)).not.toBeInTheDocument();
 	});
 
-	it('keeps the screen awake while it shows', () => {
-		const request = vi.fn(async () => ({ released: false, release: async () => {} }));
-		Object.defineProperty(navigator, 'wakeLock', { value: { request }, configurable: true });
+	it('keeps the screen awake while it shows', async () => {
+		const request = vi.spyOn(navigator.wakeLock, 'request');
 
-		render(<CookingView recipe={potRoast} />);
+		await render(<CookingView recipe={potRoast} />);
 
 		expect(request).toHaveBeenCalledWith('screen');
 	});

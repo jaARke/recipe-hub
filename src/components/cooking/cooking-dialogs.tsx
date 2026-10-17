@@ -139,7 +139,7 @@ function StepsDialog({
 				className={contentClassName}
 			>
 				<CookingDialogHeader title="Steps" />
-				<ol className="-mx-2 flex flex-col">
+				<ol role="list" className="-mx-2 flex flex-col">
 					{screens.slice(0, -1).map((screen, position) => {
 						const sectionHeading =
 							screen.kind === 'step' && startsCookingGroup(screens, position)

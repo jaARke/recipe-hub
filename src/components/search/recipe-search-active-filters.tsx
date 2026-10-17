@@ -76,7 +76,7 @@ function RecipeSearchActiveFilters({
 
 	return (
 		<div className="flex flex-wrap items-center gap-2">
-			<ul aria-label="Active filters" className="flex flex-wrap gap-2">
+			<ul role="list" aria-label="Active filters" className="flex flex-wrap gap-2">
 				{filters.map((filter) => (
 					<li key={filter.key}>
 						<Link

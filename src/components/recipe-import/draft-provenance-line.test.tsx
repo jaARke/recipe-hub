@@ -1,26 +1,29 @@
-import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page } from 'vitest/browser';
 import { DraftProvenanceLine } from '@/components/recipe-import/draft-provenance-line';
 
 describe('DraftProvenanceLine', () => {
-	it('names the host of the page a link import read, linking to it', () => {
-		render(<DraftProvenanceLine mode="url" sourceUrl="https://example.com/soup" />);
+	it('names the host of the page a link import read, linking to it', async () => {
+		await render(<DraftProvenanceLine mode="url" sourceUrl="https://example.com/soup" />);
 
-		expect(screen.getByText(/^Imported from/).textContent).toBe('Imported from example.com');
-		expect(screen.getByRole('link', { name: 'example.com' }).getAttribute('href')).toBe(
-			'https://example.com/soup'
+		await expect.element(page.getByText('Imported from example.com')).toBeVisible();
+		await expect
+			.element(page.getByRole('link', { name: 'example.com' }))
+			.toHaveAttribute('href', 'https://example.com/soup');
+	});
+
+	it('says a photo import read the member’s photos', async () => {
+		await render(<DraftProvenanceLine mode="photo" sourceUrl={undefined} />);
+
+		await expect.element(page.getByText('Read from your photos')).toBeVisible();
+	});
+
+	it('shows nothing for a draft entered by hand', async () => {
+		const { container } = await render(
+			<DraftProvenanceLine mode={undefined} sourceUrl={undefined} />
 		);
-	});
 
-	it('says a photo import read the member’s photos', () => {
-		render(<DraftProvenanceLine mode="photo" sourceUrl={undefined} />);
-
-		expect(screen.getByText('Read from your photos')).toBeDefined();
-	});
-
-	it('shows nothing for a draft entered by hand', () => {
-		const { container } = render(<DraftProvenanceLine mode={undefined} sourceUrl={undefined} />);
-
-		expect(container.textContent).toBe('');
+		expect(container).toBeEmptyDOMElement();
 	});
 });

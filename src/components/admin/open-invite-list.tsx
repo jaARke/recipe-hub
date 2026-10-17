@@ -41,7 +41,7 @@ function OpenInviteList({
 	}
 
 	return (
-		<ul className="divide-y">
+		<ul role="list" className="divide-y">
 			{invites.map((invite) => (
 				<li
 					key={invite.id}

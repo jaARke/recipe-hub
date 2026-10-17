@@ -34,7 +34,10 @@ function RecipeImageStrip({
 
 	return (
 		// Padded so a thumbnail's focus ring and mark show inside the scrolling row.
-		<ul className={cn('flex [scrollbar-width:thin] gap-2 overflow-x-auto p-1', className)}>
+		<ul
+			role="list"
+			className={cn('flex [scrollbar-width:thin] gap-2 overflow-x-auto p-1', className)}
+		>
 			{images.map((image, index) => {
 				const isCurrent = index === current;
 				return (

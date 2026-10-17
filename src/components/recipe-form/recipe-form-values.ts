@@ -558,18 +558,16 @@ export function recipeFormValues(
 	};
 }
 
-// One of a list's sections as the form sends it: the heading that starts it, if any, and its lines.
-type ListSection = { heading?: RecipeFormRow; items: RecipeFormRow[] };
+// One of a list's sections: the heading that starts it, if any, and its lines.
+type RowSection<Row extends RecipeFormRowText> = { heading?: Row; items: Row[] };
 
-// A list's sections as the form sends them: each heading starts one, and the lines before the first
-// heading form one without a heading. Blank rows are left out, so a blank heading's lines join the
-// lines above it; a heading with no lines stays, so the domain flags it.
-function listSections(list: RecipeFormList): ListSection[] {
-	const sections: ListSection[] = [];
-	for (const row of list.rows) {
-		if (isBlank(row.text)) {
-			continue;
-		}
+// A list's rows as sections: each heading starts one, and the lines before the first heading form
+// one without a heading.
+export function rowSections<Row extends RecipeFormRowText>(
+	rows: readonly Row[]
+): RowSection<Row>[] {
+	const sections: RowSection<Row>[] = [];
+	for (const row of rows) {
 		const last = sections.at(-1);
 		if (row.kind === 'heading') {
 			sections.push({ heading: row, items: [] });
@@ -580,6 +578,12 @@ function listSections(list: RecipeFormList): ListSection[] {
 		}
 	}
 	return sections;
+}
+
+// A list's sections as the form sends them. Blank rows are left out, so a blank heading's lines join
+// the lines above it; a heading with no lines stays, so the domain flags it.
+function listSections(list: RecipeFormList): RowSection<RecipeFormRow>[] {
+	return rowSections(list.rows.filter((row) => !isBlank(row.text)));
 }
 
 // The payload the form sends, its lists as sections, with blank optional text left out.

@@ -1,6 +1,10 @@
-import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { RecipeIngredientsAndSteps } from '@/components/recipe/recipe-ingredients-and-steps';
+import { render } from 'vitest-browser-react';
+import { page } from 'vitest/browser';
+import {
+	RecipeIngredientsAndSteps,
+	ScaledIngredientLineText,
+} from '@/components/recipe/recipe-ingredients-and-steps';
 import type { IngredientSection } from '@/domain/recipe/ingredient';
 import { parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import type { InstructionSection } from '@/domain/recipe/instruction';
@@ -27,12 +31,30 @@ const instructionSections: InstructionSection[] = [
 const serves6: RecipeYield = { kind: 'servings', amount: { min: 6 } };
 
 function listItems(): (string | null)[] {
-	return screen.getAllByRole('listitem').map((item) => item.textContent);
+	return page
+		.getByRole('listitem')
+		.elements()
+		.map((item) => item.textContent);
+}
+
+// Where an item's first line of text starts, in pixels from the page's left edge.
+function textStart(item: Element): number {
+	const range = document.createRange();
+	range.selectNodeContents(item);
+	return range.getClientRects()[0]?.left ?? Number.NaN;
+}
+
+// How far each list of steps sets its steps in from its edge, in pixels, leaving room for the numbers.
+function stepIndents(): number[] {
+	return Array.from(document.querySelectorAll('ol'), (list) => {
+		const step = list.querySelector('li');
+		return (step?.getBoundingClientRect().left ?? 0) - list.getBoundingClientRect().left;
+	});
 }
 
 describe('RecipeIngredientsAndSteps', () => {
-	it('renders each list under its heading and each section under its own, as written', () => {
-		render(
+	it('renders each list under its heading and each section under its own, as written', async () => {
+		await render(
 			<RecipeIngredientsAndSteps
 				ingredientSections={ingredientSections}
 				instructionSections={instructionSections}
@@ -40,12 +62,12 @@ describe('RecipeIngredientsAndSteps', () => {
 			/>
 		);
 
-		expect(screen.getAllByRole('heading').map((heading) => heading.textContent)).toEqual([
-			'Ingredients',
-			'For the glaze',
-			'Steps',
-			'For the glaze',
-		]);
+		expect(
+			page
+				.getByRole('heading')
+				.elements()
+				.map((heading) => heading.textContent)
+		).toEqual(['Ingredients', 'For the glaze', 'Steps', 'For the glaze']);
 		expect(listItems()).toEqual([
 			'2 cups flour',
 			'Salt to taste',
@@ -54,14 +76,14 @@ describe('RecipeIngredientsAndSteps', () => {
 			'Bake for 20 minutes.',
 			'Whisk the sugar with lemon juice.',
 		]);
-		expect(screen.queryByRole('checkbox')).toBeNull();
-		expect(screen.queryByRole('switch')).toBeNull();
-		expect(screen.queryByRole('textbox')).toBeNull();
-		expect(screen.queryByText(/^Amounts in the steps/)).toBeNull();
+		await expect.element(page.getByRole('checkbox')).not.toBeInTheDocument();
+		await expect.element(page.getByRole('switch')).not.toBeInTheDocument();
+		await expect.element(page.getByRole('textbox')).not.toBeInTheDocument();
+		await expect.element(page.getByText(/^Amounts in the steps/)).not.toBeInTheDocument();
 	});
 
-	it('counts the steps straight through the sections, each section’s list starting where the last left off', () => {
-		render(
+	it('counts the steps straight through the sections, each section’s list starting where the last left off', async () => {
+		await render(
 			<RecipeIngredientsAndSteps
 				ingredientSections={ingredientSections}
 				instructionSections={instructionSections}
@@ -69,41 +91,58 @@ describe('RecipeIngredientsAndSteps', () => {
 			/>
 		);
 
-		const stepLists = ['Mix the flour and salt.', 'Whisk the sugar with lemon juice.'].map((step) =>
-			screen.getByText(step).closest('ol')
-		);
-		expect(stepLists.map((list) => list?.getAttribute('start'))).toEqual(['1', '3']);
+		const listOf = (step: string) => page.getByRole('list').filter({ has: page.getByText(step) });
+		await expect.element(listOf('Mix the flour and salt.')).toHaveAttribute('start', '1');
+		await expect.element(listOf('Whisk the sugar with lemon juice.')).toHaveAttribute('start', '3');
 	});
 
-	it('indents every section’s steps alike, wide enough for the recipe’s last number', () => {
+	it('indents every section’s steps alike, wide enough for the recipe’s last number', async () => {
 		const tenSteps: InstructionSection[] = [
 			{ steps: Array.from({ length: 8 }, (_, index) => ({ text: `Step ${index + 1}.` })) },
 			{ heading: 'For the glaze', steps: [{ text: 'Whisk.' }, { text: 'Pour.' }] },
 		];
-		const { rerender } = render(
+		const { rerender } = await render(
 			<RecipeIngredientsAndSteps
 				ingredientSections={ingredientSections}
 				instructionSections={instructionSections}
 				headingLevel={1}
 			/>
 		);
-		const indents = () =>
-			Array.from(document.querySelectorAll('ol'), (list) => list.style.paddingLeft);
 
-		// "3. " is three characters of the marker; "10. " is four.
-		expect(indents()).toEqual(['calc(3 * 0.525rem)', 'calc(3 * 0.525rem)']);
-		rerender(
+		// "3. " is three of the marker's characters, each 0.525rem or 8.4 px; "10. " is four.
+		expect(stepIndents()).toEqual([expect.closeTo(25.2, 1), expect.closeTo(25.2, 1)]);
+		await rerender(
 			<RecipeIngredientsAndSteps
 				ingredientSections={ingredientSections}
 				instructionSections={tenSteps}
 				headingLevel={1}
 			/>
 		);
-		expect(indents()).toEqual(['calc(4 * 0.525rem)', 'calc(4 * 0.525rem)']);
+		expect(stepIndents()).toEqual([expect.closeTo(33.6, 1), expect.closeTo(33.6, 1)]);
 	});
 
-	it('shows nothing of a scale at the recipe’s own', () => {
-		render(
+	it('bullets each ingredient in the steps’ muted marker column, its text starting where a step’s does', async () => {
+		await render(
+			<RecipeIngredientsAndSteps
+				ingredientSections={ingredientSections}
+				instructionSections={instructionSections}
+				headingLevel={1}
+			/>
+		);
+
+		const ingredient = page.getByRole('listitem').filter({ hasText: '1 cup sugar' });
+		const step = page.getByRole('listitem').filter({ hasText: 'Mix the flour and salt.' });
+		await expect.element(ingredient).toHaveStyle({ listStyleType: 'disc' });
+		const markerColor = (item: Element) => getComputedStyle(item, '::marker').color;
+		expect(markerColor(ingredient.element())).toBe(markerColor(step.element()));
+		expect(markerColor(ingredient.element())).not.toBe(
+			getComputedStyle(ingredient.element()).color
+		);
+		expect(textStart(ingredient.element())).toBeCloseTo(textStart(step.element()), 1);
+	});
+
+	it('shows nothing of a scale at the recipe’s own', async () => {
+		await render(
 			<RecipeIngredientsAndSteps
 				ingredientSections={ingredientSections}
 				instructionSections={instructionSections}
@@ -113,7 +152,7 @@ describe('RecipeIngredientsAndSteps', () => {
 		);
 
 		expect(listItems().slice(0, 3)).toEqual(['2 cups flour', 'Salt to taste', '1 cup sugar']);
-		expect(screen.queryByText(/^Amounts in the steps/)).toBeNull();
+		await expect.element(page.getByText(/^Amounts in the steps/)).not.toBeInTheDocument();
 	});
 });
 
@@ -124,7 +163,8 @@ describe('RecipeIngredientsAndSteps at a scale', () => {
 				'12 to fifteen apples',
 				'Half and half',
 				'1 can artichoke quarters',
-				'1 egg plus 1 yolk',
+				'2 sweet potatoes (about 1 pound)',
+				'1 cup of flour plus a tablespoon',
 				'Salt to taste',
 			].map(parseIngredientLine),
 		},
@@ -140,23 +180,59 @@ describe('RecipeIngredientsAndSteps at a scale', () => {
 		/>
 	);
 
-	it('marks a line it left whole "Not scaled", shows a line it scaled in part as written, and marks no other', () => {
-		render(doubled);
+	it('marks a line it left whole "Not scaled", underlines an amount it left unscaled with a note beneath, and keeps the words a line writes between its parts', async () => {
+		await render(doubled);
 
-		expect(listItems().slice(0, 5)).toEqual([
+		expect(listItems().slice(0, 6)).toEqual([
 			'12 to fifteen applesNot scaled',
 			'Half and half',
 			'2 cans artichoke quarters',
-			'2 egg plus 1 yolkAs written: 1 egg plus 1 yolk',
+			'4 sweet potatoes (about 1 pound (not scaled))Underlined amount not scaled',
+			'2 cups of flour plus 2 tablespoons',
 			'Salt to taste',
 		]);
+		await expect
+			.element(page.getByText('1 pound', { exact: true }))
+			.toHaveStyle({ textDecorationLine: 'underline', textDecorationStyle: 'dotted' });
+		await expect.element(page.getByText('(not scaled)')).toHaveClass('sr-only');
+		await expect
+			.element(page.getByText('Underlined amount not scaled'))
+			.toHaveAttribute('aria-hidden', 'true');
 	});
 
-	it('notes under Steps that their amounts are the recipe’s own', () => {
-		render(doubled);
+	it('names an amount it left unscaled where the line labels a checkbox, as a checklist’s does, without the note', async () => {
+		const line = parseIngredientLine('2 sweet potatoes (about 1 pound)');
+		await render(
+			<label>
+				<input type="checkbox" />
+				<ScaledIngredientLineText line={line} factor={2} />
+			</label>
+		);
 
-		const note = screen.getByText(/^Amounts in the steps/);
-		expect(note.textContent).toBe('Amounts in the steps are for the original 6 servings.');
-		expect(within(note).getByText('6 servings').tagName).toBe('STRONG');
+		// The hidden words sit out of the flow, as a block, which a name sets apart with spaces.
+		await expect
+			.element(page.getByRole('checkbox'))
+			.toHaveAccessibleName('4 sweet potatoes (about 1 pound (not scaled) )');
+	});
+
+	it('notes amounts in the plural when it left more than one unscaled', async () => {
+		await render(
+			<ScaledIngredientLineText
+				line={parseIngredientLine('2 trout (12 ounces), about 1½ pounds')}
+				factor={2}
+			/>
+		);
+
+		await expect.element(page.getByText('Underlined amounts not scaled')).toBeInTheDocument();
+	});
+
+	it('notes under Steps that their amounts are the recipe’s own', async () => {
+		await render(doubled);
+
+		const note = page.getByText(/^Amounts in the steps/);
+		await expect
+			.element(note)
+			.toHaveTextContent('Amounts in the steps are for the original 6 servings.');
+		await expect.element(note.getByText('6 servings')).toHaveStyle({ fontWeight: '600' });
 	});
 });

@@ -18,9 +18,9 @@ export async function copyLink(url: string, copyByHand: string): Promise<void> {
 }
 
 // Whether the browser has a share sheet for shareLink to open, through the Web Share API, which
-// desktop Firefox lacks.
+// desktop Firefox lacks. Read by value, so a test can hide WebKit's with a share of undefined.
 export function hasShareSheet(): boolean {
-	return 'share' in navigator;
+	return typeof navigator.share === 'function';
 }
 
 // Opens the device's share sheet, or copies the link where the browser refuses to share it, since the

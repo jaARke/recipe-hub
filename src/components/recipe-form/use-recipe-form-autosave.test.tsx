@@ -1,7 +1,6 @@
-import { screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { page } from 'vitest/browser';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import {
 	recipeFormSnapshot,
@@ -49,18 +48,19 @@ afterEach(() => {
 
 describe('useRecipeFormAutosave', () => {
 	it('never writes back what a page kept after a save led away, and keeps what is typed on return', async () => {
-		const user = userEvent.setup();
-		const page = renderKeptPage(<TitleForm />);
-		await user.type(screen.getByRole('textbox', { name: 'Title' }), 'Lemon bars');
-		expect(localStorage.getItem(newRecipeKey)).not.toBeNull();
+		const keptPage = await renderKeptPage(<TitleForm />);
+		const title = page.getByRole('textbox', { name: 'Title' });
+		await title.fill('Lemon bars');
+		await expect.poll(() => localStorage.getItem(newRecipeKey)).toContain('Lemon bars');
 
-		await user.click(screen.getByRole('button', { name: 'Leave' }));
-		expect(localStorage.getItem(newRecipeKey)).toBeNull();
-		await page.hide();
-		await page.show();
+		await page.getByRole('button', { name: 'Leave' }).click();
+		await expect.poll(() => localStorage.getItem(newRecipeKey)).toBeNull();
+		await keptPage.hide();
+		await keptPage.show();
 
 		expect(localStorage.getItem(newRecipeKey)).toBeNull();
-		await user.type(screen.getByRole('textbox', { name: 'Title' }), ' squares');
-		expect(localStorage.getItem(newRecipeKey)).toContain('Lemon bars squares');
+		await expect.element(title).toHaveValue('Lemon bars');
+		await title.fill('Lemon bars squares');
+		await expect.poll(() => localStorage.getItem(newRecipeKey)).toContain('Lemon bars squares');
 	});
 });

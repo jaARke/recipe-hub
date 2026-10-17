@@ -1,11 +1,11 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page } from 'vitest/browser';
 import { RecipeSearchToolbar } from '@/components/search/recipe-search-toolbar';
 
 // The results heading and a stand-in filters form; the real form navigates through Next's router.
-function renderToolbar() {
-	render(
+async function renderToolbar() {
+	await render(
 		<section>
 			<h2 id="results-heading" tabIndex={-1}>
 				Results
@@ -30,52 +30,67 @@ function renderToolbar() {
 			/>
 		</section>
 	);
-	return screen.getByRole('button', { name: /^Filters/ });
+}
+
+// Shown below lg, which the default viewport is.
+function filtersButton() {
+	return page.getByRole('button', { name: /^Filters/ });
+}
+
+function filtersForm() {
+	return page.getByRole('form', { name: 'Filters' });
 }
 
 describe('RecipeSearchToolbar', () => {
-	it('opens the filters beneath it from the Filters button, with the applied count', async () => {
-		const trigger = renderToolbar();
+	it('opens the filters beneath it, above the count, from the Filters button with the applied count', async () => {
+		await renderToolbar();
+		await expect.element(filtersButton()).toHaveAccessibleName('Filters 2 applied');
+		await expect.element(filtersForm()).not.toBeInTheDocument();
 
-		expect(trigger.textContent).toContain('2 applied');
-		expect(screen.queryByRole('form', { name: 'Filters' })).toBeNull();
-		await userEvent.click(trigger);
+		await filtersButton().click();
 
-		expect(trigger.getAttribute('aria-expanded')).toBe('true');
-		expect(screen.getByRole('form', { name: 'Filters' })).toBeTruthy();
+		await expect.element(filtersButton()).toHaveAttribute('aria-expanded', 'true');
+		await expect.element(filtersForm()).toBeVisible();
+		const button = filtersButton().element().getBoundingClientRect();
+		const filters = filtersForm().element().getBoundingClientRect();
+		const count = page.getByText('12 recipes').element().getBoundingClientRect();
+		expect(filters.top).toBeGreaterThanOrEqual(button.bottom);
+		expect(count.top).toBeGreaterThanOrEqual(filters.bottom);
 	});
 
 	it('closes the filters and moves focus to the results when they apply', async () => {
-		const trigger = renderToolbar();
-		await userEvent.click(trigger);
+		await renderToolbar();
+		await filtersButton().click();
 
-		await userEvent.click(screen.getByRole('button', { name: 'Apply filters' }));
+		await page.getByRole('button', { name: 'Apply filters' }).click();
 
-		expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Results' }));
-		await waitFor(() => expect(screen.queryByRole('form', { name: 'Filters' })).toBeNull());
-		expect(trigger.getAttribute('aria-expanded')).toBe('false');
+		await expect.element(page.getByRole('heading', { name: 'Results' })).toHaveFocus();
+		await expect.element(filtersForm()).not.toBeInTheDocument();
+		await expect.element(filtersButton()).toHaveAttribute('aria-expanded', 'false');
 	});
 
 	it('keeps a filter chosen but not applied when the panel closes and opens again', async () => {
-		const trigger = renderToolbar();
-		await userEvent.click(trigger);
-		await userEvent.click(screen.getByRole('checkbox', { name: 'Baking' }));
+		await renderToolbar();
+		await filtersButton().click();
+		await page.getByRole('checkbox', { name: 'Baking' }).click();
 
-		await userEvent.click(trigger);
-		await waitFor(() => expect(screen.queryByRole('checkbox', { name: 'Baking' })).toBeNull());
-		await userEvent.click(trigger);
+		await filtersButton().click();
+		await expect.element(filtersForm()).not.toBeInTheDocument();
+		await filtersButton().click();
 
-		expect(screen.getByRole<HTMLInputElement>('checkbox', { name: 'Baking' }).checked).toBe(true);
+		await expect.element(page.getByRole('checkbox', { name: 'Baking' })).toBeChecked();
 	});
 
-	it('leaves the filters open and focus in place when the order changes', async () => {
-		const trigger = renderToolbar();
-		await userEvent.click(trigger);
+	it('leaves the filters open and focus where it was when the order changes', async () => {
+		await renderToolbar();
+		await filtersButton().click();
 
-		const sort = screen.getByRole('button', { name: 'Sort' });
-		await userEvent.click(sort);
+		await page.getByRole('button', { name: 'Sort' }).click();
 
-		expect(document.activeElement).toBe(sort);
-		expect(screen.getByRole('form', { name: 'Filters' })).toBeTruthy();
+		// WebKit, as Safari does, focuses no button it clicks, so only the heading is ruled out.
+		expect(document.activeElement).not.toBe(
+			page.getByRole('heading', { name: 'Results' }).element()
+		);
+		await expect.element(filtersForm()).toBeVisible();
 	});
 });

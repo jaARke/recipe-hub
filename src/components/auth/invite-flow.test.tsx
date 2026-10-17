@@ -1,10 +1,10 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page } from 'vitest/browser';
 import type { CompletedInviteDto } from '@/application/access/access-dtos';
 import { signInWithCode } from '@/components/auth/email-codes';
 import { InviteFlow } from '@/components/auth/invite-flow';
-import { useSignOut } from '@/components/auth/use-sign-out';
+import { holdPageLoads } from '@/components/auth/testing/page-loads';
 import type { FormState } from '@/components/forms/form-state';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 
@@ -25,11 +25,8 @@ vi.mock('@/components/auth/auth-client', () => ({
 		passkey: {
 			addPasskey: async () => ({ data: null, error: { status: 400, code: 'AUTH_CANCELLED' } }),
 		},
+		signOut: async () => ({ data: { success: true }, error: null }),
 	},
-}));
-
-vi.mock('@/components/auth/use-sign-out', () => ({
-	useSignOut: vi.fn(() => ({ signOut: vi.fn(), pending: false })),
 }));
 
 const token = 'invite-token';
@@ -59,43 +56,30 @@ function inviteFlow(
 	);
 }
 
-function renderFlow(
+async function renderFlow(
 	complete: Complete,
 	signedInAs: string | null = null,
 	bindEmail?: BindEmail,
 	joined: CompletedInviteDto['account'] | null = null
 ) {
-	render(inviteFlow(complete, signedInAs, bindEmail, joined));
+	await render(inviteFlow(complete, signedInAs, bindEmail, joined));
 }
 
 // From the welcome step through a code that signs the invitee in.
 async function signInWithInvite() {
-	const user = userEvent.setup();
-	await user.click(await screen.findByRole('button', { name: 'Get started' }));
-	await user.type(screen.getByLabelText('Email'), 'ada@example.com');
-	await user.click(screen.getByRole('button', { name: 'Email me a code' }));
-	await user.type(await screen.findByLabelText('Code'), '123456');
-	await user.click(screen.getByRole('button', { name: 'Create account' }));
-	return user;
-}
-
-// Stands in for the browser's page loads, which happy-dom would attempt.
-function stubPageLoads() {
-	return vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+	await page.getByRole('button', { name: 'Get started' }).click();
+	await page.getByLabelText('Email').fill('ada@example.com');
+	await page.getByRole('button', { name: 'Email me a code' }).click();
+	await page.getByLabelText('Code').fill('123456');
+	await page.getByRole('button', { name: 'Create account' }).click();
 }
 
 async function expectStepHeading(name: string) {
-	const heading = await screen.findByRole('heading', { name });
-	await waitFor(() => expect(document.activeElement).toBe(heading));
+	await expect.element(page.getByRole('heading', { name })).toHaveFocus();
 }
 
 beforeEach(() => {
-	vi.mocked(signInWithCode).mockClear();
 	window.history.replaceState(null, '', `/invite#${token}`);
-});
-
-afterEach(() => {
-	vi.restoreAllMocks();
 });
 
 describe('InviteFlow', () => {
@@ -112,19 +96,19 @@ describe('InviteFlow', () => {
 	])(
 		'offers to finish again without the spent code when completing fails $how',
 		async ({ failure }) => {
-			const assign = stubPageLoads();
+			const loads = holdPageLoads();
 			const complete = vi
 				.fn<Complete>()
 				.mockImplementationOnce(failure)
 				.mockResolvedValueOnce({ status: 'success', account: 'created' });
-			renderFlow(complete);
+			await renderFlow(complete);
 
-			const user = await signInWithInvite();
+			await signInWithInvite();
 			await expectStepHeading('We couldn’t finish accepting your invite');
-			expect(assign).not.toHaveBeenCalled();
-			await user.click(screen.getByRole('button', { name: 'Try again' }));
+			expect(loads).toEqual([]);
+			await page.getByRole('button', { name: 'Try again' }).click();
 
-			await waitFor(() => expect(assign).toHaveBeenCalledWith('/invite?account=created'));
+			await expect.poll(() => loads).toEqual([{ path: '/invite?account=created', type: 'push' }]);
 			expect(complete).toHaveBeenCalledTimes(2);
 			expect(complete).toHaveBeenLastCalledWith(token);
 			expect(signInWithCode).toHaveBeenCalledOnce();
@@ -133,42 +117,32 @@ describe('InviteFlow', () => {
 
 	it('asks for an address at once when none is given, before binding the invite', async () => {
 		const bindEmail = vi.fn(bindAnyEmail);
-		const user = userEvent.setup();
-		renderFlow(async () => ({ status: 'success', account: 'created' }), null, bindEmail);
+		await renderFlow(async () => ({ status: 'success', account: 'created' }), null, bindEmail);
 
-		await user.click(await screen.findByRole('button', { name: 'Get started' }));
-		await user.click(screen.getByRole('button', { name: 'Email me a code' }));
+		await page.getByRole('button', { name: 'Get started' }).click();
+		await page.getByRole('button', { name: 'Email me a code' }).click();
 
-		expect(screen.getByText('Enter your email address.')).toBeDefined();
-		expect(document.activeElement).toBe(screen.getByLabelText('Email'));
+		await expect.element(page.getByText('Enter your email address.')).toBeVisible();
+		await expect.element(page.getByLabelText('Email')).toHaveFocus();
 		expect(bindEmail).not.toHaveBeenCalled();
 	});
 
 	it.each(['created', 'existing'] as const)(
 		'loads the page again once the code signs the invitee in, saying the account was %s',
 		async (account) => {
-			const assign = stubPageLoads();
-			renderFlow(async () => ({ status: 'success', account }));
+			const loads = holdPageLoads();
+			await renderFlow(async () => ({ status: 'success', account }));
 
 			await signInWithInvite();
 
-			await waitFor(() => expect(assign).toHaveBeenCalledWith(`/invite?account=${account}`));
+			await expect
+				.poll(() => loads)
+				.toEqual([{ path: `/invite?account=${account}`, type: 'push' }]);
 		}
 	);
 
-	it('offers a passkey on the page loaded again for a new account', async () => {
-		renderFlow(
-			async () => ({ status: 'success', account: 'created' }),
-			'Ada',
-			undefined,
-			'created'
-		);
-
-		await screen.findByRole('heading', { name: 'Create a passkey' });
-	});
-
-	it('drops a failed passkey’s message once its page has been left, keeping the step', async () => {
-		const page = renderKeptPage(
+	it('offers a passkey on the page loaded again for a new account, and drops a failed one’s message once its page has been left', async () => {
+		const keptPage = await renderKeptPage(
 			inviteFlow(
 				async () => ({ status: 'success', account: 'created' }),
 				'Ada',
@@ -177,37 +151,36 @@ describe('InviteFlow', () => {
 			)
 		);
 
-		await screen.findByRole('heading', { name: 'Create a passkey' });
-		const user = userEvent.setup();
-		await user.click(screen.getByRole('button', { name: 'Create a passkey' }));
-		expect(await screen.findByText('No passkey was created')).toBeDefined();
-		await page.hide();
-		await page.show();
+		await page.getByRole('button', { name: 'Create a passkey' }).click();
+		await expect.element(page.getByText('No passkey was created')).toBeVisible();
+		await keptPage.hide();
+		await keptPage.show();
 
-		expect(screen.queryByText('No passkey was created')).toBeNull();
-		expect(screen.getByRole('heading', { name: 'Create a passkey' })).toBeDefined();
+		expect(page.getByText('No passkey was created').query()).toBeNull();
+		await expect.element(page.getByRole('heading', { name: 'Create a passkey' })).toBeVisible();
 	});
 
 	it('tells an invitee who already had an account so, on the page loaded again', async () => {
-		renderFlow(
+		await renderFlow(
 			async () => ({ status: 'success', account: 'existing' }),
 			'Ada',
 			undefined,
 			'existing'
 		);
 
-		await screen.findByRole('heading', { name: 'You’re all set' });
-		expect(screen.getByText('You already have an account, and you’re signed in.')).toBeDefined();
+		await expect.element(page.getByRole('heading', { name: 'You’re all set' })).toBeVisible();
+		await expect
+			.element(page.getByText('You already have an account, and you’re signed in.'))
+			.toBeVisible();
 	});
 
 	it('signs a signed-in visitor out to this invite, with its token back in the fragment', async () => {
-		const signOut = vi.fn();
-		vi.mocked(useSignOut).mockReturnValue({ signOut, pending: false });
-		renderFlow(async () => ({ status: 'success', account: 'existing' }), 'Sam');
-
-		await userEvent.setup().click(await screen.findByRole('button', { name: 'Sign out' }));
-
+		const loads = holdPageLoads();
+		await renderFlow(async () => ({ status: 'success', account: 'existing' }), 'Sam');
 		expect(window.location.hash).toBe('');
-		expect(signOut).toHaveBeenCalledWith({ destination: `/invite#${token}` });
+
+		await page.getByRole('button', { name: 'Sign out' }).click();
+
+		await expect.poll(() => loads).toEqual([{ path: `/invite#${token}`, type: 'reload' }]);
 	});
 });

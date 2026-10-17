@@ -1,6 +1,6 @@
 import { parseIngredient, type ParseIngredientOptions } from 'parse-ingredient';
 import type { Amount } from '@/domain/recipe/amount';
-import { approximationWord, readAmountWords, vulgarFractions } from '@/domain/recipe/amount-words';
+import { approximationWord, numeralQuantity, readAmountWords } from '@/domain/recipe/amount-words';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
 import { readingOptions, readUnit, sizes, splitUnitMarker } from '@/domain/recipe/ingredient-units';
 import { withoutListMarkers } from '@/domain/recipe/list-markers';
@@ -32,16 +32,13 @@ export const exampleIngredientLine = '3 ribs celery, sliced';
 // Punctuation that only ends a line, as in "2 cups flour;". A period that ends a unit stays.
 const lineEndPunctuation = ';,.';
 
-// One quantity as written: a fraction or mixed number, a vulgar fraction, a decimal, or a whole number.
-const quantitySource = String.raw`(?:\d+(?:\s+\d+)?\s*[/⁄]\s*\d+|\d*\s*${vulgarFractions}|\d*\.\d+|\d+)`;
-
 // The ways the library joins a range's two quantities: a dash, or "to" or "or".
 const rangeDash = String.raw`[-\u2013\u2014]`;
 const rangeWord = '(?:to|or)';
 
 // A quantity, or a range of two joined the way the library joins them.
 const amountPattern = new RegExp(
-	String.raw`^${quantitySource}(?:(?:\s*${rangeDash}\s*|\s+${rangeWord}\s+)${quantitySource})?$`,
+	String.raw`^${numeralQuantity}(?:(?:\s*${rangeDash}\s*|\s+${rangeWord}\s+)${numeralQuantity})?$`,
 	'iu'
 );
 
@@ -68,6 +65,9 @@ const preparationGap = /[\s,]*$/u;
 // Closing phrases that say how an ingredient is used rather than what it is: "Salt to taste".
 const trailingNote =
 	/(?<=[\s,])(?:to taste|as needed|optional|for garnish|for serving|for dusting|for the .+)$/iu;
+
+// Stands in for each character parentheses hold, as no space, comma, or letter does.
+const parenthesizedBlank = '_';
 
 function toAmount(min: number, max: number | null): Amount | undefined {
 	if (!Number.isFinite(min) || min <= 0) {
@@ -173,13 +173,34 @@ function readMeasure(line: string): Measure | undefined {
 	};
 }
 
-// A closing note moves to the front of the preparation, so the item names only the ingredient.
+// The text with what parentheses hold, and the parentheses, blanked, so a search finds only what
+// stands outside them, where it stands.
+function outsideParentheses(text: string): string {
+	let outside = '';
+	let depth = 0;
+	for (let index = 0; index < text.length; index += 1) {
+		const character = text.charAt(index);
+		if (character === '(') {
+			depth += 1;
+		}
+
+		outside += depth === 0 ? character : parenthesizedBlank;
+		if (character === ')') {
+			depth = Math.max(0, depth - 1);
+		}
+	}
+
+	return outside;
+}
+
+// A closing note moves to the front of the preparation, so the item names only the ingredient. One
+// inside parentheses stays: "eggs (1 for the dough and 1 for the wash)".
 function withTrailingNote(item: string, preparation = ''): ItemParts {
-	const note = trailingNote.exec(item);
-	const rest =
-		note === null ? '' : item.slice(0, note.index).trimEnd().replace(/,$/u, '').trimEnd();
-	if (note !== null && rest !== '') {
-		return { item: rest, preparation: preparation === '' ? note[0] : `${note[0]}, ${preparation}` };
+	const index = outsideParentheses(item).search(trailingNote);
+	const rest = index === -1 ? '' : item.slice(0, index).trimEnd().replace(/,$/u, '').trimEnd();
+	if (rest !== '') {
+		const note = item.slice(index);
+		return { item: rest, preparation: preparation === '' ? note : `${note}, ${preparation}` };
 	}
 
 	return preparation === '' ? { item } : { item, preparation };
@@ -187,20 +208,7 @@ function withTrailingNote(item: string, preparation = ''): ItemParts {
 
 // Where the commas outside parentheses fall: "1 cup (240 ml, warm) milk, divided" has one.
 function topLevelCommas(description: string): number[] {
-	const commas: number[] = [];
-	let depth = 0;
-	for (let index = 0; index < description.length; index += 1) {
-		const character = description[index];
-		if (character === '(') {
-			depth += 1;
-		} else if (character === ')') {
-			depth = Math.max(0, depth - 1);
-		} else if (character === ',' && depth === 0) {
-			commas.push(index);
-		}
-	}
-
-	return commas;
+	return [...outsideParentheses(description).matchAll(/,/gu)].map(({ index }) => index);
 }
 
 // A lone word that describes an item rather than names one, by its shape: a size, a word such as

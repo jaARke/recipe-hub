@@ -22,7 +22,7 @@ function PageNotFoundState() {
 			<Empty>
 				<EmptyHeader>
 					<EmptyMedia>
-						<Mascot size="xl" loading="eager" />
+						<Mascot pose="worried" size="xl" loading="eager" />
 					</EmptyMedia>
 					{/* EmptyTitle renders a div, so the role makes it this page's heading. */}
 					<EmptyTitle role="heading" aria-level={1}>

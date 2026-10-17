@@ -1,12 +1,13 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import * as React from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page, userEvent } from 'vitest/browser';
 import {
 	ConfirmActionDialog,
 	useConfirmActionDialogOpener,
 } from '@/components/forms/confirm-action-dialog';
 import type { FormAction, FormState } from '@/components/forms/form-state';
+import { heldResult } from '@/components/forms/testing/held-result';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 
 const declineProps = {
@@ -28,9 +29,8 @@ function declineDialog(action: FormAction) {
 	);
 }
 
-function renderDialog(action: FormAction) {
-	render(declineDialog(action));
-	return screen.getByRole('button', { name: 'Decline' });
+function dialog() {
+	return page.getByRole('alertdialog');
 }
 
 // Opened by one control, as a menu's item opens it, with focus to return to another, as the menu's
@@ -55,76 +55,71 @@ function OpenedElsewhere({ action }: { action: FormAction }) {
 
 describe('ConfirmActionDialog', () => {
 	it('stays open while the action runs, so it cannot be confirmed twice', async () => {
-		const { promise, resolve } = Promise.withResolvers<FormState>();
+		const { promise, resolve } = heldResult<FormState>({ status: 'success' });
 		const action = vi.fn<FormAction>(() => promise);
-		const user = userEvent.setup();
-		const trigger = renderDialog(action);
+		await render(declineDialog(action));
+		// Read while closed: the open dialog takes the rest of the page out of the accessibility tree.
+		const trigger = page.getByRole('button', { name: 'Decline' }).element();
 
-		await user.click(trigger);
-		await user.click(await screen.findByRole('button', { name: 'Decline request' }));
-		await user.keyboard('{Escape}');
-		await user.click(screen.getByRole('button', { name: 'Keep request' }));
+		await page.getByRole('button', { name: 'Decline' }).click();
+		await dialog().getByRole('button', { name: 'Decline request' }).click();
+		const confirming = dialog().getByRole('button', { name: 'Declining' });
+		// Named by its pending label alone, which says it waits, without its spinner's "Loading".
+		await expect.element(confirming).toHaveAccessibleName('Declining');
+		// Focus stays on the confirming button as it waits, where a key could press it again.
+		await expect.element(confirming).toHaveFocus();
+		await userEvent.keyboard('{Enter}');
+		await userEvent.keyboard('{Escape}');
 
+		await expect.element(dialog().getByRole('button', { name: 'Keep request' })).toBeDisabled();
 		expect(trigger.getAttribute('aria-expanded')).toBe('true');
-		await user.click(screen.getByRole('button', { name: /Declining$/ }));
+		// Ended before the count is read, since a second submit would wait in React's queue until then.
+		resolve({ status: 'success' });
+		await expect.element(dialog()).not.toBeInTheDocument();
 		expect(action).toHaveBeenCalledOnce();
-		// Ended, since React holds back every later transition, a later test's among them, until it ends.
-		await act(async () => resolve({ status: 'success' }));
 	});
 
 	it('closes as its page hides, so a return through history finds it closed', async () => {
 		const action = vi.fn<FormAction>();
-		const user = userEvent.setup();
-		const page = renderKeptPage(declineDialog(action));
-		const trigger = screen.getByRole('button', { name: 'Decline' });
+		const keptPage = await renderKeptPage(declineDialog(action));
 
-		await user.click(trigger);
-		expect(await screen.findByRole('alertdialog')).toBeDefined();
-		await page.hide();
-		await page.show();
+		await page.getByRole('button', { name: 'Decline' }).click();
+		await expect.element(dialog()).toBeVisible();
+		await keptPage.hide();
+		await keptPage.show();
 
-		expect(trigger.getAttribute('aria-expanded')).toBe('false');
-		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+		await expect.element(dialog()).not.toBeInTheDocument();
 		expect(action).not.toHaveBeenCalled();
 	});
 
 	it('stays open while its action runs as its page hides, and shows a refusal that arrives meanwhile', async () => {
-		const { promise, resolve } = Promise.withResolvers<FormState>();
-		const user = userEvent.setup();
-		const page = renderKeptPage(declineDialog(() => promise));
-		const trigger = screen.getByRole('button', { name: 'Decline' });
+		const { promise, resolve } = heldResult<FormState>({ status: 'success' });
+		const keptPage = await renderKeptPage(declineDialog(() => promise));
 
-		await user.click(trigger);
-		await user.click(await screen.findByRole('button', { name: 'Decline request' }));
-		await page.hide();
-		await act(async () =>
-			resolve({ status: 'error', message: 'Sam’s request was withdrawn.', fieldErrors: {} })
-		);
-		await page.show();
+		await page.getByRole('button', { name: 'Decline' }).click();
+		await dialog().getByRole('button', { name: 'Decline request' }).click();
+		await keptPage.hide();
+		resolve({ status: 'error', message: 'Sam’s request was withdrawn.', fieldErrors: {} });
+		await expect.poll(() => document.body.textContent).toContain('Sam’s request was withdrawn.');
+		await keptPage.show();
 
-		expect(trigger.getAttribute('aria-expanded')).toBe('true');
-		expect(
-			within(screen.getByRole('alertdialog')).getByText('Sam’s request was withdrawn.')
-		).toBeDefined();
+		await expect.element(dialog().getByText('Sam’s request was withdrawn.')).toBeVisible();
 	});
 
 	it('opens from another control without a button of its own, and returns focus where its opener says', async () => {
 		const action = vi.fn<FormAction>(async () => ({ status: 'success' }));
-		const user = userEvent.setup();
-		render(<OpenedElsewhere action={action} />);
-		expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
-			'Ask',
-			'More',
-		]);
+		await render(<OpenedElsewhere action={action} />);
+		expect(
+			page
+				.getByRole('button')
+				.elements()
+				.map((button) => button.textContent)
+		).toEqual(['Ask', 'More']);
 
-		await user.click(screen.getByRole('button', { name: 'Ask' }));
-		await user.click(
-			within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Keep request' })
-		);
+		await page.getByRole('button', { name: 'Ask' }).click();
+		await dialog().getByRole('button', { name: 'Keep request' }).click();
 
-		await waitFor(() =>
-			expect(document.activeElement).toBe(screen.getByRole('button', { name: 'More' }))
-		);
+		await expect.element(page.getByRole('button', { name: 'More' })).toHaveFocus();
 		expect(action).not.toHaveBeenCalled();
 	});
 });

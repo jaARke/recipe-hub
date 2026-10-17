@@ -1,6 +1,5 @@
-import { screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
+import { page } from 'vitest/browser';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import {
 	Combobox,
@@ -9,13 +8,17 @@ import {
 	ComboboxItem,
 	ComboboxList,
 } from '@/components/ui/combobox';
+import { displayAsPageShows } from '@/components/ui/testing/kept-page-popup';
 
 const courses = ['Soup', 'Bread', 'Salad'];
 
+function popupParts(): Element[] {
+	return Array.from(document.querySelectorAll('[data-slot="combobox-content"]'));
+}
+
 describe('Combobox', () => {
 	it('closes as its page hides, kept from drawing as the page shows again', async () => {
-		const user = userEvent.setup();
-		const page = renderKeptPage(
+		const keptPage = await renderKeptPage(
 			<Combobox items={courses}>
 				<ComboboxInput aria-label="Course" triggerLabel="Show courses" />
 				<ComboboxContent>
@@ -29,19 +32,11 @@ describe('Combobox', () => {
 				</ComboboxContent>
 			</Combobox>
 		);
-		const input = screen.getByRole('combobox', { name: 'Course' });
+		await page.getByRole('button', { name: 'Show courses' }).click();
+		await expect.element(page.getByRole('listbox')).toBeVisible();
+		await keptPage.hide();
 
-		await user.click(screen.getByRole('button', { name: 'Show courses' }));
-		expect(await screen.findByRole('listbox')).toBeDefined();
-		await page.hide();
-		expect(
-			document
-				.querySelector('[data-slot="combobox-content"]')
-				?.hasAttribute('data-closed-by-page-hide')
-		).toBe(true);
-		await page.show();
-
-		expect(input.getAttribute('aria-expanded')).toBe('false');
-		await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+		expect(await displayAsPageShows(popupParts(), keptPage.show)).toEqual(['none']);
+		await expect.poll(popupParts).toEqual([]);
 	});
 });

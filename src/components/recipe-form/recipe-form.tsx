@@ -8,6 +8,7 @@ import { flushSync } from 'react-dom';
 import { hasFieldErrors } from '@/components/forms/field-errors';
 import { FieldNote, type FieldNoteContent } from '@/components/forms/field-note';
 import { focusCentered } from '@/components/forms/focus-centered';
+import { focusFellToPage } from '@/components/forms/focus-fell-to-page';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction, FormState } from '@/components/forms/form-state';
 import { FormStatusMessage } from '@/components/forms/form-status-message';
@@ -78,7 +79,11 @@ import {
 	ReviewNotesNext,
 	UncheckedSaveDialog,
 } from '@/components/recipe-form/review-notes';
-import { listRowNames, sectionLabel } from '@/components/recipe-form/sectioned-list';
+import {
+	listRowNames,
+	sectionLabel,
+	type ListNaming,
+} from '@/components/recipe-form/sectioned-list';
 import {
 	SectionedListField,
 	sectionedListFieldIds,
@@ -173,10 +178,11 @@ const textFieldNames: readonly TextFieldName[] = [
 	'yieldAmount',
 ];
 
+// Each list's legend and what its rows are called, which its field and the problem summary share.
 const listFieldLabels = {
-	ingredientSections: { legend: 'Ingredients', noun: 'ingredient' },
-	instructionSections: { legend: 'Steps', noun: 'step' },
-} as const satisfies Record<RecipeFormListName, { legend: string; noun: string }>;
+	ingredientSections: { legend: 'Ingredients', noun: 'ingredient', numbered: false },
+	instructionSections: { legend: 'Steps', noun: 'step', numbered: true },
+} as const satisfies Record<RecipeFormListName, { legend: string } & ListNaming>;
 
 const photoFieldLegends = {
 	dish: 'Photos',
@@ -214,7 +220,7 @@ type RecipeFormProps = {
 	// Absent when adding a recipe.
 	editing?: EditedRecipe;
 	// The import whose draft the form reviews, which the saved recipe takes its provenance from. The
-	// review's intro takes focus as the page loads.
+	// review's intro takes focus as the page loads, unless the reader is already in a field.
 	importId?: string;
 	// Keeps unsaved changes in this browser for the member signed in, and brings them back as the form
 	// loads again. What the page knows still exists of what the member's forms edit prunes the rest.
@@ -375,14 +381,17 @@ function RecipeForm({
 	// from.
 	const lastFocused = React.useRef<Element>(null);
 
-	// Reviewing an import starts on its intro, once, not again when a hidden page shows.
+	// Reviewing an import starts on its intro, once, not again when a hidden page shows, and not where
+	// the reader went to a field before the page hydrated.
 	const focusedReview = React.useRef(false);
 	React.useEffect(() => {
 		if (importId === undefined || focusedReview.current) {
 			return;
 		}
 		focusedReview.current = true;
-		document.getElementById(ids.reviewIntro)?.focus();
+		if (focusFellToPage()) {
+			document.getElementById(ids.reviewIntro)?.focus();
+		}
 	}, [importId, ids.reviewIntro]);
 
 	function fieldLabel(field: TextFieldName): string {
@@ -416,9 +425,9 @@ function RecipeForm({
 				};
 			case 'row':
 			case 'section': {
-				const { legend, noun } = listFieldLabels[target.list];
+				const { legend, ...naming } = listFieldLabels[target.list];
 				const listIds = sectionedListFieldIds(ids.list(target.list));
-				const names = listRowNames(values[target.list].rows, noun)[target.index];
+				const names = listRowNames(values[target.list].rows, naming)[target.index];
 				// A section shows at its heading's row, which its link focuses.
 				return target.kind === 'row'
 					? {
@@ -734,7 +743,6 @@ function RecipeForm({
 						description="One step per field, or paste them all at once. Add a heading for a separate part, such as a glaze."
 						itemPlaceholder="Heat the oven to 450°F."
 						headingPlaceholder="For the glaze"
-						numbered
 						noteFor={noteFor}
 					/>
 					<TextareaField

@@ -1,6 +1,6 @@
-import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page, type Locator } from 'vitest/browser';
 import type { HeaderMember } from '@/components/layout/header-member';
 import { SiteMenu } from '@/components/layout/site-menu';
 import { stubTabNavigation } from '@/components/recipe/testing/tab-navigation';
@@ -26,15 +26,18 @@ afterEach(() => {
 const member: HeaderMember = { displayName: 'Sam', role: 'member' };
 const admin: HeaderMember = { displayName: 'Avery', role: 'admin' };
 
-async function openMenu(session: Promise<HeaderMember | null>) {
-	render(<SiteMenu member={session} />);
-	await userEvent.click(screen.getByRole('button', { name: 'Menu' }));
-	return screen.findByRole('menu');
+async function openMenu(session: Promise<HeaderMember | null>): Promise<Locator> {
+	await render(<SiteMenu member={session} />);
+	await page.getByRole('button', { name: 'Menu' }).click();
+	const menu = page.getByRole('menu');
+	await expect.element(menu).toBeVisible();
+	return menu;
 }
 
-function itemNames(group: HTMLElement, role: 'menuitem' | 'menuitemradio' = 'menuitem'): string[] {
-	return within(group)
-		.getAllByRole(role)
+function itemNames(group: Locator, role: 'menuitem' | 'menuitemradio' = 'menuitem'): string[] {
+	return group
+		.getByRole(role)
+		.elements()
 		.map((item) => item.textContent);
 }
 
@@ -42,26 +45,31 @@ describe('SiteMenu', () => {
 	it('offers a signed-out visitor the site, sign-in, privacy, and the theme', async () => {
 		const menu = await openMenu(Promise.resolve(null));
 
-		const account = await within(menu).findByRole('group', { name: 'Account' });
+		const account = menu.getByRole('group', { name: 'Account' });
+		await expect.element(account).toBeVisible();
 		expect(itemNames(account)).toEqual(['Sign in', 'Request access', 'Privacy']);
-		expect(within(account).getByRole('menuitem', { name: 'Privacy' }).getAttribute('href')).toBe(
-			'/privacy'
-		);
-		expect(itemNames(within(menu).getByRole('group', { name: 'Navigation' }))).toEqual([
+		await expect
+			.element(account.getByRole('menuitem', { name: 'Privacy' }))
+			.toHaveAttribute('href', '/privacy');
+		expect(itemNames(menu.getByRole('group', { name: 'Navigation' }))).toEqual([
 			'Browse',
 			'Favorites',
 			'Add recipe',
 		]);
-		const theme = within(menu).getByRole('group', { name: 'Theme' });
-		expect(itemNames(theme, 'menuitemradio')).toEqual(['Light', 'Dark', 'System']);
+		expect(itemNames(menu.getByRole('group', { name: 'Theme' }), 'menuitemradio')).toEqual([
+			'Light',
+			'Dark',
+			'System',
+		]);
 	});
 
 	it("keeps a member's account group to the account and privacy, with Sign out last", async () => {
 		const menu = await openMenu(Promise.resolve(member));
 
-		const account = await within(menu).findByRole('group', { name: 'Signed in as Sam' });
+		const account = menu.getByRole('group', { name: 'Signed in as Sam' });
+		await expect.element(account).toBeVisible();
 		expect(itemNames(account)).toEqual(['Account', 'Privacy', 'Sign out']);
-		expect(itemNames(within(menu).getByRole('group', { name: 'Navigation' }))).toEqual([
+		expect(itemNames(menu.getByRole('group', { name: 'Navigation' }))).toEqual([
 			'Browse',
 			'Favorites',
 			'Add recipe',
@@ -71,9 +79,8 @@ describe('SiteMenu', () => {
 	it("adds Admin last in an admin's navigation", async () => {
 		const menu = await openMenu(Promise.resolve(admin));
 
-		const account = await within(menu).findByRole('group', { name: 'Signed in as Avery' });
-		expect(itemNames(account)).toEqual(['Account', 'Privacy', 'Sign out']);
-		expect(itemNames(within(menu).getByRole('group', { name: 'Navigation' }))).toEqual([
+		await expect.element(menu.getByRole('menuitem', { name: 'Admin' })).toBeVisible();
+		expect(itemNames(menu.getByRole('group', { name: 'Navigation' }))).toEqual([
 			'Browse',
 			'Favorites',
 			'Add recipe',
@@ -84,39 +91,40 @@ describe('SiteMenu', () => {
 	it('opens with its navigation before the session resolves', async () => {
 		const menu = await openMenu(new Promise<HeaderMember | null>(() => {}));
 
-		expect(itemNames(within(menu).getByRole('group', { name: 'Navigation' }))).toEqual([
+		expect(itemNames(menu.getByRole('group', { name: 'Navigation' }))).toEqual([
 			'Browse',
 			'Favorites',
 			'Add recipe',
 		]);
-		expect(within(menu).queryByRole('menuitem', { name: 'Sign in' })).toBeNull();
-		expect(within(menu).queryByRole('menuitem', { name: 'Account' })).toBeNull();
+		await expect.element(menu.getByRole('menuitem', { name: 'Sign in' })).not.toBeInTheDocument();
+		await expect.element(menu.getByRole('menuitem', { name: 'Account' })).not.toBeInTheDocument();
 	});
 
-	it('marks the current page', async () => {
+	it('marks the current page, underlined so more than its color marks it', async () => {
 		const menu = await openMenu(Promise.resolve(null));
 
-		expect(
-			within(menu).getByRole('menuitem', { name: 'Browse' }).getAttribute('aria-current')
-		).toBe('page');
-		expect(
-			within(menu).getByRole('menuitem', { name: 'Add recipe' }).getAttribute('aria-current')
-		).toBeNull();
+		const browse = menu.getByRole('menuitem', { name: 'Browse' });
+		await expect.element(browse).toHaveAttribute('aria-current', 'page');
+		await expect.element(browse).toHaveStyle({ textDecorationLine: 'underline' });
+		const addRecipe = menu.getByRole('menuitem', { name: 'Add recipe' });
+		await expect.element(addRecipe).not.toHaveAttribute('aria-current');
+		await expect.element(addRecipe).toHaveStyle({ textDecorationLine: 'none' });
 	});
 
 	it('marks the section of a page below it', async () => {
 		location.pathname = '/contribute/imports/0199c7a4';
 		const menu = await openMenu(Promise.resolve(admin));
 
-		expect(
-			within(menu).getByRole('menuitem', { name: 'Add recipe' }).getAttribute('aria-current')
-		).toBe('true');
-		expect(
-			within(menu).getByRole('menuitem', { name: 'Browse' }).getAttribute('aria-current')
-		).toBeNull();
-		expect(
-			(await within(menu).findByRole('menuitem', { name: 'Admin' })).getAttribute('aria-current')
-		).toBeNull();
+		await expect
+			.element(menu.getByRole('menuitem', { name: 'Add recipe' }))
+			.toHaveAttribute('aria-current', 'true');
+		await expect
+			.element(menu.getByRole('menuitem', { name: 'Browse' }))
+			.not.toHaveAttribute('aria-current');
+		await expect.element(menu.getByRole('menuitem', { name: 'Admin' })).toBeVisible();
+		await expect
+			.element(menu.getByRole('menuitem', { name: 'Admin' }))
+			.not.toHaveAttribute('aria-current');
 	});
 
 	it('marks Favorites as the section of a recipe opened from Favorites', async () => {
@@ -126,11 +134,11 @@ describe('SiteMenu', () => {
 		writeTabStorage('opened-from:/recipes/lemon-bars', favoritesUrl);
 		const menu = await openMenu(Promise.resolve(null));
 
-		expect(
-			within(menu).getByRole('menuitem', { name: 'Favorites' }).getAttribute('aria-current')
-		).toBe('true');
-		expect(
-			within(menu).getByRole('menuitem', { name: 'Browse' }).getAttribute('aria-current')
-		).toBeNull();
+		await expect
+			.element(menu.getByRole('menuitem', { name: 'Favorites' }))
+			.toHaveAttribute('aria-current', 'true');
+		await expect
+			.element(menu.getByRole('menuitem', { name: 'Browse' }))
+			.not.toHaveAttribute('aria-current');
 	});
 });

@@ -88,7 +88,7 @@ function RecipeTags({
 	tagHref?: (tag: string) => string;
 }) {
 	return (
-		<ul className="flex flex-wrap gap-1.5">
+		<ul role="list" className="flex flex-wrap gap-1.5">
 			{tags.map((tag) => (
 				<li key={tag}>
 					<Badge

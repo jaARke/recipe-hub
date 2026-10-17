@@ -1,10 +1,11 @@
-import { act, render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import type * as React from 'react';
 import { createPortal } from 'react-dom';
 import { describe, expect, it, vi } from 'vitest';
+import { render } from 'vitest-browser-react';
+import { page } from 'vitest/browser';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FieldErrors, FormAction, FormState } from '@/components/forms/form-state';
+import { heldResult } from '@/components/forms/testing/held-result';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import { useFormAction } from '@/components/forms/use-form-action';
 
@@ -57,88 +58,84 @@ const refuse: FormAction = async () => ({
 
 const succeed: FormAction = async () => ({ status: 'success' });
 
-function nameField(): HTMLInputElement {
-	return screen.getByLabelText<HTMLInputElement>('Name');
+function nameField() {
+	return page.getByRole('textbox', { name: 'Name' });
+}
+
+function saveButton() {
+	return page.getByRole('button', { name: 'Save' });
 }
 
 // Types a name, so the browser's check finds nothing, then saves.
-async function saveName(user: ReturnType<typeof userEvent.setup>, name = 'Ada') {
-	await user.clear(nameField());
-	await user.type(nameField(), name);
-	await user.click(screen.getByRole('button', { name: 'Save' }));
+async function saveName(name = 'Ada') {
+	await nameField().fill(name);
+	await saveButton().click();
 }
 
 describe('useFormAction', () => {
 	it('reads a success as idle after its page was hidden', async () => {
-		const user = userEvent.setup();
-		const page = renderKeptPage(<ProbeForm action={succeed} />);
+		const keptPage = await renderKeptPage(<ProbeForm action={succeed} />);
 
-		await saveName(user);
-		expect(await screen.findByText('Saved.')).toBeDefined();
-		await page.hide();
-		await page.show();
+		await saveName();
+		await expect.element(page.getByText('Saved.')).toBeVisible();
+		await keptPage.hide();
+		await keptPage.show();
 
-		expect(screen.queryByText('Saved.')).toBeNull();
+		await expect.element(page.getByText('Saved.')).not.toBeInTheDocument();
 	});
 
 	it('keeps a refusal’s field error and typed text, not its message, after its page was hidden', async () => {
-		const user = userEvent.setup();
-		const page = renderKeptPage(<ProbeForm action={refuse} />);
+		const keptPage = await renderKeptPage(<ProbeForm action={refuse} />);
 
-		await saveName(user);
-		expect(await screen.findByText('Check the name.')).toBeDefined();
-		await page.hide();
-		await page.show();
+		await saveName();
+		await expect.element(page.getByText('Check the name.')).toBeVisible();
+		await keptPage.hide();
+		await keptPage.show();
 
-		expect(screen.queryByText('Check the name.')).toBeNull();
-		expect(screen.getByText('Use 60 characters or fewer.')).toBeDefined();
-		expect(nameField().value).toBe('Ada');
+		await expect.element(page.getByText('Check the name.')).not.toBeInTheDocument();
+		await expect.element(page.getByText('Use 60 characters or fewer.')).toBeVisible();
+		await expect.element(nameField()).toHaveValue('Ada');
 	});
 
 	it('clears the message before the page shows again', async () => {
-		const user = userEvent.setup();
-		const page = renderKeptPage(<ProbeForm action={refuse} />);
+		const keptPage = await renderKeptPage(<ProbeForm action={refuse} />);
 
-		await saveName(user);
-		expect(await screen.findByText('Check the name.')).toBeDefined();
-		await page.hide();
+		await saveName();
+		await expect.element(page.getByText('Check the name.')).toBeVisible();
+		await keptPage.hide();
 
 		expect(document.body.textContent).not.toContain('Check the name.');
 	});
 
 	it('shows a result that arrives while its page is hidden', async () => {
-		const user = userEvent.setup();
-		const { promise, resolve } = Promise.withResolvers<FormState>();
+		const { promise, resolve } = heldResult<FormState>({ status: 'success' });
 		const action = vi.fn<FormAction>().mockImplementationOnce(refuse).mockReturnValueOnce(promise);
-		const page = renderKeptPage(<ProbeForm action={action} />);
+		const keptPage = await renderKeptPage(<ProbeForm action={action} />);
 
-		await saveName(user);
-		expect(await screen.findByText('Check the name.')).toBeDefined();
-		await user.click(screen.getByRole('button', { name: 'Save' }));
-		await page.hide();
-		await act(async () => resolve({ status: 'success' }));
-		await page.show();
+		await saveName();
+		await expect.element(page.getByText('Check the name.')).toBeVisible();
+		await saveButton().click();
+		await keptPage.hide();
+		resolve({ status: 'success' });
+		await expect.poll(() => document.body.textContent).toContain('Saved.');
+		await keptPage.show();
 
-		expect(screen.getByText('Saved.')).toBeDefined();
+		await expect.element(page.getByText('Saved.')).toBeVisible();
 	});
 
 	it('moves focus to a refusal once, not again when its page shows', async () => {
-		const user = userEvent.setup();
-		const page = renderKeptPage(<ProbeForm action={refuse} />);
+		const keptPage = await renderKeptPage(<ProbeForm action={refuse} />);
 
-		await saveName(user);
-		const message = await screen.findByRole('alert');
-		expect(document.activeElement).toBe(message);
-		message.blur();
-		await page.hide();
-		await page.show();
+		await saveName();
+		await expect.element(page.getByRole('alert')).toHaveFocus();
+		await keptPage.hide();
+		await keptPage.show();
 
 		expect(document.activeElement).toBe(document.body);
 	});
 
 	it('moves focus to the first field the server refused', async () => {
-		const user = userEvent.setup();
-		render(
+		await render(
 			<ProbeForm
 				action={async () => ({
 					status: 'error',
@@ -147,70 +144,67 @@ describe('useFormAction', () => {
 			/>
 		);
 
-		await saveName(user);
+		await saveName();
 
-		expect(await screen.findByText('Use 60 characters or fewer.')).toBeDefined();
-		expect(document.activeElement).toBe(nameField());
+		await expect.element(page.getByText('Use 60 characters or fewer.')).toBeVisible();
+		await expect.element(nameField()).toHaveFocus();
 	});
 
 	it('refuses a blank required field at once, before any request, with focus on it', async () => {
 		const action = vi.fn(succeed);
 		const onSubmit = vi.fn();
-		const user = userEvent.setup();
-		render(<ProbeForm action={action} onSubmit={onSubmit} />);
+		await render(<ProbeForm action={action} onSubmit={onSubmit} />);
 
 		// Blank once trimmed, as the server reads it.
-		await saveName(user, '   ');
+		await saveName('   ');
 
-		expect(screen.getByText('Enter a name.')).toBeDefined();
-		expect(nameField().getAttribute('aria-invalid')).toBe('true');
-		expect(document.activeElement).toBe(nameField());
-		expect(nameField().value).toBe('   ');
+		await expect.element(page.getByText('Enter a name.')).toBeVisible();
+		await expect.element(nameField()).toHaveAttribute('aria-invalid', 'true');
+		await expect.element(nameField()).toHaveFocus();
+		await expect.element(nameField()).toHaveValue('   ');
 		expect(action).not.toHaveBeenCalled();
 		expect(onSubmit).not.toHaveBeenCalled();
 	});
 
 	it('shows a custom check’s problems at once, before any request, with focus on the first', async () => {
 		const action = vi.fn(succeed);
-		const user = userEvent.setup();
-		render(<ProbeForm action={action} check={() => ({ photos: 'Add at least one photo.' })} />);
+		await render(
+			<ProbeForm action={action} check={() => ({ photos: 'Add at least one photo.' })} />
+		);
 
-		await saveName(user);
+		await saveName();
 
-		const problem = screen.getByText('Add at least one photo.');
-		expect(document.activeElement).toBe(problem);
-		expect(screen.queryByText('Enter a name.')).toBeNull();
+		await expect.element(page.getByText('Add at least one photo.')).toHaveFocus();
+		await expect.element(page.getByText('Enter a name.')).not.toBeInTheDocument();
 		expect(action).not.toHaveBeenCalled();
 	});
 
 	it('sends once the browser finds nothing, and the action’s result replaces the browser’s', async () => {
 		const action = vi.fn(succeed);
 		const onSubmit = vi.fn();
-		const user = userEvent.setup();
-		render(<ProbeForm action={action} onSubmit={onSubmit} />);
+		await render(<ProbeForm action={action} onSubmit={onSubmit} />);
 
-		await user.click(screen.getByRole('button', { name: 'Save' }));
-		expect(screen.getByText('Enter a name.')).toBeDefined();
-		await saveName(user);
+		await saveButton().click();
+		await expect.element(page.getByText('Enter a name.')).toBeVisible();
+		await saveName();
 
-		expect(await screen.findByText('Saved.')).toBeDefined();
-		expect(screen.queryByText('Enter a name.')).toBeNull();
+		await expect.element(page.getByText('Saved.')).toBeVisible();
+		await expect.element(page.getByText('Enter a name.')).not.toBeInTheDocument();
 		expect(onSubmit).toHaveBeenCalledOnce();
 		expect(action).toHaveBeenCalledOnce();
 	});
 
 	it('clears what the browser found once it is fixed, though onSubmit stops the submit', async () => {
 		const action = vi.fn(succeed);
-		const user = userEvent.setup();
-		render(<ProbeForm action={action} onSubmit={(event) => event.preventDefault()} />);
+		await render(<ProbeForm action={action} onSubmit={(event) => event.preventDefault()} />);
 
-		await user.click(screen.getByRole('button', { name: 'Save' }));
-		expect(screen.getByText('Enter a name.')).toBeDefined();
-		await saveName(user);
+		await saveButton().click();
+		await expect.element(page.getByText('Enter a name.')).toBeVisible();
+		await saveName();
 
-		expect(screen.queryByText('Enter a name.')).toBeNull();
-		expect(nameField().getAttribute('aria-invalid')).toBeNull();
-		expect(nameField().value).toBe('Ada');
+		await expect.element(page.getByText('Enter a name.')).not.toBeInTheDocument();
+		await expect.element(nameField()).not.toHaveAttribute('aria-invalid');
+		await expect.element(nameField()).toHaveValue('Ada');
 		expect(action).not.toHaveBeenCalled();
 	});
 
@@ -219,16 +213,15 @@ describe('useFormAction', () => {
 			.fn<(event: React.SubmitEvent<HTMLFormElement>) => void>()
 			.mockImplementationOnce(() => {})
 			.mockImplementation((event) => event.preventDefault());
-		const user = userEvent.setup();
-		render(<ProbeForm action={refuse} onSubmit={onSubmit} />);
+		await render(<ProbeForm action={refuse} onSubmit={onSubmit} />);
 
-		await saveName(user);
-		expect(await screen.findByText('Use 60 characters or fewer.')).toBeDefined();
-		await saveName(user, 'Ada L.');
+		await saveName();
+		await expect.element(page.getByText('Use 60 characters or fewer.')).toBeVisible();
+		await saveName('Ada L.');
 
 		expect(onSubmit).toHaveBeenCalledTimes(2);
-		expect(screen.getByText('Use 60 characters or fewer.')).toBeDefined();
-		expect(nameField().getAttribute('aria-invalid')).toBe('true');
+		await expect.element(page.getByText('Use 60 characters or fewer.')).toBeVisible();
+		await expect.element(nameField()).toHaveAttribute('aria-invalid', 'true');
 	});
 
 	it('leaves a form in a popup inside it to that form', async () => {
@@ -236,8 +229,7 @@ describe('useFormAction', () => {
 		const innerAction = vi.fn<(formData: FormData) => void>();
 		const reported = vi.fn();
 		window.addEventListener('error', reported);
-		const user = userEvent.setup();
-		render(
+		await render(
 			<ProbeForm action={outerAction}>
 				{/* A dialog's form renders outside the form in the page, but inside it in React's tree. */}
 				{createPortal(
@@ -249,12 +241,12 @@ describe('useFormAction', () => {
 			</ProbeForm>
 		);
 
-		await user.click(screen.getByRole('button', { name: 'Confirm' }));
+		await page.getByRole('button', { name: 'Confirm' }).click();
 		window.removeEventListener('error', reported);
 
 		expect(innerAction).toHaveBeenCalledOnce();
 		expect(reported).not.toHaveBeenCalled();
-		expect(screen.queryByText('Enter a name.')).toBeNull();
+		await expect.element(page.getByText('Enter a name.')).not.toBeInTheDocument();
 		expect(outerAction).not.toHaveBeenCalled();
 	});
 });

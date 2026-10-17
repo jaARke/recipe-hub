@@ -109,10 +109,18 @@ describe('parseIngredientLine', () => {
 		['1 pkg. cream cheese', { amount: { min: 1 }, unit: 'pkg.', item: 'cream cheese' }],
 		['1 jar salsa', { amount: { min: 1 }, unit: 'jar', item: 'salsa' }],
 		['2 jars salsa', { amount: { min: 2 }, unit: 'jars', item: 'salsa' }],
+		['1 bottle wine', { amount: { min: 1 }, unit: 'bottle', item: 'wine' }],
+		['2 bottles wine', { amount: { min: 2 }, unit: 'bottles', item: 'wine' }],
+		['1 tube tomato paste', { amount: { min: 1 }, unit: 'tube', item: 'tomato paste' }],
+		['2 tubes biscuits', { amount: { min: 2 }, unit: 'tubes', item: 'biscuits' }],
+		['1 tub ricotta', { amount: { min: 1 }, unit: 'tub', item: 'ricotta' }],
+		['2 tubs ricotta', { amount: { min: 2 }, unit: 'tubs', item: 'ricotta' }],
 		['1 can tomatoes', { amount: { min: 1 }, unit: 'can', item: 'tomatoes' }],
 		['2 cans tomatoes', { amount: { min: 2 }, unit: 'cans', item: 'tomatoes' }],
 		['1 stick butter', { amount: { min: 1 }, unit: 'stick', item: 'butter' }],
 		['2 sticks butter', { amount: { min: 2 }, unit: 'sticks', item: 'butter' }],
+		['1 bar chocolate', { amount: { min: 1 }, unit: 'bar', item: 'chocolate' }],
+		['2 bars chocolate', { amount: { min: 2 }, unit: 'bars', item: 'chocolate' }],
 		['1 slice bread', { amount: { min: 1 }, unit: 'slice', item: 'bread' }],
 		['4 slices bacon', { amount: { min: 4 }, unit: 'slices', item: 'bacon' }],
 		['1 strip lemon peel', { amount: { min: 1 }, unit: 'strip', item: 'lemon peel' }],
@@ -236,6 +244,24 @@ describe('parseIngredientLine', () => {
 	});
 
 	it.each<[string, ParsedParts]>([
+		[
+			'2 eggs (1 for the dough and 1 for the wash)',
+			{ amount: { min: 2 }, item: 'eggs (1 for the dough and 1 for the wash)' },
+		],
+		[
+			'1 cup sugar (plus more for the top) for the cake',
+			{
+				amount: { min: 1 },
+				unit: 'cup',
+				item: 'sugar (plus more for the top)',
+				preparation: 'for the cake',
+			},
+		],
+	])('leaves a note inside the parentheses in "%s" where it is', (text, parts) => {
+		expect(parseIngredientLine(text)).toStrictEqual({ text, ...parts });
+	});
+
+	it.each<[string, ParsedParts]>([
 		['two eggs', { amount: { min: 2 }, item: 'eggs' }],
 		['Two cups oatmeal', { amount: { min: 2 }, unit: 'cups', item: 'oatmeal' }],
 		['twelve eggs', { amount: { min: 12 }, item: 'eggs' }],
@@ -255,6 +281,11 @@ describe('parseIngredientLine', () => {
 			{ amount: { min: 1, max: 1.5 }, unit: 'cups', item: 'stock' },
 		],
 		['one half-pint jar cream', { amount: { min: 1 }, item: 'half-pint jar cream' }],
+		['½ to one cup flour', { amount: { min: 0.5, max: 1 }, unit: 'cup', item: 'flour' }],
+		['one to 1½ cups flour', { amount: { min: 1, max: 1.5 }, unit: 'cups', item: 'flour' }],
+		['1.5 to two cups flour', { amount: { min: 1.5, max: 2 }, unit: 'cups', item: 'flour' }],
+		['between 2 and 3 cups flour', { amount: { min: 2, max: 3 }, unit: 'cups', item: 'flour' }],
+		['Between one and two eggs', { amount: { min: 1, max: 2 }, item: 'eggs' }],
 	])('reads the amount in words in "%s"', (text, parts) => {
 		expect(parseIngredientLine(text)).toStrictEqual({ text, ...parts });
 	});
@@ -319,6 +350,7 @@ describe('parseIngredientLine', () => {
 		'3-1 cups milk',
 		'1-1/2-inch piece ginger',
 		'1e3 g flour',
+		'one to 1/2 cup flour',
 	])('reads no amount in "%s" and keeps the line as its item', (text) => {
 		expect(parseIngredientLine(text)).toStrictEqual({ text, item: text });
 	});

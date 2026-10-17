@@ -30,7 +30,7 @@ function ShapeSpecimens() {
 						</code>
 						. Buttons and inputs use md, cards and dialogs xl, badges 4xl.
 					</p>
-					<ul className="grid grid-cols-2 gap-6 sm:grid-cols-4 lg:grid-cols-7">
+					<ul role="list" className="grid grid-cols-2 gap-6 sm:grid-cols-4 lg:grid-cols-7">
 						{radiusSteps.map((step) => (
 							<li key={step} className="flex flex-col gap-2">
 								<div className={cn('h-16 border bg-muted', step)} />
@@ -41,7 +41,7 @@ function ShapeSpecimens() {
 				</div>
 			</Specimen>
 			<Specimen label="Shadow: four steps, tinted with the foreground hue">
-				<ul className="grid grid-cols-2 gap-6 lg:grid-cols-4">
+				<ul role="list" className="grid grid-cols-2 gap-6 lg:grid-cols-4">
 					{shadowSteps.map((step) => (
 						<li key={step} className="flex flex-col gap-3">
 							<Card className={cn('h-20', step)} />
