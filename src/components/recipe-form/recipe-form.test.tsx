@@ -5,7 +5,8 @@ import { render } from 'vitest-browser-react';
 import { page, userEvent, type Locator } from 'vitest/browser';
 import type { FormAction, FormState } from '@/components/forms/form-state';
 import { heldResult } from '@/components/forms/testing/held-result';
-import { renderKeptPage } from '@/components/forms/testing/kept-page';
+import { hydrate, serverRender } from '@/components/forms/testing/hydrate';
+import { KeptPage, renderKeptPage } from '@/components/forms/testing/kept-page';
 import { HeldDraftProvider } from '@/components/recipe-form/held-draft';
 import { RecipeForm, type RecipeFormDrafts } from '@/components/recipe-form/recipe-form';
 import type {
@@ -1405,6 +1406,121 @@ describe('RecipeForm’s autosave', () => {
 
 		await expect.poll(() => action).toHaveBeenCalledOnce();
 		await expect.element(page.getByText(restoredNotice)).not.toBeInTheDocument();
+	});
+});
+
+describe('RecipeForm as its page hydrates', () => {
+	afterEach(() => {
+		localStorage.clear();
+	});
+
+	it('keeps what was typed in each kind of field before the page hydrated, and saves and keeps it', async () => {
+		const action = vi.fn(refuse);
+		const form = (
+			<AutosavedForm
+				initial={recipeFormValues({
+					...lemonBars,
+					images: [{ role: 'dish', pathname: 'dish/development/bars.jpg' }],
+				})}
+				action={action}
+			/>
+		);
+		const typed = [
+			[title(), 'Lemon squares'],
+			[textbox('Source'), 'Aunt May'],
+			[textbox('Ingredient 1'), '1 cup sifted flour'],
+			[textbox('Step 1'), 'Mix well.'],
+			[textbox('Notes'), 'Best the next day.'],
+			[textbox('Prep, in minutes'), '15'],
+			[textbox('Servings'), '16'],
+			[page.getByRole('combobox', { name: 'Tags' }), 'Dessert'],
+			[textbox(/^Describe the photo/), 'Bars on a plate'],
+		] as const;
+		const container = serverRender(form);
+		for (const [field, text] of typed) {
+			await field.fill(text);
+		}
+
+		await hydrate(container, form);
+
+		for (const [field, text] of typed) {
+			await expect.element(field).toHaveValue(text);
+		}
+		await expect.poll(() => stored(newRecipeKey)?.text.title).toBe('Lemon squares');
+		await saveRecipe().click();
+		await expect.poll(() => action).toHaveBeenCalledOnce();
+		const sent = action.mock.calls[0]?.[1].get('recipe');
+		expect(JSON.parse(typeof sent === 'string' ? sent : '{}')).toMatchObject({
+			title: 'Lemon squares',
+			source: 'Aunt May',
+			notes: 'Best the next day.',
+			yield: { kind: 'servings', amount: '16' },
+			times: { prepMinutes: '15' },
+			ingredientSections: [{ lines: ['1 cup sifted flour', '2 eggs'] }],
+			instructionSections: [{ steps: ['Mix well.'] }],
+			tags: ['Dessert'],
+			images: [{ role: 'dish', alt: 'Bars on a plate' }],
+		});
+	});
+
+	it('leaves focus and the caret in the field the reader was typing in, not the review’s intro', async () => {
+		const form = (
+			<AutosavedForm initial={recipeFormValues(lemonBars, threeNotes)} importId={importId} />
+		);
+		const container = serverRender(form);
+		await textbox('Ingredient 1').fill('1 cup sifted flour');
+		textControl(textbox('Ingredient 1')).setSelectionRange(6, 12);
+
+		await hydrate(container, form);
+
+		await expect.element(textbox('Ingredient 1')).toHaveFocus();
+		const { value, selectionStart, selectionEnd } = textControl(textbox('Ingredient 1'));
+		expect({ value, selectionStart, selectionEnd }).toEqual({
+			value: '1 cup sifted flour',
+			selectionStart: 6,
+			selectionEnd: 12,
+		});
+	});
+
+	it('starts an import’s review on its intro where the reader went to no field first', async () => {
+		const form = (
+			<AutosavedForm initial={recipeFormValues(lemonBars, threeNotes)} importId={importId} />
+		);
+		const container = serverRender(form);
+
+		await hydrate(container, form);
+
+		await expect.element(noteWith('3 things need a second look')).toHaveFocus();
+	});
+
+	it('keeps what was typed since the page hydrated as a page Next keeps shows again', async () => {
+		const form = (
+			<KeptPage>
+				<AutosavedForm initial={recipeFormValues(lemonBars)} />
+			</KeptPage>
+		);
+		const container = serverRender(form);
+		await textbox('Ingredient 1').fill('1 cup sifted flour');
+		await hydrate(container, form);
+		await textbox('Ingredient 1').fill('1 cup sifted cake flour');
+
+		await page.getByRole('button', { name: 'Leave the page' }).click();
+		await page.getByRole('button', { name: 'Return to the page' }).click();
+
+		await expect.element(textbox('Ingredient 1')).toHaveValue('1 cup sifted cake flour');
+	});
+
+	it('takes back what was typed before the page hydrated as one step', async () => {
+		const form = <AutosavedForm initial={recipeFormValues(lemonBars)} />;
+		const container = serverRender(form);
+		await title().fill('Lemon squares');
+
+		await hydrate(container, form);
+		await pressUndo();
+
+		await expect.element(title()).toHaveValue('Lemon bars');
+		await pressRedo();
+		await expect.element(title()).toHaveValue('Lemon squares');
 	});
 });
 

@@ -37,7 +37,7 @@ test('an import’s draft is reviewed, edited, and saved as a recipe', async ({
 	await expect(page.getByText('Imported from')).toContainText('example.com');
 	await expect(page.getByRole('textbox', { name: 'Title' })).toHaveValue('Lemonade');
 	await expect(page.getByText(reviewNote)).toBeVisible();
-	// The notes' intro takes focus once the form has hydrated, which resets what was typed before.
+	// The notes' intro takes focus once the form has hydrated, after which a fix clears its note.
 	await expect(page.locator(':focus')).toContainText('1 thing needs a second look');
 
 	await page.getByRole('textbox', { name: 'Title' }).fill(title);

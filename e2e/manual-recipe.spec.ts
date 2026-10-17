@@ -19,7 +19,7 @@ test('a recipe entered by hand is saved, edited, and deleted', async ({ page, si
 	await signIn();
 
 	await page.goto(contributePath);
-	// Save is disabled until the form hydrates, which resets what was typed before.
+	// Save is disabled until the form hydrates, before which Add ingredient adds nothing.
 	await expect(page.getByRole('button', { name: 'Save recipe' })).toBeEnabled();
 	const form = page.getByRole('tabpanel', { name: 'Manual' });
 	await form.getByRole('textbox', { name: 'Title' }).fill(title);

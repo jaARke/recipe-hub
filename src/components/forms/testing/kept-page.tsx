@@ -13,3 +13,20 @@ export async function renderKeptPage(content: React.ReactNode) {
 		show: () => rerender(page('visible')),
 	};
 }
+
+// A page Next keeps, as renderKeptPage renders one, for content a test server-renders and hydrates,
+// which no rerender reaches: its buttons, outside the page, leave and return.
+export function KeptPage({ children }: { children: React.ReactNode }) {
+	const [mode, setMode] = React.useState<React.ActivityProps['mode']>('visible');
+	return (
+		<>
+			<button type="button" onClick={() => setMode('hidden')}>
+				Leave the page
+			</button>
+			<button type="button" onClick={() => setMode('visible')}>
+				Return to the page
+			</button>
+			<React.Activity mode={mode}>{children}</React.Activity>
+		</>
+	);
+}
