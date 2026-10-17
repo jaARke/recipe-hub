@@ -93,6 +93,10 @@ describe('scaleIngredientLine', () => {
 		['⅛ teaspoon cayenne', 1 / 4, { amount: { min: 0.125 }, unit: 'teaspoon', item: 'cayenne' }],
 		['500 g flour', 1 / 3, { amount: { min: 165 }, unit: 'g', item: 'flour' }],
 		['1.5 kg potatoes', 1 / 2, { amount: { min: 0.75 }, unit: 'kg', item: 'potatoes' }],
+		['1,5 kg potatoes', 2, { amount: { min: 3 }, unit: 'kg', item: 'potatoes' }],
+		['1,5 kg potatoes', 1 / 2, { amount: { min: 0.75 }, unit: 'kg', item: 'potatoes' }],
+		['1,500 g flour', 2, { amount: { min: 3000 }, unit: 'g', item: 'flour' }],
+		['1,500 g flour', 1 / 2, { amount: { min: 750 }, unit: 'g', item: 'flour' }],
 		['1 c. milk', 1 / 2, { amount: { min: 0.5 }, unit: 'c.', item: 'milk' }],
 		['1 C. Sugar', 2, { amount: { min: 2 }, unit: 'C.', item: 'Sugar' }],
 		['12 C. Water', 1 / 2, { amount: { min: 6 }, unit: 'C.', item: 'Water' }],
@@ -370,6 +374,18 @@ describe('scaleIngredientLine', () => {
 	])('leaves "%s", with nothing to scale, unchanged and unmarked', (text) => {
 		const line = parseIngredientLine(text);
 		expect(scaleIngredientLine(line, 2)).toStrictEqual({ line });
+	});
+
+	it.each([
+		['1 of every 2 eggs', 2],
+		['1 of every 2 eggs', 1 / 2],
+		['one in every three', 2],
+		['one in every three', 1 / 2],
+		['1 cup of every 2 cups milk', 2],
+		['1 cup of every 2 cups milk', 1 / 2],
+	])('leaves "%s", which opens with a proportion, unchanged and unmarked by %s', (text, factor) => {
+		const line = parseIngredientLine(text);
+		expect(scaleIngredientLine(line, factor)).toStrictEqual({ line });
 	});
 
 	it.each([
@@ -1739,8 +1755,26 @@ describe('scaleIngredientLine', () => {
 		['2 eggs and milk', 1 / 2, { amount: { min: 1 }, item: 'egg and milk' }],
 		['2 apples or pears', 2, { amount: { min: 4 }, item: 'apples or pears' }],
 		['2 apples or pears', 1 / 2, { amount: { min: 1 }, item: 'apple or pear' }],
+		['2 apples and pears', 2, { amount: { min: 4 }, item: 'apples and pears' }],
+		['2 apples and pears', 1 / 2, { amount: { min: 1 }, item: 'apple and pears' }],
 	])(
 		'makes the nouns the count in "%s" counts agree with it by %s, though another item is joined to them',
+		(text, factor, parts) => {
+			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+				line: { text, ...parts },
+			});
+		}
+	);
+
+	it.each<[string, number, ScaledParts]>([
+		['1 apple or pear', 2, { amount: { min: 2 }, item: 'apple or pear' }],
+		['1 apple or pear', 1 / 2, { amount: { min: 0.5 }, item: 'apple or pear' }],
+		['1 red or green pepper', 2, { amount: { min: 2 }, item: 'red or green pepper' }],
+		['1 egg and milk', 2, { amount: { min: 2 }, item: 'egg and milk' }],
+		['1 egg and milk', 1 / 2, { amount: { min: 0.5 }, item: 'egg and milk' }],
+		['1 red and green pepper', 2, { amount: { min: 2 }, item: 'red and green pepper' }],
+	])(
+		'keeps the wording of "%s" by %s, whose joined word after a count of one may describe its noun',
 		(text, factor, parts) => {
 			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
 				line: { text, ...parts },

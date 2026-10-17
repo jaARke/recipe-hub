@@ -23,7 +23,11 @@ import {
 	type AmountWords,
 } from '@/domain/recipe/amount-words';
 import type { IngredientLine, IngredientLineSpan } from '@/domain/recipe/ingredient';
-import { amountOfQuantities, parseAmountText } from '@/domain/recipe/ingredient-parser';
+import {
+	amountOfQuantities,
+	parseAmountText,
+	withDecimalPoints,
+} from '@/domain/recipe/ingredient-parser';
 import {
 	isMetricUnit,
 	readingOptions,
@@ -392,15 +396,6 @@ function quantityText(measurement: Measurement): string {
 	return text.slice(0, text.length - unitOfMeasure.length).replace(/[\s\-\u2010-\u2015]+$/u, '');
 }
 
-// A comma before one or two digits is a decimal point, and one before three separates thousands:
-// "1,5 kg" is 1.5 kg, and "1,500 g" 1500 g. The library reads every comma as a thousands separator,
-// so text is read with each decimal comma as a point, which keeps every offset where it is written.
-const decimalComma = /(?<=\d),(?=\d{1,2}(?!\d))/gu;
-
-function withDecimalPoints(text: string): string {
-	return text.replace(decimalComma, '.');
-}
-
 // The measurements in the text that scale. A length stays true at any scale, and a quantity the
 // parser would not read as an amount stays as written.
 function scalableMeasurements(text: string): ReadMeasurement[] {
@@ -689,11 +684,12 @@ const closesAlone = /^\s*[),;]/u;
 const ofTheWhole = /^\s*of\s+(?:them|it|this|that|the|these|those)(?!\p{L})/iu;
 const proportionTerm = String.raw`(?:\p{N}+|${wordsSource(wholeNumberWords)}(?!\p{L}))`;
 const ofEvery = String.raw`\s+(?:of|in)\s+every\s+`;
+// A proportion's first term, with any unit, and the words that join it to the second.
+const toSecondTerm = String.raw`${proportionTerm}(?:\s*\p{L}+\.?)?${ofEvery}`;
 const proportionFirstTerm = new RegExp(String.raw`^${ofEvery}${proportionTerm}`, 'iu');
-const proportionSecondTerm = new RegExp(
-	String.raw`(?<![\p{L}\p{N}])${proportionTerm}(?:\s*\p{L}+\.?)?${ofEvery}$`,
-	'iu'
-);
+const proportionSecondTerm = new RegExp(String.raw`(?<![\p{L}\p{N}])${toSecondTerm}$`, 'iu');
+// A line that opens with a proportion: "1 of every 2 eggs", "one in every three".
+const proportionOpening = new RegExp(String.raw`^${toSecondTerm}${proportionTerm}`, 'iu');
 
 function isGradeOrRatio(written: string): boolean {
 	const [, numerator, denominator] = fraction.exec(written) ?? [];
@@ -1033,7 +1029,7 @@ function nounInflection(item: string, { written, scaled }: Agreement): Edit | un
 // After a count above one, a word only in the plural names what it counts though another item is
 // joined to it: the count counts the words before "and", "plus", or "with" ("eggs" in "eggs and
 // milk"), and each alternative "or" joins to them ("apples or pears"). After a count of one, a joined
-// word cannot be told from one describing the noun ("1 red or green pepper"), so the item stays as
+// word cannot be told from one describing the noun ("1 red and green pepper"), so the item stays as
 // written.
 const anotherItem = /\s+(?:and|plus|with)(?!\p{L})/iu;
 const alternativeSeparator = /\s+or\s+/giu;
@@ -1117,7 +1113,8 @@ function spansIn(
 }
 
 export function scaleIngredientLine(line: IngredientLine, factor: number): ScaledIngredientLine {
-	if (factor === 1) {
+	// A proportion the line opens with is right at any scale, as one inside a line is.
+	if (factor === 1 || proportionOpening.test(line.text)) {
 		return { line };
 	}
 
