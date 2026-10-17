@@ -13,6 +13,8 @@ describe('givesAmount', () => {
 		'Stir in the remaining ½ cup sugar',
 		'Juice of 1 lemon',
 		'a few sprigs thyme',
+		// A cup's "C." before a lowercase word, which no sentence ends with.
+		'Add 12 C. flour',
 	])('finds an amount in "%s"', (text) => {
 		expect(givesAmount(text)).toBe(true);
 	});
@@ -27,6 +29,17 @@ describe('givesAmount', () => {
 		'See Note 2',
 		'Cut into 2-inch pieces',
 		'Whisk in the flour.',
+		'Bake at 180 C.',
+		'Bake at 180C. Cool on a rack.',
+		'Heat the milk to 40.5 C',
+		'Heat the milk to between 40.5 and 45.5 C.',
+		'Heat the milk to 105.5 F.',
+		'Heat the milk to 40.5°C.',
+		'Heat the milk to 105.5 degrees.',
+		'Separate ½ of the eggs',
+		'Fold in a third of the whites',
+		'Half of the eggs go into the dough',
+		'Separate one of every two eggs',
 	])('finds no amount in "%s", whose numbers are right at any scale', (text) => {
 		expect(givesAmount(text)).toBe(false);
 	});
@@ -943,6 +956,27 @@ describe('scaleIngredientLine', () => {
 			1 / 2,
 			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour (or ½ C whole wheat)' },
 		],
+		[
+			'1 cup flour (or 1.5 C whole wheat)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'flour (or 3 C whole wheat)' },
+		],
+		[
+			'1 cup flour (or 1.5 C whole wheat)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'flour (or ¾ C whole wheat)' },
+		],
+		// A rate's base scales with the amount before it, so the rate holds.
+		[
+			'1 tablespoon salt for every 2 cups water',
+			2,
+			{ amount: { min: 2 }, unit: 'tablespoons', item: 'salt for every 4 cups water' },
+		],
+		[
+			'1 tablespoon salt for every 2 cups water',
+			1 / 2,
+			{ amount: { min: 1.5 }, unit: 'teaspoons', item: 'salt for every 1 cup water' },
+		],
 	])(
 		'scales the second amount or the equivalent in "%s", measured by volume or weight, by %s',
 		(text, factor, parts) => {
@@ -1306,6 +1340,58 @@ describe('scaleIngredientLine', () => {
 			1 / 2,
 			{ amount: { min: 0.5 }, unit: 'cup', item: 'water (between 40 and 45 C)' },
 		],
+		['1 cup water (40.5 C)', 2, { amount: { min: 2 }, unit: 'cups', item: 'water (40.5 C)' }],
+		['1 cup water (40.5 C)', 1 / 2, { amount: { min: 0.5 }, unit: 'cup', item: 'water (40.5 C)' }],
+		['1 cup water (40,5 C)', 2, { amount: { min: 2 }, unit: 'cups', item: 'water (40,5 C)' }],
+		['1 cup water (40,5 C)', 1 / 2, { amount: { min: 0.5 }, unit: 'cup', item: 'water (40,5 C)' }],
+		[
+			'1 cup water (40 to 45.5 C)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'water (40 to 45.5 C)' },
+		],
+		[
+			'1 cup water (40 to 45.5 C)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'water (40 to 45.5 C)' },
+		],
+		[
+			'1 cup water (between 40.5 and 45.5 C)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'water (between 40.5 and 45.5 C)' },
+		],
+		[
+			'1 cup water (between 40.5 and 45.5 C)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'water (between 40.5 and 45.5 C)' },
+		],
+		[
+			'1 cup water, heated to 45 C.',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'water', preparation: 'heated to 45 C.' },
+		],
+		[
+			'1 cup water, heated to 45 C.',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'water', preparation: 'heated to 45 C.' },
+		],
+		['1 cup water (40.5°C)', 2, { amount: { min: 2 }, unit: 'cups', item: 'water (40.5°C)' }],
+		['1 cup water (40.5°C)', 1 / 2, { amount: { min: 0.5 }, unit: 'cup', item: 'water (40.5°C)' }],
+		['1 cup water (105.5 F)', 2, { amount: { min: 2 }, unit: 'cups', item: 'water (105.5 F)' }],
+		[
+			'1 cup water (105.5 F)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'water (105.5 F)' },
+		],
+		[
+			'1 cup water (105.5 degrees)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'water (105.5 degrees)' },
+		],
+		[
+			'1 cup water (105.5 degrees)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'water (105.5 degrees)' },
+		],
 		[
 			'1 package yeast, dissolved in warm water (between 105 and 115 F)',
 			2,
@@ -1444,15 +1530,11 @@ describe('scaleIngredientLine', () => {
 	);
 
 	it.each<[string, number, ScaledParts]>([
-		['2 bars chocolate (70% dark)', 2, { amount: { min: 4 }, item: 'bars chocolate (70% dark)' }],
-		[
-			'2 bars chocolate (70% dark)',
-			1 / 2,
-			{ amount: { min: 1 }, item: 'bar chocolate (70% dark)' },
-		],
-		['2 bars of chocolate', 1 / 2, { amount: { min: 1 }, item: 'bar of chocolate' }],
-		['1 bar of chocolate', 2, { amount: { min: 2 }, item: 'bars of chocolate' }],
-		['1 bar of chocolate', 1 / 2, { amount: { min: 0.5 }, item: 'bar of chocolate' }],
+		['2 fillets salmon (skin on)', 2, { amount: { min: 4 }, item: 'fillets salmon (skin on)' }],
+		['2 fillets salmon (skin on)', 1 / 2, { amount: { min: 1 }, item: 'fillet salmon (skin on)' }],
+		['2 fillets of salmon', 1 / 2, { amount: { min: 1 }, item: 'fillet of salmon' }],
+		['1 fillet of salmon', 2, { amount: { min: 2 }, item: 'fillets of salmon' }],
+		['1 fillet of salmon', 1 / 2, { amount: { min: 0.5 }, item: 'fillet of salmon' }],
 		['2 chipotles in adobo', 2, { amount: { min: 4 }, item: 'chipotles in adobo' }],
 		['2 chipotles in adobo', 1 / 2, { amount: { min: 1 }, item: 'chipotle in adobo' }],
 		['2 of the eggs', 2, { amount: { min: 4 }, item: 'of the eggs' }],
@@ -1478,6 +1560,42 @@ describe('scaleIngredientLine', () => {
 		['2 star anise', 1 / 2, { amount: { min: 1 }, item: 'star anise' }],
 	])(
 		'makes the noun the count in "%s" counts agree with it by %s, though other words follow it',
+		(text, factor, parts) => {
+			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+				line: { text, ...parts },
+			});
+		}
+	);
+
+	it.each<[string, number, ScaledParts]>([
+		['1 bar chocolate', 2, { amount: { min: 2 }, unit: 'bars', item: 'chocolate' }],
+		['1 bar chocolate', 1 / 2, { amount: { min: 0.5 }, unit: 'bar', item: 'chocolate' }],
+		[
+			'2 bars chocolate (70% dark)',
+			2,
+			{ amount: { min: 4 }, unit: 'bars', item: 'chocolate (70% dark)' },
+		],
+		[
+			'2 bars chocolate (70% dark)',
+			1 / 2,
+			{ amount: { min: 1 }, unit: 'bar', item: 'chocolate (70% dark)' },
+		],
+		['1 bar of chocolate', 2, { amount: { min: 2 }, unit: 'bars', item: 'chocolate' }],
+		['1 tube tomato paste', 2, { amount: { min: 2 }, unit: 'tubes', item: 'tomato paste' }],
+		['1 tube tomato paste', 1 / 2, { amount: { min: 0.5 }, unit: 'tube', item: 'tomato paste' }],
+		['2 tubes biscuits', 2, { amount: { min: 4 }, unit: 'tubes', item: 'biscuits' }],
+		['2 tubes biscuits', 1 / 2, { amount: { min: 1 }, unit: 'tube', item: 'biscuits' }],
+		['1 bottle wine', 2, { amount: { min: 2 }, unit: 'bottles', item: 'wine' }],
+		['1 bottle wine', 1 / 2, { amount: { min: 0.5 }, unit: 'bottle', item: 'wine' }],
+		[
+			'1 bottle (750 ml) red wine',
+			2,
+			{ amount: { min: 2 }, unit: 'bottles (750 ml)', item: 'red wine' },
+		],
+		['1 tub ricotta', 2, { amount: { min: 2 }, unit: 'tubs', item: 'ricotta' }],
+		['1 tub ricotta', 1 / 2, { amount: { min: 0.5 }, unit: 'tub', item: 'ricotta' }],
+	])(
+		'counts "%s" in its unit, which takes the number in place of the item, by %s',
 		(text, factor, parts) => {
 			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
 				line: { text, ...parts },
@@ -1534,6 +1652,72 @@ describe('scaleIngredientLine', () => {
 		],
 	])(
 		'scales the shares of the line’s count in "%s" with it by %s, leaving the words after them as written',
+		(text, factor, parts) => {
+			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+				line: { text, ...parts },
+			});
+		}
+	);
+
+	it.each<[string, number, ScaledParts]>([
+		['4 eggs (½ of them separated)', 2, { amount: { min: 8 }, item: 'eggs (½ of them separated)' }],
+		[
+			'4 eggs (½ of them separated)',
+			1 / 2,
+			{ amount: { min: 2 }, item: 'eggs (½ of them separated)' },
+		],
+		[
+			'4 eggs (half of them separated)',
+			2,
+			{ amount: { min: 8 }, item: 'eggs (half of them separated)' },
+		],
+		[
+			'4 eggs (half of them separated)',
+			1 / 2,
+			{ amount: { min: 2 }, item: 'eggs (half of them separated)' },
+		],
+		[
+			'6 eggs (a third of the eggs separated)',
+			2,
+			{ amount: { min: 12 }, item: 'eggs (a third of the eggs separated)' },
+		],
+		[
+			'6 eggs (a third of the eggs separated)',
+			1 / 2,
+			{ amount: { min: 3 }, item: 'eggs (a third of the eggs separated)' },
+		],
+		[
+			'6 eggs (two-thirds of them beaten)',
+			2,
+			{ amount: { min: 12 }, item: 'eggs (two-thirds of them beaten)' },
+		],
+		[
+			'6 eggs (two-thirds of them beaten)',
+			1 / 2,
+			{ amount: { min: 3 }, item: 'eggs (two-thirds of them beaten)' },
+		],
+		[
+			'4 eggs (one of every two separated)',
+			2,
+			{ amount: { min: 8 }, item: 'eggs (one of every two separated)' },
+		],
+		[
+			'4 eggs (one of every two separated)',
+			1 / 2,
+			{ amount: { min: 2 }, item: 'eggs (one of every two separated)' },
+		],
+		[
+			'1 cup sugar (½ of it for the topping)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'sugar (½ of it for the topping)' },
+		],
+		[
+			'1 cup sugar (½ of it for the topping)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'sugar (½ of it for the topping)' },
+		],
+	])(
+		'keeps the share of the whole in "%s", right at any scale, by %s without a mark',
 		(text, factor, parts) => {
 			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
 				line: { text, ...parts },

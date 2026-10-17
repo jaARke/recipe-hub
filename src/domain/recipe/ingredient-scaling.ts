@@ -594,8 +594,15 @@ export function givesAmount(text: string): boolean {
 	const numbers =
 		opening === undefined
 			? writtenNumbers(text)
-			: [{ start: 0, end: opening.written.length }, ...writtenNumbers(text)];
+			: [openingNumber(opening), ...writtenNumbers(text)];
 	return numbers.some((number) => !isNoAmount(number, text));
+}
+
+// The amount in words that opens text, with the amount it reads as: "Half" in "Half of the eggs".
+function openingNumber({ written, numerals }: AmountWords): WrittenNumber {
+	const span = { start: 0, end: written.length };
+	const amount = parseAmountText(numerals);
+	return amount === undefined ? span : { ...span, amount };
 }
 
 // What makes a number no amount. Before it: a can's size, a note's or a step's number, a grade or a
@@ -608,10 +615,15 @@ const noAmountBefore =
 	/(?:[#\p{L}]|\p{N}\s*[x×:]\s*|(?<!\p{L})(?:note|step|size|type|tipo|grade|no\.|number|ph)\s*|(?<!\p{L})into\s+)$/iu;
 const noAmountAfter =
 	/^[\s\-\u2010-\u2015]*(?:[°º˚%]|:\s*\p{N}|[x×](?![\p{L}-])|f(?![\p{L}\p{N}])|(?:deg(?:ree)?|sec(?:ond)?|min(?:ute)?|h(?:ou)?r|day|week|month|y(?:ea)?r|part|time)s?(?!\p{L})|(?:per\s?cent|fahrenheit|celsius|centigrade|ratio|proof)(?!\p{L}))/iu;
-// A C after two digits or more is a temperature in Celsius ("45 C", "40 to 45 C", "between 40 and 45
-// C"), where one after a single digit is a cup, as old cards write it ("1 C").
-const celsius =
-	/^(?:[Bb]etween\s+\d{2,}\s+and\s+|\d{2,}\s*(?:[-\u2013\u2014]|to|or)\s*)?\d{2,}\s*C(?![\p{L}.])/u;
+// A C after two digits or more, with any decimals, is a temperature in Celsius ("45 C", "40.5 C", "40
+// to 45 C", "between 40 and 45 C"), where one after a single digit is a cup, as old cards write it
+// ("1 C"). A period after it ends a sentence ("Bake at 180 C."), unless a lowercase word follows, as
+// one after a cup's "C." does ("12 C. flour").
+const celsiusDegrees = String.raw`\d{2,}(?:[.,]\d+)?`;
+const celsius = new RegExp(
+	String.raw`^(?:[Bb]etween\s+${celsiusDegrees}\s+and\s+|${celsiusDegrees}\s*(?:[-\u2013\u2014]|to|or)\s*)?${celsiusDegrees}\s*C(?!\p{L}|\.\s*\p{Ll})`,
+	'u'
+);
 // A number written in zeros is a grade, as in "00 flour", and a fraction no smaller than one a
 // ratio, as in "80/20 ground beef": a recipe writes neither as an amount.
 const zeros = /^0+$/u;
@@ -619,10 +631,36 @@ const fraction = /^(\d+)\s*[/⁄]\s*(\d+)$/u;
 // A number alone in parentheses, after any word such as "about", names nothing it counts: "(2)",
 // "(about 2)".
 const closesAlone = /^\s*[),;]/u;
+// A share of the whole a line gives is right at any scale: a fraction before "of" and the whole ("½
+// of them", "a third of the eggs", "½ of it"), and either term of a proportion ("one of every two", "1
+// in every 3"). A count of the whole is a share the scale changes ("2 of them"), as is a rate's base,
+// which scales with the amount before it ("1 tablespoon salt for every 2 cups water").
+const ofTheWhole = /^\s+of\s+(?:them|it|the|these|those)(?!\p{L})/iu;
+const proportionTerm = String.raw`(?:\p{N}+|${wordsSource(wholeNumberWords)}(?!\p{L}))`;
+const ofEvery = String.raw`\s+(?:of|in)\s+every\s+`;
+const proportionFirstTerm = new RegExp(String.raw`^${ofEvery}${proportionTerm}`, 'iu');
+const proportionSecondTerm = new RegExp(
+	String.raw`(?<![\p{L}\p{N}])${proportionTerm}${ofEvery}$`,
+	'iu'
+);
 
 function isGradeOrRatio(written: string): boolean {
 	const [, numerator, denominator] = fraction.exec(written) ?? [];
 	return zeros.test(written) || Number(numerator) >= Number(denominator);
+}
+
+function isShareOfWhole(
+	{ amount, measurement }: WrittenNumber,
+	before: string,
+	after: string
+): boolean {
+	const isFraction = amount !== undefined && (amount.max ?? amount.min) < 1;
+	return (
+		measurement === undefined &&
+		(proportionFirstTerm.test(after) ||
+			proportionSecondTerm.test(before) ||
+			(isFraction && ofTheWhole.test(after)))
+	);
 }
 
 // Whether a number is no amount, so right as written at any scale.
@@ -634,6 +672,7 @@ function isNoAmount(number: WrittenNumber, text: string): boolean {
 		noAmountAfter.test(after) ||
 		celsius.test(text.slice(number.start)) ||
 		isGradeOrRatio(text.slice(number.start, number.end)) ||
+		isShareOfWhole(number, before, after) ||
 		(number.measurement === undefined && opensParentheses(before) && closesAlone.test(after))
 	);
 }

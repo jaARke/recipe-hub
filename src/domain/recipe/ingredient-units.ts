@@ -109,11 +109,15 @@ const additionalUnits = {
 	},
 	packet: { short: 'pkt', plural: 'packets', alternates: ['pkt.', 'pkts', 'pkts.'], type: 'count' },
 	jar: { short: 'jar', plural: 'jars', type: 'count' },
+	bottle: { short: 'bottle', plural: 'bottles', type: 'count' },
+	tub: { short: 'tub', plural: 'tubs', type: 'count' },
+	tube: { short: 'tube', plural: 'tubes', type: 'count' },
 	// Of butter: ½ US cup, or 8 tablespoons, which the library counts rather than converts. Its 4
 	// ounces (113 g) are a weight, which a unit of one type does not convert to.
 	stick: { short: 'stick', plural: 'sticks', type: 'volume', conversionFactor: 118.29412 },
-	// Of chocolate: "3 sq. bitter chocolate".
+	// Of chocolate: "3 sq. bitter chocolate", "1 bar dark chocolate".
 	square: { short: 'sq', plural: 'squares', alternates: ['sq.', 'sqs', 'sqs.'], type: 'count' },
+	bar: { short: 'bar', plural: 'bars', type: 'count' },
 	sheet: { short: 'sheet', plural: 'sheets', type: 'count' },
 	slice: { short: 'slice', plural: 'slices', type: 'count' },
 	strip: { short: 'strip', plural: 'strips', type: 'count' },
