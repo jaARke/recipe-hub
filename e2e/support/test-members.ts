@@ -1,11 +1,20 @@
 import { randomUUID } from 'node:crypto';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { Member, MemberRole } from '@/domain/member/member';
-import { boundedTransaction } from '@/infrastructure/db/bounded-transaction';
+import { boundedTransaction, statementTimeoutMs } from '@/infrastructure/db/bounded-transaction';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { recipeImports, recipes, users } from '@/infrastructure/db/schema';
+import { queryErrorCause } from '@/lib/errors';
 import { reportQueryErrorsWithoutParameters } from './develop-database';
+
+// The error Postgres fails a delete with while another row still references the deleted one.
+const foreignKeyViolation = '23503';
+
+// A write already past its session check when the member is removed, such as a save a test cut off
+// left running, lands within its transaction's statement timeout, so the deletes try again until then.
+const lateWritePauseMs = 1_000;
 
 // Every test member's display name, which pages show as who added a recipe.
 export const testMemberName = 'End-to-end member';
@@ -42,10 +51,27 @@ export function createTestMember(
 export function deleteTestMember(db: NodePgDatabase, member: Member): Promise<void> {
 	return reportQueryErrorsWithoutParameters(async () => {
 		await new DrizzleMemberRepository(db).remove(member.id);
-		await boundedTransaction(db, 'deleting a test member', async (tx) => {
-			await tx.delete(recipes).where(eq(recipes.contributorId, member.id));
-			await tx.delete(recipeImports).where(eq(recipeImports.memberId, member.id));
-			await tx.delete(users).where(eq(users.id, member.id));
-		});
+		const lateWritesLandBy = Date.now() + statementTimeoutMs;
+		for (;;) {
+			try {
+				await deleteMemberRows(db, member);
+				return;
+			} catch (error) {
+				const code = error instanceof Error ? queryErrorCause(error)?.code : undefined;
+				if (code !== foreignKeyViolation || Date.now() > lateWritesLandBy) {
+					throw error;
+				}
+				await sleep(lateWritePauseMs);
+			}
+		}
+	});
+}
+
+// Once the member's row is gone, a write naming the member fails on its own reference to it.
+function deleteMemberRows(db: NodePgDatabase, member: Member): Promise<void> {
+	return boundedTransaction(db, 'deleting a test member', async (tx) => {
+		await tx.delete(recipes).where(eq(recipes.contributorId, member.id));
+		await tx.delete(recipeImports).where(eq(recipeImports.memberId, member.id));
+		await tx.delete(users).where(eq(users.id, member.id));
 	});
 }
