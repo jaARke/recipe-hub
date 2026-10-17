@@ -55,6 +55,18 @@ const lemonBars: RecipeDraftContent = {
 	instructionSections: [{ steps: [{ text: 'Mix.' }] }],
 };
 
+// Sunday pot roast's steps, with its gravy under a heading of its own.
+const potRoast: RecipeDraftContent = {
+	...lemonBars,
+	instructionSections: [
+		{ steps: [{ text: 'Brown the roast.' }, { text: 'Roast until tender.' }] },
+		{
+			heading: 'For the gravy',
+			steps: [{ text: 'Whisk in the flour.' }, { text: 'Simmer until thick.' }],
+		},
+	],
+};
+
 const threeNotes: Problem[] = [
 	{ path: 'title', message: 'Check the title.' },
 	{ path: 'ingredientSections.0.lines.1', message: 'Check this line.' },
@@ -543,6 +555,15 @@ describe('RecipeForm’s lists', () => {
 			.map((row) => `${textControl(row).labels?.[0]?.textContent}: ${textControl(row).value}`);
 	}
 
+	// The numbers shown beside the steps' fields, in order.
+	function shownStepNumbers(): (string | null)[] {
+		return page
+			.getByRole('list', { name: 'Steps' })
+			.getByText(/^\d+\.$/)
+			.elements()
+			.map((number) => number.textContent);
+	}
+
 	async function choose(row: string, action: string) {
 		await page.getByRole('button', { name: `Actions for ${row}` }).click();
 		await page.getByRole('menuitem', { name: action }).click();
@@ -677,6 +698,41 @@ describe('RecipeForm’s lists', () => {
 		expect(JSON.parse(sent)).toMatchObject({
 			ingredientSections: [{ lines: ['1 cup flour', '1 cup sugar'] }],
 		});
+	});
+
+	it('counts the steps straight through their headings, as the recipe page does, and names each by its number', async () => {
+		await renderForm(potRoast, [
+			{ path: 'instructionSections.1.steps.1', message: 'Check this step.' },
+		]);
+
+		expect(shownStepNumbers()).toEqual(['1.', '2.', '3.', '4.']);
+		expect(rowTexts('Steps')).toEqual([
+			'Step 1: Brown the roast.',
+			'Step 2: Roast until tender.',
+			'Step heading 1: For the gravy',
+			'Step 3, For the gravy: Whisk in the flour.',
+			'Step 4, For the gravy: Simmer until thick.',
+		]);
+		await expect.element(lookRight('Step 4, For the gravy')).toBeVisible();
+
+		await textbox('Step 4, For the gravy').click();
+		await userEvent.keyboard('{Enter}');
+
+		await expect.element(announced('Added Step 5, For the gravy.')).toBeInTheDocument();
+		expect(shownStepNumbers()).toEqual(['1.', '2.', '3.', '4.', '5.']);
+	});
+
+	it('names a step by its number in a save’s problems', async () => {
+		await renderForm(potRoast, [], async () => ({
+			status: 'error',
+			fieldErrors: { 'instructionSections.1.steps.0': 'Say what to whisk in.' },
+		}));
+
+		await saveRecipe().click();
+
+		await expect
+			.element(page.getByRole('link', { name: 'Step 3, For the gravy: Say what to whisk in.' }))
+			.toHaveAttribute('href', `#${textbox('Step 3, For the gravy').element().id}`);
 	});
 
 	it('shows a save’s problem with a heading that has nothing under it at the heading', async () => {
