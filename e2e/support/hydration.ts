@@ -6,7 +6,10 @@ const reactPropsKeyPrefix = '__reactProps$';
 
 // A control pressed before React hydrates it misses its handler: a link loads its page in full rather
 // than navigating in the tab, and a button does nothing.
-export async function waitForHydration(target: Locator): Promise<void> {
+export async function waitForHydration(
+	target: Locator,
+	{ timeout }: { timeout?: number } = {}
+): Promise<void> {
 	await expect
 		.poll(
 			() =>
@@ -14,7 +17,7 @@ export async function waitForHydration(target: Locator): Promise<void> {
 					(element, prefix) => Object.keys(element).some((key) => key.startsWith(prefix)),
 					reactPropsKeyPrefix
 				),
-			{ message: 'React hydrates the element' }
+			{ message: 'React hydrates the element', timeout }
 		)
 		.toBe(true);
 }

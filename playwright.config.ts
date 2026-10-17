@@ -38,6 +38,9 @@ const devServerStartTimeoutMs = 120_000;
 // Long enough for `next dev` to stop its workers before it is killed.
 const devServerShutdownTimeoutMs = 5_000;
 
+// Long enough for the warm-up to load every page the suites visit while `next dev` compiles each one.
+const setupTimeoutMs = 180_000;
+
 // Run against `pnpm dev` from this tree on Neon develop: the one already serving, or one started for
 // the run and stopped after it. A production build breaks BotID and /design, so it is never the target.
 export default defineConfig({
@@ -62,5 +65,9 @@ export default defineConfig({
 		baseURL: devServerUrl.href,
 		trace: 'retain-on-failure',
 	},
-	projects: [{ name: 'setup', testMatch: '*.setup.ts' }, ...deviceProjects, ...spendingProjects],
+	projects: [
+		{ name: 'setup', testMatch: '*.setup.ts', timeout: setupTimeoutMs },
+		...deviceProjects,
+		...spendingProjects,
+	],
 });
