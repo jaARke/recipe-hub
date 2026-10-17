@@ -2,6 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 import { favoritesPath, recipeListPath } from '@/components/recipe/recipe-paths';
 import { pressFavorite } from './support/favorite-toggle';
 import { expect, test } from './support/fixtures';
+import { waitForHydration } from './support/hydration';
 import { sampleRecipe } from './support/sample-recipe';
 
 // The back link reads the tab's history through the Navigation API, which Playwright 1.64's WebKit
@@ -57,6 +58,7 @@ test('a recipe opened from Browse links back to the list as it was left', async 
 }) => {
 	await page.goto(recipeListPath);
 	const lastCard = page.getByRole('main').getByRole('list').first().getByRole('link').last();
+	await waitForHydration(lastCard);
 	const scrollAtPress = await clickReadingScroll(page, lastCard);
 	expect(scrollAtPress).toBeGreaterThan(0);
 
@@ -78,7 +80,9 @@ test('a recipe opened from Favorites links back to Favorites, which the header m
 	await pressFavorite(page, true);
 
 	await page.goto(favoritesPath);
-	await page.getByRole('main').getByRole('link', { name: sampleRecipe.title }).click();
+	const card = page.getByRole('main').getByRole('link', { name: sampleRecipe.title });
+	await waitForHydration(card);
+	await card.click();
 	await expect(page).toHaveURL(sampleRecipe.path);
 	const backLink = page.getByRole('link', { name: 'Back to Favorites' });
 	await expect(backLink).toBeVisible();

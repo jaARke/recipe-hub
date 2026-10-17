@@ -1,4 +1,5 @@
 import { expect, test } from './support/fixtures';
+import { waitForHydration } from './support/hydration';
 import { sampleRecipe } from './support/sample-recipe';
 
 test.beforeEach(async ({ page }) => {
@@ -24,7 +25,9 @@ test('More actions copies the recipe’s link', async ({ page, context, browserN
 		await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 	}
 
-	await page.getByRole('button', { name: 'More actions' }).click();
+	const moreActions = page.getByRole('button', { name: 'More actions' });
+	await waitForHydration(moreActions);
+	await moreActions.click();
 	await page.getByRole('menuitem', { name: 'Copy link' }).click();
 
 	await expect(page.getByRole('dialog', { name: 'Link copied' })).toBeVisible();
@@ -38,7 +41,9 @@ test('More actions copies the recipe’s link', async ({ page, context, browserN
 test('More actions offers Share only where the browser has a share sheet', async ({ page }) => {
 	const hasShareSheet = await page.evaluate(() => typeof navigator.share === 'function');
 
-	await page.getByRole('button', { name: 'More actions' }).click();
+	const moreActions = page.getByRole('button', { name: 'More actions' });
+	await waitForHydration(moreActions);
+	await moreActions.click();
 
 	await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText(
 		hasShareSheet ? ['Share', 'Copy link', 'Print'] : ['Copy link', 'Print']
@@ -55,7 +60,9 @@ test('Print prints the recipe with its link in place of the actions', async ({ p
 	});
 	await page.reload();
 
-	await page.getByRole('button', { name: 'More actions' }).click();
+	const moreActions = page.getByRole('button', { name: 'More actions' });
+	await waitForHydration(moreActions);
+	await moreActions.click();
 	await page.getByRole('menuitem', { name: 'Print' }).click();
 	await expect(page.locator('html')).toHaveAttribute('data-print-calls', '1');
 
@@ -65,7 +72,9 @@ test('Print prints the recipe with its link in place of the actions', async ({ p
 });
 
 test('the photo opens in the viewer, which closes again', async ({ page }) => {
-	await page.getByRole('button', { name: `View photo: ${sampleRecipe.photoAlt}` }).click();
+	const viewPhoto = page.getByRole('button', { name: `View photo: ${sampleRecipe.photoAlt}` });
+	await waitForHydration(viewPhoto);
+	await viewPhoto.click();
 
 	const viewer = page.getByRole('dialog');
 	await expect(viewer.getByRole('img', { name: sampleRecipe.photoAlt })).toBeVisible();

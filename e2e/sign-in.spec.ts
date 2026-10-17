@@ -4,6 +4,7 @@ import { recipeListPath } from '@/components/recipe/recipe-paths';
 import type { Member } from '@/domain/member/member';
 import { authCookiePrefix } from '@/lib/auth-cookies';
 import { expect, test } from './support/fixtures';
+import { waitForHydration } from './support/hydration';
 
 // The account page shows the member's address only to the member, and sends anyone else to sign in.
 async function expectSignedInAs(page: Page, member: Member) {
@@ -23,7 +24,9 @@ test('a passkey added on the account signs the member in again', async ({
 	await page.goto(accountPath);
 	const passkeys = page.getByRole('region', { name: 'Passkeys' });
 	await expect(passkeys.getByText('You haven’t added a passkey yet.')).toBeVisible();
-	await passkeys.getByRole('button', { name: 'Add a passkey' }).click();
+	const addPasskey = passkeys.getByRole('button', { name: 'Add a passkey' });
+	await waitForHydration(addPasskey);
+	await addPasskey.click();
 	await expect(passkeys.getByRole('listitem')).toHaveCount(1);
 
 	await page

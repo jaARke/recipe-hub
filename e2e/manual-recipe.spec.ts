@@ -7,6 +7,7 @@ import {
 } from '@/components/recipe/recipe-paths';
 import { slugify } from '@/domain/recipe/slug';
 import { expect, test } from './support/fixtures';
+import { waitForHydration } from './support/hydration';
 import { testMemberName } from './support/test-members';
 
 // A member enters a recipe by hand, edits it, and deletes it, so the run leaves no recipe behind; the
@@ -60,7 +61,9 @@ test('a recipe entered by hand is saved, edited, and deleted', async ({ page, si
 	await expect(page).toHaveURL(recipePath(slugify(editedTitle)));
 
 	await page.goto(recipeEditPath(slugify(editedTitle)));
-	await page.getByRole('button', { name: 'Recipe actions' }).click();
+	const recipeActions = page.getByRole('button', { name: 'Recipe actions' });
+	await waitForHydration(recipeActions);
+	await recipeActions.click();
 	await page.getByRole('menuitem', { name: 'Delete recipe' }).click();
 	await page
 		.getByRole('alertdialog', { name: `Delete “${editedTitle}”?` })
