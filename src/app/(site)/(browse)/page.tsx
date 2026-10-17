@@ -5,7 +5,11 @@ import { getCachedRecipePage } from '@/app/_lib/recipe-cache';
 import { recipeSorts } from '@/application/ports/recipe-repository';
 import { PageContainer } from '@/components/layout/page-container';
 import { RecipeCard } from '@/components/recipe/recipe-card';
-import { firstRowCardCount, RecipeGrid, RecipeGridSkeleton } from '@/components/recipe/recipe-grid';
+import {
+	firstScreenCardCount,
+	RecipeGrid,
+	RecipeGridSkeleton,
+} from '@/components/recipe/recipe-grid';
 import { RecipeListHeading } from '@/components/recipe/recipe-list-heading';
 import { parseRecipeListParams, recipeListHref } from '@/components/recipe/recipe-list-params';
 import { RecipePagination } from '@/components/recipe/recipe-pagination';
@@ -55,7 +59,7 @@ async function RecipeList({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>
 			<RecipeGrid>
 				{recipes.map((recipe, index) => (
 					<li key={recipe.id}>
-						<RecipeCard recipe={recipe} headingTag="h2" eager={index < firstRowCardCount} />
+						<RecipeCard recipe={recipe} headingTag="h2" eager={index < firstScreenCardCount} />
 					</li>
 				))}
 			</RecipeGrid>

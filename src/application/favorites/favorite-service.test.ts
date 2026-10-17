@@ -299,6 +299,41 @@ describe('listFavorites', () => {
 	});
 });
 
+describe('hasDeviceFavoritesToMerge', () => {
+	it('is true for a member whose device keeps favorites', async () => {
+		const { device, serviceFor, create } = createFavorites();
+		const soup = await create(sampleChickenSoup);
+		await device.save([soup.id]);
+
+		expect(await serviceFor(memberActor()).hasDeviceFavoritesToMerge()).toBe(true);
+	});
+
+	it('is false for a member whose device keeps none', async () => {
+		const { serviceFor } = createFavorites();
+
+		expect(await serviceFor(memberActor()).hasDeviceFavoritesToMerge()).toBe(false);
+	});
+
+	it('is false once a merge has cleared the device', async () => {
+		const { device, serviceFor, create } = createFavorites();
+		const soup = await create(sampleChickenSoup);
+		await device.save([soup.id]);
+		const member = serviceFor(memberActor());
+
+		await member.mergeDeviceFavorites();
+
+		expect(await member.hasDeviceFavoritesToMerge()).toBe(false);
+	});
+
+	it("is false for a signed-out reader, whose device's favorites are theirs", async () => {
+		const { device, serviceFor, create } = createFavorites();
+		const soup = await create(sampleChickenSoup);
+		await device.save([soup.id]);
+
+		expect(await serviceFor(anonymousActor()).hasDeviceFavoritesToMerge()).toBe(false);
+	});
+});
+
 describe('mergeDeviceFavorites', () => {
 	it("adds the device's favorites to the account, newest first, and clears the device", async () => {
 		const { device, serviceFor, create } = createFavorites();

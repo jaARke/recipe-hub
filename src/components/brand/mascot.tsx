@@ -21,6 +21,8 @@ const mascotSizes = {
 
 export type MascotSize = keyof typeof mascotSizes;
 
+// Loading is eager where the mascot can be a page's largest image, as in an empty state, since a lazy
+// one holds back that page's Largest Contentful Paint.
 type MascotProps = Pick<ImageProps, 'loading'> & {
 	pose?: MascotPose;
 	size: MascotSize;

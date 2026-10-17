@@ -4,11 +4,9 @@ import { unstable_rethrow } from 'next/navigation';
 import * as React from 'react';
 import type { MergedFavoritesDto } from '@/application/favorites/favorite-dtos';
 import type { FormState } from '@/components/forms/form-state';
-import type { HeaderMember } from '@/components/layout/header-member';
 import { toast } from '@/components/ui/toast';
 
 type DeviceFavoritesMergeProps = {
-	member: Promise<HeaderMember | null>;
 	// The mergeDeviceFavorites Server Action, which clears the device's favorites once it adds them.
 	mergeAction: () => Promise<FormState<MergedFavoritesDto>>;
 };
@@ -19,16 +17,14 @@ function addedFavoritesTitle(count: number): string {
 		: `${count} favorites added to your account`;
 }
 
-// Rendered on every page but the cooking view. Once a member is signed in, it moves the favorites
-// this device kept while signed out into their account, once a page load, since signing in loads a
-// new page, and a toast says how many it added. A merge that fails leaves them on the device for the
-// next page load.
-function DeviceFavoritesMerge({ member, mergeAction }: DeviceFavoritesMergeProps) {
-	const signedIn = React.use(member) !== null;
+// Rendered where a member's page load finds favorites this device kept while they were signed out,
+// such as the page signing in loads. It moves them into their account, once a page load, and a toast
+// says how many it added. A merge that fails leaves them on the device for the next page load.
+function DeviceFavoritesMerge({ mergeAction }: DeviceFavoritesMergeProps) {
 	const merged = React.useRef(false);
 
 	React.useEffect(() => {
-		if (!signedIn || merged.current) {
+		if (merged.current) {
 			return;
 		}
 		merged.current = true;
@@ -49,7 +45,7 @@ function DeviceFavoritesMerge({ member, mergeAction }: DeviceFavoritesMergeProps
 				});
 			}
 		});
-	}, [signedIn, mergeAction]);
+	}, [mergeAction]);
 
 	return null;
 }

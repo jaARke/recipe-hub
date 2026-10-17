@@ -1,4 +1,8 @@
-import { rowSections, type RecipeFormRowText } from '@/components/recipe-form/recipe-form-values';
+import {
+	isSavedRow,
+	rowSections,
+	type RecipeFormRowText,
+} from '@/components/recipe-form/recipe-form-values';
 import { numberInstructionSteps } from '@/components/recipe/recipe-step-numbers';
 import { withoutListMarkers } from '@/domain/recipe/list-markers';
 import { sentenceCase } from '@/domain/text';
@@ -13,12 +17,14 @@ export type ListNaming = { noun: string; numbered: boolean };
 
 // What the form calls a row, and where it sits.
 export type ListRowNames = {
-	// Unique in the form: "Ingredient 2", "Step 3, For the glaze", or "Step heading 2".
+	// Unique in the form, as "Ingredient 2", "Step 3, For the glaze", or "Step heading 2", but for a
+	// blank step: it is named for the number it shows once it has words, which the step after it shows
+	// until then.
 	label: string;
 	// A line's number: in a numbered list, the one it shows, counted straight through the headings as
-	// on the recipe page; otherwise its place among the lines since the heading above it. A heading's
-	// number among the list's headings.
-	number: number;
+	// on the recipe page, and none for a blank line, which saving leaves out; otherwise its place among
+	// the lines since the heading above it. A heading's number among the list's headings.
+	number?: number;
 	// A line's place among the lines since the heading above it, as a move announces it; a heading's
 	// number among the list's headings.
 	position: number;
@@ -35,14 +41,20 @@ function counted(count: number, noun: string): string {
 	return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
 
-// The numbers a numbered list's lines show, in order: the recipe page's numbers for its steps, so a
-// step has the same number in the form as on the page.
-function shownLineNumbers(rows: readonly RecipeFormRowText[]): number[] {
-	const sections = rowSections(rows).map(({ heading, items }) => ({
+// The number each line of a numbered list shows, in order: the recipe page's number for its step, so
+// a step has the same number in the form as on the page. A blank line, which saving leaves out, shows
+// none.
+function shownLineNumbers(rows: readonly RecipeFormRowText[]): (number | undefined)[] {
+	const sections = rowSections(rows.filter(isSavedRow)).map(({ heading, items }) => ({
 		heading: heading?.text,
 		steps: items.map(({ text }) => ({ text })),
 	}));
-	return numberInstructionSteps(sections).flatMap(({ steps }) => steps.map(({ number }) => number));
+	const savedNumbers = numberInstructionSteps(sections)
+		.flatMap(({ steps }) => steps.map(({ number }) => number))
+		.values();
+	return rows
+		.filter((row) => row.kind === 'item')
+		.map((row) => (isSavedRow(row) ? savedNumbers.next().value : undefined));
 }
 
 // A line under a heading names the heading too, so its label says which part of the recipe it is
@@ -55,6 +67,7 @@ export function listRowNames(
 	let headings = 0;
 	let lines = 0;
 	let linesSinceHeading = 0;
+	let lastShownNumber = 0;
 	let headingName: string | undefined;
 	return rows.map((row) => {
 		if (row.kind === 'heading') {
@@ -70,9 +83,12 @@ export function listRowNames(
 			};
 		}
 		linesSinceHeading += 1;
-		const number = shownNumbers?.[lines] ?? linesSinceHeading;
+		const number = shownNumbers === undefined ? linesSinceHeading : shownNumbers[lines];
 		lines += 1;
-		const label = `${sentenceCase(noun)} ${number}`;
+		// A blank line is named for the number after the last one shown above it.
+		const named = number ?? lastShownNumber + 1;
+		lastShownNumber = number ?? lastShownNumber;
+		const label = `${sentenceCase(noun)} ${named}`;
 		return {
 			label: headingName === undefined ? label : `${label}, ${headingName}`,
 			number,

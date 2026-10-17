@@ -580,10 +580,16 @@ export function rowSections<Row extends RecipeFormRowText>(
 	return sections;
 }
 
-// A list's sections as the form sends them. Blank rows are left out, so a blank heading's lines join
-// the lines above it; a heading with no lines stays, so the domain flags it.
+// Whether saving keeps the row: it leaves out a blank one, so a blank heading's lines join the lines
+// above it, and a blank step has no number on the recipe page.
+export function isSavedRow(row: RecipeFormRowText): boolean {
+	return !isBlank(row.text);
+}
+
+// A list's sections as the form sends them, of the rows saving keeps; a heading with no lines stays,
+// so the domain flags it.
 function listSections(list: RecipeFormList): RowSection<RecipeFormRow>[] {
-	return rowSections(list.rows.filter((row) => !isBlank(row.text)));
+	return rowSections(list.rows.filter(isSavedRow));
 }
 
 // The payload the form sends, its lists as sections, with blank optional text left out.

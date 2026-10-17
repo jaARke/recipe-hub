@@ -276,12 +276,13 @@ function SectionedListField({
 				className={cn('flex items-start gap-2', isHeading && index > 0 && 'mt-4')}
 			>
 				{numbered && !isHeading && (
-					// Shares the textarea's border, padding, and type size, so it sits on the first line.
+					// Shares the textarea's border, padding, and type size, so it sits on the first line. Beside a
+					// blank step it stays empty, so the field lines up with the others.
 					<span
 						aria-hidden="true"
 						className="mt-px w-8 shrink-0 py-2 text-right font-mono text-base text-muted-foreground tabular-nums md:text-sm"
 					>
-						{number}.
+						{number !== undefined && `${number}.`}
 					</span>
 				)}
 				<Field data-invalid={invalid ? 'true' : undefined}>
