@@ -48,9 +48,12 @@ export default defineConfig({
 	outputDir: `${resultsDir}/output`,
 	reporter: [['list'], ['html', { open: 'never', outputFolder: `${resultsDir}/report` }]],
 	webServer: {
-		command: 'pnpm dev',
-		url: devServerUrl.href,
-		// The suites never run in CI, so a server already serving this checkout is always the one to use.
+		// Named, so a busy port fails the run rather than moving a second server to another port, where
+		// sessions are not read.
+		command: `pnpm dev --port ${devServerUrl.port}`,
+		// Whatever listens on the port is reused, even a server answering 500, which a check by URL would
+		// take for none and start a second `next dev` beside. The suites never run in CI.
+		port: Number(devServerUrl.port),
 		reuseExistingServer: true,
 		timeout: devServerStartTimeoutMs,
 		gracefulShutdown: { signal: 'SIGTERM', timeout: devServerShutdownTimeoutMs },
