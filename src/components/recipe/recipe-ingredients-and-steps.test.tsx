@@ -34,6 +34,13 @@ function listItems(): (string | null)[] {
 		.map((item) => item.textContent);
 }
 
+// Where an item's first line of text starts, in pixels from the page's left edge.
+function textStart(item: Element): number {
+	const range = document.createRange();
+	range.selectNodeContents(item);
+	return range.getClientRects()[0]?.left ?? Number.NaN;
+}
+
 // How far each list of steps sets its steps in from its edge, in pixels, leaving room for the numbers.
 function stepIndents(): number[] {
 	return Array.from(document.querySelectorAll('ol'), (list) => {
@@ -109,6 +116,26 @@ describe('RecipeIngredientsAndSteps', () => {
 			/>
 		);
 		expect(stepIndents()).toEqual([expect.closeTo(33.6, 1), expect.closeTo(33.6, 1)]);
+	});
+
+	it('bullets each ingredient in the steps’ muted marker column, its text starting where a step’s does', async () => {
+		await render(
+			<RecipeIngredientsAndSteps
+				ingredientSections={ingredientSections}
+				instructionSections={instructionSections}
+				headingLevel={1}
+			/>
+		);
+
+		const ingredient = page.getByRole('listitem').filter({ hasText: '1 cup sugar' });
+		const step = page.getByRole('listitem').filter({ hasText: 'Mix the flour and salt.' });
+		await expect.element(ingredient).toHaveStyle({ listStyleType: 'disc' });
+		const markerColor = (item: Element) => getComputedStyle(item, '::marker').color;
+		expect(markerColor(ingredient.element())).toBe(markerColor(step.element()));
+		expect(markerColor(ingredient.element())).not.toBe(
+			getComputedStyle(ingredient.element()).color
+		);
+		expect(textStart(ingredient.element())).toBeCloseTo(textStart(step.element()), 1);
 	});
 
 	it('shows nothing of a scale at the recipe’s own', async () => {

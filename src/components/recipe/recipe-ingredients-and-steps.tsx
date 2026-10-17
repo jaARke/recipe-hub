@@ -23,16 +23,19 @@ export type RecipeListsScale = {
 	factor: number;
 };
 
-const stepMarkerClassName = 'marker:font-mono marker:text-sm marker:text-muted-foreground';
+// The ingredients' bullets and the steps' numbers share one muted marker column, and each item's text
+// starts the same gap past it, so an ingredient's text lines up with a step's.
+const listMarkerClassName = 'marker:font-mono marker:text-sm marker:text-muted-foreground';
+const listItemClassName = 'pl-2';
 
 // A marker's characters are monospaced at text-sm, 0.875rem, and JetBrains Mono's are 0.6em wide.
-const stepMarkerCharacterWidth = '0.525rem';
+const listMarkerCharacterWidth = '0.525rem';
 
-// Indents every list of steps as far as the recipe's last number needs, with its ". ", so "10." sits
-// inside the column as "9." does.
-function stepListIndentStyle(lastNumber: number): React.CSSProperties {
+// Indents every list of ingredients and steps as far as the recipe's last step number needs, with its
+// ". ", so "10." sits inside the column as "9." does.
+function listIndentStyle(lastNumber: number): React.CSSProperties {
 	const characters = String(lastNumber).length + 2;
-	return { paddingLeft: `calc(${characters} * ${stepMarkerCharacterWidth})` };
+	return { paddingLeft: `calc(${characters} * ${listMarkerCharacterWidth})` };
 }
 
 // An ingredient at a scale. A line the scale left whole though it gives an amount says so, and one it
@@ -64,21 +67,27 @@ function SectionHeading({ heading, tag: Heading }: { heading?: string; tag: Reci
 	);
 }
 
+// A bullet marks each line, so one that wraps reads as one ingredient rather than two.
 function IngredientSectionList({
 	section,
 	factor,
 	headingTag,
+	indentStyle,
 }: {
 	section: IngredientSection;
 	factor: number;
 	headingTag: RecipeSubsectionTag;
+	indentStyle: React.CSSProperties;
 }) {
 	return (
 		<div className="flex flex-col gap-3 print:break-inside-avoid">
 			<SectionHeading heading={section.heading} tag={headingTag} />
-			<ul className={cn(recipeTextStyles.body, 'flex flex-col gap-2')}>
+			<ul
+				style={indentStyle}
+				className={cn(recipeTextStyles.body, 'list-disc space-y-2', listMarkerClassName)}
+			>
 				{section.lines.map((line, index) => (
-					<li key={index}>
+					<li key={index} className={listItemClassName}>
 						<ScaledIngredientLineText scaled={scaleIngredientLine(line, factor)} />
 					</li>
 				))}
@@ -122,10 +131,10 @@ function InstructionSectionList({
 			<ol
 				start={section.steps[0]?.number}
 				style={indentStyle}
-				className={cn(recipeTextStyles.body, 'list-decimal space-y-4', stepMarkerClassName)}
+				className={cn(recipeTextStyles.body, 'list-decimal space-y-4', listMarkerClassName)}
 			>
 				{section.steps.map((step) => (
-					<li key={step.number} className="pl-2 print:break-inside-avoid">
+					<li key={step.number} className={cn(listItemClassName, 'print:break-inside-avoid')}>
 						{step.text}
 					</li>
 				))}
@@ -152,7 +161,7 @@ function RecipeIngredientsAndSteps({
 	const { section: Section, subsection } = recipeHeadingTags[headingLevel];
 	const factor = scale?.factor ?? 1;
 	const numberedSections = numberInstructionSteps(instructionSections);
-	const indentStyle = stepListIndentStyle(numberedSections.at(-1)?.steps.at(-1)?.number ?? 0);
+	const indentStyle = listIndentStyle(numberedSections.at(-1)?.steps.at(-1)?.number ?? 0);
 
 	return (
 		<>
@@ -164,6 +173,7 @@ function RecipeIngredientsAndSteps({
 						section={section}
 						factor={factor}
 						headingTag={subsection}
+						indentStyle={indentStyle}
 					/>
 				))}
 			</div>
