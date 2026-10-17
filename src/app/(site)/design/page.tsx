@@ -29,7 +29,7 @@ const sections = [
 		id: 'brand',
 		title: 'Brand',
 		description:
-			'The lockup, the wordmark, and the mascot at each size it is drawn. The theme toggle shows them on the dark theme.',
+			'The lockup, the wordmark, and the mascot in each pose and at each size it is drawn. The theme toggle shows them on the dark theme.',
 		Content: BrandSpecimens,
 	},
 	{

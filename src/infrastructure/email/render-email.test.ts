@@ -158,8 +158,8 @@ describe('renderEmail', () => {
 			expect(lockup(load(email.html))).toEqual({
 				count: 1,
 				src: 'https://site.example.com/email/lockup.png',
-				width: '210',
-				height: '56',
+				width: '263',
+				height: '70',
 				alt: 'Barb’s Table',
 			});
 		}

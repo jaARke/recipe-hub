@@ -38,8 +38,8 @@ const monospace = "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mo
 
 // public/email/lockup.png, made at twice this size (assets/brand/SOURCES.md).
 const lockupPath = '/email/lockup.png';
-const lockupWidth = 210;
-const lockupHeight = 56;
+const lockupWidth = 263;
+const lockupHeight = 70;
 
 const styles = {
 	body: { backgroundColor: colors.background, margin: 0, padding: '24px 0' },

@@ -16,7 +16,7 @@ function FavoritesEmptyState() {
 		<Empty className="border">
 			<EmptyHeader>
 				<EmptyMedia>
-					<Mascot size="lg" />
+					<Mascot pose="sleeping" size="lg" />
 				</EmptyMedia>
 				<EmptyTitle>No favorites yet</EmptyTitle>
 				<EmptyDescription>
