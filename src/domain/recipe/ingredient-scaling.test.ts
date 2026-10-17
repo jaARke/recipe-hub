@@ -2,9 +2,35 @@ import { describe, expect, it } from 'vitest';
 import { formatAmount } from '@/domain/recipe/amount-format';
 import type { IngredientLine, IngredientLineSpan } from '@/domain/recipe/ingredient';
 import { parseIngredientLine } from '@/domain/recipe/ingredient-parser';
-import { scaleIngredientLine } from '@/domain/recipe/ingredient-scaling';
+import { givesAmount, scaleIngredientLine } from '@/domain/recipe/ingredient-scaling';
 
 type ScaledParts = Omit<IngredientLine, 'text'>;
+
+describe('givesAmount', () => {
+	it.each([
+		'Add 2 cups flour',
+		'Beat in two eggs',
+		'Stir in the remaining ½ cup sugar',
+		'Juice of 1 lemon',
+		'a few sprigs thyme',
+	])('finds an amount in "%s"', (text) => {
+		expect(givesAmount(text)).toBe(true);
+	});
+
+	it.each([
+		'Bake at 350 F for 20 minutes',
+		'Heat the oven to 300°F.',
+		'Heat the water to between 105 and 115 F',
+		'Let it rise for 1 to 2 hours',
+		'Half an hour later, stir',
+		'Sift the flour 2 times',
+		'See Note 2',
+		'Cut into 2-inch pieces',
+		'Whisk in the flour.',
+	])('finds no amount in "%s", whose numbers are right at any scale', (text) => {
+		expect(givesAmount(text)).toBe(false);
+	});
+});
 
 describe('scaleIngredientLine', () => {
 	it.each<[string, number, ScaledParts]>([
@@ -67,6 +93,107 @@ describe('scaleIngredientLine', () => {
 			line: { text, ...parts },
 		});
 	});
+
+	it.each<[string, number, ScaledParts]>([
+		['1 to 2 teaspoons salt', 2, { amount: { min: 2, max: 4 }, unit: 'teaspoons', item: 'salt' }],
+		[
+			'1 to 2 teaspoons salt',
+			1 / 2,
+			{ amount: { min: 0.5, max: 1 }, unit: 'teaspoon', item: 'salt' },
+		],
+		['1 to 3 tablespoons oil', 2, { amount: { min: 2, max: 6 }, unit: 'tablespoons', item: 'oil' }],
+		[
+			'1 to 3 tablespoons oil',
+			1 / 2,
+			{ amount: { min: 0.5, max: 1.5 }, unit: 'tablespoons', item: 'oil' },
+		],
+		['¼ to ½ cup sugar', 2, { amount: { min: 0.5, max: 1 }, unit: 'cup', item: 'sugar' }],
+		['¼ to ½ cup sugar', 1 / 2, { amount: { min: 2, max: 4 }, unit: 'tablespoons', item: 'sugar' }],
+		[
+			'2 tbsp sugar (or 1 to 2 tsp stevia)',
+			2,
+			{ amount: { min: 0.25 }, unit: 'cup', item: 'sugar (or 2 to 4 tsp stevia)' },
+		],
+		[
+			'2 tbsp sugar (or 1 to 2 tsp stevia)',
+			1 / 2,
+			{ amount: { min: 1 }, unit: 'tbsp', item: 'sugar (or ½ to 1 tsp stevia)' },
+		],
+		[
+			'1 cup milk, plus 1 to 3 tablespoons',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'milk', preparation: 'plus 2 to 6 tablespoons' },
+		],
+		[
+			'1 cup milk, plus 1 to 3 tablespoons',
+			1 / 2,
+			{
+				amount: { min: 0.5 },
+				unit: 'cup',
+				item: 'milk',
+				preparation: 'plus ½ to 1½ tablespoons',
+			},
+		],
+		['1 to 2 pounds beef', 2, { amount: { min: 2, max: 4 }, unit: 'pounds', item: 'beef' }],
+		['1 to 2 pounds beef', 1 / 2, { amount: { min: 0.5, max: 1 }, unit: 'pound', item: 'beef' }],
+		['¼ to ½ pound bacon', 2, { amount: { min: 0.5, max: 1 }, unit: 'pound', item: 'bacon' }],
+		['¼ to ½ pound bacon', 1 / 2, { amount: { min: 2, max: 4 }, unit: 'ounces', item: 'bacon' }],
+		['1 to 2 ounces cheese', 2, { amount: { min: 2, max: 4 }, unit: 'ounces', item: 'cheese' }],
+		[
+			'1 to 2 ounces cheese',
+			1 / 2,
+			{ amount: { min: 0.5, max: 1 }, unit: 'ounce', item: 'cheese' },
+		],
+		[
+			'1 to 2 fl oz lime juice',
+			2,
+			{ amount: { min: 2, max: 4 }, unit: 'fl oz', item: 'lime juice' },
+		],
+		[
+			'1 to 2 fl oz lime juice',
+			1 / 2,
+			{ amount: { min: 0.5, max: 1 }, unit: 'fl oz', item: 'lime juice' },
+		],
+		['1 to 2 sticks butter', 2, { amount: { min: 2, max: 4 }, unit: 'sticks', item: 'butter' }],
+		[
+			'1 to 2 sticks butter',
+			1 / 2,
+			{ amount: { min: 0.5, max: 1 }, unit: 'stick', item: 'butter' },
+		],
+		['100 to 200 g flour', 2, { amount: { min: 200, max: 400 }, unit: 'g', item: 'flour' }],
+		['100 to 200 g flour', 1 / 2, { amount: { min: 50, max: 100 }, unit: 'g', item: 'flour' }],
+		['250 to 500 ml stock', 2, { amount: { min: 500, max: 1000 }, unit: 'ml', item: 'stock' }],
+		['250 to 500 ml stock', 1 / 2, { amount: { min: 125, max: 250 }, unit: 'ml', item: 'stock' }],
+		['1 to 1.5 kg potatoes', 2, { amount: { min: 2, max: 3 }, unit: 'kg', item: 'potatoes' }],
+		[
+			'1 to 1.5 kg potatoes',
+			1 / 2,
+			{ amount: { min: 0.5, max: 0.75 }, unit: 'kg', item: 'potatoes' },
+		],
+		['1 to 2 cans tomatoes', 2, { amount: { min: 2, max: 4 }, unit: 'cans', item: 'tomatoes' }],
+		[
+			'1 to 2 cans tomatoes',
+			1 / 2,
+			{ amount: { min: 0.5, max: 1 }, unit: 'can', item: 'tomatoes' },
+		],
+		[
+			'1 pound pasta (about 6 to 8 cups cooked)',
+			2,
+			{ amount: { min: 2 }, unit: 'pounds', item: 'pasta (about 12 to 16 cups cooked)' },
+		],
+		[
+			'1 pound pasta (about 6 to 8 cups cooked)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'pound', item: 'pasta (about 3 to 4 cups cooked)' },
+		],
+	])(
+		'keeps the range in "%s" a range, in a unit that reads both its ends close, by %s',
+		(text, factor, parts) => {
+			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+				line: { text, ...parts },
+			});
+		}
+	);
 
 	it.each<[string, number, ScaledParts]>([
 		['40 g butter', 1 / 3, { amount: { min: 13 }, unit: 'g', item: 'butter' }],
@@ -144,13 +271,16 @@ describe('scaleIngredientLine', () => {
 		});
 	});
 
-	it.each(['Salt to taste', 'half-and-half', 'Half and half', 'half & half'])(
-		'leaves "%s", with nothing to scale, unchanged and unmarked',
-		(text) => {
-			const line = parseIngredientLine(text);
-			expect(scaleIngredientLine(line, 2)).toStrictEqual({ line });
-		}
-	);
+	it.each([
+		'Salt to taste',
+		'half-and-half',
+		'Half and half',
+		'half & half',
+		'Oil for frying (350 F)',
+	])('leaves "%s", with nothing to scale, unchanged and unmarked', (text) => {
+		const line = parseIngredientLine(text);
+		expect(scaleIngredientLine(line, 2)).toStrictEqual({ line });
+	});
 
 	it.each([
 		'a few sprigs thyme',
@@ -517,6 +647,26 @@ describe('scaleIngredientLine', () => {
 			'1 cup chopped onion (one to 2 medium)',
 			1 / 2,
 			{ amount: { min: 0.5 }, unit: 'cup', item: 'chopped onion (½ to 1 medium)' },
+		],
+		[
+			'1 cup chopped onion (between 1 and 2 medium)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'chopped onion (2 to 4 medium)' },
+		],
+		[
+			'1 cup chopped onion (between 1 and 2 medium)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'chopped onion (½ to 1 medium)' },
+		],
+		[
+			'1 pound pasta (between 6 and 8 cups cooked)',
+			2,
+			{ amount: { min: 2 }, unit: 'pounds', item: 'pasta (12 to 16 cups cooked)' },
+		],
+		[
+			'1 pound pasta (between 6 and 8 cups cooked)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'pound', item: 'pasta (3 to 4 cups cooked)' },
 		],
 	])('reads the range in "%s" whole and scales both its ends by %s', (text, factor, parts) => {
 		expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
@@ -1136,6 +1286,66 @@ describe('scaleIngredientLine', () => {
 		['1 kg 00 flour', 1 / 2, { amount: { min: 0.5 }, unit: 'kg', item: '00 flour' }],
 		['1 cup 5-minute rice', 2, { amount: { min: 2 }, unit: 'cups', item: '5-minute rice' }],
 		['1 cup 5-minute rice', 1 / 2, { amount: { min: 0.5 }, unit: 'cup', item: '5-minute rice' }],
+		[
+			'1 cup water (between 105 and 115 F)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'water (between 105 and 115 F)' },
+		],
+		[
+			'1 cup water (between 105 and 115 F)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'water (between 105 and 115 F)' },
+		],
+		[
+			'1 cup water (between 40 and 45 C)',
+			2,
+			{ amount: { min: 2 }, unit: 'cups', item: 'water (between 40 and 45 C)' },
+		],
+		[
+			'1 cup water (between 40 and 45 C)',
+			1 / 2,
+			{ amount: { min: 0.5 }, unit: 'cup', item: 'water (between 40 and 45 C)' },
+		],
+		[
+			'1 package yeast, dissolved in warm water (between 105 and 115 F)',
+			2,
+			{
+				amount: { min: 2 },
+				unit: 'packages',
+				item: 'yeast',
+				preparation: 'dissolved in warm water (between 105 and 115 F)',
+			},
+		],
+		[
+			'1 package yeast, dissolved in warm water (between 105 and 115 F)',
+			1 / 2,
+			{
+				amount: { min: 0.5 },
+				unit: 'package',
+				item: 'yeast',
+				preparation: 'dissolved in warm water (between 105 and 115 F)',
+			},
+		],
+		[
+			'2 cups milk, heated to between 105 and 115 degrees',
+			2,
+			{
+				amount: { min: 4 },
+				unit: 'cups',
+				item: 'milk',
+				preparation: 'heated to between 105 and 115 degrees',
+			},
+		],
+		[
+			'2 cups milk, heated to between 105 and 115 degrees',
+			1 / 2,
+			{
+				amount: { min: 1 },
+				unit: 'cup',
+				item: 'milk',
+				preparation: 'heated to between 105 and 115 degrees',
+			},
+		],
 	])(
 		'keeps the number in "%s", which is no amount, by %s without a mark',
 		(text, factor, parts) => {
@@ -1194,6 +1404,18 @@ describe('scaleIngredientLine', () => {
 			{ amount: { min: 1 }, item: 'tomato or 1 can (14 ounces)' },
 			[{ field: 'item', start: 17, end: 26 }],
 		],
+		[
+			'2 sweet potatoes (between 1 and 2 pounds)',
+			2,
+			{ amount: { min: 4 }, item: 'sweet potatoes (between 1 and 2 pounds)' },
+			[{ field: 'item', start: 16, end: 38 }],
+		],
+		[
+			'2 sweet potatoes (between 1 and 2 pounds)',
+			1 / 2,
+			{ amount: { min: 1 }, item: 'sweet potato (between 1 and 2 pounds)' },
+			[{ field: 'item', start: 14, end: 36 }],
+		],
 	])(
 		'marks the amount in "%s" it cannot vouch for, after a count above one, unscaled by %s',
 		(text, factor, parts, amounts) => {
@@ -1214,6 +1436,104 @@ describe('scaleIngredientLine', () => {
 		],
 	])(
 		'makes the container after its size in "%s" agree with the count by %s',
+		(text, factor, parts) => {
+			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+				line: { text, ...parts },
+			});
+		}
+	);
+
+	it.each<[string, number, ScaledParts]>([
+		['2 bars chocolate (70% dark)', 2, { amount: { min: 4 }, item: 'bars chocolate (70% dark)' }],
+		[
+			'2 bars chocolate (70% dark)',
+			1 / 2,
+			{ amount: { min: 1 }, item: 'bar chocolate (70% dark)' },
+		],
+		['2 bars of chocolate', 1 / 2, { amount: { min: 1 }, item: 'bar of chocolate' }],
+		['1 bar of chocolate', 2, { amount: { min: 2 }, item: 'bars of chocolate' }],
+		['1 bar of chocolate', 1 / 2, { amount: { min: 0.5 }, item: 'bar of chocolate' }],
+		['2 chipotles in adobo', 2, { amount: { min: 4 }, item: 'chipotles in adobo' }],
+		['2 chipotles in adobo', 1 / 2, { amount: { min: 1 }, item: 'chipotle in adobo' }],
+		['2 of the eggs', 2, { amount: { min: 4 }, item: 'of the eggs' }],
+		['2 of the eggs', 1 / 2, { amount: { min: 1 }, item: 'of the eggs' }],
+		['2 Eggs well beaten', 1 / 2, { amount: { min: 1 }, item: 'Egg well beaten' }],
+		[
+			'2 sweet potatoes, peeled',
+			1 / 2,
+			{ amount: { min: 1 }, item: 'sweet potato', preparation: 'peeled' },
+		],
+		[
+			'1 sweet potato, peeled',
+			2,
+			{ amount: { min: 2 }, item: 'sweet potatoes', preparation: 'peeled' },
+		],
+		[
+			'2 cloves garlic (minced)',
+			1 / 2,
+			{ amount: { min: 1 }, unit: 'clove', item: 'garlic (minced)' },
+		],
+		['2 garlic cloves (minced)', 1 / 2, { amount: { min: 1 }, item: 'garlic clove (minced)' }],
+		['2 Brussels sprouts', 1 / 2, { amount: { min: 1 }, item: 'Brussels sprout' }],
+		['2 star anise', 1 / 2, { amount: { min: 1 }, item: 'star anise' }],
+	])(
+		'makes the noun the count in "%s" counts agree with it by %s, though other words follow it',
+		(text, factor, parts) => {
+			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
+				line: { text, ...parts },
+			});
+		}
+	);
+
+	it.each<[string, number, ScaledParts]>([
+		[
+			'2 eggs (1 for the dough and 1 for the wash)',
+			2,
+			{ amount: { min: 4 }, item: 'eggs (2 for the dough and 2 for the wash)' },
+		],
+		[
+			'2 eggs (1 for the dough and 1 for the wash)',
+			1 / 2,
+			{ amount: { min: 1 }, item: 'egg (½ for the dough and ½ for the wash)' },
+		],
+		[
+			'4 lemons (2 for zest, 2 for juice)',
+			2,
+			{ amount: { min: 8 }, item: 'lemons (4 for zest, 4 for juice)' },
+		],
+		[
+			'4 lemons (2 for zest, 2 for juice)',
+			1 / 2,
+			{ amount: { min: 2 }, item: 'lemons (1 for zest, 1 for juice)' },
+		],
+		['4 eggs (2 of them separated)', 2, { amount: { min: 8 }, item: 'eggs (4 of them separated)' }],
+		[
+			'4 eggs (2 of them separated)',
+			1 / 2,
+			{ amount: { min: 2 }, item: 'eggs (1 of them separated)' },
+		],
+		[
+			'1 cup sugar, divided: ½ for the dough and ½ for the topping',
+			2,
+			{
+				amount: { min: 2 },
+				unit: 'cups',
+				item: 'sugar',
+				preparation: 'divided: 1 for the dough and 1 for the topping',
+			},
+		],
+		[
+			'1 cup sugar, divided: ½ for the dough and ½ for the topping',
+			1 / 2,
+			{
+				amount: { min: 0.5 },
+				unit: 'cup',
+				item: 'sugar',
+				preparation: 'divided: ¼ for the dough and ¼ for the topping',
+			},
+		],
+	])(
+		'scales the shares of the line’s count in "%s" with it by %s, leaving the words after them as written',
 		(text, factor, parts) => {
 			expect(scaleIngredientLine(parseIngredientLine(text), factor)).toStrictEqual({
 				line: { text, ...parts },

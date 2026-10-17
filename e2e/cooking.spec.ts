@@ -79,12 +79,10 @@ test('scaling the recipe scales its ingredients and keeps the scale in the URL',
 	await expect(main.getByRole('checkbox', { name: '5 cups all-purpose flour' })).toBeVisible();
 	await expect(main.getByRole('checkbox', { name: '2 cups cold buttermilk' })).toBeVisible();
 
-	// A step keeps its own amounts, and says what they are for.
+	// A step naming only an oven's temperature has no amount to keep, so it says nothing of the scale.
 	await page.getByRole('button', { name: 'Start cooking' }).click();
 	await expect(main.getByRole('heading', { name: 'Step 1 of 7' })).toBeVisible();
-	await expect(
-		main.getByText('Amounts in the steps are for the original 10 biscuits.')
-	).toBeVisible();
+	await expect(main.getByText(/^Amounts in the steps are for/)).toBeHidden();
 
 	await page.reload();
 	await page.getByRole('button', { name: 'Steps' }).click();

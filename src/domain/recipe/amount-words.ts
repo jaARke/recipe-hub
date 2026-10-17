@@ -1,8 +1,9 @@
 // Amounts written in words at the start of a text, read from a closed vocabulary: the numbers one
 // to twelve; half, third, quarter, and fourth after a number or an article ("one-half", "a
 // quarter", "two thirds") or alone ("half cup"); "half a" and "half an"; a whole number and a
-// fraction ("two and a half", "1 and 1/2"); a range of two joined by "to" or "or", either end of
-// which may be in numerals ("one to 2", "½ to one"); and "a" or "an". A whole or mixed number
+// fraction ("two and a half", "1 and 1/2"); a range of two joined by "to" or "or", or opened by
+// "between" and joined by "and", either end of which may be in numerals ("one to 2", "½ to one",
+// "between 105 and 115"); and "a" or "an". A whole or mixed number
 // stands alone ("two eggs"), while an article or a fraction counts only before a unit the unit
 // table reads ("a pinch of salt"), which the parser checks, so "a few", "a little", "a couple", and
 // "an onion" read nothing. Left out on purpose: numbers past twelve and compounds such as
@@ -120,6 +121,11 @@ const articleAlone = new RegExp(String.raw`^${article}${quantityEnd}`, 'iu');
 
 const rangeSeparator = /^\s+(?:to|or)\s+/iu;
 
+// "between" opens a range "and" closes, which the library reads joined by "to": "between 105 and 115".
+const betweenStart = /^between\s+/iu;
+const betweenSeparator = /^\s+and\s+/iu;
+const libraryRangeSeparator = ' to ';
+
 // The cream, written with spaces or an ampersand rather than hyphens: "Half and half", "half & half".
 const halfAndHalf = /^half\s+(?:and|&)\s+half(?!\p{L})/iu;
 
@@ -205,11 +211,37 @@ function rewritten(amount: AmountWords): AmountWords | undefined {
 	return amount.numerals === amount.written ? undefined : amount;
 }
 
+// The range after the "between" that opens it, as the library reads a range: "between 105 and 115"
+// as "105 to 115".
+function readBetween(start: string, range: string): AmountWords | undefined {
+	const first = readRangeEnd(range);
+	if (first === undefined) {
+		return undefined;
+	}
+
+	const afterFirst = range.slice(first.written.length);
+	const separator = betweenSeparator.exec(afterFirst)?.[0];
+	const second =
+		separator === undefined ? undefined : readRangeEnd(afterFirst.slice(separator.length));
+	return separator === undefined || second === undefined
+		? undefined
+		: {
+				written: `${start}${first.written}${separator}${second.written}`,
+				numerals: `${first.numerals}${libraryRangeSeparator}${second.numerals}`,
+				needsUnit: !first.whole || !second.whole,
+			};
+}
+
 // The amount in words that opens the text, or nothing where it opens with none. A range whose end it
 // cannot read, as in "twelve to fifteen", is none.
 export function readAmountWords(text: string): AmountWords | undefined {
 	if (halfAndHalf.test(text)) {
 		return undefined;
+	}
+
+	const between = betweenStart.exec(text)?.[0];
+	if (between !== undefined) {
+		return readBetween(between, text.slice(between.length));
 	}
 
 	const first = readRangeEnd(text);

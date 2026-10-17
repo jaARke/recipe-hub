@@ -33,7 +33,7 @@ const potRoast: CookingRecipe = {
 				{ text: 'Sear the roast.\nTurn it every few minutes.' },
 			],
 		},
-		{ heading: 'For the gravy', steps: [{ text: 'Whisk in the flour.' }] },
+		{ heading: 'For the gravy', steps: [{ text: 'Whisk in 1 tablespoon flour.' }] },
 	],
 	version: '2026-10-05T08:30:00.000Z',
 };
@@ -207,7 +207,7 @@ describe('CookingView', () => {
 	});
 
 	it('notes on a step that gives an amount that its amounts are the recipe’s own while scaled', async () => {
-		visit('?servings=12&step=1');
+		visit('?servings=12&step=3');
 		await render(<CookingView recipe={potRoast} />);
 
 		const note = shown().getByText(/^Amounts in the steps are for the original/);
@@ -244,11 +244,11 @@ describe('CookingView', () => {
 		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 3');
 	});
 
-	it('notes nothing on a step that gives no amount', async () => {
-		visit('?servings=12&step=3');
+	it('notes nothing on a step that gives no amount, such as one that gives only a temperature', async () => {
+		visit('?servings=12&step=1');
 		await render(<CookingView recipe={potRoast} />);
 
-		await expect.element(screenHeading()).toHaveAccessibleName('For the gravy, step 3 of 3');
+		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 3');
 		await expect.element(shown().getByText(/^Amounts in the steps/)).not.toBeInTheDocument();
 	});
 
@@ -295,7 +295,7 @@ describe('CookingView', () => {
 			.element(dialog.getByRole('button', { name: /Gather your ingredients/ }))
 			.toHaveAttribute('aria-current', 'step');
 
-		await dialog.getByRole('button', { name: /Whisk in the flour/ }).click();
+		await dialog.getByRole('button', { name: /Whisk in 1 tablespoon flour/ }).click();
 
 		await expect.element(page.getByRole('dialog')).not.toBeInTheDocument();
 		await expect.element(screenHeading()).toHaveFocus();
@@ -496,7 +496,7 @@ describe('CookingView', () => {
 			'2 tablespoons flour',
 			'Heat the oven to 300°F.',
 			'Sear the roast.\nTurn it every few minutes.',
-			'Whisk in the flour.',
+			'Whisk in 1 tablespoon flour.',
 		]);
 		await expect
 			.element(printout().getByText(/^Amounts in the steps/))

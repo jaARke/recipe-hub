@@ -213,6 +213,10 @@ const readableRanges = {
 const landedTolerance = 0.02;
 // The cook's unit is kept while its rounding stays within this share.
 const keptTolerance = 0.05;
+// Rounding to the nearest step strays at most half a step, so no more than half of any amount of a
+// step or more. A reading that strays further raised an end to its unit's smallest step, as 1 to 2
+// teaspoons doubled would be to ¼ cup, and misstates it however easily it reads.
+const closeTolerance = 1 / 2;
 
 function isUsVolumeUnit(unit: string): unit is UsVolumeUnit {
 	return (usVolumeUnits as readonly string[]).includes(unit);
@@ -284,8 +288,11 @@ function volumeReading(exact: Amount, own: UsVolumeUnit): Reading {
 		return kept;
 	}
 
-	// The sort is stable, so the larger unit wins a tie.
-	const closest = readings.filter(isReadable).sort((a, b) => a.error - b.error)[0];
+	// The sort is stable, so the larger unit wins a tie. Where no unit reads both ends easily and
+	// close, the cook's unit does: 1 to 2 teaspoons doubles to 2 to 4 teaspoons.
+	const closest = readings
+		.filter((reading) => isReadable(reading) && reading.error <= closeTolerance)
+		.sort((a, b) => a.error - b.error)[0];
 	return closest ?? kept ?? readingIn(own, exact);
 }
 
@@ -579,10 +586,16 @@ function withRangesAfterUnits(text: string, numbers: readonly WrittenNumber[]): 
 }
 
 // Text gives an amount when it holds a number other than a length or opens with an amount in words,
-// read or not: "a few sprigs thyme", "half a lemon". It marks a line the parser read nothing in, and a
-// step whose own amounts a scaled recipe's note speaks for.
+// read or not, that is an amount: "a few sprigs thyme", "half a lemon", but not "Bake at 350 F for 20
+// minutes". It marks a line the parser read nothing in, and a step whose own amounts a scaled
+// recipe's note speaks for.
 export function givesAmount(text: string): boolean {
-	return writtenNumbers(text).length > 0 || readAmountWords(text) !== undefined;
+	const opening = readAmountWords(text);
+	const numbers =
+		opening === undefined
+			? writtenNumbers(text)
+			: [{ start: 0, end: opening.written.length }, ...writtenNumbers(text)];
+	return numbers.some((number) => !isNoAmount(number, text));
 }
 
 // What makes a number no amount. Before it: a can's size, a note's or a step's number, a grade or a
@@ -595,9 +608,10 @@ const noAmountBefore =
 	/(?:[#\p{L}]|\p{N}\s*[x×:]\s*|(?<!\p{L})(?:note|step|size|type|tipo|grade|no\.|number|ph)\s*|(?<!\p{L})into\s+)$/iu;
 const noAmountAfter =
 	/^[\s\-\u2010-\u2015]*(?:[°º˚%]|:\s*\p{N}|[x×](?![\p{L}-])|f(?![\p{L}\p{N}])|(?:deg(?:ree)?|sec(?:ond)?|min(?:ute)?|h(?:ou)?r|day|week|month|y(?:ea)?r|part|time)s?(?!\p{L})|(?:per\s?cent|fahrenheit|celsius|centigrade|ratio|proof)(?!\p{L}))/iu;
-// A C after two digits or more is a temperature in Celsius ("45 C", "40 to 45 C"), where one after
-// a single digit is a cup, as old cards write it ("1 C").
-const celsius = /^\d{2,}(?:\s*(?:[-\u2013\u2014]|to|or)\s*\d{2,})?\s*C(?![\p{L}.])/u;
+// A C after two digits or more is a temperature in Celsius ("45 C", "40 to 45 C", "between 40 and 45
+// C"), where one after a single digit is a cup, as old cards write it ("1 C").
+const celsius =
+	/^(?:[Bb]etween\s+\d{2,}\s+and\s+|\d{2,}\s*(?:[-\u2013\u2014]|to|or)\s*)?\d{2,}\s*C(?![\p{L}.])/u;
 // A number written in zeros is a grade, as in "00 flour", and a fraction no smaller than one a
 // ratio, as in "80/20 ground beef": a recipe writes neither as an amount.
 const zeros = /^0+$/u;
@@ -631,6 +645,10 @@ const joiningWord = /(?<!\p{L})(?:plus|or|and)(?!\p{L})|\+/iu;
 
 // A size that says it is each item's, before a comma or parenthesis ends it: "(6 ounces each)".
 const sizeOfEach = /^[^(),;]*(?<!\p{L})each(?!\p{L})/iu;
+
+// A count "for" or "of" follows names nothing it counts, so it is a share of what the line counts:
+// "(1 for the dough and 1 for the wash)", "(2 of them separated)".
+const share = /^\s+(?:for|of)(?!\p{L})/iu;
 
 // A count of one right before a size, with any container it counts and the parenthesis that opens the
 // size: "or 1 (14-ounce can)", "or 1 can (14 ounces)".
@@ -696,10 +714,11 @@ function opensParentheses(before: string): boolean {
 }
 
 // What the scale does with a number its text leaves as written. It keeps what is no amount and the
-// size of each item; it scales an amount a word joins to the line's ("1 egg plus 1 yolk") and, in a
-// line measured by volume or weight, a second amount or an equivalent of the line's ("(about 1 ¾
-// cups)", "(1 medium)"); and it marks the rest unscaled, such as a size after a count above one ("2
-// sweet potatoes (about 1 pound)") or a total on a count's unit ("2 envelopes (4½ teaspoons)").
+// size of each item; it scales an amount a word joins to the line's ("1 egg plus 1 yolk"), a share of
+// the line's count ("1 for the dough"), and, in a line measured by volume or weight, a second amount
+// or an equivalent of the line's ("(about 1 ¾ cups)", "(1 medium)"); and it marks the rest unscaled,
+// such as a size after a count above one ("2 sweet potatoes (about 1 pound)") or a total on a count's
+// unit ("2 envelopes (4½ teaspoons)").
 function treatmentOf(number: WrittenNumber, text: string, context: LineContext): Treatment {
 	const before = text.slice(0, number.start);
 	const after = text.slice(number.end);
@@ -707,9 +726,10 @@ function treatmentOf(number: WrittenNumber, text: string, context: LineContext):
 		return 'keep';
 	}
 
+	const isShare = number.measurement === undefined && share.test(after);
 	const isSecondAmount =
 		context.isMeasure && (number.measurement !== undefined || opensParentheses(before));
-	return joinedAfter.test(before) || isSecondAmount ? 'scale' : 'unscaled';
+	return joinedAfter.test(before) || isShare || isSecondAmount ? 'scale' : 'unscaled';
 }
 
 // A number at the scale, written as the scaler writes amounts, with the amounts the words it counts
@@ -823,6 +843,16 @@ function scaleWrittenText(text: string, context: LineContext, agreement?: Agreem
 const pluralizableItem = /^\p{L}+(?: \p{L}+){0,2}$/u;
 const joiningWords = new Set(['and', 'or', 'plus', 'with']);
 
+// A word that opens what follows the noun a count counts, which the noun comes before: "bars" in
+// "bars of chocolate", "chipotles" in "chipotles in adobo", and none in "for the wash".
+const followingWords = ['for', 'of', 'to', 'at', 'in', 'into', 'on', 'from'];
+const followingWord = new RegExp(String.raw`(?:^|\s)${wordsSource(followingWords)}(?!\p{L})`, 'iu');
+
+// A word that reads only as a plural, as "bars" does, and "chocolate" and "rice" do not.
+function isPluralOnly(word: string): boolean {
+	return pluralize.isPlural(word) && !pluralize.isSingular(word);
+}
+
 // A container after its size, which takes the count's number in place of the item: "(8 ounce)
 // package", "half-pint jar", and within the parentheses, "(14-ounce can)".
 const sizedContainers = [
@@ -848,25 +878,30 @@ function containerInflection(words: string, scaled: Amount): Edit | undefined {
 	return undefined;
 }
 
-// The noun that ends the words before any parenthetical: "potatoes" in "sweet potatoes (about 1
-// pound)". A size names no noun: "(1 medium)".
-function nounInflection(words: string, scaled: Amount): Edit | undefined {
+// The noun the words a count counts name, before any parenthetical and any word that follows the
+// noun: the last word, or, after a count above one, the last only in the plural, as "bars" in "bars
+// chocolate (70% dark)" is. "star anise" names none to change, and a size none at all: "(1 medium)".
+function nounInflection(words: string, { written, scaled }: Agreement): Edit | undefined {
 	const parenthetical = words.search(/\s+\(/u);
 	const item = parenthetical === -1 ? words : words.slice(0, parenthetical);
-	const nounStart = item.lastIndexOf(' ') + 1;
-	const noun = item.slice(nounStart);
 	if (
 		!pluralizableItem.test(item) ||
-		item.split(' ').some((word) => joiningWords.has(word.toLowerCase())) ||
-		sizes.includes(noun.toLowerCase())
+		item.split(' ').some((word) => joiningWords.has(word.toLowerCase()))
 	) {
 		return undefined;
 	}
 
+	const following = item.search(followingWord);
+	const nouns = [...(following === -1 ? item : item.slice(0, following)).matchAll(/\p{L}+/gu)];
+	const noun = isPlural(written) ? nouns.findLast(([word]) => isPluralOnly(word)) : nouns.at(-1);
+	if (noun === undefined || sizes.includes(noun[0].toLowerCase())) {
+		return undefined;
+	}
+
 	return {
-		start: nounStart,
-		end: item.length,
-		replacement: isPlural(scaled) ? pluralize.plural(noun) : pluralize.singular(noun),
+		start: noun.index,
+		end: noun.index + noun[0].length,
+		replacement: isPlural(scaled) ? pluralize.plural(noun[0]) : pluralize.singular(noun[0]),
 	};
 }
 
@@ -877,7 +912,7 @@ function inflection(words: string, { written, scaled }: Agreement): Edit | undef
 		return undefined;
 	}
 
-	return containerInflection(words, scaled) ?? nounInflection(words, scaled);
+	return containerInflection(words, scaled) ?? nounInflection(words, { written, scaled });
 }
 
 // A measure's unit holds an equivalent of the whole amount in parentheses, which scales with it: "24
