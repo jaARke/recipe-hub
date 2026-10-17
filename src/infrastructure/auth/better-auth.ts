@@ -1,6 +1,6 @@
 import 'server-only';
 import { getAuthenticatorName, passkey } from '@better-auth/passkey';
-import { betterAuth } from 'better-auth';
+import { betterAuth, type BetterAuthOptions } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { nextCookies } from 'better-auth/next-js';
@@ -117,10 +117,12 @@ function serveEnabledPaths(
 	};
 }
 
-export function createAuth(options: AuthOptions) {
+// The options Better Auth runs with: createAuth serves them, and the end-to-end suites' test-only
+// instance (e2e/support/end-to-end-auth.ts) adds its plugin to them.
+export function betterAuthOptions(options: AuthOptions) {
 	const { accounts: accountHooks } = options;
 
-	const auth = betterAuth({
+	return {
 		secret: options.secret,
 		baseURL: { allowedHosts: options.allowedHosts },
 		basePath: authBasePath,
@@ -274,7 +276,11 @@ export function createAuth(options: AuthOptions) {
 			// Last, so it forwards cookies that earlier plugins set.
 			nextCookies(),
 		],
-	});
+	} satisfies BetterAuthOptions;
+}
+
+export function createAuth(options: AuthOptions) {
+	const auth = betterAuth(betterAuthOptions(options));
 
 	// fetch is Better Auth's other name for its handler.
 	const handler = serveEnabledPaths(auth.handler);

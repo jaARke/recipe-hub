@@ -92,9 +92,15 @@ const eslintConfig = defineConfig([
 		rules: { 'no-restricted-syntax': ['error', logMessageRestriction] },
 	},
 	{
-		// Entry points outside Next read their own variables: drizzle-kit's config and tsx scripts.
-		files: ['src/lib/env.ts', 'drizzle.config.ts', 'scripts/**/*.ts'],
+		// Entry points outside Next read their own variables: drizzle-kit's config, tsx scripts, and
+		// the end-to-end suites.
+		files: ['src/lib/env.ts', 'drizzle.config.ts', 'scripts/**/*.ts', 'e2e/support/env.ts'],
 		rules: { 'no-restricted-properties': 'off', 'no-restricted-imports': 'off' },
+	},
+	{
+		// A Playwright fixture hands its value on through a function named use, which is not React's.
+		files: ['e2e/**/*.ts'],
+		rules: { 'react-hooks/rules-of-hooks': 'off' },
 	},
 	// Override default ignores of eslint-config-next.
 	globalIgnores([
@@ -103,6 +109,9 @@ const eslintConfig = defineConfig([
 		'out/**',
 		'build/**',
 		'next-env.d.ts',
+		// Playwright's reports and results, which hold its own scripts.
+		'playwright-report/**',
+		'test-results/**',
 	]),
 ]);
 
