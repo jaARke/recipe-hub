@@ -5,7 +5,7 @@ import { getCachedRecipeSearchPage } from '@/app/_lib/recipe-cache';
 import { PageContainer } from '@/components/layout/page-container';
 import { RecipeListHeading } from '@/components/recipe/recipe-list-heading';
 import { recipeListPath } from '@/components/recipe/recipe-paths';
-import { HeaderSearchFields } from '@/components/search/header-search-bar';
+import { HeaderSearchFieldsFromUrl } from '@/components/search/header-search-bar';
 import { RecipeSearch, RecipeSearchSkeleton } from '@/components/search/recipe-search';
 import {
 	appliedFilterCount,
@@ -61,16 +61,13 @@ async function RecipeList({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>
 	}
 
 	return (
-		<>
-			<HeaderSearchFields state={state} />
-			<RecipeSearch
-				state={state}
-				results={results}
-				pageCount={pageCount}
-				headingLevel={2}
-				resultsHeadingId={recipesHeadingId}
-			/>
-		</>
+		<RecipeSearch
+			state={state}
+			results={results}
+			pageCount={pageCount}
+			headingLevel={2}
+			resultsHeadingId={recipesHeadingId}
+		/>
 	);
 }
 
@@ -78,6 +75,7 @@ export default function RecipesPage({ searchParams }: PageProps<'/'>) {
 	return (
 		<PageContainer width="wide" className="flex flex-col gap-8 py-12 sm:py-16">
 			<RecipeListHeading id={recipesHeadingId}>Recipes</RecipeListHeading>
+			<HeaderSearchFieldsFromUrl searchParams={searchParams} />
 			<Suspense fallback={<RecipeSearchSkeleton mode="browse" />}>
 				<RecipeList searchParams={searchParams} />
 			</Suspense>

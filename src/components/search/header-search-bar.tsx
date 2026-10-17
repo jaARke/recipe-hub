@@ -3,12 +3,14 @@ import { HeaderSearch, HeaderSearchForm } from '@/components/search/header-searc
 import { HiddenSearchFields } from '@/components/search/hidden-search-fields';
 import { KeptPageFields } from '@/components/search/kept-page-fields';
 import {
+	parseRecipeSearchParams,
 	recipeSearchMode,
 	recipeSearchParamNames,
 	type RecipeSearchField,
 	type RecipeSearchMode,
 	type RecipeSearchState,
 } from '@/components/search/search-params';
+import type { RouteSearchParams } from '@/lib/url-query';
 
 // The site header's search form, which Browse's and Search's hidden fields join from outside it.
 const headerSearchFormId = 'header-search';
@@ -47,4 +49,29 @@ function HeaderSearchFields({ state }: { state: RecipeSearchState }) {
 	);
 }
 
-export { HeaderSearchBar, HeaderSearchFields, headerSearchFormId, recipeSearchHintId };
+async function ParsedHeaderSearchFields({
+	searchParams,
+}: {
+	searchParams: Promise<RouteSearchParams>;
+}) {
+	const state = parseRecipeSearchParams(await searchParams);
+	return state === null ? null : <HeaderSearchFields state={state} />;
+}
+
+// The page's fields from its URL alone, behind their own boundary, so a query typed while the
+// results still load keeps the filters.
+function HeaderSearchFieldsFromUrl({ searchParams }: { searchParams: Promise<RouteSearchParams> }) {
+	return (
+		<Suspense>
+			<ParsedHeaderSearchFields searchParams={searchParams} />
+		</Suspense>
+	);
+}
+
+export {
+	HeaderSearchBar,
+	HeaderSearchFields,
+	HeaderSearchFieldsFromUrl,
+	headerSearchFormId,
+	recipeSearchHintId,
+};

@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { searchRecipes } from '@/app/_lib/search-recipes';
 import { PageContainer } from '@/components/layout/page-container';
-import { HeaderSearchFields } from '@/components/search/header-search-bar';
+import { HeaderSearchFieldsFromUrl } from '@/components/search/header-search-bar';
 import {
 	RecipeSearch,
 	RecipeSearchHint,
@@ -35,12 +35,7 @@ async function SearchResults({ searchParams }: Pick<PageProps<'/search'>, 'searc
 		notFound();
 	}
 
-	return (
-		<>
-			<HeaderSearchFields state={state} />
-			<RecipeSearch state={state} results={results} pageCount={pageCount} headingLevel={2} />
-		</>
-	);
+	return <RecipeSearch state={state} results={results} pageCount={pageCount} headingLevel={2} />;
 }
 
 export default function SearchPage({ searchParams }: PageProps<'/search'>) {
@@ -50,6 +45,7 @@ export default function SearchPage({ searchParams }: PageProps<'/search'>) {
 				<h1 className="font-heading text-4xl font-semibold">Search</h1>
 				<RecipeSearchHint />
 			</div>
+			<HeaderSearchFieldsFromUrl searchParams={searchParams} />
 			<Suspense fallback={<RecipeSearchSkeleton mode="search" />}>
 				<SearchResults searchParams={searchParams} />
 			</Suspense>
