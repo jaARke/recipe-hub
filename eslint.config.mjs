@@ -109,8 +109,7 @@ const eslintConfig = defineConfig([
 		'out/**',
 		'build/**',
 		'next-env.d.ts',
-		// Playwright's reports and results, which hold its own scripts.
-		'playwright-report/**',
+		// The test runs' results and reports, which hold Vitest's and Playwright's own scripts.
 		'test-results/**',
 	]),
 ]);

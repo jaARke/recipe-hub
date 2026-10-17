@@ -28,6 +28,10 @@ const spendingProjects: Project[] = Object.entries(spendingTags).map(([name, tag
 	default: false,
 }));
 
+// Where a run writes its traces and HTML report, beside Vitest's results. The two are siblings, since
+// Playwright empties its output as a run starts and the report as it is written.
+const resultsDir = 'test-results/playwright';
+
 // Run against `pnpm dev` from this tree on Neon develop, which the owner starts; a production build
 // breaks BotID and /design, so it is never the target.
 export default defineConfig({
@@ -35,7 +39,8 @@ export default defineConfig({
 	// Resolves server-only, which the suites' Better Auth instance imports, as the scripts do.
 	tsconfig: './e2e/tsconfig.json',
 	fullyParallel: true,
-	reporter: [['list'], ['html', { open: 'never' }]],
+	outputDir: `${resultsDir}/output`,
+	reporter: [['list'], ['html', { open: 'never', outputFolder: `${resultsDir}/report` }]],
 	use: {
 		baseURL: devServerUrl.href,
 		trace: 'retain-on-failure',

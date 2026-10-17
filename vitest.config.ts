@@ -1,6 +1,7 @@
 import tailwindcss from '@tailwindcss/vite';
 import { playwright } from '@vitest/browser-playwright';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
+import { vitestResultsDir } from './vitest.global-setup';
 
 export default defineConfig({
 	resolve: {
@@ -9,6 +10,14 @@ export default defineConfig({
 		tsconfigPaths: true,
 	},
 	test: {
+		globalSetup: './vitest.global-setup.ts',
+		attachmentsDir: `${vitestResultsDir}/attachments`,
+		// The defaults, which add GitHub's annotations and job summary in Actions, and one HTML file that
+		// shows each failure with its screenshot.
+		reporters: [
+			...configDefaults.reporters,
+			['html', { outputDir: `${vitestResultsDir}/report`, singleFile: true }],
+		],
 		// Component render tests are .test.tsx and run in real browsers; every other test runs in Node.
 		projects: [
 			{ extends: true, test: { name: 'node', include: ['**/*.test.ts'], environment: 'node' } },
