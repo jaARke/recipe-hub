@@ -13,6 +13,7 @@ import {
 	type RecipeTotalTimeChoice,
 } from '@/application/search/recipe-search-dtos';
 import { recipeSearchPath } from '@/components/recipe/recipe-paths';
+import { ChoiceSelect } from '@/components/search/choice-select';
 import { HiddenSearchFields } from '@/components/search/hidden-search-fields';
 import {
 	recipeSearchHref,
@@ -30,13 +31,6 @@ import {
 	FieldLegend,
 	FieldSet,
 } from '@/components/ui/field';
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select';
 import { tagKey } from '@/domain/recipe/tag-normalization';
 
 const totalTimeLabels: Record<RecipeTotalTimeChoice, string> = {
@@ -65,13 +59,6 @@ const shownTagCount = 8;
 
 type TagOption = RecipeFacetCount & {
 	checked: boolean;
-};
-
-// A null value is the select's "any" choice, which submits an empty value.
-type ChoiceItem = {
-	value: string | null;
-	label: string;
-	count?: number;
 };
 
 type FilterHeadingTag = 'h2' | 'h4';
@@ -113,41 +100,6 @@ function chosenContributor(
 	facetContributors: readonly RecipeContributorCount[]
 ): RecipeContributorCount | undefined {
 	return facetContributors.find((contributor) => contributor.memberId === state.contributorId);
-}
-
-function ChoiceSelect({
-	id,
-	name,
-	items,
-	defaultValue,
-	descriptionId,
-}: {
-	id: string;
-	name: string;
-	items: readonly ChoiceItem[];
-	defaultValue: string | null;
-	descriptionId?: string;
-}) {
-	return (
-		<Select name={name} items={items} defaultValue={defaultValue}>
-			<SelectTrigger id={id} className="w-full" aria-describedby={descriptionId}>
-				<SelectValue />
-			</SelectTrigger>
-			<SelectContent>
-				{items.map((item) => (
-					<SelectItem key={item.value ?? ''} value={item.value}>
-						{item.label}
-						{item.count !== undefined && (
-							<>
-								{' '}
-								<span className="text-muted-foreground">{item.count}</span>
-							</>
-						)}
-					</SelectItem>
-				))}
-			</SelectContent>
-		</Select>
-	);
 }
 
 function TagCheckboxes({
