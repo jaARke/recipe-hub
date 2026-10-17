@@ -42,6 +42,8 @@ function nextConfig(phase: string): NextConfig {
 			turbopackFileSystemCacheForBuild: false,
 			// A dev server restarted on an earlier session's cache can answer each page load with a
 			// restart of the main client entry, so the page reloads in a loop (vercel/next.js#100267).
+			// It can come back on once, after a full pnpm test:e2e, a restarted pnpm dev that serves
+			// /api/auth/get-session before / loads / without reloading.
 			turbopackFileSystemCacheForDev: false,
 		},
 		images: {
