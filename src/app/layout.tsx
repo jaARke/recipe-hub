@@ -33,8 +33,6 @@ export const metadata: Metadata = {
 	// The opengraph-image file convention fills in the images, which pages without their own inherit.
 	openGraph: { type: 'website', siteName },
 	twitter: { card: 'summary_large_image' },
-	// Kept out of search results until launch; links are still followed so crawlers see each noindex.
-	robots: { index: false, follow: true },
 };
 
 // The browser's toolbar takes the header's color in the system's theme; a theme picked with the

@@ -7,6 +7,8 @@ import { settings } from '@/lib/settings';
 
 export const metadata: Metadata = {
 	title: 'Request access',
+	// Kept out of search results, which would send strangers here; its links are followed.
+	robots: { index: false, follow: true },
 };
 
 export default function RequestAccessPage() {
