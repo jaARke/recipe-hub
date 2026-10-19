@@ -18,7 +18,9 @@ export type HeldPageLoad = { path: string; type: NavigationType };
 
 const releases: (() => void)[] = [];
 
-afterEach(() => {
+afterEach(async () => {
+	// Firefox and WebKit start a link's load a task after its click, so one may still be coming.
+	await new Promise((resolve) => setTimeout(resolve, 0));
 	for (const release of releases.splice(0)) {
 		release();
 	}

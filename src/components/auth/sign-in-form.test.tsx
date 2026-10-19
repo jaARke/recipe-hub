@@ -47,7 +47,8 @@ describe('SignInForm', () => {
 	it('asks for a passkey only once its button is pressed', async () => {
 		const passkey = vi.mocked(authClient.signIn.passkey);
 		passkey.mockClear();
-		holdPageLoads();
+		// Left waiting on the dialog, so nothing loads a page after the test.
+		passkey.mockImplementationOnce(() => new Promise(() => {}));
 		await render(<SignInForm next="/contribute" codeLifetimeMinutes={10} />);
 
 		await page.getByLabelText('Email').click();
