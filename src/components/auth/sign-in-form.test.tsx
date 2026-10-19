@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { page } from 'vitest/browser';
+import { authClient } from '@/components/auth/auth-client';
 import { SignInForm } from '@/components/auth/sign-in-form';
 import { holdPageLoads } from '@/components/auth/testing/page-loads';
 
@@ -10,14 +11,11 @@ vi.mock('@/components/auth/email-codes', () => ({
 	signInWithCode: vi.fn(async () => ({ status: 'success' })),
 }));
 
-// The passkey dialog is the browser's; here it signs in with the first passkey offered, and the
-// email field's autofill, which browsers that offer it request on load, waits for a pick.
+// The passkey dialog is the browser's; here it signs in with the first passkey offered.
 vi.mock('@/components/auth/auth-client', () => ({
 	authClient: {
 		signIn: {
-			passkey: vi.fn(({ autoFill }: { autoFill: boolean }) =>
-				autoFill ? new Promise(() => {}) : Promise.resolve({ data: {}, error: null })
-			),
+			passkey: vi.fn(async () => ({ data: {}, error: null })),
 		},
 	},
 }));
@@ -44,5 +42,18 @@ describe('SignInForm', () => {
 		await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
 
 		await expect.poll(() => loads).toEqual([{ path: '/contribute', type: 'push' }]);
+	});
+
+	it('asks for a passkey only once its button is pressed', async () => {
+		const passkey = vi.mocked(authClient.signIn.passkey);
+		passkey.mockClear();
+		holdPageLoads();
+		await render(<SignInForm next="/contribute" codeLifetimeMinutes={10} />);
+
+		await page.getByLabelText('Email').click();
+		expect(passkey).not.toHaveBeenCalled();
+
+		await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
+		await expect.poll(() => passkey.mock.calls.length).toBe(1);
 	});
 });

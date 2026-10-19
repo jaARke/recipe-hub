@@ -250,7 +250,7 @@ export function betterAuthOptions(options: AuthOptions) {
 			passkey({
 				rpName: siteName,
 				rpID: options.productionHost,
-				// A discoverable credential lets the sign-in page's autofill offer it without an address.
+				// A discoverable credential lets the sign-in page's passkey button find it without an address.
 				authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
 				// Named for the password manager or device that made it, when its AAGUID says which.
 				// iCloud Keychain sends an all-zero AAGUID without attestation, so its passkeys stay unnamed.

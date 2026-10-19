@@ -15,21 +15,13 @@ import { emailBlankMessages } from '@/domain/member/member';
 
 type RequestCodeFormProps = {
 	id: string;
-	// The sign-in page's field also lets the browser offer saved passkeys.
-	autoComplete: 'email' | 'username webauthn';
 	description?: string;
 	defaultEmail?: string;
 	action: FormAction;
 };
 
 // Asks for the address a sign-in code goes to.
-function RequestCodeForm({
-	id,
-	autoComplete,
-	description,
-	defaultEmail,
-	action,
-}: RequestCodeFormProps) {
+function RequestCodeForm({ id, description, defaultEmail, action }: RequestCodeFormProps) {
 	const [state, formProps, pending] = useFormAction(
 		action,
 		'We couldn’t send a code. Check your connection and try again.',
@@ -46,7 +38,7 @@ function RequestCodeForm({
 				type="email"
 				label="Email"
 				required
-				autoComplete={autoComplete}
+				autoComplete="email"
 				description={description}
 				error={failure?.fieldErrors[authFieldNames.email]}
 				defaultValue={failure?.values?.[authFieldNames.email] ?? defaultEmail}

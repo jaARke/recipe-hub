@@ -38,9 +38,10 @@ test('a passkey added on the account signs the member in again', async ({
 		.poll(async () => (await context.cookies()).map(({ name }) => name))
 		.not.toContain(`${authCookiePrefix(false)}.session_token`);
 
-	// The authenticator answers the email field's autofill request at once, so the page signs in as it
-	// loads, as picking the passkey from the autofill would.
 	await page.goto(signInPath);
+	const signInWithPasskey = page.getByRole('button', { name: 'Sign in with a passkey' });
+	await waitForHydration(signInWithPasskey);
+	await signInWithPasskey.click();
 	await expect(page).toHaveURL(recipeListPath);
 	await expectSignedInAs(page, member);
 });

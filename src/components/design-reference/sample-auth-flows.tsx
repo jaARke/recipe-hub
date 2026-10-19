@@ -144,12 +144,7 @@ function SampleSignIn({ idPrefix, codeSentTo, passkeyDialogClosed = false }: Sam
 	return (
 		<div className="flex flex-col gap-8">
 			{email === null ? (
-				<RequestCodeForm
-					id={ids.email}
-					autoComplete="username webauthn"
-					defaultEmail={lastEmail}
-					action={requestCode}
-				/>
+				<RequestCodeForm id={ids.email} defaultEmail={lastEmail} action={requestCode} />
 			) : (
 				<ConfirmCodeForm
 					id={ids.code}
@@ -231,7 +226,6 @@ function SampleInviteSteps({ preview, inviteeEmail, signedInAs }: SampleInviteSt
 					<InviteEmailStep headingLevel={inviteHeadingLevel}>
 						<RequestCodeForm
 							id={inviteFieldIds.email}
-							autoComplete="email"
 							description="We’ll send a code to this address. It’s also the address you’ll sign in with."
 							defaultEmail={email}
 							action={requestCode}
