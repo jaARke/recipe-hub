@@ -22,6 +22,8 @@
 	--color-primary-foreground: var(--primary-foreground);
 	--color-secondary: var(--secondary);
 	--color-secondary-foreground: var(--secondary-foreground);
+	--color-secondary-hover: var(--secondary-hover);
+	--color-state-layer: var(--state-layer);
 	--color-muted: var(--muted);
 	--color-muted-foreground: var(--muted-foreground);
 	--color-accent: var(--accent);
@@ -98,6 +100,11 @@
 	--primary-foreground: var(--background);
 	--secondary: oklch(0.948 0.016 80);
 	--secondary-foreground: var(--foreground);
+	/* Mixed in oklab: in oklch, Chrome drops these near-neutral colors' hue and tints the mix pink. */
+	--secondary-hover: color-mix(in oklab, var(--secondary), var(--foreground) 5%);
+	/* A transparent control's hovered, pressed or open surface: the text color laid over whatever
+	   surface it sits on, so the step shows on a field as on the page. */
+	--state-layer: color-mix(in oklab, var(--foreground) 6%, transparent);
 	--muted: oklch(0.948 0.016 80);
 	--muted-foreground: oklch(0.47 0.022 60);
 	--accent: oklch(0.94 0.03 88);
@@ -122,6 +129,9 @@
 		--popover: oklch(0.245 0.011 55);
 		--primary: oklch(0.93 0.02 85);
 		--secondary: oklch(0.275 0.012 60);
+		/* A dark surface needs a larger step than a light one for a hover to show. */
+		--secondary-hover: color-mix(in oklab, var(--secondary), var(--foreground) 15%);
+		--state-layer: color-mix(in oklab, var(--foreground) 15%, transparent);
 		--muted: oklch(0.26 0.012 60);
 		--muted-foreground: oklch(0.745 0.018 75);
 		--accent: oklch(0.3 0.025 75);
@@ -165,6 +175,10 @@
 		:is(h1, h2, h3, h4, h5, h6) {
 			break-after: avoid;
 		}
+	}
+	/* Tailwind 4's preflight leaves buttons the default cursor; here they point, as links do. */
+	:is(button, [role='button'], summary):not(:disabled) {
+		cursor: pointer;
 	}
 	/* Disclosures draw their own chevron. */
 	summary {

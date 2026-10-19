@@ -29,8 +29,9 @@ function NumberFieldGroup({ className, ...props }: NumberFieldPrimitive.Group.Pr
 	);
 }
 
+// Hovered, the ghost button's state layer, over the field's surface.
 const stepperClassName =
-	"flex size-11 shrink-0 items-center justify-center text-foreground transition-colors outline-none select-none hover:bg-muted data-disabled:pointer-events-none data-disabled:text-muted-foreground dark:hover:bg-input/50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4";
+	"flex size-11 shrink-0 items-center justify-center text-foreground transition-colors outline-none select-none hover:bg-state-layer data-disabled:pointer-events-none data-disabled:text-muted-foreground [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4";
 
 function NumberFieldDecrement({
 	className,

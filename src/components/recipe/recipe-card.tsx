@@ -40,8 +40,10 @@ function RecipeCard({
 			aria-describedby={describedBy(sourceId, detailsId)}
 			className="block h-full rounded-xl transition-shadow hover:shadow-md"
 		>
-			{/* The photo box sits flush with the top edge, as the card does for an image first child. */}
-			<Card className="h-full pt-0">
+			{/* The photo box sits flush with the top edge, as the card does for an image first child. The
+			    dark theme's edge is dimmer than its text and hides a shadow, so hovered it brightens to the
+			    text's color. */}
+			<Card className="h-full pt-0 transition-shadow hover:ring-foreground">
 				<RecipeCover image={recipe.coverImage} sizes={photoSizes} eager={eager} />
 				<CardHeader>
 					<CardTitle>
