@@ -37,7 +37,7 @@ function SiteMenuNavItem({ item }: { item: NavItem }) {
 			render={
 				<Link
 					href={item.href}
-					aria-current={navItemCurrent(item, pathname, openedFrom?.list.pathname)}
+					aria-current={navItemCurrent(item, pathname, openedFrom?.listPathname)}
 					className="decoration-2 underline-offset-4 aria-[current]:underline"
 				/>
 			}

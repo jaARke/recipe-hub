@@ -67,7 +67,7 @@ function MainNav({ member }: MainNavProps) {
 	const pathname = usePathname();
 	const openedFrom = useRecipeOpenedFrom(pathname);
 	return (
-		<MainNavLinks member={member} pathname={pathname} listPathname={openedFrom?.list.pathname} />
+		<MainNavLinks member={member} pathname={pathname} listPathname={openedFrom?.listPathname} />
 	);
 }
 

@@ -1,30 +1,31 @@
 import type * as React from 'react';
+import { z } from 'zod';
 import { favoritesPath, recipeListPath, recipeSearchPath } from '@/components/recipe/recipe-paths';
 
 // Where each recipe was opened from in this tab: the full URL of the list's page, its query
-// included, which the recipe's back link returns to and the header's current section follows. Pure,
-// so the rule is tested without a browser.
+// included, which the recipe's back link returns to and the header's current section follows, and
+// the back link's label, which the list names on the server, since only it knows its view. Pure, so
+// the rule is tested without a browser.
 
-export type RecipeList = {
-	pathname: string;
+// What a list records in the tab's storage as a recipe is opened from it.
+export type RecipeOpenedFromRecord = {
+	// The list's page as the tab's history holds it, such as a search with its filters and page.
+	url: string;
 	// The recipe's link back to the list.
 	backLabel: string;
 };
 
-export type RecipeOpenedFrom = {
-	// The list's page as the tab's history holds it, such as a search with its filters and page.
-	url: string;
-	list: RecipeList;
+export type RecipeOpenedFrom = RecipeOpenedFromRecord & {
+	// The list's pathname, by which the header marks its section.
+	listPathname: string;
 };
 
-// The lists a recipe can be opened from.
-const recipeLists: readonly RecipeList[] = [
-	{ pathname: recipeListPath, backLabel: 'Back to recipes' },
-	{ pathname: recipeSearchPath, backLabel: 'Back to search results' },
-	{ pathname: favoritesPath, backLabel: 'Back to Favorites' },
-];
+// The lists a recipe can be opened from, by pathname.
+const recipeListPathnames: readonly string[] = [recipeListPath, recipeSearchPath, favoritesPath];
 
 const keyPrefix = 'opened-from';
+
+const recordSchema = z.object({ url: z.string(), backLabel: z.string().min(1) });
 
 function pathnameOf(url: string | null | undefined): string | undefined {
 	return url != null && URL.canParse(url) ? new URL(url).pathname : undefined;
@@ -35,10 +36,31 @@ export function recipeOpenedFromKey(recipePathname: string): string {
 	return `${keyPrefix}:${recipePathname}`;
 }
 
-// The list whose page the URL is, if any.
-export function recipeListOf(url: string): RecipeList | undefined {
-	const pathname = pathnameOf(url);
-	return recipeLists.find((list) => list.pathname === pathname);
+// The value a list keeps under the recipe's key.
+export function recipeOpenedFromValue(record: RecipeOpenedFromRecord): string {
+	return JSON.stringify(record);
+}
+
+// The list a kept value names, or undefined where there is none, where it can't be read (as the bare
+// URL an earlier version kept), or where its page is no list's.
+export function readRecipeOpenedFrom(value: string | undefined): RecipeOpenedFrom | undefined {
+	if (value === undefined) {
+		return undefined;
+	}
+	let data: unknown;
+	try {
+		data = JSON.parse(value);
+	} catch {
+		return undefined;
+	}
+	const result = recordSchema.safeParse(data);
+	if (!result.success) {
+		return undefined;
+	}
+	const listPathname = pathnameOf(result.data.url);
+	return listPathname !== undefined && recipeListPathnames.includes(listPathname)
+		? { ...result.data, listPathname }
+		: undefined;
 }
 
 // A click the browser follows in this tab, as Next's Link reads one: the main button with no key
@@ -71,15 +93,14 @@ export function openerEntryIndex(
 	return index >= 0 ? index : undefined;
 }
 
-// The list page a recipe was opened from: the one this tab recorded opening it from, when that
-// exact URL is the entry the recipe's page was reached from, so going back returns to it as it was
-// left. A recipe reached any other way, such as by a shared link, a typed address, or in a new tab,
-// or one whose list entry was since replaced, was opened from no list.
-export function recipeOpenedFromUrl(
-	recorded: string | undefined,
+// The list a recipe was opened from: the one this tab recorded opening it from, when that exact URL
+// is the entry the recipe's page was reached from, so going back returns to it as it was left. A
+// recipe reached any other way, such as by a shared link, a typed address, or in a new tab, or one
+// whose list entry was since replaced, was opened from no list.
+export function recipeOpenedFrom(
+	value: string | undefined,
 	openerUrl: string | null | undefined
-): string | undefined {
-	return recorded !== undefined && recorded === openerUrl && recipeListOf(recorded) !== undefined
-		? recorded
-		: undefined;
+): RecipeOpenedFrom | undefined {
+	const openedFrom = readRecipeOpenedFrom(value);
+	return openedFrom !== undefined && openedFrom.url === openerUrl ? openedFrom : undefined;
 }

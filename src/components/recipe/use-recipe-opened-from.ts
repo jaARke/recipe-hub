@@ -1,11 +1,12 @@
 'use client';
 
-import { useSyncExternalStore } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import {
 	openerEntryIndex,
-	recipeListOf,
+	readRecipeOpenedFrom,
+	recipeOpenedFrom,
 	recipeOpenedFromKey,
-	recipeOpenedFromUrl,
+	recipeOpenedFromValue,
 	type RecipeOpenedFrom,
 } from '@/components/recipe/recipe-opened-from';
 import { readTabStorage, writeTabStorage } from '@/lib/browser-storage';
@@ -42,14 +43,18 @@ function openerEntry(
 	return index === undefined ? undefined : entries[index];
 }
 
-function readRecipeOpenedFromUrl(recipePathname: string): string | undefined {
+// What this tab keeps for where the recipe at the pathname was opened from, when its list's page is
+// the entry the recipe's page was reached from. Returned as the string stored, so the snapshot
+// compares equal until it changes.
+function readRecipeOpenedFromValue(recipePathname: string): string | undefined {
 	const navigation = tabNavigation();
-	return navigation === undefined
+	if (navigation === undefined) {
+		return undefined;
+	}
+	const value = readTabStorage(recipeOpenedFromKey(recipePathname));
+	return recipeOpenedFrom(value, openerEntry(navigation, recipePathname)?.url) === undefined
 		? undefined
-		: recipeOpenedFromUrl(
-				readTabStorage(recipeOpenedFromKey(recipePathname)),
-				openerEntry(navigation, recipePathname)?.url
-			);
+		: value;
 }
 
 // Next writes a navigation's history entry in an insertion effect, where React allows no update, and
@@ -70,10 +75,13 @@ function subscribeToHistory(onChange: () => void): () => void {
 	};
 }
 
-// Records this page, by its full URL, as where the recipe at the pathname is opened from, as a link
-// to it is followed in this tab.
-export function recordRecipeOpened(recipePathname: string): void {
-	writeTabStorage(recipeOpenedFromKey(recipePathname), location.href);
+// Records this page, by its full URL, with the label of the recipe's link back to it, as where the
+// recipe at the pathname is opened from, as a link to it is followed in this tab.
+export function recordRecipeOpened(recipePathname: string, backLabel: string): void {
+	writeTabStorage(
+		recipeOpenedFromKey(recipePathname),
+		recipeOpenedFromValue({ url: location.href, backLabel })
+	);
 }
 
 // Goes back in the tab's history to the list page the recipe was opened from, so it returns as it
@@ -93,11 +101,10 @@ export function returnToRecipeList(recipePathname: string, url: string): boolean
 // The list the recipe at the pathname was opened from, or undefined on any other page. The server's
 // render and hydration read none, since a recipe's page is prerendered for every reader.
 export function useRecipeOpenedFrom(pathname: string | undefined): RecipeOpenedFrom | undefined {
-	const url = useSyncExternalStore(
+	const value = useSyncExternalStore(
 		subscribeToHistory,
-		() => (pathname === undefined ? undefined : readRecipeOpenedFromUrl(pathname)),
+		() => (pathname === undefined ? undefined : readRecipeOpenedFromValue(pathname)),
 		() => undefined
 	);
-	const list = url === undefined ? undefined : recipeListOf(url);
-	return url === undefined || list === undefined ? undefined : { url, list };
+	return useMemo(() => readRecipeOpenedFrom(value), [value]);
 }

@@ -19,13 +19,27 @@ const resultPhotoSizes = '(min-width: 640px) 160px, 96px';
 // The first results, which are above the fold on a desktop.
 const firstResultCount = 3;
 
-// Each result records the page, query and filters included, as where its recipe is opened from.
-function RecipeSearchResultList({ children }: { children: React.ReactNode }) {
+// The rows' list, which the results and their skeletons share.
+function RecipeSearchResultRows({ children }: { children: React.ReactNode }) {
 	return (
-		<RecipeListLinks>
-			<ul role="list" className="divide-y">
-				{children}
-			</ul>
+		<ul role="list" className="divide-y">
+			{children}
+		</ul>
+	);
+}
+
+// Each result records the page, query and filters included, with the list's back label, as where its
+// recipe is opened from.
+function RecipeSearchResultList({
+	backLabel,
+	children,
+}: {
+	backLabel: string;
+	children: React.ReactNode;
+}) {
+	return (
+		<RecipeListLinks backLabel={backLabel}>
+			<RecipeSearchResultRows>{children}</RecipeSearchResultRows>
 		</RecipeListLinks>
 	);
 }
@@ -113,4 +127,10 @@ function RecipeSearchResultSkeleton() {
 	);
 }
 
-export { firstResultCount, RecipeSearchResult, RecipeSearchResultList, RecipeSearchResultSkeleton };
+export {
+	firstResultCount,
+	RecipeSearchResult,
+	RecipeSearchResultList,
+	RecipeSearchResultRows,
+	RecipeSearchResultSkeleton,
+};

@@ -63,7 +63,12 @@ async function FavoriteList({ searchParams }: Pick<PageProps<'/favorites'>, 'sea
 
 	return (
 		<>
-			<RecipeGrid layout="fullWidth" recipes={recipes} headingTag="h2" />
+			<RecipeGrid
+				layout="fullWidth"
+				recipes={recipes}
+				headingTag="h2"
+				backLabel="Back to Favorites"
+			/>
 			{pageCount > 1 && (
 				<RecipePagination
 					page={page}

@@ -3,6 +3,7 @@ import { render } from 'vitest-browser-react';
 import { page, type Locator } from 'vitest/browser';
 import type { HeaderMember } from '@/components/layout/header-member';
 import { SiteMenu } from '@/components/layout/site-menu';
+import { recipeOpenedFromValue } from '@/components/recipe/recipe-opened-from';
 import { stubTabNavigation } from '@/components/recipe/testing/tab-navigation';
 import { writeTabStorage } from '@/lib/browser-storage';
 
@@ -45,11 +46,14 @@ function currentSections(menu: Locator): (string | null)[] {
 }
 
 // A recipe opened from the list at the URL, as the tab's history and storage record it.
-function openRecipeFrom(listUrl: string) {
+function openRecipeFrom(listUrl: string, backLabel: string) {
 	location.pathname = '/recipes/lemon-bars';
 	const openerUrl = `${window.location.origin}${listUrl}`;
 	stubTabNavigation([openerUrl, `${window.location.origin}/recipes/lemon-bars`]);
-	writeTabStorage('opened-from:/recipes/lemon-bars', openerUrl);
+	writeTabStorage(
+		'opened-from:/recipes/lemon-bars',
+		recipeOpenedFromValue({ url: openerUrl, backLabel })
+	);
 }
 
 function itemNames(group: Locator, role: 'menuitem' | 'menuitemradio' = 'menuitem'): string[] {
@@ -146,10 +150,7 @@ describe('SiteMenu', () => {
 	});
 
 	it('marks Favorites as the section of a recipe opened from Favorites', async () => {
-		location.pathname = '/recipes/lemon-bars';
-		const favoritesUrl = `${window.location.origin}/favorites?page=2`;
-		stubTabNavigation([favoritesUrl, `${window.location.origin}/recipes/lemon-bars`]);
-		writeTabStorage('opened-from:/recipes/lemon-bars', favoritesUrl);
+		openRecipeFrom('/favorites?page=2', 'Back to Favorites');
 		const menu = await openMenu(Promise.resolve(null));
 
 		await expect
@@ -169,7 +170,7 @@ describe('SiteMenu', () => {
 	});
 
 	it('marks Browse as the section of a recipe opened from filtered Browse', async () => {
-		openRecipeFrom('/?tag=Dessert');
+		openRecipeFrom('/?tag=Dessert', 'Back to recipes');
 		const menu = await openMenu(Promise.resolve(null));
 
 		await expect
@@ -179,7 +180,7 @@ describe('SiteMenu', () => {
 	});
 
 	it('marks no section on a recipe opened from a search', async () => {
-		openRecipeFrom('/search?q=lemon&tag=Dessert');
+		openRecipeFrom('/search?q=lemon&tag=Dessert', 'Back to search results');
 		const menu = await openMenu(Promise.resolve(null));
 
 		await expect

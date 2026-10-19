@@ -340,7 +340,14 @@ function BrowseSkeletonSpecimen() {
 }
 
 function RecipeGridSpecimen() {
-	return <RecipeGrid layout="fullWidth" recipes={sampleRecipeSummaries} headingTag="h4" />;
+	return (
+		<RecipeGrid
+			layout="fullWidth"
+			recipes={sampleRecipeSummaries}
+			headingTag="h4"
+			backLabel="Back to Favorites"
+		/>
+	);
 }
 
 function RecipeGridSkeletonSpecimen() {
