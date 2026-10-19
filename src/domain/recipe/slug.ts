@@ -32,17 +32,24 @@ export const slugSchema = z
 	.string()
 	.regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Use lowercase letters, numbers, and single hyphens.');
 
-export function slugify(title: string): string {
-	const slug = title
-		.normalize('NFKD')
-		.replace(/[\u0300-\u036f]/g, '')
-		.toLowerCase()
-		// Dropped rather than hyphenated, so "Grandma's" reads "grandmas".
-		.replace(/['\u2019]/g, '')
-		.replace(/[^a-z0-9]/gu, (character) => foldedLetters[character] ?? '-')
-		.replace(/-+/g, '-')
-		.replace(/^-|-$/g, '');
+// The text in a slug's letters, digits and hyphens, uncapped and possibly empty, so text compared by it
+// ignores case, accents and punctuation.
+export function slugKey(text: string): string {
+	return (
+		text
+			.normalize('NFKD')
+			.replace(/[\u0300-\u036f]/g, '')
+			.toLowerCase()
+			// Dropped rather than hyphenated, so "Grandma's" reads "grandmas".
+			.replace(/['\u2019]/g, '')
+			.replace(/[^a-z0-9]/gu, (character) => foldedLetters[character] ?? '-')
+			.replace(/-+/g, '-')
+			.replace(/^-|-$/g, '')
+	);
+}
 
+export function slugify(title: string): string {
+	const slug = slugKey(title);
 	return slug === '' ? fallbackSlug : truncateSlug(slug, maxSlugLength);
 }
 
