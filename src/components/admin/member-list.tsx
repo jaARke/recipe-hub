@@ -30,7 +30,7 @@ function RoleAction({ member, makeAdmin, removeAdmin }: RoleActionProps) {
 					</>
 				}
 				title={`Make ${member.displayName} an admin?`}
-				description="They can review access requests, invite people, change who is an admin, and edit any recipe."
+				description="They can review access requests, invite people, make members admins, remove members, and edit or delete any recipe. They can also import recipes without the daily limit."
 				cancelLabel="Keep as member"
 				confirmLabel="Make admin"
 				pendingLabel="Making admin"
@@ -47,14 +47,14 @@ function RoleAction({ member, makeAdmin, removeAdmin }: RoleActionProps) {
 		? {
 				title: 'Remove your admin access?',
 				description:
-					'You stay a member but can no longer review access requests, invite people, change who is an admin, or edit other members’ recipes. Another admin can make you an admin again.',
+					'You stay a member but can no longer review access requests, invite people, make members admins, remove members, edit or delete other members’ recipes, or import recipes without the daily limit. Another admin can make you an admin again.',
 				successMessage: 'You’re no longer an admin',
 				failureMessage: 'We couldn’t remove your admin access. Reload the page and try again.',
 			}
 		: {
 				title: `Remove admin from ${member.displayName}?`,
 				description:
-					'They stay a member but can no longer review access requests, invite people, change who is an admin, or edit other members’ recipes.',
+					'They stay a member but can no longer review access requests, invite people, make members admins, remove members, edit or delete other members’ recipes, or import recipes without the daily limit.',
 				successMessage: `${member.displayName} is no longer an admin`,
 				failureMessage: `We couldn’t remove admin from ${member.displayName}. Reload the page and try again.`,
 			};
@@ -108,12 +108,20 @@ function RemoveMemberAction({ member, removeMember }: RemoveMemberActionProps) {
 
 type MemberRowProps = RoleActionProps & {
 	removeMember: FormAction;
+	// Whether the admin reading the list is the owner, who alone removes another admin.
+	readerIsOwner: boolean;
 };
 
-function MemberRow({ member, makeAdmin, removeAdmin, removeMember }: MemberRowProps) {
+function MemberRow({
+	member,
+	makeAdmin,
+	removeAdmin,
+	removeMember,
+	readerIsOwner,
+}: MemberRowProps) {
 	const nameRef = React.useRef<HTMLParagraphElement>(null);
 	const previousRole = React.useRef(member.role);
-	const actions = memberRowActions(member);
+	const actions = memberRowActions(member, readerIsOwner);
 
 	// A role change swaps the row's action, and focus in the dialog it unmounts drops to the page, so
 	// the member's name takes it, with the new role's badge beside it.
@@ -170,6 +178,8 @@ type MemberListProps = {
 };
 
 function MemberList({ members, makeAdmin, removeAdmin, removeMember }: MemberListProps) {
+	const readerIsOwner = members.some((member) => member.isCurrentMember && member.isOwner);
+
 	return (
 		<ul role="list" className="divide-y">
 			{members.map((member) => (
@@ -179,6 +189,7 @@ function MemberList({ members, makeAdmin, removeAdmin, removeMember }: MemberLis
 					makeAdmin={makeAdmin}
 					removeAdmin={removeAdmin}
 					removeMember={removeMember}
+					readerIsOwner={readerIsOwner}
 				/>
 			))}
 		</ul>

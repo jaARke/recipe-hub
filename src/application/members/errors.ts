@@ -27,7 +27,16 @@ export class OwnerProtectedError extends AppError {
 	}
 }
 
-// Removing their own account would sign the admin out for good, so another admin removes them.
+// Only the owner takes away another admin's role or account, so no admin can lock out another.
+export class OwnerOnlyError extends AppError {
+	readonly code = 'member.owner-only';
+
+	constructor() {
+		super('Only the owner can remove another admin');
+	}
+}
+
+// Removing their own account would sign the admin out for good, so the owner removes them.
 export class SelfRemovalError extends AppError {
 	readonly code = 'member.self-removal';
 

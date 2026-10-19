@@ -236,6 +236,18 @@ export function describeMemberRepositoryContract(fixture: () => MemberRepository
 			expect(await members.findByEmail(removedMemberEmail(member.id))).toEqual(removed);
 		});
 
+		it('removes the member only while they hold the role given, and keeps one whose role changed', async () => {
+			const { members } = fixture();
+			const member = await members.create(ada);
+			const admin = await members.create(grace);
+
+			await expect(members.remove(admin.id, 'member')).rejects.toThrow(MemberRoleConflictError);
+			expect(await members.findById(admin.id)).toEqual(admin);
+			expect(await members.remove(member.id, 'member')).toMatchObject({
+				removedAt: expect.any(Date),
+			});
+		});
+
 		it('frees the address, so a new account can take it', async () => {
 			const { members } = fixture();
 			const member = await members.create(ada);

@@ -38,7 +38,7 @@ Imports read photos of a written recipe, and linked pages without complete struc
 
 ## GitHub
 
-The repository `jaARke/recipe-hub` runs three workflows, each pinning its actions to a full commit SHA: CI, Preview cleanup, and the wiki publish ([Operations](Operations.md#scheduled-and-triggered-jobs)). `main` carries no branch protection or rulesets.
+The repository `jaARke/recipe-hub` runs three workflows, each pinning its actions to a full commit SHA: CI, Preview cleanup, and the wiki publish ([Operations](Operations.md#scheduled-and-triggered-jobs)). A ruleset on `main` admits changes only by pull request ([Operations](Operations.md#scheduled-and-triggered-jobs)).
 
 ## Secrets
 

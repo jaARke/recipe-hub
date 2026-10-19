@@ -83,10 +83,13 @@ export class InMemoryMemberRepository implements MemberRepository {
 
 	// Keeps no sessions, passkeys, or codes, so the removal frees the address, revokes its invites, and
 	// deletes the member's favorites and saved drafts.
-	async remove(id: MemberId): Promise<Member | null> {
+	async remove(id: MemberId, role?: MemberRole): Promise<Member | null> {
 		const existing = this.findNotRemoved(id);
 		if (existing === undefined) {
 			return null;
+		}
+		if (role !== undefined && existing.role !== role) {
+			throw new MemberRoleConflictError();
 		}
 
 		const now = new Date();

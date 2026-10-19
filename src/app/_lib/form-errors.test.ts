@@ -85,7 +85,7 @@ describe('toFormError', () => {
 		},
 		{
 			error: new SelfRemovalError(),
-			message: 'You can’t remove yourself. Ask another admin to remove you.',
+			message: 'You can’t remove yourself. Ask the owner to remove you.',
 		},
 		{
 			error: new InvalidImageUploadError(),

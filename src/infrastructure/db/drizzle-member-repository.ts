@@ -130,14 +130,19 @@ export class DrizzleMemberRepository implements MemberRepository {
 		throw new MemberRoleConflictError();
 	}
 
-	async remove(id: MemberId): Promise<Member | null> {
+	async remove(id: MemberId, role?: MemberRole): Promise<Member | null> {
 		return boundedTransaction(this.db, 'removing a member', async (tx) => {
+			// Locked, so a role change made at once waits for the removal or is seen by it.
 			const [current] = await tx
-				.select({ email: users.email })
+				.select({ email: users.email, role: users.role })
 				.from(users)
-				.where(and(eq(users.id, id), notRemoved));
+				.where(and(eq(users.id, id), notRemoved))
+				.for('update');
 			if (current === undefined) {
 				return null;
+			}
+			if (role !== undefined && current.role !== role) {
+				throw new MemberRoleConflictError();
 			}
 
 			// Marks only a member not removed yet, so of two removals at once, the later one stops here.

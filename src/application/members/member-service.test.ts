@@ -3,6 +3,7 @@ import { ForbiddenError, SignInRequiredError } from '@/application/authorization
 import {
 	MemberNotFoundError,
 	MemberRoleConflictError,
+	OwnerOnlyError,
 	OwnerProtectedError,
 	SelfRemovalError,
 } from '@/application/members/errors';
@@ -281,18 +282,36 @@ describe('removeAdmin', () => {
 		expect(await members.findById(grace.id)).toMatchObject({ role: 'admin' });
 	});
 
-	it('removes admin from another admin, who stays a member', async () => {
-		const { members, grace, graceService } = await membersWithGrace();
+	it('lets the owner remove admin from another admin, who stays a member', async () => {
+		const { members, grace, owner, ownerService } = await membersWithOwner();
+
+		await ownerService.removeAdmin(grace.id);
+
+		expect(await members.findById(grace.id)).toMatchObject({ role: 'member' });
+		expect(await members.findById(owner.id)).toMatchObject({ role: 'admin' });
+	});
+
+	it("refuses an admin removing another admin's role and logs the refusal by ids alone", async () => {
+		const { members, grace, graceService } = await membersWithOwner();
 		const lin = await members.create({
 			email: 'lin@example.com',
 			displayName: 'Lin',
 			role: 'admin',
 		});
 
-		await graceService.removeAdmin(lin.id);
+		await expect(graceService.removeAdmin(lin.id)).rejects.toThrow(OwnerOnlyError);
 
-		expect(await members.findById(lin.id)).toMatchObject({ role: 'member' });
-		expect(await members.findById(grace.id)).toMatchObject({ role: 'admin' });
+		expect(await members.findById(lin.id)).toMatchObject({ role: 'admin' });
+		expect(loggedLines()).toEqual([
+			{
+				level: 'warn',
+				logger: 'members',
+				message: 'Admin role removal refused',
+				memberId: grace.id,
+				targetMemberId: lin.id,
+				failure: 'member.owner-only',
+			},
+		]);
 	});
 
 	it('lets an admin remove their own role', async () => {
@@ -330,34 +349,29 @@ describe('removeAdmin', () => {
 	});
 
 	it('reports a member who is not an admin as a role conflict', async () => {
-		const { ada, graceService } = await membersWithGrace();
+		const { ada, ownerService } = await membersWithOwner();
 
-		await expect(graceService.removeAdmin(ada.id)).rejects.toThrow(MemberRoleConflictError);
+		await expect(ownerService.removeAdmin(ada.id)).rejects.toThrow(MemberRoleConflictError);
 	});
 
 	it.each([missingId, malformedId])('reports the id %s as not found', async (id) => {
-		const { graceService } = await membersWithGrace();
+		const { ownerService } = await membersWithOwner();
 
-		await expect(graceService.removeAdmin(id)).rejects.toThrow(MemberNotFoundError);
+		await expect(ownerService.removeAdmin(id)).rejects.toThrow(MemberNotFoundError);
 	});
 
 	it('logs the change by ids alone', async () => {
-		const { members, grace, graceService } = await membersWithGrace();
-		const lin = await members.create({
-			email: 'lin@example.com',
-			displayName: 'Lin',
-			role: 'admin',
-		});
+		const { grace, owner, ownerService } = await membersWithOwner();
 
-		await graceService.removeAdmin(lin.id);
+		await ownerService.removeAdmin(grace.id);
 
 		expect(loggedLines()).toEqual([
 			{
 				level: 'info',
 				logger: 'members',
 				message: 'Admin role removed',
-				memberId: grace.id,
-				targetMemberId: lin.id,
+				memberId: owner.id,
+				targetMemberId: grace.id,
 			},
 		]);
 	});
@@ -383,17 +397,66 @@ describe('removeMember', () => {
 		});
 	});
 
-	it('removes another admin', async () => {
-		const { members, graceService } = await membersWithGrace();
+	it('lets the owner remove another admin', async () => {
+		const { members, grace, ownerService } = await membersWithOwner();
+
+		await ownerService.removeMember(grace.id);
+
+		expect(await members.listAdmins()).not.toContainEqual(
+			expect.objectContaining({ id: grace.id })
+		);
+	});
+
+	it('refuses an admin removing another admin and logs the refusal by ids alone', async () => {
+		const { members, grace, graceService } = await membersWithOwner();
 		const lin = await members.create({
 			email: 'lin@example.com',
 			displayName: 'Lin',
 			role: 'admin',
 		});
 
-		await graceService.removeMember(lin.id);
+		await expect(graceService.removeMember(lin.id)).rejects.toThrow(OwnerOnlyError);
 
-		expect(await members.listAdmins()).not.toContainEqual(expect.objectContaining({ id: lin.id }));
+		expect(await members.findById(lin.id)).not.toHaveProperty('removedAt');
+		expect(loggedLines()).toEqual([
+			{
+				level: 'warn',
+				logger: 'members',
+				message: 'Member removal refused',
+				memberId: grace.id,
+				targetMemberId: lin.id,
+				failure: 'member.owner-only',
+			},
+		]);
+	});
+
+	it('refuses an admin removing a member the owner made an admin after the page loaded', async () => {
+		const { members, ada, graceService, ownerService } = await membersWithOwner();
+		const asLoaded = await members.findById(ada.id);
+		await ownerService.makeAdmin(ada.id);
+		// The removal reads Ada as the page loaded her, a member, as one racing the promotion would.
+		const findById = members.findById.bind(members);
+		vi.spyOn(members, 'findById').mockImplementation(async (id) =>
+			id === ada.id ? asLoaded : findById(id)
+		);
+
+		await expect(graceService.removeMember(ada.id)).rejects.toThrow(MemberRoleConflictError);
+
+		vi.restoreAllMocks();
+		expect(await members.findById(ada.id)).toMatchObject({ role: 'admin' });
+		expect(await members.findById(ada.id)).not.toHaveProperty('removedAt');
+	});
+
+	it('reports an admin removed already as not found, even to another admin', async () => {
+		const { members, ownerService, graceService } = await membersWithOwner();
+		const lin = await members.create({
+			email: 'lin@example.com',
+			displayName: 'Lin',
+			role: 'admin',
+		});
+		await ownerService.removeMember(lin.id);
+
+		await expect(graceService.removeMember(lin.id)).rejects.toThrow(MemberNotFoundError);
 	});
 
 	it('refuses an admin removing themselves and logs the refusal by ids alone', async () => {

@@ -18,7 +18,8 @@ const errorMessages: Partial<Record<string, string>> = {
 	'member.not-found': 'That account was removed. Reload the page to see the latest.',
 	'member.role-conflict': 'That member’s role already changed. Reload the page to see the latest.',
 	'member.owner': 'The owner’s account always stays an admin and can’t be removed.',
-	'member.self-removal': 'You can’t remove yourself. Ask another admin to remove you.',
+	'member.owner-only': 'Only the owner can remove another admin’s role or account.',
+	'member.self-removal': 'You can’t remove yourself. Ask the owner to remove you.',
 	'recipe.not-found':
 		'That recipe was deleted, or this page is out of date. Reload the page and try again.',
 	'recipe.edit-conflict':

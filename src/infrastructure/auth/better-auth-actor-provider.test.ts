@@ -115,6 +115,21 @@ describe('currentActor', () => {
 		expect(actor).toEqual({ kind: 'anonymous' });
 	});
 
+	// Holds while Better Auth reads the account on every request, as with its cookie cache off.
+	it("returns the member role on the request after an admin's role is removed", async () => {
+		const admin = await members.create(jake);
+		const headers = await signedInHeaders(jake.email);
+		expect(await providerFor(headers).currentActor()).toMatchObject({ role: 'admin' });
+
+		await members.setRole(admin.id, 'member');
+
+		expect(await providerFor(headers).currentActor()).toMatchObject({
+			kind: 'member',
+			memberId: admin.id,
+			role: 'member',
+		});
+	});
+
 	it('returns an anonymous actor once the signed-in member is removed', async () => {
 		const member = await members.create(ada);
 		const headers = await signedInHeaders(ada.email);
