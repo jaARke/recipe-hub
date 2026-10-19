@@ -33,8 +33,9 @@ export interface MemberRepository {
 	// Marks the member removed and, in the same write, ends their sessions and deletes their passkeys,
 	// any sign-in code they were sent, their favorites, and their saved drafts. Their account takes
 	// removedMemberEmail's address, freeing theirs for a new invite, and the open invites bound to
-	// their address are revoked. Returns null when no member has this id.
-	remove(id: MemberId): Promise<Member | null>;
+	// their address are revoked. Returns null when no member has this id. Given a role, removes the
+	// member only while they hold it, and throws MemberRoleConflictError when it changed first.
+	remove(id: MemberId, role?: MemberRole): Promise<Member | null>;
 	// Returns null when no member has this id.
 	rename(id: MemberId, displayName: string): Promise<Member | null>;
 }

@@ -2,6 +2,7 @@ import 'server-only';
 import { requireAdmin, requireMember } from '@/application/authorization';
 import {
 	MemberNotFoundError,
+	OwnerOnlyError,
 	OwnerProtectedError,
 	SelfRemovalError,
 } from '@/application/members/errors';
@@ -18,6 +19,7 @@ import {
 	emailAddressSchema,
 	memberIdSchema,
 	parseDisplayName,
+	type Member,
 	type MemberId,
 } from '@/domain/member/member';
 import { getLogger } from '@/lib/logger';
@@ -43,7 +45,8 @@ export class MemberService {
 	private readonly ownerEmail: string;
 
 	// The owner is the account at ownerEmail: it keeps its admin role and is never removed, so the site
-	// always has an admin. Configuring another address moves the protection to that account.
+	// always has an admin, and only it takes away another admin's role or account. Configuring another
+	// address moves ownership to that account.
 	constructor(members: MemberRepository, actors: ActorProvider, ownerEmail: string) {
 		this.members = members;
 		this.actors = actors;
@@ -99,12 +102,16 @@ export class MemberService {
 		logger.info('Admin role granted', { memberId: actor.memberId, targetMemberId: member.id });
 	}
 
-	// Admins may remove their own role too; the owner stays an admin.
+	// The owner removes another admin's role, and an admin may remove their own; the owner stays an
+	// admin.
 	async removeAdmin(memberId: string): Promise<void> {
 		const actor = requireAdmin(await this.actors.currentActor());
 		const id = parseMemberId(memberId);
 		if (await this.isOwner(id)) {
 			throw this.adminRemovalRefused(new OwnerProtectedError(), id, actor.memberId);
+		}
+		if (id !== actor.memberId && !(await this.isOwner(actor.memberId))) {
+			throw this.adminRemovalRefused(new OwnerOnlyError(), id, actor.memberId);
 		}
 
 		const member = await this.members.setRole(id, 'member');
@@ -116,18 +123,26 @@ export class MemberService {
 	}
 
 	// Signs the member out everywhere and keeps them from signing in again. Their recipes stay, still
-	// naming them. Admins may remove another admin, never themselves or the owner.
+	// naming them. Admins may remove a member, and only the owner another admin; no one removes
+	// themselves or the owner.
 	async removeMember(memberId: string): Promise<void> {
 		const actor = requireAdmin(await this.actors.currentActor());
 		const id = parseMemberId(memberId);
 		if (id === actor.memberId) {
 			throw this.memberRemovalRefused(new SelfRemovalError(), id, actor.memberId);
 		}
-		if (await this.isOwner(id)) {
+		const target = await this.members.findById(id);
+		if (this.isOwnerAccount(target)) {
 			throw this.memberRemovalRefused(new OwnerProtectedError(), id, actor.memberId);
 		}
+		const byOwner = await this.isOwner(actor.memberId);
+		if (target?.removedAt === undefined && target?.role === 'admin' && !byOwner) {
+			throw this.memberRemovalRefused(new OwnerOnlyError(), id, actor.memberId);
+		}
 
-		const member = await this.members.remove(id);
+		// Another admin removes only a member, so their removal holds only while the role does, even if
+		// the owner makes them an admin meanwhile.
+		const member = await this.members.remove(id, byOwner ? undefined : 'member');
 		if (member === null) {
 			throw new MemberNotFoundError();
 		}
@@ -149,26 +164,30 @@ export class MemberService {
 		logger.info('Owner bootstrapped', { memberId: member.id, created: outcome === 'created' });
 	}
 
-	private async isOwner(id: MemberId): Promise<boolean> {
-		return (await this.members.findById(id))?.email === this.ownerEmail;
+	private isOwnerAccount(member: Member | null): boolean {
+		return member?.email === this.ownerEmail;
 	}
 
-	// Logged, since the page offers no control that removes the owner's role.
-	private adminRemovalRefused(
-		error: OwnerProtectedError,
+	private async isOwner(id: MemberId): Promise<boolean> {
+		return this.isOwnerAccount(await this.members.findById(id));
+	}
+
+	// Logged, since the page offers no control the service refuses.
+	private adminRemovalRefused<E extends OwnerProtectedError | OwnerOnlyError>(
+		error: E,
 		targetMemberId: MemberId,
 		memberId: MemberId
-	): OwnerProtectedError {
+	): E {
 		logger.warn('Admin role removal refused', { memberId, targetMemberId, failure: error.code });
 		return error;
 	}
 
-	// Logged, since the page offers no control that removes the admin's own account or the owner's.
-	private memberRemovalRefused(
-		error: SelfRemovalError | OwnerProtectedError,
+	// Logged, since the page offers no control the service refuses.
+	private memberRemovalRefused<E extends SelfRemovalError | OwnerProtectedError | OwnerOnlyError>(
+		error: E,
 		targetMemberId: MemberId,
 		memberId: MemberId
-	): SelfRemovalError | OwnerProtectedError {
+	): E {
 		logger.warn('Member removal refused', { memberId, targetMemberId, failure: error.code });
 		return error;
 	}
