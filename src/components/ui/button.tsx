@@ -9,17 +9,19 @@ const buttonVariantClasses = cva(
 		variants: {
 			variant: {
 				default: 'bg-primary text-primary-foreground hover:bg-primary/80',
-				// The brand's inked edge in both themes, instead of the border and input colors.
+				// The brand's inked edge in both themes, instead of the border and input colors. Dark hover and
+				// open surfaces step further than the light theme's, since a small step doesn't show there.
 				outline:
-					'border-edge bg-background shadow-xs hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:bg-input/30 dark:hover:bg-input/50',
-				// Mixed in oklab: in oklch, Chrome drops these near-neutral colors' hue and tints the mix pink.
+					'border-edge bg-background shadow-xs hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:bg-input/30 dark:hover:bg-input/60 dark:aria-expanded:bg-input/60',
 				secondary:
-					'bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklab,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground',
+					'bg-secondary text-secondary-foreground hover:bg-secondary-hover aria-expanded:bg-secondary aria-expanded:text-secondary-foreground',
+				// Hovered or open, the state layer, which shows on a field or a card as on the page.
 				ghost:
-					'hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50',
-				// A full-strength focus border: at 40 percent it falls under 3:1 against the tint.
+					'hover:bg-state-layer hover:text-foreground aria-expanded:bg-state-layer aria-expanded:text-foreground',
+				// A full-strength focus border: at 40 percent it falls under 3:1 against the tint. Its dark hover
+				// tints further and brightens the text, which keeps 4.5:1 on a dialog.
 				destructive:
-					'bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40',
+					'bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/35 dark:hover:text-[color-mix(in_oklab,var(--destructive),var(--foreground)_40%)] dark:focus-visible:ring-destructive/40',
 				link: 'text-primary underline-offset-4 hover:underline',
 			},
 			size: {

@@ -157,7 +157,7 @@ function StepsDialog({
 									aria-current={position === index ? 'step' : undefined}
 									onClick={() => move(() => onPick(position))}
 									className={cn(
-										'flex min-h-11 w-full items-start gap-3 rounded-lg px-2 py-2.5 text-left text-base hover:bg-muted',
+										'flex min-h-11 w-full items-start gap-3 rounded-lg px-2 py-2.5 text-left text-base hover:bg-state-layer',
 										position === index && 'bg-accent',
 										position < index && 'text-muted-foreground'
 									)}

@@ -59,7 +59,9 @@ const colorSwatches: readonly ColorSwatch[] = [
 		tokens: [
 			{ utility: 'bg-secondary', variable: '--secondary' },
 			{ utility: 'text-secondary-foreground', variable: '--secondary-foreground' },
+			{ utility: 'bg-secondary-hover', variable: '--secondary-hover' },
 		],
+		note: 'Hovered, a secondary button or link badge takes the hover surface.',
 	},
 	{
 		name: 'muted',
@@ -68,6 +70,12 @@ const colorSwatches: readonly ColorSwatch[] = [
 			{ utility: 'bg-muted', variable: '--muted' },
 			{ utility: 'text-muted-foreground', variable: '--muted-foreground' },
 		],
+	},
+	{
+		name: 'state layer',
+		sampleClassName: 'bg-state-layer text-foreground',
+		tokens: [{ utility: 'bg-state-layer', variable: '--state-layer' }],
+		note: 'No foreground pair. A transparent control hovered, pressed, or open: the text color laid over whatever surface it sits on.',
 	},
 	{
 		name: 'accent',
