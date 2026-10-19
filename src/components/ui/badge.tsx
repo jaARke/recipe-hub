@@ -10,11 +10,13 @@ const badgeVariants = cva(
 		variants: {
 			variant: {
 				default: 'bg-primary text-primary-foreground [a]:hover:bg-primary/80',
-				secondary: 'bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80',
+				// A link badge hovers as the secondary button does; at 80 percent the surface barely changes.
+				secondary: 'bg-secondary text-secondary-foreground [a]:hover:bg-secondary-hover',
 				destructive:
 					'bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20',
 				outline: 'border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground',
-				ghost: 'hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50',
+				// The ghost button's state layer.
+				ghost: 'hover:bg-state-layer hover:text-muted-foreground',
 				link: 'text-primary underline-offset-4 hover:underline',
 			},
 			// User text, such as a tag, wraps within a narrow screen, curved at the corners as one line is.

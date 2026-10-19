@@ -207,8 +207,9 @@ function RecipeImageViewerTrigger({
 			payload={index}
 			aria-label={viewImageLabel(role, index, images.length, images[index]?.alt)}
 			{...preloadOnApproach}
+			// The dark theme hides a shadow, so there a hovered photo takes a card's hovered edge.
 			className={cn(
-				'block cursor-zoom-in overflow-hidden transition-shadow hover:shadow-md',
+				'block cursor-zoom-in overflow-hidden transition-shadow hover:shadow-md dark:hover:ring-[1.5px] dark:hover:ring-foreground',
 				className
 			)}
 		>

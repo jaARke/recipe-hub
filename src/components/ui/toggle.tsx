@@ -9,10 +9,12 @@ const toggleVariants = cva(
 	{
 		variants: {
 			variant: {
-				default: 'bg-transparent',
-				// The outline button's inked edge and surface, and a pressed surface the dark one doesn't hide.
+				// The ghost button's state layer, hovered or pressed.
+				default: 'bg-transparent hover:bg-state-layer aria-pressed:bg-state-layer',
+				// The outline button's inked edge and surfaces; pressed, the hovered one, so the dark rest
+				// surface doesn't hide it.
 				outline:
-					'border border-edge bg-background shadow-xs hover:bg-muted dark:bg-input/30 dark:hover:bg-input/50 dark:aria-pressed:bg-input/50',
+					'border border-edge bg-background shadow-xs hover:bg-muted dark:bg-input/30 dark:hover:bg-input/60 dark:aria-pressed:bg-input/60',
 			},
 			size: {
 				default:
