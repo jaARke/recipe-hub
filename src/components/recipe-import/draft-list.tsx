@@ -61,9 +61,8 @@ function DraftsEmptyState() {
 				</EmptyMedia>
 				<EmptyTitle>No drafts</EmptyTitle>
 				<EmptyDescription>
-					A draft you save stays here for {settings.drafts.savedDraftLifetimeDays} days after your
-					last save, and an import you haven’t saved for {settings.imports.importDraftLifetimeDays}{' '}
-					days.
+					A draft you save stays here for {settings.drafts.draftLifetimeDays} days after your last
+					save, and an import you haven’t saved for {settings.imports.importDraftLifetimeDays} days.
 				</EmptyDescription>
 			</EmptyHeader>
 		</Empty>

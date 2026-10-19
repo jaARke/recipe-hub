@@ -163,7 +163,7 @@ function parseEntry(entry: string): AutosavedRecipeForm | undefined {
 
 // Entries written before this time have expired.
 function autosaveCutoff(now: Date): Date {
-	return new Date(now.getTime() - daysInMilliseconds(settings.drafts.savedDraftLifetimeDays));
+	return new Date(now.getTime() - daysInMilliseconds(settings.drafts.draftLifetimeDays));
 }
 
 // What the stored entry keeps for the form, by the version of what it edits that the form has, or

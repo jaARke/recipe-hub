@@ -148,9 +148,7 @@ const saveSampleDraft: FormAction<SavedDraftResult> = () => {
 		status: 'success',
 		draftId: 'sample-draft',
 		savedAt,
-		expiresAt: new Date(
-			savedAt.getTime() + daysInMilliseconds(settings.drafts.savedDraftLifetimeDays)
-		),
+		expiresAt: new Date(savedAt.getTime() + daysInMilliseconds(settings.drafts.draftLifetimeDays)),
 	});
 };
 

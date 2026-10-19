@@ -49,7 +49,7 @@ const lemonBars: SaveDraftInput = {
 // Another member's, which names none of the images, so it never keeps them from the member.
 const theirDraft: SaveDraftInput = { ...lemonBars, imagePathnames: [] };
 
-const lifetime = settings.drafts.savedDraftLifetimeDays;
+const lifetime = settings.drafts.draftLifetimeDays;
 
 // What a form that opened or saved the draft sends to save over it: its id and its version.
 function over({ id, savedAt }: SavedDraftRef): Pick<SaveDraftInput, 'draftId' | 'draftVersion'> {
@@ -593,6 +593,26 @@ describe('listDrafts', () => {
 			(imported?.kind === 'import' ? imported.importedAt.getTime() : 0) +
 				daysInMilliseconds(settings.imports.importDraftLifetimeDays)
 		);
+	});
+
+	it('lists a draft for its lifetime after its last change, with when it goes', async () => {
+		const { drafts, serviceFor } = await createDrafts();
+		const service = serviceFor(memberActor());
+		const kept = await service.saveDraft(lemonBars);
+		const expired = await service.saveDraft(lemonBars);
+		const lastChanged = daysAgo(lifetime - 1);
+		drafts.backdate(kept.id, lastChanged);
+		drafts.backdate(expired.id, daysAgo(lifetime + 1));
+
+		expect(await service.listDrafts()).toEqual([
+			{
+				kind: 'saved',
+				id: kept.id,
+				title: 'Lemon bars',
+				savedAt: lastChanged,
+				expiresAt: new Date(lastChanged.getTime() + daysInMilliseconds(lifetime)),
+			},
+		]);
 	});
 
 	it("lists a draft saved from an import's review by how the import read it, once the review is gone", async () => {

@@ -12,10 +12,10 @@ export type SavedDraftId = z.infer<typeof savedDraftIdSchema>;
 
 // Drafts last saved before this time have expired.
 export function savedDraftCutoff(now: Date): Date {
-	return new Date(now.getTime() - daysInMilliseconds(settings.drafts.savedDraftLifetimeDays));
+	return new Date(now.getTime() - daysInMilliseconds(settings.drafts.draftLifetimeDays));
 }
 
 // When a draft last saved at this time expires.
 export function savedDraftExpiry(savedAt: Date): Date {
-	return new Date(savedAt.getTime() + daysInMilliseconds(settings.drafts.savedDraftLifetimeDays));
+	return new Date(savedAt.getTime() + daysInMilliseconds(settings.drafts.draftLifetimeDays));
 }

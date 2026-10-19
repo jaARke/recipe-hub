@@ -1443,7 +1443,7 @@ describe('RecipeForm’s autosave', () => {
 
 	it('removes entries as old as a saved draft’s lifetime, any member’s, as a form loads', async () => {
 		const expired = new Date(
-			Date.now() - daysInMilliseconds(settings.drafts.savedDraftLifetimeDays) - 1000
+			Date.now() - daysInMilliseconds(settings.drafts.draftLifetimeDays) - 1000
 		);
 		const othersExpired = `member:recipe-form:${otherMemberId}:draft:${draftId}`;
 		const othersRecent = `member:recipe-form:${otherMemberId}:new`;

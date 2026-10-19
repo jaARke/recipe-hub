@@ -78,8 +78,8 @@ export default function PrivacyPage() {
 					</li>
 					<li>
 						A draft you save from the recipe form is kept until you save the recipe or delete the
-						draft. A draft you leave is kept for {dayCount(settings.drafts.savedDraftLifetimeDays)}{' '}
-						after your last save, then deleted within a day.
+						draft. A draft you leave is kept for {dayCount(settings.drafts.draftLifetimeDays)} after
+						your last save, then deleted within a day.
 					</li>
 					<li>
 						A photo or scan you upload isn’t listed anywhere until the recipe it’s for is saved.
@@ -114,8 +114,8 @@ export default function PrivacyPage() {
 						A draft you save from an import’s review keeps the address of the page the recipe was
 						read from, so the recipe you save from it can credit that page. The address is kept as
 						long as the draft: until you save the recipe or delete the draft, or for{' '}
-						{dayCount(settings.drafts.savedDraftLifetimeDays)} after your last save, then deleted
-						within a day.
+						{dayCount(settings.drafts.draftLifetimeDays)} after your last save, then deleted within
+						a day.
 					</li>
 					<li>
 						A record of each import is kept: who started it, when, which AI model read it, and what
@@ -153,8 +153,8 @@ export default function PrivacyPage() {
 						Changes you haven’t saved to a recipe you’re adding, editing, or reviewing are kept in
 						your browser, so they come back if the page reloads. They’re cleared when you save the
 						recipe, discard them, or sign out, and otherwise{' '}
-						{dayCount(settings.drafts.savedDraftLifetimeDays)} after your last change; until then
-						anyone using this browser can see them.
+						{dayCount(settings.drafts.draftLifetimeDays)} after your last change; until then anyone
+						using this browser can see them.
 					</li>
 					<li>
 						In the cooking view, each browser tab remembers which ingredients you’ve checked off as

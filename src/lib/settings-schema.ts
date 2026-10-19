@@ -38,7 +38,7 @@ export const settingsSchema = z
 			importDraftLifetimeDays: z.int().positive(),
 		}),
 		drafts: z.object({
-			savedDraftLifetimeDays: z.int().positive(),
+			draftLifetimeDays: z.int().positive(),
 		}),
 		ai: z.object({
 			pageModelId: modelIdSchema,

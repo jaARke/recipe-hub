@@ -72,7 +72,7 @@ describe('DraftList', () => {
 		await expect
 			.element(
 				page.getByText(
-					'A draft you save stays here for 30 days after your last save, and an import you haven’t saved for 7 days.'
+					'A draft you save stays here for 90 days after your last save, and an import you haven’t saved for 7 days.'
 				)
 			)
 			.toBeVisible();

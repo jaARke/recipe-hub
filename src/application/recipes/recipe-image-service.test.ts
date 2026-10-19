@@ -560,7 +560,7 @@ describe('sweepImages', () => {
 
 	it('removes the images a saved draft names once the draft has expired', async () => {
 		const { images, drafts, service, saved, savedDraftId, unused } = await createSweep();
-		drafts.backdate(savedDraftId, pastLifetime(settings.drafts.savedDraftLifetimeDays));
+		drafts.backdate(savedDraftId, pastLifetime(settings.drafts.draftLifetimeDays));
 
 		expect(await service.sweepImages()).toEqual(sweptCounts({ removedCount: 2 }));
 		expect(new Set(images.removedPathnames)).toEqual(new Set([saved, unused]));

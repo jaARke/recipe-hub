@@ -29,7 +29,7 @@ const draftId = '0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e';
 
 const version = '2026-10-14T12:00:00.000Z';
 const now = new Date('2026-10-15T12:00:00.000Z');
-const lifetime = daysInMilliseconds(settings.drafts.savedDraftLifetimeDays);
+const lifetime = daysInMilliseconds(settings.drafts.draftLifetimeDays);
 
 // Ids: the line 0, the step 1, and the saved dish photo 2.
 const lemonBars: RecipeDraftContent = {

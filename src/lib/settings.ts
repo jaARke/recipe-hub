@@ -28,9 +28,9 @@ export const settings: z.output<typeof settingsSchema> = {
 		importDraftLifetimeDays: 7,
 	},
 	drafts: {
-		// How long a draft a member saves from the recipe form is kept after its last save: time to
-		// finish a recipe over a few weekends.
-		savedDraftLifetimeDays: 30,
+		// How long a draft is kept after its last change: a season, so a recipe set aside for a while is
+		// still there when its cook comes back to it.
+		draftLifetimeDays: 90,
 	},
 	ai: {
 		// The AI Gateway models that read a page's text and photos of a written recipe, chosen by

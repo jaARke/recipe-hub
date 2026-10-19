@@ -97,9 +97,9 @@ async function createCleanup() {
 		drafts.backdate(draft.id, savedAt);
 		return draft.id;
 	};
-	const savedDraftLifetime = settings.drafts.savedDraftLifetimeDays;
-	const expiredDraft = await saveDraft(daysAgo(savedDraftLifetime + 1));
-	const recentDraft = await saveDraft(daysAgo(savedDraftLifetime - 1));
+	const draftLifetime = settings.drafts.draftLifetimeDays;
+	const expiredDraft = await saveDraft(daysAgo(draftLifetime + 1));
+	const recentDraft = await saveDraft(daysAgo(draftLifetime - 1));
 
 	// An invite issued at the time, closed by its revocation or its expiry, or used.
 	const invite = async (
