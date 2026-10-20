@@ -3,6 +3,7 @@ import { render } from 'vitest-browser-react';
 import { page } from 'vitest/browser';
 import type { RecipeSummaryDto } from '@/application/recipes/recipe-dtos';
 import { RecipeListItem, type RecipeHighlights } from '@/components/recipe/recipe-list-item';
+import { Card } from '@/components/ui/card';
 import { recipeIdSchema } from '@/domain/recipe/recipe';
 
 // Tailwind's sm breakpoint, from which an item is a card.
@@ -174,11 +175,19 @@ describe('RecipeListItem', () => {
 		if (card === null) {
 			throw new Error('The item has no card');
 		}
-		const { boxShadow: edge, color: text } = getComputedStyle(card);
+		const { boxShadow: edge } = getComputedStyle(card);
+		// A card inked in the text's color, as this browser writes the shadow, which differs between
+		// engines (WebKit on Linux writes the ring's color in rgb and the text's in oklch).
+		const { container } = await render(<Card className="ring-foreground" />);
+		const inked = container.querySelector('[data-slot="card"]');
+		if (inked === null) {
+			throw new Error('The reference has no card');
+		}
+		const textEdge = getComputedStyle(inked).boxShadow;
 
 		await item().hover();
 
-		await expect.poll(() => getComputedStyle(card).boxShadow).toContain(text);
-		expect(getComputedStyle(card).boxShadow).not.toBe(edge);
+		await expect.poll(() => getComputedStyle(card).boxShadow).toBe(textEdge);
+		expect(textEdge).not.toBe(edge);
 	});
 });
