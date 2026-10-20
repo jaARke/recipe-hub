@@ -5,6 +5,7 @@ import {
 	fieldNoteMessageId,
 	type FieldNoteContent,
 } from '@/components/forms/field-note';
+import { optionalLabel } from '@/components/forms/optional-label';
 import { FieldProblem } from '@/components/forms/problem-summary';
 import { textFieldIds } from '@/components/forms/text-field';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
@@ -13,6 +14,8 @@ import { Textarea } from '@/components/ui/textarea';
 type TextareaFieldProps = Omit<React.ComponentProps<typeof Textarea>, 'id'> & {
 	id: string;
 	label: string;
+	// Shows "(optional)" in the label, which its note still names the field by without.
+	optional?: boolean;
 	description?: React.ReactNode;
 	error?: string;
 	// Something to check against the original, as when reviewing a draft. It is no error.
@@ -24,6 +27,7 @@ type TextareaFieldProps = Omit<React.ComponentProps<typeof Textarea>, 'id'> & {
 function TextareaField({
 	id,
 	label,
+	optional = false,
 	description,
 	error,
 	note,
@@ -34,7 +38,7 @@ function TextareaField({
 
 	return (
 		<Field data-invalid={invalid ? 'true' : undefined}>
-			<FieldLabel htmlFor={id}>{label}</FieldLabel>
+			<FieldLabel htmlFor={id}>{optional ? optionalLabel(label) : label}</FieldLabel>
 			<Textarea
 				id={id}
 				aria-invalid={invalid ? 'true' : undefined}

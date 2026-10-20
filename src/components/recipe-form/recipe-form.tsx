@@ -13,6 +13,7 @@ import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction, FormState } from '@/components/forms/form-state';
 import { FormStatusMessage } from '@/components/forms/form-status-message';
 import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
+import { optionalLabel } from '@/components/forms/optional-label';
 import {
 	ProblemSummary,
 	SummarizedProblems,
@@ -729,6 +730,7 @@ function RecipeForm({
 					<TextField
 						{...textFieldProps('source')}
 						label={textFieldLabels.source}
+						optional
 						autoComplete="off"
 						description="Who or where the recipe comes from, such as a relative or a cookbook."
 					/>
@@ -760,15 +762,17 @@ function RecipeForm({
 					<TextareaField
 						{...textFieldProps('notes')}
 						label={textFieldLabels.notes}
+						optional
 						description="The story behind the recipe, or tips for making it."
 					/>
 					<TextareaField
 						{...textFieldProps('description')}
 						label={textFieldLabels.description}
+						optional
 						description="Shown in search results and when the recipe is shared."
 					/>
 					<FieldSet>
-						<FieldLegend>Times and yield</FieldLegend>
+						<FieldLegend>{optionalLabel('Times and yield')}</FieldLegend>
 						<FieldRow fields={times.map(({ field }) => field)}>
 							{times.map((time) => (
 								<RowTextField
@@ -825,6 +829,7 @@ function RecipeForm({
 						idPrefix={ids.photos('dish')}
 						role="dish"
 						legend={photoFieldLegends.dish}
+						optional
 						description="Photos of the finished dish, which anyone can see. The first is the cover. Describe each one for people who can’t see it."
 						limit={settings.photos.maxDishPhotosPerRecipe}
 						photos={values.photos.dish}
@@ -838,6 +843,7 @@ function RecipeForm({
 						idPrefix={ids.photos('scan')}
 						role="scan"
 						legend={photoFieldLegends.scan}
+						optional
 						description="Photos of the recipe as it was written, such as a recipe card, which anyone can see."
 						limit={settings.photos.maxScansPerRecipe}
 						photos={values.photos.scan}

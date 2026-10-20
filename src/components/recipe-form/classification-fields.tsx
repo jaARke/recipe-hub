@@ -8,6 +8,7 @@ import {
 	fieldNoteMessageId,
 	type FieldNoteContent,
 } from '@/components/forms/field-note';
+import { optionalLabel } from '@/components/forms/optional-label';
 import { FieldProblem } from '@/components/forms/problem-summary';
 import type {
 	ProblemTarget,
@@ -115,7 +116,7 @@ function ClassificationFields({
 			<ChoiceFieldSet
 				field="holidays"
 				idPrefix={idPrefix}
-				legend={`${classificationFieldLabels.holidays} (optional)`}
+				legend={optionalLabel(classificationFieldLabels.holidays)}
 				error={errors.holidays}
 				note={noteFor({ kind: 'field', field: 'holidays' })}
 			>
@@ -140,7 +141,7 @@ function ClassificationFields({
 			<ChoiceFieldSet
 				field="diets"
 				idPrefix={idPrefix}
-				legend={`${classificationFieldLabels.diets} (optional)`}
+				legend={optionalLabel(classificationFieldLabels.diets)}
 				description={diets.includes('vegan') ? veganDescription : undefined}
 				announced
 				error={errors.diets}

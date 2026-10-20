@@ -45,7 +45,7 @@ describe('listRowNames', () => {
 			'Step 3, For the glaze',
 			'Step 4, For the glaze',
 			'Step heading 2',
-			'Step 4, heading 2',
+			'Step 5, heading 2',
 		]);
 	});
 
@@ -67,23 +67,22 @@ describe('listRowNames', () => {
 			{ label: 'Step 2', number: 2, position: 2 },
 			{ label: 'Step heading 1', number: 1, position: 1, headingName: 'For the glaze' },
 			{ label: 'Step 3, For the glaze', number: 3, position: 1, headingName: 'For the glaze' },
-			{ label: 'Step 4, For the glaze', position: 2, headingName: 'For the glaze' },
+			{ label: 'Step 4, For the glaze', number: 4, position: 2, headingName: 'For the glaze' },
 			{ label: 'Step heading 2', number: 2, position: 2, headingName: 'heading 2' },
-			{ label: 'Step 4, heading 2', number: 4, position: 1, headingName: 'heading 2' },
+			{ label: 'Step 5, heading 2', number: 5, position: 1, headingName: 'heading 2' },
 		]);
 	});
 
-	// Saving leaves out a blank step, so the recipe page numbers the steps around it 1 and 2.
-	it('numbers only the steps saving keeps, naming a blank one for the number it takes once it has words', () => {
+	it('numbers a blank step too, so one in the middle shows a number the saved recipe will not use', () => {
 		expect(listRowNames([line('Mix.'), line('  '), line('Bake.')], steps)).toEqual([
 			{ label: 'Step 1', number: 1, position: 1 },
-			{ label: 'Step 2', position: 2 },
-			{ label: 'Step 2', number: 2, position: 3 },
+			{ label: 'Step 2', number: 2, position: 2 },
+			{ label: 'Step 3', number: 3, position: 3 },
 		]);
 		expect(listRowNames([line(''), line('Mix.'), line('')], steps)).toEqual([
-			{ label: 'Step 1', position: 1 },
-			{ label: 'Step 1', number: 1, position: 2 },
-			{ label: 'Step 2', position: 3 },
+			{ label: 'Step 1', number: 1, position: 1 },
+			{ label: 'Step 2', number: 2, position: 2 },
+			{ label: 'Step 3', number: 3, position: 3 },
 		]);
 	});
 
@@ -214,7 +213,7 @@ describe('describeKindChange', () => {
 		expect(describeKindChange(rows, 5, ingredients)).toBe(
 			'Changed heading to Ingredient 3, For the glaze.'
 		);
-		expect(describeKindChange(rows, 5, steps)).toBe('Changed heading to Step 4, For the glaze.');
+		expect(describeKindChange(rows, 5, steps)).toBe('Changed heading to Step 5, For the glaze.');
 	});
 });
 
