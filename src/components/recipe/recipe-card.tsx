@@ -3,10 +3,11 @@ import type { RecipeSummaryDto } from '@/application/recipes/recipe-dtos';
 import { describedBy } from '@/components/forms/described-by';
 import { recipePath } from '@/components/recipe/recipe-paths';
 import {
+	RecipeBadges,
+	recipeBadges,
 	RecipeCover,
 	RecipeFacts,
 	recipeFacts,
-	RecipeTags,
 } from '@/components/recipe/recipe-summary';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -28,7 +29,8 @@ function RecipeCard({
 	eager?: boolean;
 }) {
 	const facts = recipeFacts(recipe);
-	const hasDetails = facts.length > 0 || recipe.tags.length > 0;
+	const badges = recipeBadges(recipe);
+	const hasDetails = facts.length > 0 || badges.length > 0;
 	const titleId = `${recipe.slug}-card-title`;
 	const sourceId = recipe.source === undefined ? undefined : `${recipe.slug}-card-source`;
 	const detailsId = hasDetails ? `${recipe.slug}-card-details` : undefined;
@@ -56,7 +58,7 @@ function RecipeCard({
 				{hasDetails && (
 					<CardContent id={detailsId} className="mt-auto">
 						{facts.length > 0 && <RecipeFacts facts={facts} />}
-						{recipe.tags.length > 0 && <RecipeTags tags={recipe.tags} />}
+						{badges.length > 0 && <RecipeBadges badges={badges} />}
 					</CardContent>
 				)}
 			</Card>

@@ -7,6 +7,7 @@ import {
 	sampleButtermilkBiscuits,
 	sampleChickenSoup,
 	sampleLemonIceboxPie,
+	sampleMolassesSpiceCookies,
 	sampleTomatoSalad,
 } from '@/domain/recipe/samples/sample-recipes';
 
@@ -34,7 +35,6 @@ describe('toRecipeJsonLd', () => {
 			datePublished: '2026-10-01T12:00:00.000Z',
 			dateModified: '2026-10-05T08:30:00.000Z',
 			recipeYield: '6',
-			keywords: 'Soup, Weeknight',
 		});
 	});
 
@@ -139,6 +139,56 @@ describe('toRecipeJsonLd', () => {
 			expect(jsonLd.prepTime).toBeUndefined();
 			expect(jsonLd.cookTime).toBeUndefined();
 			expect(jsonLd.totalTime).toBe('PT15M');
+		});
+	});
+
+	describe('chapter, holidays, and diets', () => {
+		it('gives the chapter’s courses as the category', () => {
+			const cookies = publicRecipe('molasses-spice-cookies', sampleMolassesSpiceCookies);
+
+			expect(toRecipeJsonLd(cookies, siteUrl).recipeCategory).toBe('Cookies, Candy');
+		});
+
+		it('gives no category for This & That, which is no course', () => {
+			const cookies = publicRecipe('molasses-spice-cookies', {
+				...sampleMolassesSpiceCookies,
+				chapter: 'this-and-that',
+			});
+
+			expect(toRecipeJsonLd(cookies, siteUrl).recipeCategory).toBeUndefined();
+		});
+
+		it('names each diet schema.org has by its full URL, and Dairy-free among the keywords', () => {
+			const salad = publicRecipe('garden-tomato-salad', sampleTomatoSalad);
+
+			expect(toRecipeJsonLd(salad, siteUrl)).toMatchObject({
+				suitableForDiet: [
+					'https://schema.org/VegetarianDiet',
+					'https://schema.org/VeganDiet',
+					'https://schema.org/GlutenFreeDiet',
+				],
+				keywords: 'Dairy-free',
+			});
+		});
+
+		it('lists the holidays among the keywords, in calendar order, before Dairy-free', () => {
+			const cookies = publicRecipe('molasses-spice-cookies', {
+				...sampleMolassesSpiceCookies,
+				holidays: ['christmas', 'thanksgiving'],
+				diets: ['dairy-free'],
+			});
+			const jsonLd = toRecipeJsonLd(cookies, siteUrl);
+
+			expect(jsonLd.keywords).toBe('Thanksgiving, Christmas, Dairy-free');
+			expect(jsonLd.suitableForDiet).toBeUndefined();
+		});
+
+		it('leaves out the diets and the keywords for a recipe with no holiday or diet', () => {
+			const soup = publicRecipe('weeknight-chicken-soup', sampleChickenSoup);
+			const jsonLd = toRecipeJsonLd(soup, siteUrl);
+
+			expect(jsonLd.suitableForDiet).toBeUndefined();
+			expect(jsonLd.keywords).toBeUndefined();
 		});
 	});
 

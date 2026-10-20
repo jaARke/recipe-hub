@@ -46,22 +46,66 @@ function ruledRows(): string[][] {
 }
 
 describe('RecipeDetail’s ruled block', () => {
-	it('holds a row each for the times and yield, who added the recipe and when, and its tags', async () => {
+	it('holds a row each for the times and yield, who added the recipe and when, and where it sits in the cookbook', async () => {
 		await render(<RecipeDetail recipe={soup()} headingLevel={1} />);
 
 		expect(ruledRows()).toEqual([
 			['Prep: 15 min', 'Cook: 35 min', 'Total: 50 min', 'Serves: 6'],
 			['Added by: Ada', 'Added: October 1, 2026', 'Edited: October 5, 2026'],
-			['Tags: Soup, Weeknight'],
+			['Chapter: Soups & Salads'],
 		]);
 	});
 
-	it('names its tags a list, which Safari takes for a group without markers', async () => {
-		await render(<RecipeDetail recipe={soup()} headingLevel={1} />);
+	it('files the recipe under its chapter, then any holidays and diets', async () => {
+		await render(
+			<RecipeDetail
+				recipe={soup({ holidays: ['thanksgiving', 'christmas'], diets: ['gluten-free'] })}
+				headingLevel={1}
+			/>
+		);
 
-		await expect
-			.element(page.getByRole('list').filter({ hasText: 'Soup' }))
-			.toHaveAttribute('role', 'list');
+		expect(ruledRows()[2]).toEqual([
+			'Chapter: Soups & Salads',
+			'Holidays: Thanksgiving, Christmas',
+			'Diet: Gluten-free',
+		]);
+	});
+
+	it('links its chapter, each holiday, and each diet to Browse filtered by it', async () => {
+		await render(
+			<RecipeDetail
+				recipe={soup({ holidays: ['christmas'], diets: ['vegetarian', 'vegan', 'dairy-free'] })}
+				headingLevel={1}
+			/>
+		);
+
+		const links = [
+			['Soups & Salads', '/?chapter=soups-salads'],
+			['Christmas', '/?holiday=christmas'],
+			['Vegetarian', '/?diet=vegetarian'],
+			['Vegan', '/?diet=vegan'],
+			['Dairy-free', '/?diet=dairy-free'],
+		];
+		for (const [name, href] of links) {
+			await expect
+				.element(page.getByRole('link', { name, exact: true }))
+				.toHaveAttribute('href', href);
+		}
+	});
+
+	it('names its holidays and diets lists, which Safari takes for groups without markers', async () => {
+		await render(
+			<RecipeDetail
+				recipe={soup({ holidays: ['easter'], diets: ['vegetarian'] })}
+				headingLevel={1}
+			/>
+		);
+
+		for (const name of ['Easter', 'Vegetarian']) {
+			await expect
+				.element(page.getByRole('list').filter({ has: page.getByRole('link', { name }) }))
+				.toHaveAttribute('role', 'list');
+		}
 	});
 
 	it('labels what a recipe makes by its verb', async () => {
@@ -91,11 +135,12 @@ describe('RecipeDetail’s ruled block', () => {
 		expect(ruledRows()[0]).toEqual(['Cook: 1 hr 30 min', 'Total: 1 hr 30 min']);
 
 		await rerender(
-			<RecipeDetail recipe={soup({ times: {}, yield: undefined, tags: [] })} headingLevel={1} />
+			<RecipeDetail recipe={soup({ times: {}, yield: undefined })} headingLevel={1} />
 		);
 
 		expect(ruledRows()).toEqual([
 			['Added by: Ada', 'Added: October 1, 2026', 'Edited: October 5, 2026'],
+			['Chapter: Soups & Salads'],
 		]);
 	});
 

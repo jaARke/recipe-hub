@@ -1,7 +1,10 @@
-import type { HowToSection, HowToStep, Recipe, WithContext } from 'schema-dts';
+import type { HowToSection, HowToStep, Recipe, RestrictedDiet, WithContext } from 'schema-dts';
 import type { PublicRecipeDto } from '@/application/recipes/recipe-dtos';
 import { recipeImageSrc, recipePath } from '@/components/recipe/recipe-paths';
+import { chapterRecipeCategories } from '@/domain/recipe/chapter';
+import { dietLabels, dietSchemaOrgNames, type Diet } from '@/domain/recipe/diet';
 import { toIsoDuration, totalMinutes } from '@/domain/recipe/duration';
+import { holidayLabels } from '@/domain/recipe/holiday';
 import type { InstructionSection } from '@/domain/recipe/instruction';
 import { formatYield, type RecipeYield } from '@/domain/recipe/recipe-yield';
 
@@ -37,12 +40,32 @@ function toRecipeInstructions(
 	);
 }
 
+// Each diet schema.org has a RestrictedDiet member for, by its full URL, as schema.org writes it.
+function toSuitableForDiet(diets: readonly Diet[]): RestrictedDiet[] {
+	return diets.flatMap((diet) => {
+		const name = dietSchemaOrgNames[diet];
+		return name === undefined ? [] : [`https://schema.org/${name}` as const];
+	});
+}
+
+// Google lists a holiday among the keywords, which also carry each diet schema.org has no member for.
+function toKeywords({ holidays, diets }: Pick<PublicRecipeDto, 'holidays' | 'diets'>): string[] {
+	return [
+		...holidays.map((holiday) => holidayLabels[holiday]),
+		...diets
+			.filter((diet) => dietSchemaOrgNames[diet] === undefined)
+			.map((diet) => dietLabels[diet]),
+	];
+}
+
 function toRecipeJsonLd(recipe: PublicRecipeDto, siteUrl: URL): WithContext<Recipe> {
 	const { prepMinutes, cookMinutes } = recipe.times;
 	// Google reads prep and cook times only as a pair.
 	const hasPrepAndCook = prepMinutes !== undefined && cookMinutes !== undefined;
 	const total = totalMinutes(recipe.times);
 	const images = recipe.images.map((image) => absoluteUrl(recipeImageSrc(image.pathname), siteUrl));
+	const suitableForDiet = toSuitableForDiet(recipe.diets);
+	const keywords = toKeywords(recipe);
 
 	return {
 		'@context': 'https://schema.org',
@@ -63,7 +86,9 @@ function toRecipeJsonLd(recipe: PublicRecipeDto, siteUrl: URL): WithContext<Reci
 			section.lines.map((line) => line.text)
 		),
 		recipeInstructions: toRecipeInstructions(recipe.instructionSections),
-		keywords: recipe.tags.length > 0 ? recipe.tags.join(', ') : undefined,
+		recipeCategory: chapterRecipeCategories[recipe.chapter],
+		suitableForDiet: suitableForDiet.length > 0 ? suitableForDiet : undefined,
+		keywords: keywords.length > 0 ? keywords.join(', ') : undefined,
 	};
 }
 

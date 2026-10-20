@@ -5,10 +5,11 @@ import { describedBy } from '@/components/forms/described-by';
 import { RecipeListLinks } from '@/components/recipe/recipe-list-links';
 import { recipePath } from '@/components/recipe/recipe-paths';
 import {
+	RecipeBadges,
+	recipeBadges,
 	RecipeCover,
 	RecipeFacts,
 	recipeFacts,
-	RecipeTags,
 } from '@/components/recipe/recipe-summary';
 import { HighlightedSegments } from '@/components/search/highlighted-segments';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -58,7 +59,8 @@ function RecipeSearchResult({
 }) {
 	const { recipe } = result;
 	const facts = recipeFacts(recipe);
-	const hasDetails = facts.length > 0 || recipe.tags.length > 0;
+	const badges = recipeBadges(recipe);
+	const hasDetails = facts.length > 0 || badges.length > 0;
 	const titleId = `${recipe.slug}-result-title`;
 	const sourceId = recipe.source === undefined ? undefined : `${recipe.slug}-result-source`;
 	const snippetId = result.snippet === undefined ? undefined : `${recipe.slug}-result-snippet`;
@@ -97,7 +99,7 @@ function RecipeSearchResult({
 				{hasDetails && (
 					<div id={detailsId} className="mt-2 flex flex-col gap-2">
 						{facts.length > 0 && <RecipeFacts facts={facts} />}
-						{recipe.tags.length > 0 && <RecipeTags tags={recipe.tags} />}
+						{badges.length > 0 && <RecipeBadges badges={badges} />}
 					</div>
 				)}
 			</div>

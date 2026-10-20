@@ -90,10 +90,12 @@ export const sampleRecipeSummaries: readonly RecipeSummaryDto[] = sampleRecipeCo
 const sampleBiscuits = sampleRecipe(sampleButtermilkBiscuits);
 
 // The biscuits lead the samples and fill in every part of the page but a source link. They borrow the
-// other seed photos, so the detail shows its row of thumbnails, the last without a description.
+// other seed photos, so the detail shows its row of thumbnails, the last without a description, and
+// two holidays beside their diet.
 export const sampleRecipeDetail = toPublicRecipeDto(
 	{
 		...sampleBiscuits,
+		holidays: ['thanksgiving', 'christmas'],
 		images: [
 			...sampleBiscuits.images,
 			...sampleRecipe(sampleChickenSoup).images,
