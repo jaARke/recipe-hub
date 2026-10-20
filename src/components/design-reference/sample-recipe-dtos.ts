@@ -108,16 +108,30 @@ export const sampleRecipeDetail = toPublicRecipeDto(
 	sampleContributor
 );
 
-// A search for "butter" among baking recipes added by the sample contributor, counted over its four
-// results. Contributors are counted without that filter, so another member can be chosen.
+// A search for "butter" among vegetarian recipes added by the sample contributor, counted over its
+// four results. Contributors are counted without that filter, so another member can be chosen.
 export const sampleSearchFacets: RecipeSearchFacets = {
-	tags: [
-		{ label: 'Baking', count: 4 },
-		{ label: 'Dessert', count: 2 },
-		{ label: 'Freezer friendly', count: 2 },
-		{ label: 'Breakfast', count: 1 },
-		{ label: 'Holiday', count: 1 },
-	],
+	chapters: {
+		'breakfast-brunch': 0,
+		'appetizers-beverages': 0,
+		'soups-salads': 0,
+		'vegetables-sides': 0,
+		'main-dishes': 0,
+		'breads-rolls': 1,
+		desserts: 0,
+		'cookies-candy': 3,
+		'this-and-that': 0,
+	},
+	holidays: {
+		'new-years-day': 0,
+		'st-patricks-day': 0,
+		easter: 0,
+		'fourth-of-july': 0,
+		halloween: 0,
+		thanksgiving: 0,
+		christmas: 1,
+	},
+	diets: { vegetarian: 4, vegan: 0, 'gluten-free': 0, 'dairy-free': 0 },
 	sources: [
 		{ label: 'Aunt June', count: 1 },
 		{ label: 'Cousin Maya', count: 1 },
@@ -129,28 +143,29 @@ export const sampleSearchFacets: RecipeSearchFacets = {
 	],
 };
 
-// Every sample recipe, with more tags than the filters show before folding the rest away.
+// Every sample recipe, filed as the samples are.
 export const sampleCatalogFacets: RecipeSearchFacets = {
-	tags: [
-		{ label: 'Baking', count: 10 },
-		{ label: 'Vegetarian', count: 9 },
-		{ label: 'Dessert', count: 8 },
-		{ label: 'Make ahead', count: 6 },
-		{ label: 'Dinner', count: 5 },
-		{ label: 'Soup', count: 5 },
-		{ label: 'Breakfast', count: 4 },
-		{ label: 'Summer', count: 4 },
-		{ label: 'Freezer friendly', count: 3 },
-		{ label: 'Holiday', count: 3 },
-		{ label: 'Weeknight', count: 3 },
-		{ label: 'Français', count: 2 },
-		{ label: 'Main', count: 2 },
-		{ label: 'Salad', count: 2 },
-		{ label: 'Appetizer', count: 1 },
-		{ label: 'Comfort food', count: 1 },
-		{ label: 'Side', count: 1 },
-		{ label: 'Slow cooked', count: 1 },
-	],
+	chapters: {
+		'breakfast-brunch': 2,
+		'appetizers-beverages': 1,
+		'soups-salads': 6,
+		'vegetables-sides': 2,
+		'main-dishes': 6,
+		'breads-rolls': 3,
+		desserts: 5,
+		'cookies-candy': 4,
+		'this-and-that': 1,
+	},
+	holidays: {
+		'new-years-day': 0,
+		'st-patricks-day': 0,
+		easter: 0,
+		'fourth-of-july': 0,
+		halloween: 0,
+		thanksgiving: 0,
+		christmas: 2,
+	},
+	diets: { vegetarian: 21, vegan: 3, 'gluten-free': 6, 'dairy-free': 6 },
 	sources: [
 		{ label: 'Aunt June', count: 4 },
 		{ label: 'Cousin Maya', count: 3 },
@@ -180,7 +195,7 @@ export const sampleBrowsePage: RecipeSearchPage = {
 	facets: sampleCatalogFacets,
 };
 
-// A search for "butter" among baking recipes added by the sample contributor, best match first.
+// A search for "butter" among vegetarian recipes added by the sample contributor, best match first.
 export const sampleSearchPage: RecipeSearchPage = {
 	results: [
 		toRecipeSearchResultDto({

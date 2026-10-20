@@ -1,6 +1,9 @@
 import 'server-only';
 import { recipeSorts } from '@/application/ports/recipe-repository';
 import type { MemberId } from '@/domain/member/member';
+import type { Chapter } from '@/domain/recipe/chapter';
+import type { Diet } from '@/domain/recipe/diet';
+import type { Holiday } from '@/domain/recipe/holiday';
 import type { Recipe } from '@/domain/recipe/recipe';
 
 // Relevance ranks by the text query; without one, results come newest first.
@@ -22,8 +25,11 @@ export type RecipeTextQuery = {
 
 export type RecipeSearchQuery = {
 	text?: RecipeTextQuery;
-	// Normalized labels, compared by tag key; a recipe must carry every one.
-	tags: string[];
+	chapter?: Chapter;
+	// A recipe for any one of them.
+	holidays: Holiday[];
+	// A recipe that suits every one.
+	diets: Diet[];
 	// Compared ignoring case.
 	source?: string;
 	contributorId?: MemberId;
@@ -61,8 +67,13 @@ export type RecipeContributorCount = {
 };
 
 export type RecipeSearchFacets = {
-	// Counted within the results, so each count is what adding that tag would leave.
-	tags: RecipeFacetCount[];
+	// Counted with every filter but the chapter, so each count is what choosing that chapter would give.
+	chapters: Record<Chapter, number>;
+	// Counted with every filter but the holidays, so each count is what that holiday alone would give.
+	holidays: Record<Holiday, number>;
+	// Counted within the results, since a recipe must suit every diet chosen, so each count is what
+	// adding that diet would leave.
+	diets: Record<Diet, number>;
 	// Counted with every filter but the source, so the count shows what choosing it would give.
 	sources: RecipeFacetCount[];
 	// Counted like sources. The chosen member is listed even at zero, because a URL holds only

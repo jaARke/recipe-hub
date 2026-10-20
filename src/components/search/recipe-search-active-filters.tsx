@@ -14,7 +14,9 @@ import {
 	type RecipeSearchState,
 } from '@/components/search/search-params';
 import { buttonVariants } from '@/components/ui/button';
-import { tagKey } from '@/domain/recipe/tag-normalization';
+import { chapterLabels } from '@/domain/recipe/chapter';
+import { dietLabels } from '@/domain/recipe/diet';
+import { holidayLabels } from '@/domain/recipe/holiday';
 
 type ActiveFilter = {
 	key: string;
@@ -25,7 +27,8 @@ type ActiveFilter = {
 	href: string;
 };
 
-// The words first, then each tag in the URL's order, then the other filters.
+// The words first, then the chapter, each holiday and diet in the vocabulary's order, and the other
+// filters.
 function activeFilters(state: RecipeSearchState, facets: RecipeSearchFacets): ActiveFilter[] {
 	const without = (change: Partial<RecipeSearchState>) =>
 		recipeSearchHref({ ...state, ...change, page: 1 });
@@ -39,12 +42,28 @@ function activeFilters(state: RecipeSearchState, facets: RecipeSearchFacets): Ac
 			href: recipeSearchHref(withoutText(state)),
 		});
 	}
-	for (const tag of state.tags) {
+	if (state.chapter !== undefined) {
 		filters.push({
-			key: `tag-${tagKey(tag)}`,
+			key: 'chapter',
 			kind: 'filter',
-			label: tag,
-			href: without({ tags: state.tags.filter((other) => tagKey(other) !== tagKey(tag)) }),
+			label: chapterLabels[state.chapter],
+			href: without({ chapter: undefined }),
+		});
+	}
+	for (const holiday of state.holidays) {
+		filters.push({
+			key: `holiday-${holiday}`,
+			kind: 'filter',
+			label: holidayLabels[holiday],
+			href: without({ holidays: state.holidays.filter((other) => other !== holiday) }),
+		});
+	}
+	for (const diet of state.diets) {
+		filters.push({
+			key: `diet-${diet}`,
+			kind: 'filter',
+			label: dietLabels[diet],
+			href: without({ diets: state.diets.filter((other) => other !== diet) }),
 		});
 	}
 	if (state.source !== undefined) {

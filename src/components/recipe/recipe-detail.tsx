@@ -11,7 +11,6 @@ import {
 	recipeTextStyles,
 	type RecipeHeadingLevel,
 } from '@/components/recipe/recipe-text-styles';
-import { recipeSearchHref } from '@/components/search/search-params';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDuration, totalMinutes } from '@/domain/recipe/duration';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
@@ -34,11 +33,6 @@ const contributorCellClassName = 'sm:col-span-2';
 
 // The description and the notes read as body text.
 const recipeParagraphsClassName = cn(recipeTextStyles.body, 'gap-4');
-
-// Browse filtered by the tag, newest first.
-function tagBrowseHref(tag: string): string {
-	return recipeSearchHref({ tags: [tag], sort: 'newest', page: 1 });
-}
 
 // The yield's verb labels what it counts: "Serves" 8, "Makes" 10 biscuits.
 function yieldCell(recipeYield: RecipeYield): RecipeCell {
@@ -127,7 +121,7 @@ function RecipeRuledBlock({ recipe }: { recipe: PublicRecipeDto }) {
 				<dl className="flex flex-col gap-1.5 py-3">
 					<dt className={recipeTextStyles.cellLabel}>Tags</dt>
 					<dd>
-						<RecipeTags tags={recipe.tags} tagHref={tagBrowseHref} />
+						<RecipeTags tags={recipe.tags} />
 					</dd>
 				</dl>
 			)}

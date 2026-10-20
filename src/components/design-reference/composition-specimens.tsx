@@ -50,40 +50,39 @@ import { sampleSundayPotRoast } from '@/domain/recipe/samples/sample-recipes';
 import { slugify } from '@/domain/recipe/slug';
 import { settings } from '@/lib/settings';
 
-const sampleBrowseState: RecipeSearchState = { tags: [], sort: 'newest', page: 1 };
+const sampleBrowseState: RecipeSearchState = { holidays: [], diets: [], sort: 'newest', page: 1 };
 
 const sampleSearchState: RecipeSearchState = {
 	text: 'butter',
-	tags: ['Baking'],
+	holidays: [],
+	diets: ['vegetarian'],
 	contributorId: sampleContributor.id,
 	sort: 'relevance',
-	page: 1,
-};
-
-// A tag past the first eight, which shows because it is checked.
-const sampleCatalogState: RecipeSearchState = {
-	tags: ['Comfort food'],
-	sort: 'newest',
 	page: 1,
 };
 
 const noResultStates: readonly { label: string; state: RecipeSearchState }[] = [
 	{
 		label: 'A query',
-		state: { text: 'biscuts', tags: [], sort: 'relevance', page: 1 },
+		state: { text: 'biscuts', holidays: [], diets: [], sort: 'relevance', page: 1 },
 	},
 	{
 		label: 'Filters',
-		state: { tags: ['Holiday', 'Soup'], sort: 'newest', page: 1 },
+		state: {
+			chapter: 'soups-salads',
+			holidays: ['christmas'],
+			diets: [],
+			sort: 'newest',
+			page: 1,
+		},
 	},
 	{
 		label: 'A query with filters',
-		state: { text: 'biscuts', tags: ['Holiday'], sort: 'relevance', page: 1 },
+		state: { text: 'biscuts', holidays: ['christmas'], diets: [], sort: 'relevance', page: 1 },
 	},
 ];
 
-// Every sample recipe's tags, most used first, as the recipe form suggests them.
-const sampleTagLabels = sampleCatalogFacets.tags.map(({ label }) => label);
+const sampleTagLabels: readonly string[] = [];
 
 // Any id and version: the stand-in action never reads them, and they mark the form as editing. No
 // other sample recipe is slow cooked, so the pot roast can respell that tag.
@@ -211,7 +210,7 @@ const subsections = [
 		id: 'browse',
 		title: 'Browse',
 		description:
-			'The collection as cards beside the search page’s filters, so one control serves Browse and Search, which differ in what they list. From lg the filters sit in a sidebar, every tag with its count and the first eight shown, over two columns of cards and three from xl; below lg the toolbar’s Filters opens the same form above the cards. Filters apply with their button and keep to Browse; the tags on offer are those that narrow the list. Each card is a single link to its recipe, and a recipe without a photo keeps the photo’s box. Here six of its cards; its links lead to Browse.',
+			'The collection as cards beside the search page’s filters, so one control serves Browse and Search, which differ in what they list. From lg the filters sit in a sidebar, each chapter, holiday, and diet with its count, over two columns of cards and three from xl; below lg the toolbar’s Filters opens the same form above the cards. Filters apply with their button and keep to Browse; the chapters, holidays, and diets on offer are those with recipes to count, and a chosen one stays so it can be cleared. Each card is a single link to its recipe, and a recipe without a photo keeps the photo’s box. Here six of its cards; its links lead to Browse.',
 		Content: BrowseSpecimen,
 	},
 	{
@@ -285,7 +284,7 @@ const subsections = [
 		id: 'search-results',
 		title: 'Search results',
 		description:
-			'A search for butter among baking recipes added by one member, as it shows under the page’s heading and syntax hint. From lg the filters sit beside the results, over the count and the order. Below lg a toolbar holds Filters, with the applied count, and the order in one row, then the count; Filters opens the filters in the page’s flow beneath the row, and Apply filters closes them and moves focus to the results. Filters apply with their button, while the order applies on selection. The words and each active filter are inked pills that remove themselves, the words returning to Browse with the filters, and Clear filters keeps the words; focus moves to the results as one goes. The count is announced as it changes, and matches are marked. Its headings start at h4 here.',
+			'A search for butter among vegetarian recipes added by one member, as it shows under the page’s heading and syntax hint. From lg the filters sit beside the results, over the count and the order. Below lg a toolbar holds Filters, with the applied count, and the order in one row, then the count; Filters opens the filters in the page’s flow beneath the row, and Apply filters closes them and moves focus to the results. Filters apply with their button, while the order applies on selection. The words and each active filter are inked pills that remove themselves, the words returning to Browse with the filters, and Clear filters keeps the words; focus moves to the results as one goes. The count is announced as it changes, and matches are marked. Its headings start at h4 here.',
 		Content: SearchResultsSpecimen,
 	},
 	{
@@ -462,9 +461,8 @@ function SearchResultsSpecimen() {
 				<Specimen label="From lg: the filters in a sidebar, over every sample recipe">
 					<RecipeSearchFiltersSidebar
 						idPrefix="design-filters-sidebar"
-						state={sampleCatalogState}
+						state={sampleBrowseState}
 						facets={sampleCatalogFacets}
-						total={sampleBrowsePage.total}
 						headingTag="h4"
 					/>
 				</Specimen>

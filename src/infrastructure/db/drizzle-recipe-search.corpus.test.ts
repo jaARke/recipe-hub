@@ -77,7 +77,8 @@ function searchFor(
 ): Promise<RecipeSearchResults> {
 	return search.search({
 		text: text === undefined ? undefined : parseRecipeTextQuery(text),
-		tags: [],
+		holidays: [],
+		diets: [],
 		sort: 'relevance',
 		limit: sampleRecipeContents.length,
 		offset: 0,
@@ -224,21 +225,38 @@ describe('filters', () => {
 		]);
 	});
 
-	it('require every tag', async () => {
-		const soups = await searchFor(undefined, { tags: ['Soup', 'Vegetarian'] });
-		const desserts = await searchFor(undefined, { tags: ['baking', 'dessert'] });
+	it('match a chapter', async () => {
+		const results = await searchFor(undefined, { chapter: 'cookies-candy' });
 
-		expect(sorted(titles(soups))).toEqual([
-			'Minestrone',
-			'Roasted carrot ginger soup',
-			'Tomato basil soup',
-		]);
-		expect(sorted(titles(desserts))).toEqual([
+		expect(sorted(titles(results))).toEqual([
 			'Chocolate chip cookies with brown butter',
 			'Lemon bars',
+			'Molasses spice cookies',
 			'Oatmeal raisin cookies',
-			'Peach cobbler with biscuit topping',
-			'Éclairs with chocolate glaze',
+		]);
+	});
+
+	it('match any holiday chosen', async () => {
+		const results = await searchFor(undefined, { holidays: ['easter', 'christmas'] });
+
+		expect(sorted(titles(results))).toEqual(['Molasses spice cookies', 'Overnight cinnamon rolls']);
+	});
+
+	it('match every diet chosen', async () => {
+		const glutenFree = await searchFor(undefined, { diets: ['gluten-free'] });
+		const veganAndGlutenFree = await searchFor(undefined, { diets: ['vegan', 'gluten-free'] });
+
+		expect(sorted(titles(glutenFree))).toEqual([
+			'Apple cabbage slaw',
+			'Chickpea and tomato stew',
+			'Crème brûlée',
+			'Garden tomato salad',
+			'Lemon garlic roast chicken with potatoes',
+			'Vanilla rice pudding',
+		]);
+		expect(sorted(titles(veganAndGlutenFree))).toEqual([
+			'Chickpea and tomato stew',
+			'Garden tomato salad',
 		]);
 	});
 
@@ -270,24 +288,32 @@ describe('filters', () => {
 });
 
 describe('facets', () => {
-	it('count the tags, sources, and contributors of a typical search', async () => {
+	it('count the chapters, holidays, diets, sources, and contributors of a typical search', async () => {
 		const results = await searchFor('tomato');
 
 		expect(results.total).toBe(tomatoRecipes.length);
 		expect(results.facets).toEqual({
-			tags: [
-				{ label: 'Vegetarian', count: 7 },
-				{ label: 'Make ahead', count: 3 },
-				{ label: 'Summer', count: 3 },
-				{ label: 'Dinner', count: 2 },
-				{ label: 'Soup', count: 2 },
-				{ label: 'Appetizer', count: 1 },
-				{ label: 'Français', count: 1 },
-				{ label: 'Main', count: 1 },
-				{ label: 'Salad', count: 1 },
-				{ label: 'Slow cooked', count: 1 },
-				{ label: 'Weeknight', count: 1 },
-			],
+			chapters: {
+				'breakfast-brunch': 0,
+				'appetizers-beverages': 1,
+				'soups-salads': 3,
+				'vegetables-sides': 1,
+				'main-dishes': 3,
+				'breads-rolls': 0,
+				desserts: 0,
+				'cookies-candy': 0,
+				'this-and-that': 0,
+			},
+			holidays: {
+				'new-years-day': 0,
+				'st-patricks-day': 0,
+				easter: 0,
+				'fourth-of-july': 0,
+				halloween: 0,
+				thanksgiving: 0,
+				christmas: 0,
+			},
+			diets: { vegetarian: 6, vegan: 2, 'gluten-free': 2, 'dairy-free': 2 },
 			sources: [
 				{ label: 'Riverbend Community Cookbook', count: 2 },
 				{ label: 'Cousin Maya', count: 1 },
@@ -298,6 +324,41 @@ describe('facets', () => {
 			contributors: [
 				{ memberId: contributorId, displayName: 'Contributor', count: tomatoRecipes.length },
 			],
+		});
+	});
+
+	it('count chapters and holidays with every filter but their own, and diets within the results', async () => {
+		const results = await searchFor(undefined, {
+			chapter: 'cookies-candy',
+			holidays: ['christmas'],
+			diets: ['vegetarian'],
+		});
+
+		expect(titles(results)).toEqual(['Molasses spice cookies']);
+		expect(results.facets).toEqual({
+			chapters: {
+				'breakfast-brunch': 1,
+				'appetizers-beverages': 0,
+				'soups-salads': 0,
+				'vegetables-sides': 0,
+				'main-dishes': 0,
+				'breads-rolls': 0,
+				desserts: 0,
+				'cookies-candy': 1,
+				'this-and-that': 0,
+			},
+			holidays: {
+				'new-years-day': 0,
+				'st-patricks-day': 0,
+				easter: 0,
+				'fourth-of-july': 0,
+				halloween: 0,
+				thanksgiving: 0,
+				christmas: 1,
+			},
+			diets: { vegetarian: 1, vegan: 0, 'gluten-free': 0, 'dairy-free': 0 },
+			sources: [{ label: 'Great-aunt Edie', count: 1 }],
+			contributors: [{ memberId: contributorId, displayName: 'Contributor', count: 1 }],
 		});
 	});
 });

@@ -96,7 +96,14 @@ describe('HeaderSearchForm', () => {
 		await renderHeaderSearch({
 			query: 'lemon',
 			searchPage: true,
-			pageState: { text: 'lemon', tags: ['Dessert'], sort: 'title', page: 2 },
+			pageState: {
+				text: 'lemon',
+				chapter: 'desserts',
+				holidays: [],
+				diets: [],
+				sort: 'title',
+				page: 2,
+			},
 		});
 
 		await clearSearchButton().click();
@@ -105,7 +112,7 @@ describe('HeaderSearchForm', () => {
 		await expect.element(searchField()).toHaveFocus();
 		await expect
 			.poll(() => loads)
-			.toEqual([{ path: '/search?q=&tag=Dessert&sort=title', type: 'push' }]);
+			.toEqual([{ path: '/search?q=&chapter=desserts&sort=title', type: 'push' }]);
 	});
 
 	describe('from lg', () => {
@@ -129,7 +136,7 @@ describe('HeaderSearchForm', () => {
 			await renderHeaderSearch({
 				query: '',
 				searchPage: false,
-				pageState: { tags: ['Dessert'], sort: 'title', page: 2 },
+				pageState: { chapter: 'desserts', holidays: [], diets: [], sort: 'title', page: 2 },
 			});
 
 			await searchField().fill('lemon');
@@ -137,7 +144,7 @@ describe('HeaderSearchForm', () => {
 
 			await expect
 				.poll(() => loads)
-				.toEqual([{ path: '/search?q=lemon&tag=Dessert', type: 'push' }]);
+				.toEqual([{ path: '/search?q=lemon&chapter=desserts', type: 'push' }]);
 		});
 
 		it('keeps the filters and the order of a new search typed on Search', async () => {
@@ -145,7 +152,14 @@ describe('HeaderSearchForm', () => {
 			await renderHeaderSearch({
 				query: 'lemon',
 				searchPage: true,
-				pageState: { text: 'lemon', tags: ['Dessert'], sort: 'title', page: 2 },
+				pageState: {
+					text: 'lemon',
+					chapter: 'desserts',
+					holidays: [],
+					diets: [],
+					sort: 'title',
+					page: 2,
+				},
 			});
 
 			await searchField().fill('lime');
@@ -153,7 +167,7 @@ describe('HeaderSearchForm', () => {
 
 			await expect
 				.poll(() => loads)
-				.toEqual([{ path: '/search?q=lime&tag=Dessert&sort=title', type: 'push' }]);
+				.toEqual([{ path: '/search?q=lime&chapter=desserts&sort=title', type: 'push' }]);
 		});
 	});
 });

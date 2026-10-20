@@ -8,7 +8,14 @@ import { HiddenSearchFields } from '@/components/search/hidden-search-fields';
 import { KeptPageFields } from '@/components/search/kept-page-fields';
 import type { RecipeSearchState } from '@/components/search/search-params';
 
-const state: RecipeSearchState = { text: 'butter', tags: ['Baking'], sort: 'newest', page: 1 };
+const state: RecipeSearchState = {
+	text: 'butter',
+	chapter: 'breads-rolls',
+	holidays: [],
+	diets: [],
+	sort: 'newest',
+	page: 1,
+};
 
 const searchPageFields = (
 	<KeptPageFields>
@@ -18,7 +25,7 @@ const searchPageFields = (
 
 // The header's own field, then the search page's fields that join its form.
 const headerField = ['q', 'sugar'];
-const joinedFields = [headerField, ['tag', 'Baking'], ['sort', 'newest']];
+const joinedFields = [headerField, ['chapter', 'breads-rolls'], ['sort', 'newest']];
 
 async function renderHeaderForm() {
 	await render(

@@ -54,22 +54,13 @@ describe('RecipeDetail’s ruled block', () => {
 			['Added by: Ada', 'Added: October 1, 2026', 'Edited: October 5, 2026'],
 			['Tags: Soup, Weeknight'],
 		]);
-		await expect.element(page.getByRole('link', { name: 'Soup' })).toBeInTheDocument();
-	});
-
-	it('opens Browse filtered by a tag from its link', async () => {
-		await render(<RecipeDetail recipe={soup()} headingLevel={1} />);
-
-		await expect
-			.element(page.getByRole('link', { name: 'Weeknight' }))
-			.toHaveAttribute('href', '/?tag=Weeknight');
 	});
 
 	it('names its tags a list, which Safari takes for a group without markers', async () => {
 		await render(<RecipeDetail recipe={soup()} headingLevel={1} />);
 
 		await expect
-			.element(page.getByRole('list').filter({ has: page.getByRole('link', { name: 'Soup' }) }))
+			.element(page.getByRole('list').filter({ hasText: 'Soup' }))
 			.toHaveAttribute('role', 'list');
 	});
 

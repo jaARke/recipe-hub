@@ -20,14 +20,17 @@ import {
 	recipeListPath,
 	recipeSearchPath,
 } from '@/components/recipe/recipe-paths';
-import { storedTagListSchema } from '@/domain/recipe/tag';
-import { normalizeTagLabel } from '@/domain/recipe/tag-normalization';
+import { chapters, type Chapter } from '@/domain/recipe/chapter';
+import { diets, type Diet } from '@/domain/recipe/diet';
+import { holidays, type Holiday } from '@/domain/recipe/holiday';
 import { hrefWithParams, type RouteSearchParams } from '@/lib/url-query';
 
 // Browse's and Search's URL parameters, by the state they hold.
 export const recipeSearchParamNames = {
 	text: 'q',
-	tags: 'tag',
+	chapter: 'chapter',
+	holidays: 'holiday',
+	diets: 'diet',
 	source: 'source',
 	contributorId: 'contributor',
 	maxTotalMinutes: 'time',
@@ -40,7 +43,9 @@ export type RecipeSearchField = keyof typeof recipeSearchParamNames;
 
 export type RecipeSearchState = {
 	text?: string;
-	tags: string[];
+	chapter?: Chapter;
+	holidays: Holiday[];
+	diets: Diet[];
 	source?: string;
 	// A member's id; the filters show the name.
 	contributorId?: string;
@@ -59,7 +64,7 @@ const recipeSearchModePaths: Record<RecipeSearchMode, string> = {
 	search: recipeSearchPath,
 };
 
-// One value of a URL parameter; a parameter appears once per tag.
+// One value of a URL parameter; a parameter appears once per holiday or diet.
 export type RecipeSearchParam = {
 	name: (typeof recipeSearchParamNames)[RecipeSearchField];
 	value: string;
@@ -102,14 +107,23 @@ function parseIdParam(value: string | string[] | undefined): string | undefined 
 	return typeof param === 'string' ? param.toLowerCase() : param;
 }
 
-// Blank tags are dropped and repeats keep their first spelling, as recipes store them.
-function parseTagParams(value: string | string[] | undefined): string[] {
-	const labels = value === undefined ? [] : [value].flat();
-	return storedTagListSchema.parse(labels.filter((label) => normalizeTagLabel(label) !== ''));
+// Each value once, in the vocabulary's order, or null when one is not in it. An empty value, which
+// forms submit for blank fields, is absent.
+function parseVocabularyParams<Value extends string>(
+	value: string | string[] | undefined,
+	vocabulary: readonly Value[]
+): Value[] | null {
+	const params = (value === undefined ? [] : [value].flat()).filter((param) => param !== '');
+	return params.every((param) => vocabulary.some((option) => option === param))
+		? vocabulary.filter((option) => params.includes(option))
+		: null;
 }
 
 export function parseRecipeSearchParams(params: RouteSearchParams): RecipeSearchState | null {
 	const text = parseTextParam(params[recipeSearchParamNames.text]);
+	const chapter = parseOptionParam(params[recipeSearchParamNames.chapter], chapters);
+	const chosenHolidays = parseVocabularyParams(params[recipeSearchParamNames.holidays], holidays);
+	const chosenDiets = parseVocabularyParams(params[recipeSearchParamNames.diets], diets);
 	const source = parseTextParam(params[recipeSearchParamNames.source]);
 	const contributorId = parseIdParam(params[recipeSearchParamNames.contributorId]);
 	const maxTotalMinutes = parseOptionParam(
@@ -123,6 +137,9 @@ export function parseRecipeSearchParams(params: RouteSearchParams): RecipeSearch
 	const page = parsePageParam(params[recipeSearchParamNames.page]);
 	if (
 		text === null ||
+		chapter === null ||
+		chosenHolidays === null ||
+		chosenDiets === null ||
 		source === null ||
 		contributorId === null ||
 		maxTotalMinutes === null ||
@@ -139,7 +156,9 @@ export function parseRecipeSearchParams(params: RouteSearchParams): RecipeSearch
 
 	return {
 		text,
-		tags: parseTagParams(params[recipeSearchParamNames.tags]),
+		chapter,
+		holidays: chosenHolidays,
+		diets: chosenDiets,
 		source,
 		contributorId,
 		maxTotalMinutes,
@@ -158,8 +177,14 @@ export function recipeSearchParams(state: RecipeSearchState): RecipeSearchParam[
 	if (state.text !== undefined) {
 		add('text', state.text);
 	}
-	for (const tag of state.tags) {
-		add('tags', tag);
+	if (state.chapter !== undefined) {
+		add('chapter', state.chapter);
+	}
+	for (const holiday of state.holidays) {
+		add('holidays', holiday);
+	}
+	for (const diet of state.diets) {
+		add('diets', diet);
 	}
 	if (state.source !== undefined) {
 		add('source', state.source);
@@ -219,13 +244,23 @@ export function carriedSearchParams(
 }
 
 export function appliedFilterCount(state: RecipeSearchState): number {
-	const choices = [state.source, state.contributorId, state.maxTotalMinutes, state.addedWithin];
-	return state.tags.length + choices.filter((choice) => choice !== undefined).length;
+	const choices = [
+		state.chapter,
+		state.source,
+		state.contributorId,
+		state.maxTotalMinutes,
+		state.addedWithin,
+	];
+	return (
+		state.holidays.length +
+		state.diets.length +
+		choices.filter((choice) => choice !== undefined).length
+	);
 }
 
 // Keeps the query and the order.
 export function withoutFilters(state: RecipeSearchState): RecipeSearchState {
-	return { text: state.text, tags: [], sort: state.sort, page: 1 };
+	return { text: state.text, holidays: [], diets: [], sort: state.sort, page: 1 };
 }
 
 // Browse with the filters kept. Best match ranks by the words, so it leaves with them.
@@ -243,7 +278,9 @@ export function recipeSearchFiltersKey(state: RecipeSearchState): string {
 export function toRecipeSearchInput(state: RecipeSearchState, pageSize: number): RecipeSearchInput {
 	return {
 		text: state.text,
-		tags: state.tags,
+		chapter: state.chapter,
+		holidays: state.holidays,
+		diets: state.diets,
 		source: state.source,
 		contributorId: state.contributorId,
 		maxTotalMinutes: state.maxTotalMinutes,

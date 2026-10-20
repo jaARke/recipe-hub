@@ -8,14 +8,20 @@ import { InvalidRecipeSearchError } from '@/application/search/errors';
 import type { RecipeSearchInput } from '@/application/search/recipe-search-dtos';
 import { RecipeSearchService } from '@/application/search/recipe-search-service';
 import { memberActor } from '@/application/testing/actors';
-import { FixedRecipeSearch } from '@/application/testing/fixed-recipe-search';
+import { FixedRecipeSearch, noRecipeSearchFacets } from '@/application/testing/fixed-recipe-search';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
 import { memberIdSchema } from '@/domain/member/member';
 import { parseRecipeContent } from '@/domain/recipe/recipe';
 import { sampleChickenSoup } from '@/domain/recipe/samples/sample-recipes';
 import { settings } from '@/lib/settings';
 
-const firstPage: RecipeSearchInput = { tags: [], sort: 'relevance', limit: 24, offset: 0 };
+const firstPage: RecipeSearchInput = {
+	holidays: [],
+	diets: [],
+	sort: 'relevance',
+	limit: 24,
+	offset: 0,
+};
 
 const adaId = memberIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e');
 
@@ -23,7 +29,7 @@ const noResults: RecipeSearchResults = {
 	hits: [],
 	total: 0,
 	match: 'exact',
-	facets: { tags: [], sources: [], contributors: [] },
+	facets: noRecipeSearchFacets,
 };
 
 // The search lists a chosen member who exists, even with no recipe left.
@@ -35,10 +41,6 @@ const noResultsByAda: RecipeSearchResults = {
 	},
 };
 
-function tagLabels(count: number): string[] {
-	return Array.from({ length: count }, (_, index) => `Tag ${index}`);
-}
-
 // A service over a search that returns the given results and records each query.
 function createSearch(results: RecipeSearchResults) {
 	const recipes = new FixedRecipeSearch(results);
@@ -46,12 +48,14 @@ function createSearch(results: RecipeSearchResults) {
 }
 
 describe('searchRecipes', () => {
-	it('parses the text and normalizes the filters into the query', async () => {
+	it('parses the text and normalizes the filters, listing each holiday and diet once with what a diet implies', async () => {
 		const { recipes, service } = createSearch(noResultsByAda);
 
 		await service.searchRecipes({
 			text: '  chicken -"bay leaf" ',
-			tags: [' weeknight', 'So\0up', 'WEEKNIGHT'],
+			chapter: 'soups-salads',
+			holidays: ['christmas', 'thanksgiving', 'christmas'],
+			diets: ['vegan', 'gluten-free', 'vegan'],
 			source: ' Grandpa Lou ',
 			contributorId: ` ${adaId.toUpperCase()} `,
 			maxTotalMinutes: 60,
@@ -68,7 +72,9 @@ describe('searchRecipes', () => {
 					includedWords: ['chicken'],
 					excludedTerms: ['"bay leaf"'],
 				},
-				tags: ['weeknight', 'Soup'],
+				chapter: 'soups-salads',
+				holidays: ['thanksgiving', 'christmas'],
+				diets: ['vegetarian', 'vegan', 'gluten-free', 'dairy-free'],
 				source: 'Grandpa Lou',
 				contributorId: adaId,
 				maxTotalMinutes: 60,
@@ -86,22 +92,16 @@ describe('searchRecipes', () => {
 		await service.searchRecipes({ ...firstPage, text });
 
 		expect(recipes.receivedQueries).toEqual([
-			{ tags: [], sort: 'relevance', limit: 24, offset: 0 },
+			{ holidays: [], diets: [], sort: 'relevance', limit: 24, offset: 0 },
 		]);
 	});
 
-	it('measures text after trimming and counts tags after dropping repeats', async () => {
+	it('measures text after trimming', async () => {
 		const { recipes, service } = createSearch(noResults);
 
-		await service.searchRecipes({
-			...firstPage,
-			text: `  ${'a'.repeat(200)}  `,
-			tags: [...tagLabels(20), 'tag 0'],
-		});
+		await service.searchRecipes({ ...firstPage, text: `  ${'a'.repeat(200)}  ` });
 
-		expect(recipes.receivedQueries).toMatchObject([
-			{ text: { text: 'a'.repeat(200) }, tags: tagLabels(20) },
-		]);
+		expect(recipes.receivedQueries).toMatchObject([{ text: { text: 'a'.repeat(200) } }]);
 	});
 
 	it('accepts a source of any length, since the filters offer every source recipes use', async () => {
@@ -112,14 +112,13 @@ describe('searchRecipes', () => {
 		expect(recipes.receivedQueries).toMatchObject([{ source: 'a'.repeat(500) }]);
 	});
 
-	it('filters by a stored tag or source past the recipe limits, which recipes saved earlier keep', async () => {
+	it('filters by a stored source past the recipe limits, which recipes saved earlier keep', async () => {
 		const { recipes, service } = createSearch(noResults);
-		const tag = 'a'.repeat(settings.recipeLimits.maxTagLength + 1);
 		const source = 'a'.repeat(settings.recipeLimits.maxSourceLength + 1);
 
-		await service.searchRecipes({ ...firstPage, tags: [tag], source });
+		await service.searchRecipes({ ...firstPage, source });
 
-		expect(recipes.receivedQueries).toMatchObject([{ tags: [tag], source }]);
+		expect(recipes.receivedQueries).toMatchObject([{ source }]);
 	});
 
 	it('strips hidden characters from the source, as every recipe text field does', async () => {
@@ -132,8 +131,9 @@ describe('searchRecipes', () => {
 
 	it.each([
 		['text over 200 characters', { text: 'a'.repeat(201) }],
-		['more than 20 tags', { tags: tagLabels(21) }],
-		['a blank tag', { tags: ['Soup', ' '] }],
+		['an unknown chapter', { chapter: 'soups' }],
+		['an unknown holiday', { holidays: ['christmas', 'boxing-day'] }],
+		['an unknown diet', { diets: ['nut-free'] }],
 		['a blank source', { source: ' ' }],
 		['a NUL character in the text', { text: 'soup\0' }],
 		['a contributor id that is not an id', { contributorId: 'ada' }],
@@ -179,7 +179,8 @@ describe('searchRecipes', () => {
 			{ text: ' for a weeknight', highlighted: false },
 		];
 		const facets: RecipeSearchFacets = {
-			tags: [{ label: 'Soup', count: 3 }],
+			...noRecipeSearchFacets,
+			chapters: { ...noRecipeSearchFacets.chapters, 'soups-salads': 3 },
 			sources: [{ label: 'Grandpa Lou', count: 1 }],
 			contributors: [{ memberId: soup.contributorId, displayName: 'Ada', count: 1 }],
 		};

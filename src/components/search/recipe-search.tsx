@@ -125,7 +125,6 @@ function RecipeSearch({
 				idPrefix={`${mode}-filters-sidebar`}
 				state={state}
 				facets={results.facets}
-				total={results.total}
 				headingTag={Section}
 				className="hidden lg:flex lg:w-64 lg:shrink-0"
 			/>
@@ -167,7 +166,6 @@ function RecipeSearch({
 							idPrefix={`${mode}-filters-panel`}
 							state={state}
 							facets={results.facets}
-							total={results.total}
 						/>
 					}
 				/>
