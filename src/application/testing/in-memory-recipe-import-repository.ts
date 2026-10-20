@@ -35,10 +35,7 @@ export class InMemoryRecipeImportRepository implements RecipeImportRepository {
 		recipeImport: NewRecipeImport,
 		limit?: RecipeImportLimit
 	): Promise<RecipeImport | null> {
-		if (
-			limit !== undefined &&
-			this.countSince(recipeImport.memberId, limit.since) >= limit.maxImports
-		) {
+		if (limit !== undefined && this.countWithin(recipeImport.memberId, limit) >= limit.maxImports) {
 			return null;
 		}
 
@@ -108,9 +105,15 @@ export class InMemoryRecipeImportRepository implements RecipeImportRepository {
 		this.imports.set(id, { ...stored, createdAt });
 	}
 
-	private countSince(memberId: MemberId, since: Date): number {
+	private countWithin(
+		memberId: MemberId,
+		{ since, uncountedFailures = [] }: RecipeImportLimit
+	): number {
 		return [...this.imports.values()].filter(
-			(stored) => stored.memberId === memberId && stored.createdAt >= since
+			(stored) =>
+				stored.memberId === memberId &&
+				stored.createdAt >= since &&
+				(stored.failure === undefined || !uncountedFailures.includes(stored.failure))
 		).length;
 	}
 }

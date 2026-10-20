@@ -130,6 +130,24 @@ export function describeRecipeImportRepositoryContract(
 			expect(await imports.start({ memberId, mode: 'url' }, limit)).toBeNull();
 		});
 
+		it('leaves out imports that failed with an uncounted failure, and counts every other', async () => {
+			const { imports, memberId } = fixture();
+			const limit = {
+				maxImports: 2,
+				since: new Date(Date.now() - hourMs),
+				uncountedFailures: ['import.page-refused', 'import.page-unavailable'],
+			};
+			for (const failure of ['import.page-refused', 'import.page-unavailable']) {
+				const refused = await start('url', memberId, limit);
+				await imports.recordFailure(refused.id, { failure });
+			}
+			const failed = await start('url', memberId, limit);
+			await imports.recordFailure(failed.id, { failure: 'import.failed' });
+			await start('photo', memberId, limit);
+
+			expect(await imports.start({ memberId, mode: 'url' }, limit)).toBeNull();
+		});
+
 		it("counts only the member's own imports since the time", async () => {
 			const { imports, memberId, otherMemberId, backdate } = fixture();
 			const since = new Date(Date.now() - hourMs);

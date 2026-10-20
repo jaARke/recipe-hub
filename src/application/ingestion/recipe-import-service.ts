@@ -79,6 +79,13 @@ const tooManyScansMessage = limitMessage(settings.photos.maxScansPerImport, 'pho
 const repeatedScanMessage = 'This photo is already attached.';
 const largeScanMessage = 'This photo is too large to read. Crop it to the recipe and add it again.';
 
+// The failures of fetching a page, which end an import before anything reads it, so no model is paid
+// for. The daily limit bounds AI spend, so it leaves out the imports they end.
+const pageFetchFailures = [
+	'import.page-refused',
+	'import.page-unavailable',
+] as const satisfies readonly (ImportPageRefusedError | ImportPageUnavailableError)['code'][];
+
 // Recorded for a failure that is not an expected error, which would carry a code.
 const unexpectedFailure = 'unexpected';
 // Recorded for an import still running past its lease. No member sees it, as no form is waiting.
@@ -146,6 +153,7 @@ function importLimit(actor: MemberActor, now: Date): RecipeImportLimit | undefin
 		: {
 				maxImports: settings.imports.maxImportsPerDay,
 				since: new Date(now.getTime() - daysInMilliseconds(1)),
+				uncountedFailures: pageFetchFailures,
 			};
 }
 
