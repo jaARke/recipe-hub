@@ -178,19 +178,23 @@ describe('RecipeListItem', () => {
 		// The edge lands at once, since this checks where it lands, not how it moves: WebKit on CI can
 		// go a second without a frame, which left the poll reading a color halfway there.
 		card.style.transition = 'none';
-		const { boxShadow: edge } = getComputedStyle(card);
-		// A card inked in the text's color, read in this browser, so the check holds however it writes
-		// the shadow's colors.
-		const { container } = await render(<Card className="ring-foreground" />);
-		const inked = container.querySelector('[data-slot="card"]');
-		if (inked === null) {
-			throw new Error('The reference has no card');
+		// Cards with the dimmed edge and inked in the text's color, read in this browser, so the check
+		// holds however it writes the shadow's colors, and wherever an earlier test left the pointer.
+		const { container } = await render(
+			<>
+				<Card />
+				<Card className="ring-foreground" />
+			</>
+		);
+		const [dimmed, inked] = container.querySelectorAll('[data-slot="card"]');
+		if (dimmed === undefined || inked === undefined) {
+			throw new Error('The references have no cards');
 		}
 		const textEdge = getComputedStyle(inked).boxShadow;
+		expect(textEdge).not.toBe(getComputedStyle(dimmed).boxShadow);
 
 		await item().hover();
 
 		await expect.poll(() => getComputedStyle(card).boxShadow).toBe(textEdge);
-		expect(textEdge).not.toBe(edge);
 	});
 });
