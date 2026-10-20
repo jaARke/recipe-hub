@@ -47,8 +47,6 @@ export class DrizzleRecipeImportRepository implements RecipeImportRepository {
 				}
 			}
 
-			// Names only the row's columns, since the next deployment drops draft and source_url while this
-			// one serves.
 			const row = await insertProvidedColumns(
 				tx,
 				recipeImports,

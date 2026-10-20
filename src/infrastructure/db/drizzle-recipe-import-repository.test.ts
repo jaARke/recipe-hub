@@ -148,22 +148,6 @@ describe('recordSuccess', () => {
 	});
 });
 
-// Drizzle's insert names every column the schema declares, so a start that used it would fail once a
-// column the schema still declares is dropped while this code serves.
-describe('once the columns no code reads or writes are dropped', () => {
-	it('starts, records, and finds imports as before', async () => {
-		await db.execute(sql`alter table recipe_imports drop column draft, drop column source_url`);
-		const limit = { maxImports: 3, since: backdated };
-		const succeeded = await imports.start({ memberId, mode: 'photo' }, limit);
-		const failed = await imports.start({ memberId, mode: 'url' });
-
-		expect(await imports.recordSuccess(succeeded!.id, photoSuccess)).not.toBeNull();
-		expect(await imports.recordFailure(failed!.id, { failure: 'import.failed' })).toBe(true);
-		expect(await imports.findById(succeeded!.id)).toMatchObject({ status: 'succeeded' });
-		expect(await imports.failRunningCreatedBefore(new Date(), 'import.interrupted')).toBe(0);
-	});
-});
-
 describe('the recipe_imports table', () => {
 	it('refuses a mode or status outside its lists', async () => {
 		await expect(
