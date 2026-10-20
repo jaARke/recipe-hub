@@ -11,13 +11,13 @@ import { recipeImportPath } from '@/components/recipe-import/recipe-import-paths
 import {
 	contributePath,
 	favoritesPath,
+	recipeCountsPath,
 	recipeEditPath,
 	recipeListPath,
 } from '@/components/recipe/recipe-paths';
-import { test as setup } from './support/fixtures';
+import { expect, test as setup } from './support/fixtures';
 import { waitForHydration } from './support/hydration';
 import { sampleRecipe } from './support/sample-recipe';
-import { sampleSearchPath } from './support/sample-search';
 import { seedLinkImportDraft } from './support/test-imports';
 
 // Long enough for `next dev` to compile a page's server and client code on its first request.
@@ -28,7 +28,6 @@ const signedOutPaths = [
 	sampleRecipe.path,
 	sampleRecipe.cookPath,
 	favoritesPath,
-	sampleSearchPath,
 	signInPath,
 	requestAccessPath,
 	privacyPath,
@@ -48,6 +47,9 @@ setup(
 		for (const path of signedOutPaths) {
 			await loadAndHydrate(page, path);
 		}
+		// The filter sheet's counts, which a route serves and compiles on its first request too.
+		const counts = await page.request.get(recipeCountsPath, { timeout: coldPageTimeoutMs });
+		expect(counts.ok()).toBe(true);
 
 		const { importId, draftId } = await seedLinkImportDraft(develop.db, member, {
 			sourceUrl: 'https://example.com/lemonade',

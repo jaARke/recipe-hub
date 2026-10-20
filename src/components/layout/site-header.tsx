@@ -5,7 +5,7 @@ import type { HeaderMember } from '@/components/layout/header-member';
 import { MainNav, MainNavLinks } from '@/components/layout/main-nav';
 import { PageContainer } from '@/components/layout/page-container';
 import { SiteMenu } from '@/components/layout/site-menu';
-import { HeaderSearchBar, headerSearchFormId } from '@/components/search/header-search-bar';
+import { HeaderSearchBar } from '@/components/search/header-search-bar';
 
 type SiteHeaderProps = {
 	// The signed-in member, or null. Each part that shows it waits for it behind its own boundary,
@@ -31,7 +31,7 @@ function SiteHeader({ member, draftCount }: SiteHeaderProps) {
 						<MainNav member={member} draftCount={draftCount} />
 					</Suspense>
 				</div>
-				<HeaderSearchBar formId={headerSearchFormId} />
+				<HeaderSearchBar idPrefix="header-search" />
 				<HeaderAccountGroup member={member} className="hidden md:flex" />
 				<SiteMenu member={member} draftCount={draftCount} className="md:hidden" />
 			</PageContainer>

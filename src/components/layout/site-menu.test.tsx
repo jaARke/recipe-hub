@@ -78,7 +78,7 @@ describe('SiteMenu', () => {
 			.element(account.getByRole('menuitem', { name: 'Privacy' }))
 			.toHaveAttribute('href', '/privacy');
 		expect(itemNames(menu.getByRole('group', { name: 'Navigation' }))).toEqual([
-			'Browse',
+			'Recipes',
 			'Favorites',
 			'Add recipe',
 		]);
@@ -96,7 +96,7 @@ describe('SiteMenu', () => {
 		await expect.element(account).toBeVisible();
 		expect(itemNames(account)).toEqual(['Account', 'Privacy', 'Sign out']);
 		expect(itemNames(menu.getByRole('group', { name: 'Navigation' }))).toEqual([
-			'Browse',
+			'Recipes',
 			'Favorites',
 			'Add recipe',
 		]);
@@ -107,7 +107,7 @@ describe('SiteMenu', () => {
 
 		await expect.element(menu.getByRole('menuitem', { name: 'Admin' })).toBeVisible();
 		expect(itemNames(menu.getByRole('group', { name: 'Navigation' }))).toEqual([
-			'Browse',
+			'Recipes',
 			'Favorites',
 			'Add recipe',
 			'Admin',
@@ -121,7 +121,7 @@ describe('SiteMenu', () => {
 			.element(menu.getByRole('menuitem', { name: /^Add recipe/ }))
 			.toHaveTextContent('Add recipe, 2 drafts');
 		expect(itemNames(menu.getByRole('group', { name: 'Navigation' }))).toEqual([
-			'Browse',
+			'Recipes',
 			'Favorites',
 			'Add recipe, 2 drafts',
 		]);
@@ -140,7 +140,7 @@ describe('SiteMenu', () => {
 
 		await expect.element(menu.getByRole('group', { name: 'Signed in as Sam' })).toBeVisible();
 		expect(itemNames(menu.getByRole('group', { name: 'Navigation' }))).toEqual([
-			'Browse',
+			'Recipes',
 			'Favorites',
 			'Add recipe',
 		]);
@@ -153,7 +153,7 @@ describe('SiteMenu', () => {
 		);
 
 		expect(itemNames(menu.getByRole('group', { name: 'Navigation' }))).toEqual([
-			'Browse',
+			'Recipes',
 			'Favorites',
 			'Add recipe',
 		]);
@@ -164,9 +164,9 @@ describe('SiteMenu', () => {
 	it('marks the current page, underlined so more than its color marks it', async () => {
 		const menu = await openMenu(Promise.resolve(null));
 
-		const browse = menu.getByRole('menuitem', { name: 'Browse' });
-		await expect.element(browse).toHaveAttribute('aria-current', 'page');
-		await expect.element(browse).toHaveStyle({ textDecorationLine: 'underline' });
+		const recipes = menu.getByRole('menuitem', { name: 'Recipes' });
+		await expect.element(recipes).toHaveAttribute('aria-current', 'page');
+		await expect.element(recipes).toHaveStyle({ textDecorationLine: 'underline' });
 		const addRecipe = menu.getByRole('menuitem', { name: 'Add recipe' });
 		await expect.element(addRecipe).not.toHaveAttribute('aria-current');
 		await expect.element(addRecipe).toHaveStyle({ textDecorationLine: 'none' });
@@ -180,7 +180,7 @@ describe('SiteMenu', () => {
 			.element(menu.getByRole('menuitem', { name: 'Add recipe' }))
 			.toHaveAttribute('aria-current', 'true');
 		await expect
-			.element(menu.getByRole('menuitem', { name: 'Browse' }))
+			.element(menu.getByRole('menuitem', { name: 'Recipes' }))
 			.not.toHaveAttribute('aria-current');
 		await expect.element(menu.getByRole('menuitem', { name: 'Admin' })).toBeVisible();
 		await expect
@@ -196,35 +196,37 @@ describe('SiteMenu', () => {
 			.element(menu.getByRole('menuitem', { name: 'Favorites' }))
 			.toHaveAttribute('aria-current', 'true');
 		await expect
-			.element(menu.getByRole('menuitem', { name: 'Browse' }))
+			.element(menu.getByRole('menuitem', { name: 'Recipes' }))
 			.not.toHaveAttribute('aria-current');
 	});
 
-	it('marks no section on search, where the field holding the words marks it', async () => {
-		location.pathname = '/search';
-		const menu = await openMenu(Promise.resolve(admin));
-
-		await expect.element(menu.getByRole('menuitem', { name: 'Admin' })).toBeVisible();
-		expect(currentSections(menu)).toEqual([]);
-	});
-
-	it('marks Browse as the section of a recipe opened from filtered Browse', async () => {
-		openRecipeFrom('/?chapter=desserts', 'Back to recipes');
+	it('marks Recipes as the section of a recipe opened from a chapter', async () => {
+		openRecipeFrom('/?chapter=desserts', 'Back to Desserts');
 		const menu = await openMenu(Promise.resolve(null));
 
 		await expect
-			.element(menu.getByRole('menuitem', { name: 'Browse' }))
+			.element(menu.getByRole('menuitem', { name: 'Recipes' }))
 			.toHaveAttribute('aria-current', 'true');
-		expect(currentSections(menu)).toEqual(['Browse']);
+		expect(currentSections(menu)).toEqual(['Recipes']);
 	});
 
-	it('marks no section on a recipe opened from a search', async () => {
-		openRecipeFrom('/search?q=lemon&chapter=desserts', 'Back to search results');
+	it('marks Recipes as the section of a recipe opened from All Recipes, filtered', async () => {
+		openRecipeFrom('/?holiday=christmas', 'Back to All Recipes');
 		const menu = await openMenu(Promise.resolve(null));
 
 		await expect
-			.element(menu.getByRole('menuitem', { name: 'Browse' }))
-			.not.toHaveAttribute('aria-current');
-		expect(currentSections(menu)).toEqual([]);
+			.element(menu.getByRole('menuitem', { name: 'Recipes' }))
+			.toHaveAttribute('aria-current', 'true');
+		expect(currentSections(menu)).toEqual(['Recipes']);
+	});
+
+	it('marks Recipes as the section of a recipe opened from a search', async () => {
+		openRecipeFrom('/?q=lemon&chapter=desserts', 'Back to search results');
+		const menu = await openMenu(Promise.resolve(null));
+
+		await expect
+			.element(menu.getByRole('menuitem', { name: 'Recipes' }))
+			.toHaveAttribute('aria-current', 'true');
+		expect(currentSections(menu)).toEqual(['Recipes']);
 	});
 });

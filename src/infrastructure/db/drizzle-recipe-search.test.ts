@@ -1,18 +1,21 @@
 import { eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { NewMember } from '@/application/ports/member-repository';
-import type {
-	HighlightedText,
-	RecipeSearchQuery,
-	RecipeSearchResults,
-	RecipeTextQuery,
+import {
+	recipeTotalTimeChoices,
+	type HighlightedText,
+	type RecipeSearchFacets,
+	type RecipeSearchQuery,
+	type RecipeSearchResults,
+	type RecipeTextQuery,
 } from '@/application/ports/recipe-search';
 import { noRecipeSearchFacets } from '@/application/testing/fixed-recipe-search';
 import { memberIdSchema, type MemberId } from '@/domain/member/member';
-import type { Chapter } from '@/domain/recipe/chapter';
-import type { Diet } from '@/domain/recipe/diet';
+import { chapters, type Chapter } from '@/domain/recipe/chapter';
+import { diets, type Diet } from '@/domain/recipe/diet';
 import type { RecipeTimes } from '@/domain/recipe/duration';
-import type { Holiday } from '@/domain/recipe/holiday';
+import { holidays, type Holiday } from '@/domain/recipe/holiday';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
 import { recipeContentSchema, type RecipeContentInput } from '@/domain/recipe/recipe';
 import { slugify } from '@/domain/recipe/slug';
@@ -22,12 +25,12 @@ import { DrizzleRecipeSearch } from '@/infrastructure/db/drizzle-recipe-search';
 import { recipes } from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 
-// Robin joins first, so on a tie in the contributor facet only the name puts Robin second. Ada
-// adds no recipes.
+// Robin joins first, so only the name puts Robin after Contributor in the contributor facet. Ada
+// adds no recipes, and the accent on her name's first letter sorts as the letter.
 const members = {
 	robin: { email: 'robin@example.com', displayName: 'Robin', role: 'member' },
 	contributor: { email: 'contributor@example.com', displayName: 'Contributor', role: 'member' },
-	ada: { email: 'ada@example.com', displayName: 'Ada', role: 'member' },
+	ada: { email: 'ada@example.com', displayName: 'Áda', role: 'member' },
 } satisfies Record<string, NewMember>;
 type MemberName = keyof typeof members;
 
@@ -250,9 +253,11 @@ function textQuery(
 	return { text, includedWords, excludedTerms };
 }
 
+type SearchOptions = Partial<Omit<RecipeSearchQuery, 'text'>>;
+
 function searchFor(
 	text: RecipeTextQuery | undefined,
-	options: Partial<Omit<RecipeSearchQuery, 'text'>> = {}
+	options: SearchOptions = {}
 ): Promise<RecipeSearchResults> {
 	return search.search({
 		text,
@@ -275,6 +280,50 @@ function highlighted(text: HighlightedText | undefined): string[] {
 
 function joined(text: HighlightedText | undefined): string {
 	return (text ?? []).map((segment) => segment.text).join('');
+}
+
+type FacetOption = {
+	name: string;
+	count: number;
+	applied: SearchOptions;
+};
+
+// Every option the facets offer, with its count and the filters that choosing it leaves. Holidays
+// are any of those chosen, so a holiday's count is what it gives with no other holiday chosen.
+function facetOptions(facets: RecipeSearchFacets, chosen: SearchOptions): FacetOption[] {
+	return [
+		{ name: 'All Recipes', count: facets.allRecipes, applied: { ...chosen, chapter: undefined } },
+		...chapters.map((chapter) => ({
+			name: chapter,
+			count: facets.chapters[chapter],
+			applied: { ...chosen, chapter },
+		})),
+		...holidays.map((holiday) => ({
+			name: holiday,
+			count: facets.holidays[holiday],
+			applied: { ...chosen, holidays: [holiday] },
+		})),
+		...diets.map((diet) => ({
+			name: diet,
+			count: facets.diets[diet],
+			applied: { ...chosen, diets: [...new Set([...(chosen.diets ?? []), diet])] },
+		})),
+		...recipeTotalTimeChoices.map((minutes) => ({
+			name: `${minutes} minutes or less`,
+			count: facets.totalTimes[minutes],
+			applied: { ...chosen, maxTotalMinutes: minutes },
+		})),
+		...facets.sources.map(({ label, count }) => ({
+			name: `from ${label}`,
+			count,
+			applied: { ...chosen, source: label },
+		})),
+		...facets.contributors.map(({ memberId, displayName, count }) => ({
+			name: `added by ${displayName}`,
+			count,
+			applied: { ...chosen, contributorId: memberId },
+		})),
+	];
 }
 
 describe('matching text', () => {
@@ -393,31 +442,12 @@ describe('filters', () => {
 		const results = await searchFor(undefined, { contributorId: memberIds.robin });
 
 		expect(titles(results)).toEqual(['Rice bowl', 'Tomato soup', 'Chicken noodle soup']);
-		expect(results.facets.sources).toEqual([
-			{ label: 'grandma rose', count: 1 },
-			{ label: 'Grandpa Lou', count: 1 },
-		]);
 	});
 
 	it('keeps recipes whose total time fits, and leaves out those without times', async () => {
-		const results = await searchFor(undefined, { maxTotalMinutes: 35 });
+		const results = await searchFor(undefined, { maxTotalMinutes: 30 });
 
-		expect(titles(results)).toEqual(['Rice bowl', 'Buttermilk biscuits', 'Tomato soup']);
-	});
-
-	it('keeps recipes added within the window', async () => {
-		const week = await searchFor(undefined, { addedWithin: 'week' });
-		const month = await searchFor(undefined, { addedWithin: 'month' });
-		const year = await searchFor(undefined, { addedWithin: 'year' });
-
-		expect(titles(week)).toEqual(['Creme caramel', 'Crème brûlée']);
-		expect(titles(month)).toEqual([
-			'Creme caramel',
-			'Crème brûlée',
-			'Skillet <b>scones</b>',
-			'Rice bowl',
-		]);
-		expect(year.total).toBe(fixtures.length - 1);
+		expect(titles(results)).toEqual(['Rice bowl', 'Tomato soup']);
 	});
 
 	it('combines filters with the text', async () => {
@@ -431,9 +461,10 @@ describe('filters', () => {
 });
 
 describe('facets', () => {
-	it('counts every chapter, holiday, and diet, even at zero', async () => {
+	it('counts every chapter, holiday, diet, and total time, even at zero', async () => {
 		const results = await searchFor(undefined);
 
+		expect(results.facets.allRecipes).toBe(fixtures.length);
 		expect(results.facets.chapters).toEqual({
 			'breakfast-brunch': 0,
 			'appetizers-beverages': 0,
@@ -460,6 +491,7 @@ describe('facets', () => {
 			'gluten-free': 6,
 			'dairy-free': 5,
 		});
+		expect(results.facets.totalTimes).toEqual({ 15: 0, 30: 2, 60: 4, 120: 5 });
 	});
 
 	it('counts chapters and holidays with every filter but their own, and diets within the results', async () => {
@@ -488,6 +520,19 @@ describe('facets', () => {
 		});
 	});
 
+	it('counts All Recipes like the chapters, and each total time with every filter but the time', async () => {
+		const results = await searchFor(undefined, { chapter: 'soups-salads', maxTotalMinutes: 30 });
+
+		expect(titles(results)).toEqual(['Tomato soup']);
+		expect(results.facets.allRecipes).toBe(2);
+		expect(results.facets.chapters).toEqual({
+			...noRecipeSearchFacets.chapters,
+			'soups-salads': 1,
+			'main-dishes': 1,
+		});
+		expect(results.facets.totalTimes).toEqual({ 15: 0, 30: 1, 60: 2, 120: 2 });
+	});
+
 	it('counts sources with every filter but the source', async () => {
 		const results = await searchFor(textQuery('chicken', ['chicken']), {
 			source: 'Grandpa Lou',
@@ -500,23 +545,28 @@ describe('facets', () => {
 		]);
 	});
 
-	it('counts contributors with every filter but the contributor, leaving out members with none', async () => {
+	it('counts contributors with every filter but the contributor, leaving out members with no recipe the words match', async () => {
 		const results = await searchFor(textQuery('soup', ['soup']), {
 			contributorId: memberIds.contributor,
 		});
 
 		expect(titles(results)).toEqual(['Chicken and rice soup']);
 		expect(results.facets.contributors).toEqual([
-			{ memberId: memberIds.robin, displayName: 'Robin', count: 2 },
 			{ memberId: memberIds.contributor, displayName: 'Contributor', count: 1 },
+			{ memberId: memberIds.robin, displayName: 'Robin', count: 2 },
 		]);
 	});
 
-	it('orders contributors with the same count by name', async () => {
-		const results = await searchFor(textQuery('chicken', ['chicken']));
+	it('orders sources by key and members by name, whatever their counts', async () => {
+		const results = await searchFor(undefined, { chapter: 'soups-salads' });
 
+		expect(results.facets.sources).toEqual([
+			{ label: 'Aunt June', count: 0 },
+			{ label: 'Grandma Rose', count: 0 },
+			{ label: 'Grandpa Lou', count: 2 },
+		]);
 		expect(results.facets.contributors).toEqual([
-			{ memberId: memberIds.contributor, displayName: 'Contributor', count: 2 },
+			{ memberId: memberIds.contributor, displayName: 'Contributor', count: 1 },
 			{ memberId: memberIds.robin, displayName: 'Robin', count: 2 },
 		]);
 	});
@@ -529,9 +579,9 @@ describe('facets', () => {
 
 		expect(results.total).toBe(0);
 		expect(results.facets.contributors).toEqual([
-			{ memberId: memberIds.robin, displayName: 'Robin', count: 2 },
+			{ memberId: memberIds.ada, displayName: 'Áda', count: 0 },
 			{ memberId: memberIds.contributor, displayName: 'Contributor', count: 1 },
-			{ memberId: memberIds.ada, displayName: 'Ada', count: 0 },
+			{ memberId: memberIds.robin, displayName: 'Robin', count: 2 },
 		]);
 	});
 
@@ -543,8 +593,34 @@ describe('facets', () => {
 
 		expect(results.total).toBe(0);
 		expect(results.facets.contributors.map(({ memberId }) => memberId)).toEqual([
-			memberIds.robin,
 			memberIds.contributor,
+			memberIds.robin,
+		]);
+	});
+
+	it('lists every source and member among the recipes the words match, even at zero', async () => {
+		const results = await searchFor(textQuery('soup', ['soup']), { diets: ['vegetarian'] });
+
+		expect(titles(results)).toEqual(['Tomato soup']);
+		expect(results.facets.sources).toEqual([{ label: 'Grandpa Lou', count: 0 }]);
+		expect(results.facets.contributors).toEqual([
+			{ memberId: memberIds.contributor, displayName: 'Contributor', count: 0 },
+			{ memberId: memberIds.robin, displayName: 'Robin', count: 1 },
+		]);
+	});
+
+	it('labels each source with its earliest spelling among the recipes the words match', async () => {
+		const everything = await searchFor(undefined, { contributorId: memberIds.robin });
+		const rice = await searchFor(textQuery('rice', ['rice']), { contributorId: memberIds.robin });
+
+		expect(everything.facets.sources).toEqual([
+			{ label: 'Aunt June', count: 0 },
+			{ label: 'Grandma Rose', count: 1 },
+			{ label: 'Grandpa Lou', count: 1 },
+		]);
+		expect(rice.facets.sources).toEqual([
+			{ label: 'grandma rose', count: 1 },
+			{ label: 'Grandpa Lou', count: 0 },
 		]);
 	});
 
@@ -553,6 +629,109 @@ describe('facets', () => {
 
 		expect(results.match).toBe('close');
 		expect(results.facets.sources).toEqual([{ label: 'Grandpa Lou', count: 2 }]);
+	});
+
+	// Cream matches only Tomato soup exactly, and the desserts' "creme" closely. Each group is chosen
+	// in one of the filters, so every count is checked with its own filter left out.
+	it.each([
+		['no words', undefined],
+		['words that match exactly', textQuery('chicken', ['chicken'])],
+		['words that match some chapters only closely', textQuery('cream', ['cream'])],
+		['words that match only closely', textQuery('chiken soup', ['chiken', 'soup'])],
+	])('counts what choosing each option shows, with %s', async (_, text) => {
+		const chosenFilters: SearchOptions[] = [
+			{ chapter: 'soups-salads', diets: ['gluten-free'] },
+			{ holidays: ['christmas'], maxTotalMinutes: 30 },
+			{ holidays: ['easter'], maxTotalMinutes: 120 },
+			{ source: 'Grandpa Lou', contributorId: memberIds.robin },
+		];
+
+		for (const chosen of chosenFilters) {
+			const results = await searchFor(text, chosen);
+			const options = facetOptions(results.facets, chosen);
+			const shown = await Promise.all(
+				options.map(async ({ name, applied }) => {
+					const { total, match } = await searchFor(text, applied);
+					return [name, { total, match }];
+				})
+			);
+
+			expect(Object.fromEntries(shown), JSON.stringify(chosen)).toEqual(
+				Object.fromEntries(
+					options.map(({ name, count }) => [name, { total: count, match: results.match }])
+				)
+			);
+		}
+	});
+});
+
+// The search over the same database, recording each statement it runs.
+function loggedSearch(): { search: DrizzleRecipeSearch; statements: string[] } {
+	const statements: string[] = [];
+	const logger = {
+		logQuery: (query: string) => {
+			statements.push(query);
+		},
+	};
+	return { search: new DrizzleRecipeSearch(drizzle({ client: db.$client, logger })), statements };
+}
+
+// What counting runs once the match is chosen: one aggregate row over the recipes, and the groupings
+// by source and by member.
+const countStatements = [
+	expect.stringMatching(/^select count\(.+ from "recipes"( where .+)?$/),
+	expect.stringMatching(
+		/^select \(array_agg\(.+ from "recipes" .+ group by "recipes"\."source_key" .+$/
+	),
+	expect.stringMatching(
+		/^select .+ from "users" left join "recipes" .+ group by "users"\."id" .+$/
+	),
+];
+
+// A recipe's document selected whole, as a page of results selects it, or a highlighted passage.
+const recipeDocumentOrHeadline = /"content",|ts_headline/;
+
+describe('counts', () => {
+	it('give the total and facets search gives, without words and with exact and close matches', async () => {
+		const chosenFilters: [RecipeTextQuery | undefined, SearchOptions][] = [
+			[undefined, { chapter: 'desserts' }],
+			[textQuery('chicken', ['chicken']), { source: 'Grandpa Lou', maxTotalMinutes: 60 }],
+			[
+				textQuery('chiken soup', ['chiken', 'soup']),
+				{ diets: ['dairy-free'], contributorId: memberIds.ada },
+			],
+		];
+
+		for (const [text, chosen] of chosenFilters) {
+			const { total, facets } = await searchFor(text, chosen);
+
+			expect(await search.count({ text, holidays: [], diets: [], ...chosen })).toEqual({
+				total,
+				facets,
+			});
+		}
+	});
+
+	it('run the aggregate row and the two groupings alone, selecting no recipe and no headline', async () => {
+		const { search: logged, statements } = loggedSearch();
+
+		await logged.count({ chapter: 'desserts', holidays: [], diets: [] });
+
+		expect(statements).toHaveLength(countStatements.length);
+		expect(statements).toEqual(expect.arrayContaining(countStatements));
+		for (const statement of statements) {
+			expect(statement).not.toMatch(recipeDocumentOrHeadline);
+		}
+	});
+
+	it('choose the match from the words first, as search does', async () => {
+		const { search: logged, statements } = loggedSearch();
+
+		await logged.count({ text: textQuery('chiken', ['chiken']), holidays: [], diets: [] });
+
+		expect(statements[0]).toMatch(/^select not exists \(.+\) and exists \(.+\) as close$/);
+		expect(statements.slice(1)).toHaveLength(countStatements.length);
+		expect(statements.slice(1)).toEqual(expect.arrayContaining(countStatements));
 	});
 });
 
@@ -575,6 +754,28 @@ describe('close matches', () => {
 
 		expect(results.match).toBe('close');
 		expect(titles(results)).toEqual(['Chicken and rice soup']);
+	});
+
+	it('keeps to exact matches when the words have some, even where the filters leave none', async () => {
+		const results = await searchFor(textQuery('cream', ['cream']), { chapter: 'desserts' });
+
+		expect(results).toMatchObject({ hits: [], total: 0, match: 'exact' });
+		expect(results.facets.chapters).toEqual({
+			...noRecipeSearchFacets.chapters,
+			'soups-salads': 1,
+		});
+	});
+
+	it('keeps to close matches where the filters leave none, and counts them', async () => {
+		const results = await searchFor(textQuery('chiken soup', ['chiken', 'soup']), {
+			chapter: 'desserts',
+		});
+
+		expect(results).toMatchObject({ hits: [], total: 0, match: 'close' });
+		expect(results.facets.chapters).toEqual({
+			...noRecipeSearchFacets.chapters,
+			'soups-salads': 2,
+		});
 	});
 
 	it('returns the empty exact result when nothing is close either', async () => {

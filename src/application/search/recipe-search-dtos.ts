@@ -1,20 +1,16 @@
 import 'server-only';
 import type {
 	HighlightedText,
-	RecipeAddedWithin,
 	RecipeMatch,
 	RecipeSearchFacets,
 	RecipeSearchHit,
 	RecipeSearchSort,
+	RecipeTotalTimeChoice,
 } from '@/application/ports/recipe-search';
 import { toRecipeSummaryDto, type RecipeSummaryDto } from '@/application/recipes/recipe-dtos';
 import type { Chapter } from '@/domain/recipe/chapter';
 import type { Diet } from '@/domain/recipe/diet';
 import type { Holiday } from '@/domain/recipe/holiday';
-
-// The total-time filter's choices, in minutes.
-export const recipeTotalTimeChoices = [15, 30, 60, 120] as const;
-export type RecipeTotalTimeChoice = (typeof recipeTotalTimeChoices)[number];
 
 export type RecipeSearchInput = {
 	text?: string;
@@ -25,11 +21,13 @@ export type RecipeSearchInput = {
 	// A member's id, as the contributor facet lists it.
 	contributorId?: string;
 	maxTotalMinutes?: RecipeTotalTimeChoice;
-	addedWithin?: RecipeAddedWithin;
 	sort: RecipeSearchSort;
 	limit: number;
 	offset: number;
 };
+
+// A search's words and filters, without its order or page, which leave its counts as they are.
+export type RecipeCountsInput = Omit<RecipeSearchInput, 'sort' | 'limit' | 'offset'>;
 
 export type RecipeSearchResultDto = {
 	recipe: RecipeSummaryDto;
@@ -43,6 +41,13 @@ export type RecipeSearchPage = {
 	total: number;
 	match: RecipeMatch;
 	facets: RecipeSearchFacets;
+};
+
+// What a search's page would count, before it is shown: its total, and every option's count as its
+// facets give it.
+export type RecipeCountsDto = {
+	total: number;
+	counts: RecipeSearchFacets;
 };
 
 export function toRecipeSearchResultDto(hit: RecipeSearchHit): RecipeSearchResultDto {

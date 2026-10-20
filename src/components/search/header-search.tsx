@@ -1,45 +1,46 @@
 'use client';
 
 import { cn } from 'cn';
-import { SearchIcon, XIcon } from 'lucide-react';
+import { SearchIcon } from 'lucide-react';
 import Form from 'next/form';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { flushSync } from 'react-dom';
-import { recipeSearchPath } from '@/components/recipe/recipe-paths';
-import { SearchQueryInput } from '@/components/search/search-query-input';
+import { recipeListPath } from '@/components/recipe/recipe-paths';
+import { whenRecipeResultsShown } from '@/components/search/recipe-results-loading';
 import { Button } from '@/components/ui/button';
 import { Field, FieldLabel } from '@/components/ui/field';
-import { InputGroup, InputGroupAddon } from '@/components/ui/input-group';
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
+import { Spinner } from '@/components/ui/spinner';
+import { hrefWithParams } from '@/lib/url-query';
 
-// Passed down from the server, where search-params.ts names the query's parameter.
 type HeaderSearchProps = {
-	// Browse's and Search's hidden fields join the form by its id, so a new query keeps the filters,
-	// and on Search the order.
-	formId: string;
+	// Begins the ids of the field, its label, the icon that opens it, and Cancel, so each header search
+	// on a page, as on the design reference, keeps its own.
+	idPrefix: string;
+	// The words' parameter, which search-params.ts names on the server.
 	queryName: string;
-	// The search page's syntax hint, which describes the field there.
-	hintId: string;
 };
 
-type HeaderSearchFormProps = HeaderSearchProps & {
-	query: string;
-	searchPage: boolean;
-};
-
-// From lg, a field that fills the header's row. Below lg, an icon that turns the row into the field
-// with Cancel, which the search page opens with. Enter searches; on the search page, Clear search
-// empties the field and searches again, and a search without words lists Browse with the filters.
-function HeaderSearchForm({ formId, queryName, hintId, query, searchPage }: HeaderSearchFormProps) {
-	const inputId = `${formId}-query`;
-	const openButtonId = `${formId}-open`;
-	// The search page opens with the field, and leaving it brings the row back.
-	const [open, setOpen] = React.useState(searchPage);
-	const [openedFor, setOpenedFor] = React.useState(searchPage);
-	if (searchPage !== openedFor) {
-		setOpenedFor(searchPage);
-		setOpen(searchPage);
-	}
+// Searches every recipe from scratch, whatever page it is typed on. From lg a field that fills the
+// header's row; below lg an icon that turns the row into the field, with Cancel. Once submitted the
+// field keeps its words, read-only with a spinner, until the results show, then empties, and closes
+// below lg, since the Recipes page's own field holds the words.
+function HeaderSearch({ idPrefix, queryName }: HeaderSearchProps) {
+	const inputId = `${idPrefix}-query`;
+	const labelId = `${idPrefix}-label`;
+	const openButtonId = `${idPrefix}-open`;
+	const cancelButtonId = `${idPrefix}-cancel`;
+	const router = useRouter();
+	const [open, setOpen] = React.useState(false);
+	// From the submission until the results show.
+	const [searching, setSearching] = React.useState(false);
+	// The navigation's own transition, since next/form reports no pending navigation. It ends as the
+	// page's skeletons show, and the results' loading states say when they give way.
+	const [navigating, startNavigation] = React.useTransition();
+	// Whether the open field or Cancel, which leaves with it, held focus as its search ended, which the
+	// icon then takes.
+	const focusOpenButton = React.useRef(false);
 
 	// Focused within the tap, so iOS raises the keyboard.
 	function openField() {
@@ -47,24 +48,52 @@ function HeaderSearchForm({ formId, queryName, hintId, query, searchPage }: Head
 		document.getElementById(inputId)?.focus();
 	}
 
-	// Brings the row back and keeps the query.
+	// Brings the row back and keeps the words.
 	function closeField() {
 		flushSync(() => setOpen(false));
 		document.getElementById(openButtonId)?.focus();
 	}
 
-	// Submitted rather than linked, so the search page's fields that join the form carry the filters
-	// and the order, and the proxy's redirect builds Browse's URL from them.
-	function clearSearch() {
-		const input = document.getElementById(inputId);
-		if (input instanceof HTMLInputElement) {
-			input.value = '';
-			input.focus();
-			input.form?.requestSubmit();
+	// Navigates as the form would submit, with its one field and none of the page's.
+	function search(event: React.FormEvent<HTMLFormElement>) {
+		event.preventDefault();
+		if (searching) {
+			return;
 		}
+		const params = new URLSearchParams();
+		for (const [name, value] of new FormData(event.currentTarget)) {
+			if (typeof value === 'string') {
+				params.append(name, value);
+			}
+		}
+		setSearching(true);
+		startNavigation(() => router.push(hrefWithParams(recipeListPath, params)));
 	}
 
-	const clearable = searchPage && query !== '';
+	// Once the navigation commits, the search ends as its results show.
+	React.useEffect(() => {
+		if (!searching || navigating) {
+			return;
+		}
+		return whenRecipeResultsShown(() => {
+			const input = document.getElementById(inputId);
+			if (input instanceof HTMLInputElement) {
+				input.value = '';
+				const focused = document.activeElement;
+				focusOpenButton.current = open && (focused === input || focused?.id === cancelButtonId);
+			}
+			setSearching(false);
+			setOpen(false);
+		});
+	}, [searching, navigating, inputId, cancelButtonId, open]);
+
+	React.useLayoutEffect(() => {
+		if (open || !focusOpenButton.current) {
+			return;
+		}
+		focusOpenButton.current = false;
+		document.getElementById(openButtonId)?.focus();
+	}, [open, openButtonId]);
 
 	return (
 		// The header hides the rest of its row below lg while this is open.
@@ -72,46 +101,37 @@ function HeaderSearchForm({ formId, queryName, hintId, query, searchPage }: Head
 			data-search-open={open ? '' : undefined}
 			className="flex flex-1 items-center justify-end gap-2 lg:mx-4"
 		>
-			<search className={cn('flex-1', !open && 'max-lg:hidden')}>
-				<Form id={formId} action={recipeSearchPath}>
+			<search aria-labelledby={labelId} className={cn('flex-1', !open && 'max-lg:hidden')}>
+				<Form action={recipeListPath} aria-busy={searching} onSubmit={search}>
 					<Field>
-						<FieldLabel htmlFor={inputId} className="sr-only">
+						<FieldLabel id={labelId} htmlFor={inputId} className="sr-only">
 							Search recipes
 						</FieldLabel>
 						<InputGroup>
-							<SearchQueryInput
+							<InputGroupInput
 								id={inputId}
 								type="search"
 								name={queryName}
-								query={query}
 								enterKeyHint="search"
 								placeholder="Search recipes"
-								aria-describedby={searchPage ? hintId : undefined}
-								// Clear search leaves the search page; the browser's own clear only empties the field.
-								className={cn(clearable && '[&::-webkit-search-cancel-button]:hidden')}
+								readOnly={searching}
 							/>
 							<InputGroupAddon>
-								<SearchIcon aria-hidden="true" />
+								{searching ? <Spinner /> : <SearchIcon aria-hidden="true" />}
 							</InputGroupAddon>
-							{clearable && (
-								<InputGroupAddon align="inline-end">
-									<Button
-										variant="ghost"
-										size="icon-xs"
-										aria-label="Clear search"
-										onClick={clearSearch}
-									>
-										<XIcon aria-hidden="true" />
-									</Button>
-								</InputGroupAddon>
-							)}
 						</InputGroup>
 					</Field>
 				</Form>
 			</search>
 			{/* Keyed apart, so a swap replaces the button rather than renaming the focused one. */}
 			{open ? (
-				<Button key="cancel" variant="ghost" className="lg:hidden" onClick={closeField}>
+				<Button
+					key="cancel"
+					id={cancelButtonId}
+					variant="ghost"
+					className="lg:hidden"
+					onClick={closeField}
+				>
 					Cancel
 				</Button>
 			) : (
@@ -131,19 +151,4 @@ function HeaderSearchForm({ formId, queryName, hintId, query, searchPage }: Head
 	);
 }
 
-// On the search page the field holds the query. Under Cache Components reading the URL suspends
-// while prerendering, so this renders inside Suspense.
-function HeaderSearch(props: HeaderSearchProps) {
-	const searchPage = usePathname() === recipeSearchPath;
-	const searchParams = useSearchParams();
-
-	return (
-		<HeaderSearchForm
-			{...props}
-			query={searchPage ? (searchParams.get(props.queryName) ?? '') : ''}
-			searchPage={searchPage}
-		/>
-	);
-}
-
-export { HeaderSearch, HeaderSearchForm };
+export { HeaderSearch };

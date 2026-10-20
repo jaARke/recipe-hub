@@ -4,23 +4,18 @@ import {
 	type RecipeSearchState,
 } from '@/components/search/search-params';
 
-// A search form submits only its own fields, so these carry the rest of the search along. Given a
-// form's id, they join that form from wherever they render, as Browse's and Search's join the
-// header's.
+// A search form submits only its own fields, so these carry the rest of the search along.
 function HiddenSearchFields({
 	state,
 	editedFields,
-	form,
 }: {
 	state: RecipeSearchState;
 	editedFields: readonly RecipeSearchField[];
-	form?: string;
 }) {
 	return carriedSearchParams(state, editedFields).map((param) => (
 		<input
 			key={`${param.name}=${param.value}`}
 			type="hidden"
-			form={form}
 			name={param.name}
 			value={param.value}
 		/>

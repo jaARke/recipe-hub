@@ -4,7 +4,7 @@ import { LockIcon } from 'lucide-react';
 import Link from 'next/link';
 import * as React from 'react';
 import { useFocusOnReplace } from '@/components/forms/use-focus-on-replace';
-import { recipeListPath } from '@/components/recipe/recipe-paths';
+import { backToAllRecipesLabel, recipeListPath } from '@/components/recipe/recipe-paths';
 import { buttonVariants } from '@/components/ui/button';
 import {
 	Empty,
@@ -36,7 +36,7 @@ function AdminOnlyEmptyState() {
 			</EmptyHeader>
 			<EmptyContent>
 				<Link href={recipeListPath} className={buttonVariants()}>
-					Back to recipes
+					{backToAllRecipesLabel}
 				</Link>
 			</EmptyContent>
 		</Empty>

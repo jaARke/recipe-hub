@@ -20,7 +20,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Interface conventions
 
-- New UI is built from the design tokens and primitives that `/design` shows.
+- New UI is built from the design tokens and primitives that `/design` shows. A transparent control (an icon button, a heading that opens a list) is built from the ghost button, so it hovers with the state layer rather than a hover of its own.
+- Every h1, and every back link that names one, is in title case ("All Recipes", "Back to All Recipes"); a back link that names no heading ("Back to search results") is not.
 - A submit button is never disabled for what its form holds. An empty required field shows its error at the field at once, checked in the browser before any request, and what a form said after an attempt lasts only while its page is shown.
 - Page actions (a form's buttons, a section's lone button) align left; dialogs keep right-aligned footers.
 - Hints sit below their inputs. A page form spaces its alert, its fields, and its actions row 16 px apart, with fields 28 px apart in a `FieldGroup`.

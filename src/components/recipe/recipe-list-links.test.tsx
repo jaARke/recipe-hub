@@ -6,7 +6,7 @@ import { RecipeListLinks } from '@/components/recipe/recipe-list-links';
 import { readRecipeOpenedFrom } from '@/components/recipe/recipe-opened-from';
 import { readTabStorage } from '@/lib/browser-storage';
 
-const listUrl = `${location.origin}/search?q=chicken&chapter=main-dishes&sort=title&page=2`;
+const listUrl = `${location.origin}/?q=chicken&chapter=main-dishes&sort=title&page=2`;
 
 const recipeKey = 'opened-from:/recipes/lemon-bars';
 
@@ -24,7 +24,7 @@ async function renderList() {
 						</Link>
 					</li>
 					<li>
-						<Link href="/search?chapter=desserts">Desserts</Link>
+						<Link href="/?chapter=desserts">Desserts</Link>
 					</li>
 				</ul>
 			</RecipeListLinks>
@@ -49,7 +49,7 @@ describe('RecipeListLinks', () => {
 		expect(readRecipeOpenedFrom(readTabStorage(recipeKey))).toEqual({
 			url: listUrl,
 			backLabel: 'Back to search results',
-			listPathname: '/search',
+			listPathname: '/',
 		});
 	});
 

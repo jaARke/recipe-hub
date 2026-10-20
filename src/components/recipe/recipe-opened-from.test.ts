@@ -17,11 +17,12 @@ function kept(url: string, backLabel = 'Back to Favorites'): string {
 describe('readRecipeOpenedFrom', () => {
 	it('reads each list a recipe can be opened from, its page whole, with the label it recorded', () => {
 		const lists = [
-			[`${origin}/?page=2&sort=title`, 'Back to recipes', '/'],
+			[`${origin}/?page=2&sort=title`, 'Back to All Recipes', '/'],
+			[`${origin}/?chapter=desserts`, 'Back to Desserts', '/'],
 			[
-				`${origin}/search?q=chicken&chapter=main-dishes&sort=newest&page=2`,
+				`${origin}/?q=chicken&chapter=main-dishes&sort=newest&page=2`,
 				'Back to search results',
-				'/search',
+				'/',
 			],
 			[`${origin}/favorites?page=2`, 'Back to Favorites', '/favorites'],
 		] as const;
@@ -53,12 +54,12 @@ describe('readRecipeOpenedFrom', () => {
 
 describe('recipeOpenedFrom', () => {
 	it('names the list the recipe was reached from, as it recorded it', () => {
-		const url = `${origin}/search?q=chicken&chapter=main-dishes&sort=newest&page=2`;
+		const url = `${origin}/?q=chicken&chapter=main-dishes&sort=newest&page=2`;
 
 		expect(recipeOpenedFrom(kept(url, 'Back to search results'), url)).toEqual({
 			url,
 			backLabel: 'Back to search results',
-			listPathname: '/search',
+			listPathname: '/',
 		});
 	});
 
@@ -71,8 +72,8 @@ describe('recipeOpenedFrom', () => {
 		expect(recipeOpenedFrom(recorded, `${origin}/favorites`)).toBeUndefined();
 		expect(
 			recipeOpenedFrom(
-				kept(`${origin}/search?q=chicken&chapter=main-dishes`, 'Back to search results'),
-				`${origin}/search?q=chicken&chapter=main-dishes&diet=vegetarian`
+				kept(`${origin}/?q=chicken&chapter=main-dishes`, 'Back to search results'),
+				`${origin}/?q=chicken&chapter=main-dishes&diet=vegetarian`
 			)
 		).toBeUndefined();
 	});
@@ -112,11 +113,7 @@ describe('openerEntryIndex', () => {
 	it('looks past the entries a jump within the recipe adds', () => {
 		expect(
 			openerEntryIndex(
-				[
-					`${origin}/search?q=lemon`,
-					`${origin}${recipe}`,
-					`${origin}${recipe}#lemon-bars-original`,
-				],
+				[`${origin}/?q=lemon`, `${origin}${recipe}`, `${origin}${recipe}#lemon-bars-original`],
 				2,
 				recipe
 			)

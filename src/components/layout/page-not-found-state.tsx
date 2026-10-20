@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Mascot } from '@/components/brand/mascot';
 import { PageContainer } from '@/components/layout/page-container';
-import { recipeListPath } from '@/components/recipe/recipe-paths';
+import { backToAllRecipesLabel, recipeListPath } from '@/components/recipe/recipe-paths';
 import { buttonVariants } from '@/components/ui/button';
 import {
 	Empty,
@@ -35,7 +35,7 @@ function PageNotFoundState() {
 				<EmptyContent>
 					{/* Base UI's Button must not render links, so the link takes the button's look directly. */}
 					<Link href={recipeListPath} className={buttonVariants()}>
-						Back to recipes
+						{backToAllRecipesLabel}
 					</Link>
 				</EmptyContent>
 			</Empty>

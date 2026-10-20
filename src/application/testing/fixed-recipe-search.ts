@@ -1,4 +1,6 @@
 import type {
+	RecipeCountQuery,
+	RecipeCounts,
 	RecipeSearch,
 	RecipeSearchFacets,
 	RecipeSearchQuery,
@@ -7,6 +9,7 @@ import type {
 
 // Facets of a search that found nothing, which a test's own counts start from.
 export const noRecipeSearchFacets: RecipeSearchFacets = {
+	allRecipes: 0,
 	chapters: {
 		'breakfast-brunch': 0,
 		'appetizers-beverages': 0,
@@ -28,14 +31,17 @@ export const noRecipeSearchFacets: RecipeSearchFacets = {
 		christmas: 0,
 	},
 	diets: { vegetarian: 0, vegan: 0, 'gluten-free': 0, 'dairy-free': 0 },
+	totalTimes: { 15: 0, 30: 0, 60: 0, 120: 0 },
 	sources: [],
 	contributors: [],
 };
 
-// Records the queries it receives, so tests can check what the service asked for.
+// Records the queries it receives, so tests can check what the service asked for. Counts give the
+// results' total and facets.
 export class FixedRecipeSearch implements RecipeSearch {
 	private readonly results: RecipeSearchResults;
 	private readonly queries: RecipeSearchQuery[] = [];
+	private readonly countQueries: RecipeCountQuery[] = [];
 
 	constructor(results: RecipeSearchResults) {
 		this.results = results;
@@ -45,8 +51,17 @@ export class FixedRecipeSearch implements RecipeSearch {
 		return this.queries;
 	}
 
+	get receivedCountQueries(): readonly RecipeCountQuery[] {
+		return this.countQueries;
+	}
+
 	async search(query: RecipeSearchQuery): Promise<RecipeSearchResults> {
 		this.queries.push(query);
 		return this.results;
+	}
+
+	async count(query: RecipeCountQuery): Promise<RecipeCounts> {
+		this.countQueries.push(query);
+		return { total: this.results.total, facets: this.results.facets };
 	}
 }

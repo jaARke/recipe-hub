@@ -1,14 +1,10 @@
 import {
-	recipeAddedWithin,
 	recipeSearchSorts,
-	type RecipeAddedWithin,
-	type RecipeSearchSort,
-} from '@/application/ports/recipe-search';
-import {
 	recipeTotalTimeChoices,
-	type RecipeSearchInput,
+	type RecipeSearchSort,
 	type RecipeTotalTimeChoice,
-} from '@/application/search/recipe-search-dtos';
+} from '@/application/ports/recipe-search';
+import type { RecipeCountsInput, RecipeSearchInput } from '@/application/search/recipe-search-dtos';
 import {
 	defaultListSort,
 	parseOptionParam,
@@ -16,30 +12,45 @@ import {
 	singleParam,
 } from '@/components/recipe/recipe-list-params';
 import {
+	allRecipesTitle,
 	recipeListParamNames,
 	recipeListPath,
-	recipeSearchPath,
 } from '@/components/recipe/recipe-paths';
-import { chapters, type Chapter } from '@/domain/recipe/chapter';
+import { chapterLabels, chapters, type Chapter } from '@/domain/recipe/chapter';
 import { diets, type Diet } from '@/domain/recipe/diet';
 import { holidays, type Holiday } from '@/domain/recipe/holiday';
 import { hrefWithParams, type RouteSearchParams } from '@/lib/url-query';
 
-// Browse's and Search's URL parameters, by the state they hold.
+// The URL's parameters, by the state they hold, in the order every URL writes them: the words, the
+// chapter, the filters in Filter and sort's order, the order, and the page.
 export const recipeSearchParamNames = {
 	text: 'q',
 	chapter: 'chapter',
 	holidays: 'holiday',
 	diets: 'diet',
+	maxTotalMinutes: 'time',
 	source: 'source',
 	contributorId: 'contributor',
-	maxTotalMinutes: 'time',
-	addedWithin: 'added',
 	sort: recipeListParamNames.sort,
 	page: recipeListParamNames.page,
 } as const;
 
 export type RecipeSearchField = keyof typeof recipeSearchParamNames;
+
+// The fields Filter and sort offers: every one but the words, the chapter, the order, and the page.
+export type RecipeFilterSearchField = Exclude<
+	RecipeSearchField,
+	'text' | 'chapter' | 'sort' | 'page'
+>;
+
+const recipeSearchFields = Object.keys(recipeSearchParamNames) as RecipeSearchField[];
+
+const viewFields: readonly RecipeSearchField[] = ['text', 'chapter', 'sort', 'page'];
+
+// Filter and sort's fields in its order, which the URL follows.
+export const recipeFilterFields = recipeSearchFields.filter(
+	(field): field is RecipeFilterSearchField => !viewFields.includes(field)
+);
 
 export type RecipeSearchState = {
 	text?: string;
@@ -50,19 +61,14 @@ export type RecipeSearchState = {
 	// A member's id; the filters show the name.
 	contributorId?: string;
 	maxTotalMinutes?: RecipeTotalTimeChoice;
-	addedWithin?: RecipeAddedWithin;
+	// The order shown: the view's default unless the URL names another.
 	sort: RecipeSearchSort;
 	page: number;
 };
 
-// The two lists a state is shown in: Browse lists the collection without words, and Search finds
-// recipes by them, refined by the same filters.
-export type RecipeSearchMode = 'browse' | 'search';
-
-const recipeSearchModePaths: Record<RecipeSearchMode, string> = {
-	browse: recipeListPath,
-	search: recipeSearchPath,
-};
+// What a state shows, apart from its filters, order, and page: its words and its chapter, which name
+// it and set its default order.
+type RecipeSearchView = Pick<RecipeSearchState, 'text' | 'chapter'>;
 
 // One value of a URL parameter; a parameter appears once per holiday or diet.
 export type RecipeSearchParam = {
@@ -77,17 +83,13 @@ export function recipeSearchSortsFor(text: string | undefined): RecipeSearchSort
 		: [...recipeSearchSorts];
 }
 
-function defaultSearchSort(text: string | undefined): RecipeSearchSort {
-	return text === undefined ? defaultListSort : 'relevance';
-}
+// Best match with words, a chapter A to Z as a cookbook reads, and every recipe newest first.
+export function defaultSearchSort(view: RecipeSearchView): RecipeSearchSort {
+	if (view.text !== undefined) {
+		return 'relevance';
+	}
 
-export function recipeSearchMode(state: Pick<RecipeSearchState, 'text'>): RecipeSearchMode {
-	return state.text === undefined ? 'browse' : 'search';
-}
-
-// Where the state's forms submit, so a form keeps a search in its mode.
-export function recipeSearchModePath(state: Pick<RecipeSearchState, 'text'>): string {
-	return recipeSearchModePaths[recipeSearchMode(state)];
+	return view.chapter === undefined ? defaultListSort : 'title';
 }
 
 // Trimmed, so a query of spaces is no query.
@@ -119,6 +121,7 @@ function parseVocabularyParams<Value extends string>(
 		: null;
 }
 
+// Null when a value is refused: one parameter repeated, or a value it does not offer.
 export function parseRecipeSearchParams(params: RouteSearchParams): RecipeSearchState | null {
 	const text = parseTextParam(params[recipeSearchParamNames.text]);
 	const chapter = parseOptionParam(params[recipeSearchParamNames.chapter], chapters);
@@ -130,10 +133,6 @@ export function parseRecipeSearchParams(params: RouteSearchParams): RecipeSearch
 		params[recipeSearchParamNames.maxTotalMinutes],
 		recipeTotalTimeChoices
 	);
-	const addedWithin = parseOptionParam(
-		params[recipeSearchParamNames.addedWithin],
-		recipeAddedWithin
-	);
 	const page = parsePageParam(params[recipeSearchParamNames.page]);
 	if (
 		text === null ||
@@ -143,7 +142,6 @@ export function parseRecipeSearchParams(params: RouteSearchParams): RecipeSearch
 		source === null ||
 		contributorId === null ||
 		maxTotalMinutes === null ||
-		addedWithin === null ||
 		page === null
 	) {
 		return null;
@@ -162,74 +160,40 @@ export function parseRecipeSearchParams(params: RouteSearchParams): RecipeSearch
 		source,
 		contributorId,
 		maxTotalMinutes,
-		addedWithin,
-		sort: sort ?? defaultSearchSort(text),
+		sort: sort ?? defaultSearchSort({ text, chapter }),
 		page,
 	};
 }
 
-// Defaults are left out, so each search has one URL.
+// A field's values in the URL, none where the state holds its default.
+const fieldValues: Record<RecipeSearchField, (state: RecipeSearchState) => readonly string[]> = {
+	text: (state) => (state.text === undefined ? [] : [state.text]),
+	chapter: (state) => (state.chapter === undefined ? [] : [state.chapter]),
+	holidays: (state) => state.holidays,
+	diets: (state) => state.diets,
+	maxTotalMinutes: (state) =>
+		state.maxTotalMinutes === undefined ? [] : [String(state.maxTotalMinutes)],
+	source: (state) => (state.source === undefined ? [] : [state.source]),
+	contributorId: (state) => (state.contributorId === undefined ? [] : [state.contributorId]),
+	sort: (state) => (state.sort === defaultSearchSort(state) ? [] : [state.sort]),
+	page: (state) => (state.page > 1 ? [String(state.page)] : []),
+};
+
+// Defaults are left out, so each view has one URL; the default order is the view's.
 export function recipeSearchParams(state: RecipeSearchState): RecipeSearchParam[] {
-	const params: RecipeSearchParam[] = [];
-	const add = (field: RecipeSearchField, value: string) =>
-		params.push({ name: recipeSearchParamNames[field], value });
-
-	if (state.text !== undefined) {
-		add('text', state.text);
-	}
-	if (state.chapter !== undefined) {
-		add('chapter', state.chapter);
-	}
-	for (const holiday of state.holidays) {
-		add('holidays', holiday);
-	}
-	for (const diet of state.diets) {
-		add('diets', diet);
-	}
-	if (state.source !== undefined) {
-		add('source', state.source);
-	}
-	if (state.contributorId !== undefined) {
-		add('contributorId', state.contributorId);
-	}
-	if (state.maxTotalMinutes !== undefined) {
-		add('maxTotalMinutes', String(state.maxTotalMinutes));
-	}
-	if (state.addedWithin !== undefined) {
-		add('addedWithin', state.addedWithin);
-	}
-	if (state.sort !== defaultSearchSort(state.text)) {
-		add('sort', state.sort);
-	}
-	if (state.page > 1) {
-		add('page', String(state.page));
-	}
-
-	return params;
+	return recipeSearchFields.flatMap((field) =>
+		fieldValues[field](state).map((value) => ({ name: recipeSearchParamNames[field], value }))
+	);
 }
 
-// Browse's URL without words and Search's with them; every link and redirect between the two is
-// built here.
+// The Recipes page's URL for the state; every link to a view of it is built here.
 export function recipeSearchHref(state: RecipeSearchState): string {
 	const params = new URLSearchParams();
 	for (const { name, value } of recipeSearchParams(state)) {
 		params.append(name, value);
 	}
 
-	return hrefWithParams(recipeSearchModePath(state), params);
-}
-
-// Where a request for Browse or Search belongs when it reached the other's path: a search without
-// words is Browse, and Browse given words is Search, so each list has one URL. Undefined where it
-// already is, or where the parameters are refused, which its page answers with a 404.
-export function misplacedRecipeSearchHref(
-	pathname: string,
-	params: RouteSearchParams
-): string | undefined {
-	const state = parseRecipeSearchParams(params);
-	return state === null || recipeSearchModePath(state) === pathname
-		? undefined
-		: recipeSearchHref(state);
+	return hrefWithParams(recipeListPath, params);
 }
 
 // What a form carries besides the fields it edits; any change starts again from the first page.
@@ -243,14 +207,9 @@ export function carriedSearchParams(
 	return recipeSearchParams(state).filter((param) => !droppedNames.has(param.name));
 }
 
+// The filters chosen, each holiday and diet counting once. The chapter is the view, not a filter.
 export function appliedFilterCount(state: RecipeSearchState): number {
-	const choices = [
-		state.chapter,
-		state.source,
-		state.contributorId,
-		state.maxTotalMinutes,
-		state.addedWithin,
-	];
+	const choices = [state.source, state.contributorId, state.maxTotalMinutes];
 	return (
 		state.holidays.length +
 		state.diets.length +
@@ -258,24 +217,96 @@ export function appliedFilterCount(state: RecipeSearchState): number {
 	);
 }
 
-// Keeps the query and the order.
-export function withoutFilters(state: RecipeSearchState): RecipeSearchState {
-	return { text: state.text, holidays: [], diets: [], sort: state.sort, page: 1 };
+// The state a change of words or chapter leads to, from the first page. An order chosen apart from
+// the view's default stays, and leaves the URL where it is the new view's default; a default order
+// gives way to the new view's own.
+function toView(state: RecipeSearchState, view: RecipeSearchView): RecipeSearchState {
+	const sort = state.sort === defaultSearchSort(state) ? defaultSearchSort(view) : state.sort;
+	return { ...state, text: view.text, chapter: view.chapter, sort, page: 1 };
 }
 
-// Browse with the filters kept. Best match ranks by the words, so it leaves with them.
+// A row of the chapter list, which keeps the words and the filters.
+export function withChapter(state: RecipeSearchState, chapter: Chapter): RecipeSearchState {
+	return toView(state, { text: state.text, chapter });
+}
+
+// Back to All Recipes and the chapter list's All Recipes, which keep the words and the filters.
+export function withoutChapter(state: RecipeSearchState): RecipeSearchState {
+	return toView(state, { text: state.text, chapter: undefined });
+}
+
+// The search box's ×, which keeps the chapter and the filters. Best match ranks by the words, so it
+// leaves with them.
 export function withoutText(state: RecipeSearchState): RecipeSearchState {
-	const sort = state.sort === 'relevance' ? defaultSearchSort(undefined) : state.sort;
-	return { ...state, text: undefined, sort, page: 1 };
+	return toView(state, { text: undefined, chapter: state.chapter });
 }
 
-// The words and the filters, which a new order or page leaves as they were.
+// Clear all, which keeps the words, the chapter, and the order.
+export function withoutFilters(state: RecipeSearchState): RecipeSearchState {
+	return {
+		text: state.text,
+		chapter: state.chapter,
+		holidays: [],
+		diets: [],
+		sort: state.sort,
+		page: 1,
+	};
+}
+
+// The words, the chapter, and the filters, which a new order or page leaves as they were.
 export function recipeSearchFiltersKey(state: RecipeSearchState): string {
 	const params = carriedSearchParams(state, ['sort']).map(({ name, value }) => [name, value]);
 	return new URLSearchParams(params).toString();
 }
 
-export function toRecipeSearchInput(state: RecipeSearchState, pageSize: number): RecipeSearchInput {
+// A chapter, or every recipe, as a link from outside the list opens it: no words or filters, in its
+// default order, from the first page.
+export function recipesView(chapter?: Chapter): RecipeSearchState {
+	return { chapter, holidays: [], diets: [], sort: defaultSearchSort({ chapter }), page: 1 };
+}
+
+type RecipesViewName = {
+	// In title case, as every h1 is.
+	heading: string;
+	// The document's title.
+	title: string;
+	// What a recipe opened from the view says to return to it.
+	backLabel: string;
+};
+
+// A view is named by its chapter, or as All Recipes, whatever filters it holds; one with words is a
+// search's results, and its title says for what.
+export function recipesViewName(view: RecipeSearchView): RecipesViewName {
+	const heading = view.chapter === undefined ? allRecipesTitle : chapterLabels[view.chapter];
+	if (view.text === undefined) {
+		return { heading, title: heading, backLabel: `Back to ${heading}` };
+	}
+
+	const within = view.chapter === undefined ? '' : ` in ${heading}`;
+	return {
+		heading,
+		title: `Search results for “${view.text}”${within}`,
+		backLabel: 'Back to search results',
+	};
+}
+
+type RecipesCanonical = {
+	href: string;
+	// Whether search engines list the view; its links are followed either way.
+	indexed: boolean;
+};
+
+// Every recipe and each chapter are listed under their normalized URL, with their order and page, so
+// /?page=1 points at /. Words and filters multiply URLs, so a view with either stays out and names
+// its chapter, or every recipe, as a link opens it.
+export function recipesCanonical(state: RecipeSearchState): RecipesCanonical {
+	return state.text === undefined && appliedFilterCount(state) === 0
+		? { href: recipeSearchHref(state), indexed: true }
+		: { href: recipeSearchHref(recipesView(state.chapter)), indexed: false };
+}
+
+// The words and filters, which set the counts; the order and page leave them as they are.
+export function toRecipeCountsInput(state: RecipeSearchState): RecipeCountsInput {
 	return {
 		text: state.text,
 		chapter: state.chapter,
@@ -284,7 +315,12 @@ export function toRecipeSearchInput(state: RecipeSearchState, pageSize: number):
 		source: state.source,
 		contributorId: state.contributorId,
 		maxTotalMinutes: state.maxTotalMinutes,
-		addedWithin: state.addedWithin,
+	};
+}
+
+export function toRecipeSearchInput(state: RecipeSearchState, pageSize: number): RecipeSearchInput {
+	return {
+		...toRecipeCountsInput(state),
 		sort: state.sort,
 		limit: pageSize,
 		offset: (state.page - 1) * pageSize,

@@ -1,59 +1,69 @@
+import { cn } from 'cn';
+import type * as React from 'react';
 import type { RecipeSearchSort } from '@/application/ports/recipe-search';
 import type { RecipeSearchPage } from '@/application/search/recipe-search-dtos';
-import { RecipeGrid, RecipeGridSkeletonCards } from '@/components/recipe/recipe-grid';
+import { BackLink } from '@/components/layout/back-link';
+import { RecipeGrid, RecipeGridSkeletonItems } from '@/components/recipe/recipe-grid';
 import { RecipePagination } from '@/components/recipe/recipe-pagination';
-import { RecipeSortForm, RecipeSortFormSkeleton } from '@/components/recipe/recipe-sort-form';
+import { backToAllRecipesLabel } from '@/components/recipe/recipe-paths';
 import { FilterChangeFocus } from '@/components/search/filter-change-focus';
-import { recipeSearchHintId } from '@/components/search/header-search-bar';
-import { HiddenSearchFields } from '@/components/search/hidden-search-fields';
+import {
+	RecipeChapterPicker,
+	RecipeChaptersNav,
+	type RecipeChapterRow,
+} from '@/components/search/recipe-chapters';
+import { recipeCount } from '@/components/search/recipe-count';
+import { RecipeFilterSidebar } from '@/components/search/recipe-filter-form';
+import {
+	recipeFilterCarriedParams,
+	recipeFilterGroups,
+} from '@/components/search/recipe-filter-groups';
+import { RecipeFilterSheet } from '@/components/search/recipe-filter-sheet';
+import { RecipePageSearch } from '@/components/search/recipe-page-search';
+import { RecipeResultsLoading } from '@/components/search/recipe-results-loading';
 import { RecipeSearchActiveFilters } from '@/components/search/recipe-search-active-filters';
 import { RecipeSearchEmptyState } from '@/components/search/recipe-search-empty-state';
-import {
-	RecipeSearchFilters,
-	RecipeSearchFiltersSidebar,
-} from '@/components/search/recipe-search-filters';
-import {
-	firstResultCount,
-	RecipeSearchResult,
-	RecipeSearchResultList,
-	RecipeSearchResultRows,
-	RecipeSearchResultSkeleton,
-} from '@/components/search/recipe-search-result';
-import { RecipeSearchToolbar } from '@/components/search/recipe-search-toolbar';
 import {
 	appliedFilterCount,
 	recipeSearchFiltersKey,
 	recipeSearchHref,
-	recipeSearchMode,
-	recipeSearchModePath,
-	recipeSearchSortsFor,
-	type RecipeSearchMode,
+	recipesViewName,
+	withoutChapter,
+	withoutFilters,
 	type RecipeSearchState,
 } from '@/components/search/search-params';
 import { Skeleton } from '@/components/ui/skeleton';
+import { chapters } from '@/domain/recipe/chapter';
 
-// Keyed by the sections' level; level 4 nests search under the design reference's own headings. Cards
-// take the sections' level, and Search's rows the level below its Results heading.
-const searchHeadingTags = {
-	2: { section: 'h2', result: 'h3' },
-	4: { section: 'h4', result: 'h5' },
+// Keyed by the view's heading: the page's h1, or h4 nesting the page under the design reference's own
+// headings. The sidebar's sections and the results' hidden heading take the next level, so a recipe's
+// title sits below them rather than beside them.
+const recipesHeadingTags = {
+	h1: { section: 'h2', item: 'h3' },
+	h4: { section: 'h4', item: 'h5' },
 } as const;
 
-type SearchHeadingLevel = keyof typeof searchHeadingTags;
+type RecipesHeadingTag = keyof typeof recipesHeadingTags;
 
-// The hidden heading over Search's rows, below the page's own heading and hint.
-const searchResultsHeadingId = 'search-results-heading';
+// From lg the sidebar takes the left column, beside both the view's header and its results, which
+// follow the header in reading order so the h1 comes first. Below lg one column, with no sidebar. The
+// results keep their own height where the sidebar is taller, so an empty result's box stays small.
+const gridClassName =
+	'flex flex-col gap-6 lg:grid lg:grid-cols-[16rem_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:gap-x-8';
+const headerPlaceClassName = 'lg:col-start-2 lg:row-start-1';
+const sidebarPlaceClassName = 'hidden lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:flex';
+const resultsPlaceClassName = 'lg:col-start-2 lg:row-start-2 lg:self-start';
 
-const loadingLabels: Record<RecipeSearchMode, string> = {
-	browse: 'Loading recipes',
-	search: 'Loading results',
-};
-
-// The label each list records for a recipe's link back to it.
-const backLabels: Record<RecipeSearchMode, string> = {
-	browse: 'Back to recipes',
-	search: 'Back to search results',
-};
+// Each page's ids, begun by its prefix, so each Recipes page the design reference shows keeps its own.
+function recipesIds(idPrefix: string) {
+	return {
+		// The view's heading, which takes focus as the list changes.
+		heading: `${idPrefix}-heading`,
+		search: `${idPrefix}-search`,
+		results: `${idPrefix}-results-heading`,
+		filteredBy: `${idPrefix}-filtered-by`,
+	};
+}
 
 const sortDescriptions: Record<RecipeSearchSort, string> = {
 	relevance: 'best match first',
@@ -61,36 +71,60 @@ const sortDescriptions: Record<RecipeSearchSort, string> = {
 	title: 'A to Z',
 };
 
-// Enough rows to fill the first screen while results load.
-const skeletonResultCount = 5;
-
-const countFormat = new Intl.NumberFormat('en-US');
-
-function recipeCount(total: number): string {
-	return total === 1 ? '1 recipe' : `${countFormat.format(total)} recipes`;
+// The Recipes page's grid, which holds the view's header and its results.
+function RecipesPageGrid({ children }: { children: React.ReactNode }) {
+	return <div className={gridClassName}>{children}</div>;
 }
 
-// Read after the count, so a new query, order, or page is announced even when the count is unchanged.
-function resultsDescription(
-	state: RecipeSearchState,
-	results: RecipeSearchPage,
-	pageCount: number
-): string {
-	const details = [
-		results.match === 'close' ? 'close matches' : undefined,
-		sortDescriptions[state.sort],
-		pageCount > 1 ? `page ${state.page} of ${pageCount}` : undefined,
-	].filter((detail) => detail !== undefined);
-	const query = state.text === undefined ? '' : ` for “${state.text}”`;
-	return `${query}, ${details.join(', ')}`;
-}
+type RecipesViewHeaderProps = {
+	idPrefix: string;
+	state: RecipeSearchState;
+	// The chapter list's rows, which the heading's sheet shows below lg once the view's counts are read.
+	chapterRows: Promise<readonly RecipeChapterRow[]>;
+	headingTag?: RecipesHeadingTag;
+};
 
-// How to write a query, under the search page's heading.
-function RecipeSearchHint() {
+// What names the view and searches it: in a chapter the link back to All Recipes, which keeps the
+// words and the filters; the heading, which chooses a chapter below lg; and the page's search box.
+// It needs only the URL, so it shows before the results are read.
+function RecipesViewHeader({
+	idPrefix,
+	state,
+	chapterRows,
+	headingTag = 'h1',
+}: RecipesViewHeaderProps) {
+	const ids = recipesIds(idPrefix);
+
 	return (
-		<p id={recipeSearchHintId} className="text-sm text-muted-foreground">
-			Try &quot;brown butter&quot; for an exact phrase, or -nuts to leave nuts out.
-		</p>
+		<div className={cn('flex flex-col gap-6', headerPlaceClassName)}>
+			<div className="flex flex-col">
+				{state.chapter !== undefined && (
+					<BackLink href={recipeSearchHref(withoutChapter(state))} className="mb-6">
+						{backToAllRecipesLabel}
+					</BackLink>
+				)}
+				<RecipeChapterPicker
+					id={ids.heading}
+					heading={recipesViewName(state).heading}
+					rows={chapterRows}
+					headingTag={headingTag}
+				/>
+			</div>
+			<RecipePageSearch id={ids.search} state={state} />
+		</div>
+	);
+}
+
+function RecipesViewHeaderSkeleton() {
+	return (
+		<div aria-hidden="true" className={cn('flex flex-col gap-6', headerPlaceClassName)}>
+			<RecipeResultsLoading />
+			<Skeleton className="h-10 w-56" />
+			<div className="flex flex-col gap-3">
+				<Skeleton className="h-5 w-36" />
+				<Skeleton className="h-11 w-full" />
+			</div>
+		</div>
 	);
 }
 
@@ -98,153 +132,181 @@ function RecipeSearchCloseMatches({ text }: { text: string }) {
 	return <p className="text-sm">No exact matches for “{text}”. Showing close matches.</p>;
 }
 
-// One control over two lists: from lg the filters sit in a sidebar, and below lg in the toolbar's
-// Filters, beside Browse's cards or Search's rows ranked with the words marked.
-function RecipeSearch({
-	state,
-	results,
-	pageCount,
-	headingLevel,
-	resultsHeadingId: pageResultsHeadingId,
-}: {
+type RecipeSearchProps = {
+	idPrefix: string;
 	state: RecipeSearchState;
 	results: RecipeSearchPage;
 	pageCount: number;
-	headingLevel: SearchHeadingLevel;
-	// The page's own heading over the results, as Browse's is; without one, a hidden Results heading
-	// heads them. Focus moves to it as the results change.
-	resultsHeadingId?: string;
-}) {
-	const mode = recipeSearchMode(state);
-	const { section: Section, result: resultHeadingTag } = searchHeadingTags[headingLevel];
-	const resultsHeadingId = pageResultsHeadingId ?? searchResultsHeadingId;
+	// The chapter list's rows, built once for the sidebar and the heading's sheet.
+	chapterRows: readonly RecipeChapterRow[];
+	headingTag?: RecipesHeadingTag;
+};
+
+// The polite status: the count and the order, with the words when searching. Beside an empty result,
+// whose message says why, it is for screen readers only. They also hear close matches and the page,
+// which the notice and the pagination show.
+function RecipeCountLine({
+	state,
+	results,
+	pageCount,
+}: Pick<RecipeSearchProps, 'state' | 'results' | 'pageCount'>) {
+	const matching = state.text === undefined ? '' : ` matching “${state.text}”`;
 
 	return (
-		<div className="flex flex-col gap-8 lg:flex-row lg:items-start">
-			<RecipeSearchFiltersSidebar
-				idPrefix={`${mode}-filters-sidebar`}
-				state={state}
-				facets={results.facets}
-				headingTag={Section}
-				className="hidden lg:flex lg:w-64 lg:shrink-0"
-			/>
-			<section aria-labelledby={resultsHeadingId} className="flex min-w-0 flex-1 flex-col gap-6">
-				{pageResultsHeadingId === undefined && (
-					<Section id={resultsHeadingId} tabIndex={-1} className="sr-only">
-						Results
-					</Section>
-				)}
+		// Outside any keyed subtree, so it stays in place and each new count is announced.
+		<p
+			role="status"
+			aria-live="polite"
+			className={results.total === 0 ? 'sr-only' : 'text-sm text-muted-foreground'}
+		>
+			{results.total === 0 ? (
+				`No recipes${matching}`
+			) : (
+				<>
+					{recipeCount(results.total)}
+					{matching}
+					{results.match === 'close' && <span className="sr-only">, close matches</span>}
+					{`, ${sortDescriptions[state.sort]}`}
+					{pageCount > 1 && (
+						<span className="sr-only">{`, page ${state.page} of ${pageCount}`}</span>
+					)}
+				</>
+			)}
+		</p>
+	);
+}
+
+// The view's results beside the sidebar's chapters and Filter and sort from lg. Below lg, Filter and
+// sort opens in a sheet and the heading chooses a chapter. Above the recipes, the filters applied as
+// chips and the count line; below them, the pages. Focus moves to the view's heading as a link here
+// changes the list and takes focus with it.
+function RecipeSearch({
+	idPrefix,
+	state,
+	results,
+	pageCount,
+	chapterRows,
+	headingTag = 'h1',
+}: RecipeSearchProps) {
+	const ids = recipesIds(idPrefix);
+	const { section: Section, item: itemHeadingTag } = recipesHeadingTags[headingTag];
+	const groups = recipeFilterGroups(state, results.facets);
+	const carriedParams = recipeFilterCarriedParams(state);
+	const filterCount = appliedFilterCount(state);
+	const { backLabel } = recipesViewName(state);
+
+	return (
+		<>
+			<div className={cn('flex-col gap-10', sidebarPlaceClassName)}>
+				<RecipeChaptersNav rows={chapterRows} headingTag={Section} />
+				<RecipeFilterSidebar
+					groups={groups}
+					carriedParams={carriedParams}
+					clearAllHref={filterCount > 0 ? recipeSearchHref(withoutFilters(state)) : undefined}
+					headingTag={Section}
+				/>
+			</div>
+			<section
+				aria-labelledby={ids.results}
+				className={cn('flex min-w-0 flex-col gap-6', resultsPlaceClassName)}
+			>
+				<Section id={ids.results} className="sr-only">
+					Recipes
+				</Section>
 				<FilterChangeFocus
 					filtersKey={recipeSearchFiltersKey(state)}
-					resultsHeadingId={resultsHeadingId}
+					resultsHeadingId={ids.heading}
 				/>
-				<RecipeSearchToolbar
-					appliedFilterCount={appliedFilterCount(state)}
-					resultsHeadingId={resultsHeadingId}
-					count={
-						// Outside any keyed subtree, so it stays in place and each new count is announced.
-						<p role="status" aria-live="polite" className="text-sm text-muted-foreground">
-							{recipeCount(results.total)}
-							<span className="sr-only">{resultsDescription(state, results, pageCount)}</span>
-						</p>
-					}
-					sort={
-						results.total > 0 ? (
-							<RecipeSortForm
-								id={`${mode}-sort`}
-								action={recipeSearchModePath(state)}
-								sorts={recipeSearchSortsFor(state.text)}
-								value={state.sort}
-								compact
-							>
-								<HiddenSearchFields state={state} editedFields={['sort']} />
-							</RecipeSortForm>
-						) : undefined
-					}
-					filters={
-						<RecipeSearchFilters
-							idPrefix={`${mode}-filters-panel`}
-							state={state}
-							facets={results.facets}
+				<div className="flex flex-col gap-3">
+					<div className="lg:hidden">
+						<RecipeFilterSheet
+							groups={groups}
+							tally={{ total: results.total, counts: results.facets }}
+							carriedParams={carriedParams}
+							appliedCount={filterCount}
+							headingId={ids.heading}
 						/>
-					}
-				/>
-				<RecipeSearchActiveFilters state={state} facets={results.facets} />
-				{results.match === 'close' && state.text !== undefined && (
-					<RecipeSearchCloseMatches text={state.text} />
-				)}
+					</div>
+					<RecipeSearchActiveFilters
+						labelId={ids.filteredBy}
+						state={state}
+						facets={results.facets}
+					/>
+					<RecipeCountLine state={state} results={results} pageCount={pageCount} />
+					{/* A close search the filters empty says so in its empty result. */}
+					{results.match === 'close' && results.total > 0 && state.text !== undefined && (
+						<RecipeSearchCloseMatches text={state.text} />
+					)}
+				</div>
 				{results.results.length === 0 ? (
 					<RecipeSearchEmptyState state={state} />
-				) : mode === 'browse' ? (
+				) : (
 					<RecipeGrid
 						layout="besideSidebar"
-						recipes={results.results.map(({ recipe }) => recipe)}
-						headingTag={Section}
-						backLabel={backLabels[mode]}
+						entries={results.results.map(({ recipe, title, snippet }) => ({
+							recipe,
+							highlights: state.text === undefined ? undefined : { title, snippet },
+						}))}
+						namesChapter={state.chapter === undefined}
+						headingTag={itemHeadingTag}
+						backLabel={backLabel}
 					/>
-				) : (
-					<RecipeSearchResultList backLabel={backLabels[mode]}>
-						{results.results.map((result, index) => (
-							<li key={result.recipe.id}>
-								<RecipeSearchResult
-									result={result}
-									headingTag={resultHeadingTag}
-									eager={index < firstResultCount}
-								/>
-							</li>
-						))}
-					</RecipeSearchResultList>
 				)}
 				{pageCount > 1 && (
 					<RecipePagination
 						page={state.page}
 						pageCount={pageCount}
 						pageHref={(page) => recipeSearchHref({ ...state, page })}
-						resultsHeadingId={resultsHeadingId}
+						resultsHeadingId={ids.heading}
 					/>
 				)}
 			</section>
-		</div>
+		</>
 	);
 }
 
-// Browse's cards or Search's rows beside the sidebar's place.
-function RecipeSearchSkeleton({ mode }: { mode: RecipeSearchMode }) {
+// The sidebar's chapters and filters from lg, and the rows or cards, while the view is read.
+function RecipeSearchSkeleton() {
 	return (
-		<div role="status" aria-live="polite">
-			<span className="sr-only">{loadingLabels[mode]}</span>
-			<div aria-hidden="true" className="flex flex-col gap-8 lg:flex-row lg:items-start">
-				<div className="hidden lg:flex lg:w-64 lg:shrink-0 lg:flex-col lg:gap-6">
-					<Skeleton className="h-7 w-20" />
-					<Skeleton className="h-32 w-full" />
-					<Skeleton className="h-14 w-full" />
-					<Skeleton className="h-14 w-full" />
-					<Skeleton className="h-14 w-full" />
-					<Skeleton className="h-14 w-full" />
+		<>
+			<RecipeResultsLoading />
+			<div aria-hidden="true" className={cn('flex-col gap-10', sidebarPlaceClassName)}>
+				<div className="flex flex-col gap-3">
+					<Skeleton className="h-7 w-28" />
+					{/* All Recipes and each chapter. */}
+					{Array.from({ length: chapters.length + 1 }, (_, index) => (
+						<Skeleton key={index} className="h-8 w-full" />
+					))}
 				</div>
-				<div className="flex min-w-0 flex-1 flex-col gap-6">
-					<div className="flex flex-wrap items-center justify-between gap-4">
-						<Skeleton className="h-9 w-24 lg:hidden" />
-						<div className="max-lg:order-last max-lg:basis-full">
-							<Skeleton className="h-5 w-24" />
-						</div>
-						<RecipeSortFormSkeleton compact />
-					</div>
-					{mode === 'browse' ? (
-						<RecipeGridSkeletonCards layout="besideSidebar" />
-					) : (
-						<RecipeSearchResultRows>
-							{Array.from({ length: skeletonResultCount }, (_, index) => (
-								<li key={index}>
-									<RecipeSearchResultSkeleton />
-								</li>
-							))}
-						</RecipeSearchResultRows>
-					)}
+				<div className="flex flex-col gap-5">
+					<Skeleton className="h-7 w-36" />
+					<Skeleton className="h-24 w-full" />
+					<Skeleton className="h-48 w-full" />
 				</div>
 			</div>
-		</div>
+			<div
+				role="status"
+				aria-live="polite"
+				className={cn('flex min-w-0 flex-col gap-6', resultsPlaceClassName)}
+			>
+				<span className="sr-only">Loading recipes</span>
+				<div aria-hidden="true" className="flex flex-col gap-3">
+					<Skeleton className="h-10 w-40 lg:hidden" />
+					<Skeleton className="h-5 w-48" />
+				</div>
+				<div aria-hidden="true">
+					<RecipeGridSkeletonItems layout="besideSidebar" />
+				</div>
+			</div>
+		</>
 	);
 }
 
-export { RecipeSearch, RecipeSearchCloseMatches, RecipeSearchHint, RecipeSearchSkeleton };
+export {
+	RecipeSearch,
+	RecipeSearchCloseMatches,
+	RecipeSearchSkeleton,
+	RecipesPageGrid,
+	RecipesViewHeader,
+	RecipesViewHeaderSkeleton,
+};

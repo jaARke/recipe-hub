@@ -33,6 +33,7 @@ import {
 	CollapsibleSpecimen,
 	DialogSpecimen,
 	DropdownMenuSpecimen,
+	SheetSpecimen,
 	TabsSpecimen,
 	TooltipSpecimen,
 } from '@/components/design-reference/overlay-specimens';
@@ -66,6 +67,7 @@ const primitives = [
 	{ id: 'carousel', title: 'Carousel', Content: CarouselSpecimen },
 	{ id: 'dialog', title: 'Dialog', Content: DialogSpecimen },
 	{ id: 'alert-dialog', title: 'Alert dialog', Content: AlertDialogSpecimen },
+	{ id: 'sheet', title: 'Sheet', Content: SheetSpecimen },
 	{ id: 'dropdown-menu', title: 'Dropdown menu', Content: DropdownMenuSpecimen },
 	{ id: 'tooltip', title: 'Tooltip', Content: TooltipSpecimen },
 	{ id: 'alert', title: 'Alert', Content: AlertSpecimen },

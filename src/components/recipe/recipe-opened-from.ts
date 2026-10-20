@@ -1,6 +1,6 @@
 import type * as React from 'react';
 import { z } from 'zod';
-import { favoritesPath, recipeListPath, recipeSearchPath } from '@/components/recipe/recipe-paths';
+import { favoritesPath, recipeListPath } from '@/components/recipe/recipe-paths';
 
 // Where each recipe was opened from in this tab: the full URL of the list's page, its query
 // included, which the recipe's back link returns to and the header's current section follows, and
@@ -21,7 +21,7 @@ export type RecipeOpenedFrom = RecipeOpenedFromRecord & {
 };
 
 // The lists a recipe can be opened from, by pathname.
-const recipeListPathnames: readonly string[] = [recipeListPath, recipeSearchPath, favoritesPath];
+const recipeListPathnames: readonly string[] = [recipeListPath, favoritesPath];
 
 const keyPrefix = 'opened-from';
 
