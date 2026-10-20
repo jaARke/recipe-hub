@@ -7,6 +7,7 @@ import { RecipeFilmstrip } from '@/components/recipe/recipe-filmstrip';
 import { RecipeIngredientsAndSteps } from '@/components/recipe/recipe-ingredients-and-steps';
 import { defaultListSort } from '@/components/recipe/recipe-list-params';
 import { RecipeParagraphs } from '@/components/recipe/recipe-paragraphs';
+import { RecipeSourceLink } from '@/components/recipe/recipe-source-link';
 import { RecipeBadges } from '@/components/recipe/recipe-summary';
 import {
 	recipeHeadingTags,
@@ -174,28 +175,6 @@ function RecipeRuledBlock({ recipe }: { recipe: PublicRecipeDto }) {
 				valueClassName={recipeTextStyles.cellValue}
 			/>
 		</div>
-	);
-}
-
-// A page the recipe came from, named by its host. Search engines don't follow the link, and the page
-// isn't told which recipe sent the reader.
-function RecipeSourceLink({ url }: { url: string }) {
-	return (
-		<a
-			href={url}
-			rel="nofollow noopener noreferrer"
-			className="text-primary underline underline-offset-4"
-		>
-			{new URL(url).hostname}
-		</a>
-	);
-}
-
-function RecipeImportedFrom({ sourceUrl }: { sourceUrl: string }) {
-	return (
-		<p className="text-sm text-muted-foreground">
-			Imported from <RecipeSourceLink url={sourceUrl} />
-		</p>
 	);
 }
 
@@ -375,4 +354,4 @@ function RecipeDetailSkeleton() {
 	);
 }
 
-export { RecipeDetail, RecipeDetailSkeleton, RecipeImportedFrom };
+export { RecipeDetail, RecipeDetailSkeleton };

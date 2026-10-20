@@ -1,4 +1,4 @@
-import { RecipeImportedFrom } from '@/components/recipe/recipe-detail';
+import { RecipeImportedFrom } from '@/components/recipe/recipe-source-link';
 import type { RecipeImportMode } from '@/domain/recipe/recipe-import';
 
 type DraftProvenanceLineProps = {
