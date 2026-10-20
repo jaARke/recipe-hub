@@ -1,55 +1,67 @@
-import Link from 'next/link';
-import { Mascot } from '@/components/brand/mascot';
+import { TextLink } from '@/components/layout/text-link';
+import { allRecipesTitle } from '@/components/recipe/recipe-paths';
 import { RecipesEmptyState } from '@/components/recipe/recipes-empty-state';
 import {
 	appliedFilterCount,
 	recipeSearchHref,
+	withoutChapter,
 	withoutFilters,
+	withoutText,
 	type RecipeSearchState,
 } from '@/components/search/search-params';
-import { buttonVariants } from '@/components/ui/button';
-import {
-	Empty,
-	EmptyContent,
-	EmptyDescription,
-	EmptyHeader,
-	EmptyMedia,
-	EmptyTitle,
-} from '@/components/ui/empty';
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader } from '@/components/ui/empty';
+import { chapterLabels } from '@/domain/recipe/chapter';
 
-const queryAdvice = 'Check the spelling, or try a shorter or more general search.';
-const filterAdvice = 'Remove a filter, or clear them all to see more recipes.';
+type WayOut = { label: string; href: string };
 
-// Says whether the query, the filters, or both found nothing, and how to widen the search.
+// Why the view found nothing. Words that match no recipe exactly fall back to close matches, so
+// "match" covers both: a search whose close matches the filters or chapter leave out finds none too.
+function emptyMessage(state: RecipeSearchState, hasFilters: boolean): string {
+	const within = state.chapter === undefined ? '' : ` in ${chapterLabels[state.chapter]}`;
+	if (state.text !== undefined) {
+		return `No recipes${within} match “${state.text}”${hasFilters ? ' with these filters' : ''}.`;
+	}
+
+	return hasFilters ? `No recipes${within} match these filters.` : `No recipes${within} yet.`;
+}
+
+// Says why the view shows nothing, and offers its ways out: the search cleared, the filters cleared,
+// and in a chapter, the words searched for in every recipe. Its message sits in the middle of the box,
+// alone where there is no way out, as in a chapter no one has filed a recipe in. A cookbook with no
+// recipes at all shows the recipes' empty state.
 function RecipeSearchEmptyState({ state }: { state: RecipeSearchState }) {
 	const hasFilters = appliedFilterCount(state) > 0;
-	if (state.text === undefined && !hasFilters) {
+	if (state.text === undefined && state.chapter === undefined && !hasFilters) {
 		return <RecipesEmptyState />;
 	}
 
-	const title =
-		state.text === undefined
-			? 'No recipes match these filters'
-			: `No recipes match “${state.text}”${hasFilters ? ' with these filters' : ''}`;
-	const advice = [
-		...(state.text === undefined ? [] : [queryAdvice]),
-		...(hasFilters ? [filterAdvice] : []),
-	];
+	const waysOut: WayOut[] = [];
+	if (state.text !== undefined) {
+		waysOut.push({ label: 'Clear search', href: recipeSearchHref(withoutText(state)) });
+	}
+	if (hasFilters) {
+		waysOut.push({ label: 'Clear filters', href: recipeSearchHref(withoutFilters(state)) });
+	}
+	if (state.text !== undefined && state.chapter !== undefined) {
+		waysOut.push({
+			label: `Search ${allRecipesTitle} for “${state.text}”`,
+			href: recipeSearchHref(withoutChapter(state)),
+		});
+	}
 
 	return (
-		<Empty className="border">
+		<Empty className="border p-8">
 			<EmptyHeader>
-				<EmptyMedia>
-					<Mascot pose="sleeping" size="lg" loading="eager" />
-				</EmptyMedia>
-				<EmptyTitle>{title}</EmptyTitle>
-				<EmptyDescription>{advice.join(' ')}</EmptyDescription>
+				<EmptyDescription>{emptyMessage(state, hasFilters)}</EmptyDescription>
 			</EmptyHeader>
-			{hasFilters && (
-				<EmptyContent>
-					<Link href={recipeSearchHref(withoutFilters(state))} className={buttonVariants()}>
-						Clear filters
-					</Link>
+			{waysOut.length > 0 && (
+				<EmptyContent className="flex-row flex-wrap justify-center gap-x-6 gap-y-2">
+					{waysOut.map(({ label, href }) => (
+						// As tall as a tap target must be.
+						<TextLink key={label} href={href} className="inline-flex min-h-6 items-center">
+							{label}
+						</TextLink>
+					))}
 				</EmptyContent>
 			)}
 		</Empty>

@@ -35,8 +35,8 @@ function recipeFacts({
 	return facts;
 }
 
-// A card's or a result row's badges: the recipe's holidays, then its diets. The card or row is a link
-// itself, so its badges are not.
+// A list item's badges: the recipe's holidays, then its diets. The item is a link itself, so its
+// badges are not.
 function recipeBadges({
 	holidays,
 	diets,

@@ -71,7 +71,7 @@ describe('RecipeDetail’s ruled block', () => {
 		]);
 	});
 
-	it('links its chapter, each holiday, and each diet to Browse filtered by it', async () => {
+	it('links its chapter, each holiday, and each diet to the Recipes page filtered by it', async () => {
 		await render(
 			<RecipeDetail
 				recipe={soup({ holidays: ['christmas'], diets: ['vegetarian', 'vegan', 'dairy-free'] })}

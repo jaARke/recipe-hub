@@ -10,7 +10,7 @@ import {
 
 // The back link above a recipe's title: it names the list the recipe was opened from in this tab, in
 // the words that list recorded, and goes back in history to that page, so it returns as it was left.
-// A recipe reached any other way shows none, since the header's Browse serves it.
+// A recipe reached any other way shows none, since the header's Recipes serves it.
 function RecipeBackLink({
 	recipePathname,
 	className,

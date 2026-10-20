@@ -236,7 +236,6 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 					await lockDraftToAddFrom(tx, fromDraft, recipe.contributorId);
 				}
 				const slug = await findFreeSlug(tx, recipe.slugBase);
-				// Names only the row's columns, since the next deployment drops tags while this one serves.
 				const row = await insertProvidedColumns(
 					tx,
 					recipes,

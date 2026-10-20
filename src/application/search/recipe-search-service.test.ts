@@ -5,7 +5,7 @@ import type {
 	RecipeSearchResults,
 } from '@/application/ports/recipe-search';
 import { InvalidRecipeSearchError } from '@/application/search/errors';
-import type { RecipeSearchInput } from '@/application/search/recipe-search-dtos';
+import type { RecipeCountsInput, RecipeSearchInput } from '@/application/search/recipe-search-dtos';
 import { RecipeSearchService } from '@/application/search/recipe-search-service';
 import { memberActor } from '@/application/testing/actors';
 import { FixedRecipeSearch, noRecipeSearchFacets } from '@/application/testing/fixed-recipe-search';
@@ -22,6 +22,8 @@ const firstPage: RecipeSearchInput = {
 	limit: 24,
 	offset: 0,
 };
+
+const noFilters: RecipeCountsInput = { holidays: [], diets: [] };
 
 const adaId = memberIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e');
 
@@ -47,6 +49,18 @@ function createSearch(results: RecipeSearchResults) {
 	return { recipes, service: new RecipeSearchService(recipes) };
 }
 
+// Words and filters both searching and counting refuse.
+const refusedFilters: [string, object][] = [
+	['text over 200 characters', { text: 'a'.repeat(201) }],
+	['an unknown chapter', { chapter: 'soups' }],
+	['an unknown holiday', { holidays: ['christmas', 'boxing-day'] }],
+	['an unknown diet', { diets: ['nut-free'] }],
+	['a blank source', { source: ' ' }],
+	['a NUL character in the text', { text: 'soup\0' }],
+	['a contributor id that is not an id', { contributorId: 'ada' }],
+	['a total time that is not a choice', { maxTotalMinutes: 45 }],
+];
+
 describe('searchRecipes', () => {
 	it('parses the text and normalizes the filters, listing each holiday and diet once with what a diet implies', async () => {
 		const { recipes, service } = createSearch(noResultsByAda);
@@ -59,7 +73,6 @@ describe('searchRecipes', () => {
 			source: ' Grandpa Lou ',
 			contributorId: ` ${adaId.toUpperCase()} `,
 			maxTotalMinutes: 60,
-			addedWithin: 'month',
 			sort: 'title',
 			limit: 24,
 			offset: 48,
@@ -78,7 +91,6 @@ describe('searchRecipes', () => {
 				source: 'Grandpa Lou',
 				contributorId: adaId,
 				maxTotalMinutes: 60,
-				addedWithin: 'month',
 				sort: 'title',
 				limit: 24,
 				offset: 48,
@@ -130,15 +142,7 @@ describe('searchRecipes', () => {
 	});
 
 	it.each([
-		['text over 200 characters', { text: 'a'.repeat(201) }],
-		['an unknown chapter', { chapter: 'soups' }],
-		['an unknown holiday', { holidays: ['christmas', 'boxing-day'] }],
-		['an unknown diet', { diets: ['nut-free'] }],
-		['a blank source', { source: ' ' }],
-		['a NUL character in the text', { text: 'soup\0' }],
-		['a contributor id that is not an id', { contributorId: 'ada' }],
-		['a total time that is not a choice', { maxTotalMinutes: 45 }],
-		['an unknown window for the date added', { addedWithin: 'day' }],
+		...refusedFilters,
 		['an unknown sort', { sort: 'oldest' }],
 		['a limit of 0', { limit: 0 }],
 		['a fractional limit', { limit: 1.5 }],
@@ -163,6 +167,15 @@ describe('searchRecipes', () => {
 		expect(recipes.receivedQueries).toMatchObject([{ contributorId: adaId }]);
 	});
 
+	it('accepts a chosen member the facet lists at zero', async () => {
+		const { service } = createSearch(noResultsByAda);
+
+		expect(await service.searchRecipes({ ...firstPage, contributorId: adaId })).toMatchObject({
+			total: 0,
+			facets: { contributors: [{ memberId: adaId, displayName: 'Ada', count: 0 }] },
+		});
+	});
+
 	it('returns the page of results, each summarized for its card', async () => {
 		const soup = await new InMemoryRecipeRepository().create({
 			content: parseRecipeContent(sampleChickenSoup),
@@ -180,7 +193,9 @@ describe('searchRecipes', () => {
 		];
 		const facets: RecipeSearchFacets = {
 			...noRecipeSearchFacets,
+			allRecipes: 25,
 			chapters: { ...noRecipeSearchFacets.chapters, 'soups-salads': 3 },
+			totalTimes: { 15: 2, 30: 6, 60: 12, 120: 20 },
 			sources: [{ label: 'Grandpa Lou', count: 1 }],
 			contributors: [{ memberId: soup.contributorId, displayName: 'Ada', count: 1 }],
 		};
@@ -215,5 +230,70 @@ describe('searchRecipes', () => {
 			match: 'close',
 			facets,
 		});
+	});
+});
+
+describe('countRecipes', () => {
+	it('counts within the words and filters as search does, with no order or page', async () => {
+		const { recipes, service } = createSearch(noResultsByAda);
+
+		await service.countRecipes({
+			text: '  chicken -"bay leaf" ',
+			chapter: 'soups-salads',
+			holidays: ['christmas', 'thanksgiving', 'christmas'],
+			diets: ['vegan', 'gluten-free', 'vegan'],
+			source: ' Grandpa Lou ',
+			contributorId: ` ${adaId.toUpperCase()} `,
+			maxTotalMinutes: 60,
+		});
+
+		expect(recipes.receivedCountQueries).toEqual([
+			{
+				text: {
+					text: 'chicken -"bay leaf"',
+					includedWords: ['chicken'],
+					excludedTerms: ['"bay leaf"'],
+				},
+				chapter: 'soups-salads',
+				holidays: ['thanksgiving', 'christmas'],
+				diets: ['vegetarian', 'vegan', 'gluten-free', 'dairy-free'],
+				source: 'Grandpa Lou',
+				contributorId: adaId,
+				maxTotalMinutes: 60,
+			},
+		]);
+		expect(recipes.receivedQueries).toEqual([]);
+	});
+
+	it.each(refusedFilters)('rejects %s without counting', async (_, overrides) => {
+		const { recipes, service } = createSearch(noResults);
+
+		await expect(
+			service.countRecipes({ ...noFilters, ...overrides } as RecipeCountsInput)
+		).rejects.toThrow(InvalidRecipeSearchError);
+		expect(recipes.receivedCountQueries).toEqual([]);
+	});
+
+	it('rejects a contributor id the facet does not list, since it names no member', async () => {
+		const { service } = createSearch(noResults);
+
+		await expect(service.countRecipes({ ...noFilters, contributorId: adaId })).rejects.toThrow(
+			InvalidRecipeSearchError
+		);
+	});
+
+	it("returns the total and every option's count", async () => {
+		const facets: RecipeSearchFacets = {
+			...noRecipeSearchFacets,
+			allRecipes: 25,
+			chapters: { ...noRecipeSearchFacets.chapters, 'soups-salads': 3 },
+			sources: [{ label: 'Grandpa Lou', count: 1 }],
+			contributors: [{ memberId: adaId, displayName: 'Ada', count: 3 }],
+		};
+		const { service } = createSearch({ hits: [], total: 3, match: 'exact', facets });
+
+		expect(
+			await service.countRecipes({ ...noFilters, chapter: 'soups-salads', contributorId: adaId })
+		).toEqual({ total: 3, counts: facets });
 	});
 });

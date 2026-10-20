@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
 import { describe, expect, it } from 'vitest';
-import { recipeSearchParamNames } from '@/components/search/search-params';
 import { config, proxy } from '@/proxy';
 
 describe('proxy', () => {
@@ -40,51 +39,12 @@ describe('proxy', () => {
 		);
 	});
 
-	it.each([
-		{
-			where: 'a search without words',
-			url: '/search?chapter=desserts&holiday=christmas',
-			location: '/?chapter=desserts&holiday=christmas',
-		},
-		{
-			where: 'a search emptied in the header',
-			url: '/search?q=&diet=vegan&sort=title',
-			location: '/?diet=vegan&sort=title',
-		},
-		{
-			where: 'Browse given words',
-			url: '/?q=lemon&chapter=desserts',
-			location: '/search?q=lemon&chapter=desserts',
-		},
-		{
-			where: 'an older link’s search without words, dropping its tags',
-			url: '/search?tag=Dessert',
-			location: '/',
-		},
-	])('redirects $where to the list it belongs on, with its filters', ({ url, location }) => {
-		const response = proxy(new NextRequest(`https://recipes.example.com${url}`));
-
-		expect(response.status).toBe(307);
-		expect(response.headers.get('location')).toBe(`https://recipes.example.com${location}`);
-	});
-
-	it.each([
-		'/?chapter=desserts',
-		'/search?q=lemon&chapter=desserts',
-		'/search?sort=relevance',
-		'/?q=lemon&chapter=nope',
-	])('lets %s through to its page, signed out', (url) => {
-		const response = proxy(new NextRequest(`https://recipes.example.com${url}`));
-
-		expect(response.headers.get('location')).toBeNull();
-		expect(response.headers.get('x-middleware-next')).toBe('1');
-	});
-
-	it('runs on Browse only with the query, so a list without words skips it', () => {
-		expect(config.matcher).toContainEqual({
-			source: '/',
-			has: [{ type: 'query', key: recipeSearchParamNames.text }],
-		});
-		expect(config.matcher).toContain('/search');
+	it('runs only on the pages that need a session, so the Recipes page’s requests skip it', () => {
+		expect(config.matcher).toEqual([
+			'/contribute/:path*',
+			'/recipes/:slug/edit',
+			'/admin/:path*',
+			'/account/:path*',
+		]);
 	});
 });

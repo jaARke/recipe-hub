@@ -5,7 +5,6 @@ import { TextLink } from '@/components/layout/text-link';
 import { RecipeActions, RecipeActionsSkeleton } from '@/components/recipe/recipe-actions';
 import { RecipeFilmstrip } from '@/components/recipe/recipe-filmstrip';
 import { RecipeIngredientsAndSteps } from '@/components/recipe/recipe-ingredients-and-steps';
-import { defaultListSort } from '@/components/recipe/recipe-list-params';
 import { RecipeParagraphs } from '@/components/recipe/recipe-paragraphs';
 import { RecipeSourceLink } from '@/components/recipe/recipe-source-link';
 import { RecipeBadges } from '@/components/recipe/recipe-summary';
@@ -14,7 +13,7 @@ import {
 	recipeTextStyles,
 	type RecipeHeadingLevel,
 } from '@/components/recipe/recipe-text-styles';
-import { recipeSearchHref, type RecipeSearchState } from '@/components/search/search-params';
+import { recipeSearchHref, recipesView } from '@/components/search/search-params';
 import { Skeleton } from '@/components/ui/skeleton';
 import { chapterLabels } from '@/domain/recipe/chapter';
 import { dietLabels } from '@/domain/recipe/diet';
@@ -38,15 +37,6 @@ const cellRowClassName = 'grid grid-cols-2 gap-x-4 gap-y-3 py-3 sm:grid-cols-4';
 // Who added the recipe, and its chapter, take two columns from sm, leaving two for the dates or for
 // the holidays and diets.
 const wideCellClassName = 'sm:col-span-2';
-
-// Browse unfiltered, in its default order, to which each link in the ruled block adds one chapter,
-// holiday, or diet.
-const unfilteredBrowse: RecipeSearchState = {
-	holidays: [],
-	diets: [],
-	sort: defaultListSort,
-	page: 1,
-};
 
 // The description and the notes read as body text.
 const recipeParagraphsClassName = cn(recipeTextStyles.body, 'gap-4');
@@ -103,7 +93,7 @@ function recipeProvenanceCells({
 }
 
 // Where the recipe sits in the cookbook: its chapter, then any holidays and diets, each a link to
-// Browse filtered by it.
+// the Recipes page filtered by it.
 function recipeClassificationCells({
 	chapter,
 	holidays,
@@ -113,9 +103,7 @@ function recipeClassificationCells({
 		{
 			label: 'Chapter',
 			value: (
-				<TextLink href={recipeSearchHref({ ...unfilteredBrowse, chapter })}>
-					{chapterLabels[chapter]}
-				</TextLink>
+				<TextLink href={recipeSearchHref(recipesView(chapter))}>{chapterLabels[chapter]}</TextLink>
 			),
 			className: wideCellClassName,
 		},
@@ -123,14 +111,14 @@ function recipeClassificationCells({
 	if (holidays.length > 0) {
 		const badges = holidays.map((holiday) => ({
 			label: holidayLabels[holiday],
-			href: recipeSearchHref({ ...unfilteredBrowse, holidays: [holiday] }),
+			href: recipeSearchHref({ ...recipesView(), holidays: [holiday] }),
 		}));
 		cells.push({ label: 'Holidays', value: <RecipeBadges badges={badges} /> });
 	}
 	if (diets.length > 0) {
 		const badges = diets.map((diet) => ({
 			label: dietLabels[diet],
-			href: recipeSearchHref({ ...unfilteredBrowse, diets: [diet] }),
+			href: recipeSearchHref({ ...recipesView(), diets: [diet] }),
 		}));
 		cells.push({ label: 'Diet', value: <RecipeBadges badges={badges} /> });
 	}

@@ -42,7 +42,7 @@ describe('RecipeBackLink', () => {
 
 	it('goes back past the entries a jump within the recipe added', async () => {
 		const loads = holdPageLoads();
-		const searchUrl = `${origin}/search?q=lemon&sort=newest`;
+		const searchUrl = `${origin}/?q=lemon&sort=newest`;
 		stubTabNavigation([
 			searchUrl,
 			`${origin}${recipePathname}`,

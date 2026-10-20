@@ -3,8 +3,8 @@ import { recipeEditPath, recipeListPath } from '@/components/recipe/recipe-paths
 import { slugify } from '@/domain/recipe/slug';
 import { waitForHydration } from './hydration';
 
-// Deletes the recipe with the title from its editor, as its contributor would, which lands on
-// Browse. The dev server's delete expires the cached lists, which deleteTestMember's cannot reach.
+// Deletes the recipe with the title from its editor, as its contributor would, which lands on All
+// Recipes. The dev server's delete expires the cached lists, which deleteTestMember's cannot reach.
 export async function deleteRecipeInEditor(page: Page, title: string) {
 	await page.goto(recipeEditPath(slugify(title)));
 	const recipeActions = page.getByRole('button', { name: 'Recipe actions' });

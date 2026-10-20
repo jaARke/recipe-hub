@@ -1,4 +1,9 @@
 import type { DraftSummaryDto } from '@/application/drafts/saved-draft-dtos';
+import type { RecipeSearchPage } from '@/application/search/recipe-search-dtos';
+import { RecipeChaptersSpecimen } from '@/components/design-reference/recipe-chapters-specimen';
+import { RecipeFilterFormSpecimen } from '@/components/design-reference/recipe-filter-form-specimen';
+import { RecipeFilterSheetSpecimen } from '@/components/design-reference/recipe-filter-sheet-specimen';
+import { RecipePageSearchSpecimen } from '@/components/design-reference/recipe-page-search-specimen';
 import {
 	ReferenceSubsection,
 	ReferenceSubsectionNav,
@@ -7,10 +12,11 @@ import {
 import { SampleFavoriteToggle } from '@/components/design-reference/sample-favorite-toggle';
 import {
 	sampleBrowsePage,
-	sampleCatalogFacets,
+	sampleChapterSearchPage,
 	sampleContributor,
 	sampleDrafts,
 	sampleDraftsNow,
+	sampleGlutenFreeDessertsPage,
 	sampleRecipeDetail,
 	sampleRecipeSummaries,
 	sampleSearchPage,
@@ -40,14 +46,17 @@ import { RecipeEditLink } from '@/components/recipe/recipe-member-view';
 import { RecipePagination } from '@/components/recipe/recipe-pagination';
 import { RecipesEmptyState } from '@/components/recipe/recipes-empty-state';
 import { HeaderSearchBar } from '@/components/search/header-search-bar';
+import { recipeChapterRows } from '@/components/search/recipe-chapter-rows';
 import {
 	RecipeSearch,
 	RecipeSearchCloseMatches,
 	RecipeSearchSkeleton,
+	RecipesPageGrid,
+	RecipesViewHeader,
+	RecipesViewHeaderSkeleton,
 } from '@/components/search/recipe-search';
 import { RecipeSearchEmptyState } from '@/components/search/recipe-search-empty-state';
-import { RecipeSearchFiltersSidebar } from '@/components/search/recipe-search-filters';
-import type { RecipeSearchState } from '@/components/search/search-params';
+import { recipesView, type RecipeSearchState } from '@/components/search/search-params';
 import type { Problem } from '@/domain/problem';
 import { parseRecipeContent } from '@/domain/recipe/recipe';
 import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
@@ -55,35 +64,57 @@ import { sampleSundayPotRoast } from '@/domain/recipe/samples/sample-recipes';
 import { slugify } from '@/domain/recipe/slug';
 import { settings } from '@/lib/settings';
 
-const sampleBrowseState: RecipeSearchState = { holidays: [], diets: [], sort: 'newest', page: 1 };
-
-const sampleSearchState: RecipeSearchState = {
-	text: 'butter',
-	holidays: [],
-	diets: ['vegetarian'],
-	contributorId: sampleContributor.id,
-	sort: 'relevance',
-	page: 1,
-};
+// The Recipes page's views, each with the page of results it shows.
+const recipesPageSamples: readonly {
+	label: string;
+	idPrefix: string;
+	state: RecipeSearchState;
+	results: RecipeSearchPage;
+}[] = [
+	{
+		label: 'All Recipes, as the page first opens',
+		idPrefix: 'design-recipes-all',
+		state: recipesView(),
+		results: sampleBrowsePage,
+	},
+	{
+		label: 'Desserts, filtered by gluten-free',
+		idPrefix: 'design-recipes-desserts',
+		state: { ...recipesView('desserts'), diets: ['gluten-free'] },
+		results: sampleGlutenFreeDessertsPage,
+	},
+	{
+		label: 'Cookies & Candy searched for butter, among vegetarian recipes one member added',
+		idPrefix: 'design-recipes-search',
+		state: {
+			text: 'butter',
+			chapter: 'cookies-candy',
+			holidays: [],
+			diets: ['vegetarian'],
+			contributorId: sampleContributor.id,
+			sort: 'relevance',
+			page: 1,
+		},
+		results: sampleChapterSearchPage,
+	},
+];
 
 const noResultStates: readonly { label: string; state: RecipeSearchState }[] = [
 	{
-		label: 'A query',
-		state: { text: 'biscuts', holidays: [], diets: [], sort: 'relevance', page: 1 },
+		label: 'A chapter searched for words none of its recipes match',
+		state: { ...recipesView('soups-salads'), text: 'biscuit', sort: 'relevance' },
 	},
 	{
-		label: 'Filters',
-		state: {
-			chapter: 'soups-salads',
-			holidays: ['christmas'],
-			diets: [],
-			sort: 'newest',
-			page: 1,
-		},
+		label: 'A search with a filter',
+		state: { ...recipesView(), text: 'biscuit', diets: ['vegan'], sort: 'relevance' },
 	},
 	{
-		label: 'A query with filters',
-		state: { text: 'biscuts', holidays: ['christmas'], diets: [], sort: 'relevance', page: 1 },
+		label: 'A chapter with a filter',
+		state: { ...recipesView('desserts'), holidays: ['easter'] },
+	},
+	{
+		label: 'A chapter no one has filed a recipe in',
+		state: recipesView('appetizers-beverages'),
 	},
 ];
 
@@ -220,23 +251,31 @@ const startSamples: readonly {
 // One entry per composition, browsing first and contributing last.
 const subsections = [
 	{
-		id: 'browse',
-		title: 'Browse',
+		id: 'recipes-page',
+		title: 'Recipes page',
 		description:
-			'The collection as cards beside the search page’s filters, so one control serves Browse and Search, which differ in what they list. From lg the filters sit in a sidebar, each chapter, holiday, and diet with its count, over two columns of cards and three from xl; below lg the toolbar’s Filters opens the same form above the cards. Filters apply with their button and keep to Browse; the chapters, holidays, and diets on offer are those with recipes to count, and a chosen one stays so it can be cleared. Each card is a single link to its recipe, and a recipe without a photo keeps the photo’s box. Here six of its cards; its links lead to Browse.',
-		Content: BrowseSpecimen,
+			'One page for browsing and searching every recipe. Its heading names the view, All Recipes or the chapter, under a link back to All Recipes in a chapter, which keeps the words and the filters; below lg the heading opens the chapters in a sheet, and from lg it is plain text beside the sidebar, which holds the chapters above Filter and sort, as their own specimens show. The search box under the heading searches within the view. Above the recipes come Filter and sort’s button below lg, then the filters applied, after Filtered by:, as outlined chips that remove themselves, with Clear all once there are two, then the count line. The count line is the page’s polite status: the count and the order, with the words searched for, and for screen readers alone, close matches and the page. With words each recipe marks what they matched, and outside a chapter each names its chapter, 24 to a page. A recipe opened from the page links back to its view by the view’s name, such as Back to Desserts, or as Back to search results. A link that changes the list and takes focus with it, such as a chip, Clear all, or a page’s number, leaves focus on the heading. Here its links and forms open the real Recipes page, its sections’ headings are h4, and its recipes’ h5.',
+		Content: RecipesPageSpecimen,
 	},
 	{
-		id: 'browse-loading',
-		title: 'Browse, loading',
-		description: 'Skeletons hold the same layout while recipes load.',
-		Content: BrowseSkeletonSpecimen,
+		id: 'recipes-page-loading',
+		title: 'Recipes page, loading',
+		description:
+			'Skeletons hold the heading and the search box, and from lg the sidebar’s chapters and filters beside the rows or cards, while the view is read. The header’s search waits for them to give way before it empties.',
+		Content: RecipesPageSkeletonSpecimen,
+	},
+	{
+		id: 'recipes-no-results',
+		title: 'No results',
+		description:
+			'An empty view says why, its message in the middle of its box, and offers the ways out it has: Clear search with words, Clear filters with filters, and in a chapter with words, a search of All Recipes for them; a chapter with no recipes offers none. The count line says the same to screen readers. A cookbook with no recipes at all shows the empty state instead, and words no recipe matches exactly show close matches under a notice.',
+		Content: NoResultsSpecimen,
 	},
 	{
 		id: 'recipe-grid',
 		title: 'Recipe grid',
 		description:
-			'Favorites’ cards across the page: one column on phones, two on tablets, three on desktop. Each card is a single link to its recipe, and a recipe without a photo keeps the photo’s box.',
+			'The list the Recipes page and Favorites share. Below sm each recipe is a row, a small photo beside its words, so a phone shows several at once; from sm each is a card, two across, and three from lg on Favorites or from xl beside the Recipes page’s sidebar. Both sit in the card’s inked edge, which brightens to the text’s color when hovered. Each is a single link to its recipe, named by its title, with its holiday and diet badges, and a recipe without a photo keeps the photo’s box. Outside a chapter each names its chapter above the title, and searching with words, its title and the passage the words matched are marked. Its titles are h4 here.',
 		Content: RecipeGridSpecimen,
 	},
 	{
@@ -283,35 +322,43 @@ const subsections = [
 	{
 		id: 'empty-state',
 		title: 'Empty state',
-		description: 'The home page and search before anyone adds a recipe.',
+		description: 'The Recipes page before anyone adds a recipe.',
 		Content: RecipesEmptyState,
 	},
 	{
 		id: 'search-bar',
 		title: 'Search bar',
 		description:
-			'The header’s search, at this screen’s width: from lg a field that fills the row, and below lg an icon that turns the header’s row into the field, with Cancel to bring the row back. A search keeps the filters of the page it is typed on, Browse’s or Search’s, and on Search the order too. On the search page the field holds the query, with Clear search to empty it and return to Browse with the filters, and below lg the header opens with the field.',
+			'The header’s search, at this screen’s width: from lg a field that fills the row, and below lg an icon that turns the header’s row into the field, with Cancel to bring the row back. It searches every recipe from scratch, whatever page it is typed on, so it leads to All Recipes with its words alone. Once submitted the field keeps its words, read-only with a spinner in place of its icon, until the results show, then empties, and below lg closes and gives focus to the icon, since the Recipes page’s own search holds the words. Here a search leaves for its results.',
 		Content: SearchBarSpecimen,
 	},
 	{
-		id: 'search-results',
-		title: 'Search results',
+		id: 'recipe-page-search',
+		title: 'Page search',
 		description:
-			'A search for butter among vegetarian recipes added by one member, as it shows under the page’s heading and syntax hint. From lg the filters sit beside the results, over the count and the order. Below lg a toolbar holds Filters, with the applied count, and the order in one row, then the count; Filters opens the filters in the page’s flow beneath the row, and Apply filters closes them and moves focus to the results. Filters apply with their button, while the order applies on selection. The words and each active filter are inked pills that remove themselves, the words returning to Browse with the filters, and Clear filters keeps the words; focus moves to the results as one goes. The count is announced as it changes, and matches are marked. Its headings start at h4 here.',
-		Content: SearchResultsSpecimen,
+			'The Recipes page’s own search, under its heading. Its label stays in view above the field and names what it searches, All Recipes or the chapter, and a search keeps the chapter and the filters, ordered by best match from the first page. The words stay in the field to be refined, with an × that clears them alone, keeping the chapter, the filters, and an order chosen apart from best match, and leaving focus in the field. Here each form searches the real pages.',
+		Content: RecipePageSearchSpecimen,
 	},
 	{
-		id: 'search-results-loading',
-		title: 'Search results, loading',
-		description: 'Skeletons hold the same layout while results load.',
-		Content: SearchResultsSkeletonSpecimen,
+		id: 'recipe-chapters',
+		title: 'Chapters',
+		description:
+			'The Recipes page’s table of contents: All Recipes and the nine chapters, each counted within the words and the filters, and each a link to its view that keeps them, from the first page. The sidebar lists them under Chapters with each count at the right, the current one in semibold with a rule at its left, and a chapter with none muted but still a link. The heading follows this screen’s width: from lg, where the sidebar shows, it is plain text; below lg it is the list’s trigger, the view’s name with a still chevron, described as choosing a chapter, and opens a bottom sheet titled Chapters whose rows give each count in recipes and check the current one. Choosing a row closes the sheet and leaves focus on the heading as the chapter opens; closing it otherwise, or Back or Forward to another view, returns focus to the heading’s button. Here its links lead to the real pages, and its headings are h4.',
+		Content: RecipeChaptersSpecimen,
 	},
 	{
-		id: 'search-no-results',
-		title: 'No results',
+		id: 'recipe-filter-form',
+		title: 'Filter and sort',
 		description:
-			'Each says what found nothing and how to widen the search. A search of an empty catalog shows the empty state instead.',
-		Content: NoResultsSpecimen,
+			'The Recipes page’s sidebar from lg, under the chapters: Sort by, then Holidays, Diet, Total time, Recipe from, and Added by, every group open, its radios and checkboxes in 36 px rows. Each option shows in parentheses what choosing it would show; one with none is dimmed and disabled unless chosen, and keeps focus when it is let go at zero. Recipe from folds its names after the first six under More names, which opens on its own when a name inside is chosen and closes again when asked. Each choice applies at once as a new page in the history, focus staying on the control; an any choice and the view’s own order leave the URL, and Clear all, beside the heading once a filter applies, keeps the words, the chapter, and the order. Here each form opens the real Recipes page, over the sample recipes’ counts.',
+		Content: RecipeFilterFormSpecimen,
+	},
+	{
+		id: 'recipe-filter-sheet',
+		title: 'Filter and sort sheet',
+		description:
+			'Filter and sort below lg: a button counting the filters applied opens the same form in a bottom sheet, its options in two columns and every group open, folding as the sidebar does. Choices wait for Show N recipes, whose count follows them a moment after each change, showing only the latest choice’s count; it reads Show recipes while counting or when the count fails, and still applies them. Screen readers hear each new count. Clear all clears the sheet’s choices, not the view’s; closing drops what wasn’t applied, as does Back or Forward to another view, which closes the sheet, and Show closes the sheet with focus on the page’s heading. Here a stand-in answers the count after a moment with the smallest of the view’s total and the chosen filters’ counts, and Show opens the real Recipes page.',
+		Content: RecipeFilterSheetSpecimen,
 	},
 	{
 		id: 'recipe-form',
@@ -329,36 +376,71 @@ const subsections = [
 	},
 ] as const;
 
-// Its own heading heads the cards, as the page's does.
-function BrowseSpecimen() {
+// Each view as the page composes it, the heading's sheet given the chapters at once.
+function RecipesPageSpecimen() {
+	return recipesPageSamples.map(({ label, idPrefix, state, results }) => {
+		const chapterRows = recipeChapterRows(state, results.facets);
+		return (
+			<Specimen key={idPrefix} label={label}>
+				<RecipesPageGrid>
+					<RecipesViewHeader
+						idPrefix={idPrefix}
+						state={state}
+						chapterRows={Promise.resolve(chapterRows)}
+						headingTag="h4"
+					/>
+					<RecipeSearch
+						idPrefix={idPrefix}
+						state={state}
+						results={results}
+						pageCount={Math.ceil(results.total / settings.display.recipesPerPage)}
+						chapterRows={chapterRows}
+						headingTag="h4"
+					/>
+				</RecipesPageGrid>
+			</Specimen>
+		);
+	});
+}
+
+function RecipesPageSkeletonSpecimen() {
 	return (
-		<Specimen className="flex flex-col gap-8">
-			<h4 id="design-browse-heading" tabIndex={-1} className="font-heading text-2xl font-semibold">
-				Recipes
-			</h4>
-			<RecipeSearch
-				state={sampleBrowseState}
-				results={sampleBrowsePage}
-				pageCount={Math.ceil(sampleBrowsePage.total / settings.display.recipesPerPage)}
-				headingLevel={4}
-				resultsHeadingId="design-browse-heading"
-			/>
+		<Specimen>
+			<RecipesPageGrid>
+				<RecipesViewHeaderSkeleton />
+				<RecipeSearchSkeleton />
+			</RecipesPageGrid>
 		</Specimen>
 	);
 }
 
-function BrowseSkeletonSpecimen() {
-	return <RecipeSearchSkeleton mode="browse" />;
-}
+// The search for butter within one chapter, so its recipes name none.
+const sampleChapterSearchEntries = sampleSearchPage.results
+	.filter(({ recipe }) => recipe.chapter === 'cookies-candy')
+	.map(({ recipe, title, snippet }) => ({ recipe, highlights: { title, snippet } }));
 
 function RecipeGridSpecimen() {
 	return (
-		<RecipeGrid
-			layout="fullWidth"
-			recipes={sampleRecipeSummaries}
-			headingTag="h4"
-			backLabel="Back to Favorites"
-		/>
+		<>
+			<Specimen label="Favorites, from every chapter" frame="bare">
+				<RecipeGrid
+					layout="fullWidth"
+					entries={sampleRecipeSummaries.map((recipe) => ({ recipe }))}
+					namesChapter
+					headingTag="h4"
+					backLabel="Back to Favorites"
+				/>
+			</Specimen>
+			<Specimen label="Searching for butter in Cookies & Candy" frame="bare">
+				<RecipeGrid
+					layout="fullWidth"
+					entries={sampleChapterSearchEntries}
+					namesChapter={false}
+					headingTag="h4"
+					backLabel="Back to Cookies & Candy"
+				/>
+			</Specimen>
+		</>
 	);
 }
 
@@ -453,53 +535,26 @@ function SearchBarSpecimen() {
 	return (
 		<Specimen>
 			<div className="flex items-center">
-				<HeaderSearchBar formId="design-header-search" />
+				<HeaderSearchBar idPrefix="design-header-search" />
 			</div>
 		</Specimen>
 	);
 }
 
-function SearchResultsSpecimen() {
+function NoResultsSpecimen() {
 	return (
 		<>
-			<Specimen>
-				<RecipeSearch
-					state={sampleSearchState}
-					results={sampleSearchPage}
-					pageCount={1}
-					headingLevel={4}
-				/>
-			</Specimen>
-			<div className="grid gap-6 md:grid-cols-2">
-				<Specimen label="From lg: the filters in a sidebar, over every sample recipe">
-					<RecipeSearchFiltersSidebar
-						idPrefix="design-filters-sidebar"
-						state={sampleBrowseState}
-						facets={sampleCatalogFacets}
-						headingTag="h4"
-					/>
-				</Specimen>
+			<div className="grid gap-6 lg:grid-cols-2">
+				{noResultStates.map(({ label, state }) => (
+					<Specimen key={label} label={label} frame="bare">
+						<RecipeSearchEmptyState state={state} />
+					</Specimen>
+				))}
 			</div>
-			<Specimen label="When nothing matches exactly">
+			<Specimen label="When no recipe matches the words exactly, above the close matches">
 				<RecipeSearchCloseMatches text="chiken soup" />
 			</Specimen>
 		</>
-	);
-}
-
-function SearchResultsSkeletonSpecimen() {
-	return <RecipeSearchSkeleton mode="search" />;
-}
-
-function NoResultsSpecimen() {
-	return (
-		<div className="grid gap-6 lg:grid-cols-3">
-			{noResultStates.map(({ label, state }) => (
-				<Specimen key={label} label={label} frame="bare">
-					<RecipeSearchEmptyState state={state} />
-				</Specimen>
-			))}
-		</div>
 	);
 }
 

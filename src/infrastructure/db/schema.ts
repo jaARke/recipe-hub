@@ -63,10 +63,7 @@ export const recipes = pgTable(
 		importId: uuid('import_id')
 			.unique()
 			.references(() => recipeImports.id),
-		// Unread, as is tag_keys, and kept while the previous deployment may still read them.
-		tags: text('tags').array().notNull().default([]),
-		// Inserts that name no chapter, as the previous deployment's do, land in This & That.
-		chapter: text('chapter', { enum: chapters }).notNull().default('this-and-that'),
+		chapter: text('chapter', { enum: chapters }).notNull(),
 		holidays: text('holidays', { enum: holidays }).array().notNull().default([]),
 		diets: text('diets', { enum: diets }).array().notNull().default([]),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -90,10 +87,6 @@ export const recipes = pgTable(
 				(): SQL =>
 					sql`lower(public.immutable_unaccent((${recipes.content} ->> 'title') || ' ' || jsonb_path_query_array(${recipes.content}, '$.ingredientSections[*].lines[*].item')::text || ' ' || ${holidayAndDietWords()}))`
 			),
-		tagKeys: text('tag_keys')
-			.array()
-			.notNull()
-			.generatedAlwaysAs((): SQL => sql`public.search_keys(${recipes.tags})`),
 		sourceKey: text('source_key').generatedAlwaysAs(
 			(): SQL => sql`public.search_key(${recipes.content} ->> 'source')`
 		),
@@ -112,7 +105,6 @@ export const recipes = pgTable(
 	},
 	(table) => [
 		index('recipes_search_vector_idx').using('gin', table.searchVector),
-		index('recipes_tag_keys_idx').using('gin', table.tagKeys),
 		// Serves the contributor filter and its facet.
 		index('recipes_contributor_id_idx').on(table.contributorId),
 		// Serve the chapter, holiday and diet filters and their facets.
@@ -154,14 +146,10 @@ export const recipeImports = pgTable(
 		status: text('status', { enum: ['running', 'succeeded', 'failed'] })
 			.notNull()
 			.default('running'),
-		// Neither read nor written: declared only until no deployment that wrote them still serves.
-		sourceUrl: text('source_url'),
 		aiModel: text('ai_model'),
 		costUsd: numeric('cost_usd', { mode: 'number' }),
 		// The code of the error that ended a failed import.
 		failure: text('failure'),
-		// Neither read nor written, as source_url.
-		draft: jsonb('draft'),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 	},

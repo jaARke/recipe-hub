@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { waitForHydration } from './hydration';
 
-const headerSections = ['Browse', 'Favorites', 'Add recipe'] as const;
+const headerSections = ['Recipes', 'Favorites', 'Add recipe'] as const;
 
 // The section the header marks, by its aria-current: "page" on the section's own page, and "true"
 // elsewhere in it, as on a recipe opened from it.
@@ -32,16 +32,12 @@ async function checkHeaderSectionLinks(
 	}
 }
 
-// The header marks one section as current, or none, as on Search.
-export async function expectHeaderSection(
-	page: Page,
-	isMobile: boolean,
-	mark: HeaderSectionMark | undefined
-) {
+// The header marks one section as current.
+export async function expectHeaderSection(page: Page, isMobile: boolean, mark: HeaderSectionMark) {
 	await checkHeaderSectionLinks(page, isMobile, async (links) => {
 		for (const section of headerSections) {
 			const link = links.filter({ hasText: section });
-			if (section === mark?.section) {
+			if (section === mark.section) {
 				await expect(link).toHaveAttribute('aria-current', mark.ariaCurrent);
 			} else {
 				await expect(link).not.toHaveAttribute('aria-current');

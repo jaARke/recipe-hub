@@ -290,6 +290,7 @@ describe('facets', () => {
 
 		expect(results.total).toBe(tomatoRecipes.length);
 		expect(results.facets).toEqual({
+			allRecipes: tomatoRecipes.length,
 			chapters: {
 				'breakfast-brunch': 0,
 				'appetizers-beverages': 1,
@@ -311,10 +312,11 @@ describe('facets', () => {
 				christmas: 0,
 			},
 			diets: { vegetarian: 6, vegan: 2, 'gluten-free': 2, 'dairy-free': 2 },
+			totalTimes: { 15: 2, 30: 3, 60: 7, 120: 7 },
 			sources: [
-				{ label: 'Riverbend Community Cookbook', count: 2 },
 				{ label: 'Cousin Maya', count: 1 },
 				{ label: 'Grandpa Lou', count: 1 },
+				{ label: 'Riverbend Community Cookbook', count: 2 },
 				{ label: 'Tante Hélène', count: 1 },
 				{ label: 'Uncle Ray', count: 1 },
 			],
@@ -324,7 +326,7 @@ describe('facets', () => {
 		});
 	});
 
-	it('count chapters and holidays with every filter but their own, and diets within the results', async () => {
+	it('count each group with every filter but its own, diets within the results, and every source', async () => {
 		const results = await searchFor(undefined, {
 			chapter: 'cookies-candy',
 			holidays: ['christmas'],
@@ -333,6 +335,7 @@ describe('facets', () => {
 
 		expect(titles(results)).toEqual(['Molasses spice cookies']);
 		expect(results.facets).toEqual({
+			allRecipes: 2,
 			chapters: {
 				'breakfast-brunch': 1,
 				'appetizers-beverages': 0,
@@ -354,8 +357,56 @@ describe('facets', () => {
 				christmas: 1,
 			},
 			diets: { vegetarian: 1, vegan: 0, 'gluten-free': 0, 'dairy-free': 0 },
-			sources: [{ label: 'Great-aunt Edie', count: 1 }],
+			totalTimes: { 15: 0, 30: 0, 60: 0, 120: 1 },
+			sources: [
+				{ label: 'Aunt June', count: 0 },
+				{ label: 'Cousin Maya', count: 0 },
+				{ label: 'Grandma Rose', count: 0 },
+				{ label: 'Grandpa Lou', count: 0 },
+				{ label: 'Great-aunt Edie', count: 1 },
+				{ label: 'Riverbend Community Cookbook', count: 0 },
+				{ label: 'Tante Hélène', count: 0 },
+				{ label: 'Uncle Ray', count: 0 },
+			],
 			contributors: [{ memberId: contributorId, displayName: 'Contributor', count: 1 }],
+		});
+	});
+
+	it('count the close matches when nothing matches the words exactly', async () => {
+		const results = await searchFor('chiken');
+
+		expect(results).toMatchObject({ total: chickenRecipes.length, match: 'close' });
+		expect(results.facets).toEqual({
+			allRecipes: chickenRecipes.length,
+			chapters: {
+				'breakfast-brunch': 0,
+				'appetizers-beverages': 0,
+				'soups-salads': 1,
+				'vegetables-sides': 0,
+				'main-dishes': 3,
+				'breads-rolls': 0,
+				desserts: 0,
+				'cookies-candy': 0,
+				'this-and-that': 0,
+			},
+			holidays: {
+				'new-years-day': 0,
+				'st-patricks-day': 0,
+				easter: 0,
+				'fourth-of-july': 0,
+				halloween: 0,
+				thanksgiving: 0,
+				christmas: 0,
+			},
+			diets: { vegetarian: 0, vegan: 0, 'gluten-free': 1, 'dairy-free': 2 },
+			totalTimes: { 15: 0, 30: 0, 60: 3, 120: 4 },
+			sources: [
+				{ label: 'Aunt June', count: 1 },
+				{ label: 'Grandpa Lou', count: 1 },
+			],
+			contributors: [
+				{ memberId: contributorId, displayName: 'Contributor', count: chickenRecipes.length },
+			],
 		});
 	});
 });

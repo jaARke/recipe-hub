@@ -1,4 +1,5 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq, getTableColumns, getTableName, is, sql } from 'drizzle-orm';
+import { PgTable } from 'drizzle-orm/pg-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { NewMember } from '@/application/ports/member-repository';
 import type { MemberId } from '@/domain/member/member';
@@ -8,6 +9,7 @@ import { sampleChickenSoup, sampleRecipeContents } from '@/domain/recipe/samples
 import { slugify } from '@/domain/recipe/slug';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
+import * as schema from '@/infrastructure/db/schema';
 import { recipes, recipeSearchConfiguration } from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 
@@ -46,6 +48,23 @@ async function store(input: RecipeContentInput) {
 		.where(eq(recipes.id, created.id));
 	return { content, row };
 }
+
+describe('the migrations', () => {
+	it('build the columns the schema declares, and no others', async () => {
+		const declared = Object.values(schema)
+			.filter((value) => is(value, PgTable))
+			.flatMap((table) =>
+				Object.values(getTableColumns(table)).map(
+					(column) => `${getTableName(table)}.${column.name}`
+				)
+			);
+		const { rows } = await db.execute<{ column: string }>(
+			sql`select table_name || '.' || column_name as "column" from information_schema.columns where table_schema = 'public'`
+		);
+
+		expect(rows.map((row) => row.column).sort()).toEqual(declared.sort());
+	});
+});
 
 describe('total_minutes', () => {
 	const edgeCases: [string, RecipeTimes][] = [
@@ -90,6 +109,20 @@ describe('chapter, holidays and diets', () => {
 		await expect(
 			db.execute(sql`update recipes set diets = array['nut-free'] where id = ${row?.id}`)
 		).rejects.toThrow(refusedBy('recipes_diets_check'));
+	});
+
+	it('refuse a recipe filed in no chapter', async () => {
+		const { row } = await store(sampleChickenSoup);
+
+		await expect(
+			db.execute(
+				sql`insert into recipes (slug, contributor_id, content, provenance) select 'unfiled', contributor_id, content, provenance from recipes where id = ${row?.id}`
+			)
+		).rejects.toThrow(
+			expect.objectContaining({
+				cause: expect.objectContaining({ code: '23502', column: 'chapter' }),
+			})
+		);
 	});
 
 	it('give search the words of the holidays and diets, but not the chapter', async () => {

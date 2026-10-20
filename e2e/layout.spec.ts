@@ -15,10 +15,12 @@ import {
 	recipeListPath,
 	recipePath,
 } from '@/components/recipe/recipe-paths';
+import { recipeSearchHref, recipesView } from '@/components/search/search-params';
 import type { MemberRole } from '@/domain/member/member';
 import { hrefWithParams } from '@/lib/url-query';
 import { expect, test } from './support/fixtures';
 import { checkLayout, minimumTargetSize, phoneWidthsToCheck } from './support/layout';
+import { openChapterPicker, openFilterSheet } from './support/recipes-page';
 import { sampleRecipe } from './support/sample-recipe';
 import { sampleSearchPath } from './support/sample-search';
 import { stylesheetDeclarationsNotServed } from './support/stylesheet';
@@ -28,6 +30,8 @@ type CheckedPage = {
 	path: string;
 	// Who the page is laid out for; signed out when absent.
 	signedInAs?: MemberRole;
+	// A sheet the page opens below lg, laid out open on a phone. A desktop opens none.
+	opensSheet?: (page: Page) => Promise<unknown>;
 };
 
 // The sample's cooking view at a screen: 0 is Gather, 1 to 7 its steps, and 8 the finish.
@@ -36,7 +40,11 @@ function cookingScreenPath(screen: number): string {
 }
 
 const checkedPages: CheckedPage[] = [
-	{ name: 'Browse', path: recipeListPath },
+	{ name: 'All Recipes', path: recipeListPath },
+	// The longest chapter's name, which the heading wraps on a phone.
+	{ name: 'a chapter', path: recipeSearchHref(recipesView('vegetables-sides')) },
+	{ name: 'the Chapters sheet', path: recipeListPath, opensSheet: openChapterPicker },
+	{ name: 'the Filter and sort sheet', path: recipeListPath, opensSheet: openFilterSheet },
 	{ name: 'a recipe', path: sampleRecipe.path },
 	{ name: 'the cooking view’s Gather screen', path: cookingScreenPath(0) },
 	{ name: 'a cooking step', path: cookingScreenPath(6) },
@@ -72,9 +80,15 @@ async function expectLaidOut(page: Page, width: number, checksTargets: boolean) 
 
 // A phone lays the page out at every width from 320 to 430 px, where tap targets count; a desktop at
 // its own width.
-async function expectPageLaidOut(page: Page, path: string, isMobile: boolean) {
+async function expectPageLaidOut(
+	page: Page,
+	{ path, opensSheet }: Pick<CheckedPage, 'path' | 'opensSheet'>,
+	isMobile: boolean
+) {
+	test.skip(opensSheet !== undefined && !isMobile, 'The sheet opens below lg only');
 	await page.goto(path);
 	await page.waitForLoadState('networkidle');
+	await opensSheet?.(page);
 	const viewport = page.viewportSize() ?? { width: 0, height: 0 };
 	if (!isMobile) {
 		await expectLaidOut(page, viewport.width, false);
@@ -100,10 +114,10 @@ function layoutTitle(name: string): string {
 	return `${name} lays out without overflow, clipped text, or small tap targets`;
 }
 
-for (const { name, path, signedInAs } of checkedPages) {
+for (const { name, signedInAs, ...checked } of checkedPages) {
 	if (signedInAs === undefined) {
 		test(layoutTitle(name), async ({ page, isMobile }) => {
-			await expectPageLaidOut(page, path, isMobile);
+			await expectPageLaidOut(page, checked, isMobile);
 		});
 		continue;
 	}
@@ -112,7 +126,7 @@ for (const { name, path, signedInAs } of checkedPages) {
 		test.use({ memberRole: signedInAs });
 		test(layoutTitle(name), async ({ page, isMobile, signIn }) => {
 			await signIn();
-			await expectPageLaidOut(page, path, isMobile);
+			await expectPageLaidOut(page, checked, isMobile);
 		});
 	});
 }

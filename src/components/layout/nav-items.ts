@@ -16,10 +16,9 @@ export type NavItem = {
 };
 
 // The site's sections, in the header's row and the phone menu. Signed out, Add recipe leads to
-// sign-in, which the proxy sends it to and which says why. Search is no section's: the header's field
-// holding the words marks it.
+// sign-in, which the proxy sends it to and which says why. Recipes holds every search too.
 export const navItems: readonly NavItem[] = [
-	{ href: recipeListPath, label: 'Browse', otherPaths: [recipePagesPath] },
+	{ href: recipeListPath, label: 'Recipes', otherPaths: [recipePagesPath] },
 	{ href: favoritesPath, label: 'Favorites' },
 	{ href: contributePath, label: 'Add recipe', showsDraftCount: true },
 ];

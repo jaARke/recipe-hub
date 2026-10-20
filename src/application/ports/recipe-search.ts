@@ -10,9 +10,9 @@ import type { Recipe } from '@/domain/recipe/recipe';
 export const recipeSearchSorts = ['relevance', ...recipeSorts] as const;
 export type RecipeSearchSort = (typeof recipeSearchSorts)[number];
 
-// Rolling windows back from now.
-export const recipeAddedWithin = ['week', 'month', 'year'] as const;
-export type RecipeAddedWithin = (typeof recipeAddedWithin)[number];
+// The total-time filter's choices, in minutes.
+export const recipeTotalTimeChoices = [15, 30, 60, 120] as const;
+export type RecipeTotalTimeChoice = (typeof recipeTotalTimeChoices)[number];
 
 export type RecipeTextQuery = {
 	// As typed, in web search syntax: "quoted phrases", -exclusions, and or.
@@ -33,12 +33,14 @@ export type RecipeSearchQuery = {
 	// Compared ignoring case.
 	source?: string;
 	contributorId?: MemberId;
-	maxTotalMinutes?: number;
-	addedWithin?: RecipeAddedWithin;
+	maxTotalMinutes?: RecipeTotalTimeChoice;
 	sort: RecipeSearchSort;
 	limit: number;
 	offset: number;
 };
+
+// What counting takes: a search's words and filters, without its order or page.
+export type RecipeCountQuery = Omit<RecipeSearchQuery, 'sort' | 'limit' | 'offset'>;
 
 // Text split into runs, so matches render as marks and recipe text is never treated as markup.
 export type HighlightSegment = {
@@ -66,22 +68,30 @@ export type RecipeContributorCount = {
 	count: number;
 };
 
+// Each count is what choosing that option would show, so a group counts with every filter but its
+// own, within the same match as the results.
 export type RecipeSearchFacets = {
-	// Counted with every filter but the chapter, so each count is what choosing that chapter would give.
+	// Counted with every filter but the chapter, as is each chapter: what All Recipes would show.
+	allRecipes: number;
 	chapters: Record<Chapter, number>;
-	// Counted with every filter but the holidays, so each count is what that holiday alone would give.
+	// A recipe for any one of them, so each count is what that holiday gives with no other chosen.
 	holidays: Record<Holiday, number>;
 	// Counted within the results, since a recipe must suit every diet chosen, so each count is what
 	// adding that diet would leave.
 	diets: Record<Diet, number>;
-	// Counted with every filter but the source, so the count shows what choosing it would give.
+	// Keyed by each choice's minutes.
+	totalTimes: Record<RecipeTotalTimeChoice, number>;
+	// Every source among the recipes the words match, even at zero, in order of the source ignoring
+	// case, so an option keeps its place as the counts change.
 	sources: RecipeFacetCount[];
-	// Counted like sources. The chosen member is listed even at zero, because a URL holds only
-	// the id and the filters need the name; a chosen id missing here names no member.
+	// Every member with a recipe the words match, even at zero, in order of name as sources are. The
+	// chosen member is listed even with none, because a URL holds only the id and the filters need the
+	// name; a chosen id missing here names no member.
 	contributors: RecipeContributorCount[];
 };
 
-// Close matches compare words by similarity and are returned only when nothing matches exactly.
+// Chosen from the words alone, before the filters: close matches, which compare words by
+// similarity, stand in only when no recipe matches the words exactly.
 export type RecipeMatch = 'exact' | 'close';
 
 export type RecipeSearchResults = {
@@ -91,6 +101,14 @@ export type RecipeSearchResults = {
 	facets: RecipeSearchFacets;
 };
 
+export type RecipeCounts = {
+	total: number;
+	facets: RecipeSearchFacets;
+};
+
 export interface RecipeSearch {
 	search(query: RecipeSearchQuery): Promise<RecipeSearchResults>;
+	// The total and facets that search gives for the same words and filters, finding and
+	// highlighting no recipe.
+	count(query: RecipeCountQuery): Promise<RecipeCounts>;
 }

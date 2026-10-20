@@ -134,6 +134,34 @@
       "when": 1792469143497,
       "tag": "0018_recreate-recipe-search-vector-index",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792477891462,
+      "tag": "0019_drop-recipe-tag-keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792477896739,
+      "tag": "0020_drop-recipe-tags",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792477906457,
+      "tag": "0021_drop-search-keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1792477917352,
+      "tag": "0022_drop-import-drafts",
+      "breakpoints": true
     }
   ]
 }

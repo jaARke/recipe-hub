@@ -1,13 +1,19 @@
 import { imageRouteSrc } from '@/lib/image-paths';
 import { hrefWithParams } from '@/lib/url-query';
 
+// The Recipes page, where every recipe is browsed and searched.
 export const recipeListPath = '/';
 
-export const recipeSearchPath = '/search';
+// The Recipes page's heading for every recipe, in title case as every h1 is, and the link back to it.
+export const allRecipesTitle = 'All Recipes';
+export const backToAllRecipesLabel = `Back to ${allRecipesTitle}`;
 
 export const contributePath = '/contribute';
 
 export const favoritesPath = '/favorites';
+
+// What the Recipes page at a query would count, which its filter sheet reads before applying.
+export const recipeCountsPath = '/api/recipe-counts';
 
 // Each recipe's page sits below it.
 export const recipePagesPath = '/recipes';

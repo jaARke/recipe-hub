@@ -14,7 +14,9 @@ import { memberIdSchema, memberSchema } from '@/domain/member/member';
 import { recipeSchema, type Recipe, type RecipeContentInput } from '@/domain/recipe/recipe';
 import {
 	sampleBrownButterChocolateChipCookies,
+	sampleCremeBrulee,
 	sampleOatmealRaisinCookies,
+	sampleVanillaRicePudding,
 } from '@/domain/recipe/samples/baking-and-desserts';
 import {
 	sampleButtermilkBiscuits,
@@ -110,8 +112,10 @@ export const sampleRecipeDetail = toPublicRecipeDto(
 );
 
 // A search for "butter" among vegetarian recipes added by the sample contributor, counted over its
-// four results. Contributors are counted without that filter, so another member can be chosen.
+// four results. Sources and members are every one among the recipes "butter" matches, some at zero,
+// and members are counted without their filter, so another member can be chosen.
 export const sampleSearchFacets: RecipeSearchFacets = {
+	allRecipes: 4,
 	chapters: {
 		'breakfast-brunch': 0,
 		'appetizers-beverages': 0,
@@ -133,12 +137,19 @@ export const sampleSearchFacets: RecipeSearchFacets = {
 		christmas: 1,
 	},
 	diets: { vegetarian: 4, vegan: 0, 'gluten-free': 0, 'dairy-free': 0 },
+	totalTimes: { 15: 0, 30: 1, 60: 3, 120: 4 },
 	sources: [
 		{ label: 'Aunt June', count: 1 },
 		{ label: 'Cousin Maya', count: 1 },
+		{ label: 'Grandma Rose', count: 0 },
+		{ label: 'Grandpa Lou', count: 0 },
 		{ label: 'Great-aunt Edie', count: 1 },
+		{ label: 'Riverbend Community Cookbook', count: 0 },
+		{ label: 'Tante Hélène', count: 0 },
+		{ label: 'Uncle Ray', count: 0 },
 	],
 	contributors: [
+		{ ...sampleJordan, count: 0 },
 		{ memberId: sampleContributor.id, displayName: sampleContributor.displayName, count: 4 },
 		{ ...sampleSam, count: 2 },
 	],
@@ -146,6 +157,7 @@ export const sampleSearchFacets: RecipeSearchFacets = {
 
 // Every sample recipe, filed as the samples are.
 export const sampleCatalogFacets: RecipeSearchFacets = {
+	allRecipes: sampleRecipeContents.length,
 	chapters: {
 		'breakfast-brunch': 2,
 		'appetizers-beverages': 1,
@@ -167,24 +179,25 @@ export const sampleCatalogFacets: RecipeSearchFacets = {
 		christmas: 2,
 	},
 	diets: { vegetarian: 21, vegan: 3, 'gluten-free': 6, 'dairy-free': 6 },
+	totalTimes: { 15: 2, 30: 5, 60: 17, 120: 24 },
 	sources: [
 		{ label: 'Aunt June', count: 4 },
 		{ label: 'Cousin Maya', count: 3 },
+		{ label: 'Grandma Rose', count: 2 },
 		{ label: 'Grandpa Lou', count: 3 },
+		{ label: 'Great-aunt Edie', count: 2 },
 		{ label: 'Riverbend Community Cookbook', count: 3 },
 		{ label: 'Tante Hélène', count: 3 },
-		{ label: 'Grandma Rose', count: 2 },
-		{ label: 'Great-aunt Edie', count: 2 },
 		{ label: 'Uncle Ray', count: 1 },
 	],
 	contributors: [
+		{ ...sampleJordan, count: 4 },
 		{ memberId: sampleContributor.id, displayName: sampleContributor.displayName, count: 18 },
 		{ ...sampleSam, count: 8 },
-		{ ...sampleJordan, count: 4 },
 	],
 };
 
-// Browse's first cards, newest first, counted over every sample recipe.
+// All Recipes' first cards, newest first, counted over every sample recipe.
 export const sampleBrowsePage: RecipeSearchPage = {
 	results: sampleRecipeContents
 		.slice(0, sampleGridCount)
@@ -227,6 +240,73 @@ export const sampleSearchPage: RecipeSearchPage = {
 	total: 4,
 	match: 'exact',
 	facets: sampleSearchFacets,
+};
+
+// Desserts filtered by gluten-free, counted by hand: a salad, a slaw, two main dishes, and two
+// desserts are gluten-free, and the two desserts are vegetarian, Tante Hélène's crème brûlée and the
+// rice pudding.
+export const sampleGlutenFreeDessertsPage: RecipeSearchPage = {
+	results: [sampleCremeBrulee, sampleVanillaRicePudding].map((content) =>
+		toRecipeSearchResultDto({ recipe: sampleRecipe(content), title: highlighted(content.title) })
+	),
+	total: 2,
+	match: 'exact',
+	facets: {
+		allRecipes: 6,
+		chapters: {
+			'breakfast-brunch': 0,
+			'appetizers-beverages': 0,
+			'soups-salads': 1,
+			'vegetables-sides': 1,
+			'main-dishes': 2,
+			'breads-rolls': 0,
+			desserts: 2,
+			'cookies-candy': 0,
+			'this-and-that': 0,
+		},
+		holidays: {
+			'new-years-day': 0,
+			'st-patricks-day': 0,
+			easter: 0,
+			'fourth-of-july': 0,
+			halloween: 0,
+			thanksgiving: 0,
+			christmas: 0,
+		},
+		diets: { vegetarian: 2, vegan: 0, 'gluten-free': 2, 'dairy-free': 0 },
+		totalTimes: { 15: 0, 30: 0, 60: 1, 120: 1 },
+		sources: sampleCatalogFacets.sources.map(({ label }) => ({
+			label,
+			count: label === 'Tante Hélène' ? 1 : 0,
+		})),
+		contributors: [
+			{ ...sampleJordan, count: 0 },
+			{ memberId: sampleContributor.id, displayName: sampleContributor.displayName, count: 2 },
+			{ ...sampleSam, count: 0 },
+		],
+	},
+};
+
+// The search for "butter" kept to Cookies & Candy: the three cookies among its four results. Each
+// group but the chapters counts within the chapter.
+export const sampleChapterSearchPage: RecipeSearchPage = {
+	results: sampleSearchPage.results.filter(({ recipe }) => recipe.chapter === 'cookies-candy'),
+	total: 3,
+	match: 'exact',
+	facets: {
+		...sampleSearchFacets,
+		diets: { vegetarian: 3, vegan: 0, 'gluten-free': 0, 'dairy-free': 0 },
+		totalTimes: { 15: 0, 30: 1, 60: 2, 120: 3 },
+		sources: sampleSearchFacets.sources.map(({ label }) => ({
+			label,
+			count: label === 'Cousin Maya' || label === 'Great-aunt Edie' ? 1 : 0,
+		})),
+		contributors: [
+			{ ...sampleJordan, count: 0 },
+			{ memberId: sampleContributor.id, displayName: sampleContributor.displayName, count: 3 },
+			{ ...sampleSam, count: 1 },
+		],
+	},
 };
 
 // When the drafts list renders, which each sample draft's age counts back from.

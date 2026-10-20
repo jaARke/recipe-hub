@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Mascot } from '@/components/brand/mascot';
 import { PageContainer } from '@/components/layout/page-container';
-import { recipeListPath } from '@/components/recipe/recipe-paths';
+import { backToAllRecipesLabel, recipeListPath } from '@/components/recipe/recipe-paths';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
 	Empty,
@@ -34,7 +34,7 @@ function PageErrorState({ onRetry }: { onRetry: () => void }) {
 						<Button onClick={() => onRetry()}>Try again</Button>
 						{/* Base UI's Button must not render links, so the link takes the button's look directly. */}
 						<Link href={recipeListPath} className={buttonVariants({ variant: 'outline' })}>
-							Back to recipes
+							{backToAllRecipesLabel}
 						</Link>
 					</div>
 				</EmptyContent>

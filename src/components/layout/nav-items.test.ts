@@ -15,41 +15,29 @@ function navItem(label: string): NavItem {
 }
 
 describe('navItemCurrent', () => {
-	it('marks Browse as the page on the recipe list', () => {
-		expect(navItemCurrent(navItem('Browse'), '/')).toBe('page');
+	it('marks Recipes as the page on the Recipes page', () => {
+		expect(navItemCurrent(navItem('Recipes'), '/')).toBe('page');
 	});
 
-	it('marks Browse as the section on a recipe and its edit page', () => {
-		const browse = navItem('Browse');
+	it('marks Recipes as the section on a recipe and its edit page', () => {
+		const recipes = navItem('Recipes');
 
-		expect(navItemCurrent(browse, '/recipes/sunday-pot-roast')).toBe('true');
-		expect(navItemCurrent(browse, '/recipes/sunday-pot-roast/edit')).toBe('true');
+		expect(navItemCurrent(recipes, '/recipes/sunday-pot-roast')).toBe('true');
+		expect(navItemCurrent(recipes, '/recipes/sunday-pot-roast/edit')).toBe('true');
 	});
 
-	it('marks no section on search, where the field holding the words marks it', () => {
-		for (const item of [...navItems, adminNavItem]) {
-			expect(navItemCurrent(item, '/search')).toBeUndefined();
-		}
-	});
-
-	it('marks Favorites, not Browse, as the section on a recipe opened from Favorites', () => {
+	it('marks Favorites, not Recipes, as the section on a recipe opened from Favorites', () => {
 		expect(navItemCurrent(navItem('Favorites'), '/recipes/sunday-pot-roast', '/favorites')).toBe(
 			'true'
 		);
 		expect(
-			navItemCurrent(navItem('Browse'), '/recipes/sunday-pot-roast', '/favorites')
+			navItemCurrent(navItem('Recipes'), '/recipes/sunday-pot-roast', '/favorites')
 		).toBeUndefined();
 	});
 
-	it('marks Browse as the section on a recipe opened from Browse', () => {
-		expect(navItemCurrent(navItem('Browse'), '/recipes/sunday-pot-roast', '/')).toBe('true');
+	it('marks Recipes as the section on a recipe opened from the Recipes page', () => {
+		expect(navItemCurrent(navItem('Recipes'), '/recipes/sunday-pot-roast', '/')).toBe('true');
 		expect(navItemCurrent(navItem('Favorites'), '/recipes/sunday-pot-roast', '/')).toBeUndefined();
-	});
-
-	it('marks no section on a recipe opened from search', () => {
-		for (const item of [...navItems, adminNavItem]) {
-			expect(navItemCurrent(item, '/recipes/sunday-pot-roast', '/search')).toBeUndefined();
-		}
 	});
 
 	it('marks Favorites as the page on /favorites', () => {
@@ -68,23 +56,22 @@ describe('navItemCurrent', () => {
 	});
 
 	it('leaves a section unmarked on pages outside it', () => {
-		expect(navItemCurrent(navItem('Browse'), '/account')).toBeUndefined();
-		expect(navItemCurrent(navItem('Browse'), '/contribute')).toBeUndefined();
-		expect(navItemCurrent(navItem('Browse'), '/favorites')).toBeUndefined();
+		expect(navItemCurrent(navItem('Recipes'), '/account')).toBeUndefined();
+		expect(navItemCurrent(navItem('Recipes'), '/contribute')).toBeUndefined();
+		expect(navItemCurrent(navItem('Recipes'), '/favorites')).toBeUndefined();
 		expect(navItemCurrent(navItem('Favorites'), '/recipes/sunday-pot-roast')).toBeUndefined();
 		expect(navItemCurrent(navItem('Add recipe'), '/')).toBeUndefined();
-		expect(navItemCurrent(adminNavItem, '/search')).toBeUndefined();
 	});
 
 	it('matches a section by whole path segments, not by a shared prefix', () => {
-		expect(navItemCurrent(navItem('Browse'), '/searches')).toBeUndefined();
-		expect(navItemCurrent(navItem('Browse'), '/recipes-old')).toBeUndefined();
+		expect(navItemCurrent(navItem('Recipes'), '/searches')).toBeUndefined();
+		expect(navItemCurrent(navItem('Recipes'), '/recipes-old')).toBeUndefined();
 		expect(navItemCurrent(navItem('Add recipe'), '/contributors')).toBeUndefined();
 		expect(navItemCurrent(navItem('Favorites'), '/favorites-old')).toBeUndefined();
 		expect(navItemCurrent(adminNavItem, '/administrators')).toBeUndefined();
 	});
 
 	it('marks nothing without a pathname', () => {
-		expect(navItemCurrent(navItem('Browse'), undefined)).toBeUndefined();
+		expect(navItemCurrent(navItem('Recipes'), undefined)).toBeUndefined();
 	});
 });

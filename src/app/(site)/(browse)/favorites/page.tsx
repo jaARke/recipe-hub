@@ -65,7 +65,8 @@ async function FavoriteList({ searchParams }: Pick<PageProps<'/favorites'>, 'sea
 		<>
 			<RecipeGrid
 				layout="fullWidth"
-				recipes={recipes}
+				entries={recipes.map((recipe) => ({ recipe }))}
+				namesChapter
 				headingTag="h2"
 				backLabel="Back to Favorites"
 			/>

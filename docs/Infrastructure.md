@@ -12,7 +12,7 @@ Barb’s Table runs on Vercel at barbtable.com, with its database on Neon and it
 
 The project `recipe-hub`, in the team `jrichard-personal` on the Pro plan, deploys from GitHub, with its database steps ahead of each build ([Operations](Operations.md#builds)). barbtable.com is the production domain, and www.barbtable.com and the project's vercel.app alias redirect to it. Every other deployment URL needs a Vercel login (Vercel Authentication). Skew Protection keeps a replaced deployment's Server Actions answering for a while after a new deployment goes live. Public recipe reads are kept in Vercel's Runtime Cache, which every function instance shares and which is billed per read and write; a new deployment starts with it empty.
 
-The firewall rate-limits searches and posts to the access-request form per IP, and logs, without blocking, requests to the image route that carry the image optimizer's query parameter, since those skip the CDN cache. The AI Bots managed ruleset stays on Allow: Deny would also block search crawlers and the fetchers people's assistants use, and robots.txt already asks training crawlers out.
+The firewall rate-limits, per IP, searches, the filter counts the Recipes page fetches as its filters change, and posts to the access-request form. It logs, without blocking, requests to the image route that carry the image optimizer's query parameter, since those skip the CDN cache. The AI Bots managed ruleset stays on Allow: Deny would also block search crawlers and the fetchers people's assistants use, and robots.txt already asks training crawlers out.
 
 ## Neon
 

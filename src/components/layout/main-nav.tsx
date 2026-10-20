@@ -18,6 +18,8 @@ type MainNavProps = {
 	draftCount: Promise<number>;
 };
 
+type SessionPartProps = MainNavProps & { children: React.ReactNode };
+
 // Where the header is, as navItemCurrent reads it.
 type MainNavPlace = {
 	pathname?: string;
@@ -51,8 +53,24 @@ function AdminNavItem({ member, ...place }: Pick<MainNavProps, 'member'> & MainN
 	) : null;
 }
 
-// Without a pathname, as while MainNav waits for one, no link is marked as current. Admin streams in
-// with the session, and Add recipe's draft count with its own read, into links that never wait.
+function AfterSessionReads({ member, draftCount, children }: SessionPartProps) {
+	React.use(member);
+	React.use(draftCount);
+	return children;
+}
+
+// What the session adds to the row, Admin and Add recipe's draft count, behind a boundary of its own
+// so the links never wait. Each part waits for both reads, so they arrive at once and the row, with
+// the search field beside it, changes once rather than again as the later read lands.
+function SessionPart(props: SessionPartProps) {
+	return (
+		<React.Suspense>
+			<AfterSessionReads {...props} />
+		</React.Suspense>
+	);
+}
+
+// Without a pathname, as while MainNav waits for one, no link is marked as current.
 function MainNavLinks({ member, draftCount, ...place }: MainNavProps & MainNavPlace) {
 	return (
 		<nav aria-label="Main">
@@ -60,13 +78,15 @@ function MainNavLinks({ member, draftCount, ...place }: MainNavProps & MainNavPl
 				{navItems.map((item) => (
 					<li key={item.href}>
 						<MainNavLink item={item} {...place}>
-							<NavItemCount item={item} draftCount={draftCount} />
+							<SessionPart member={member} draftCount={draftCount}>
+								<NavItemCount item={item} draftCount={draftCount} />
+							</SessionPart>
 						</MainNavLink>
 					</li>
 				))}
-				<React.Suspense>
+				<SessionPart member={member} draftCount={draftCount}>
 					<AdminNavItem member={member} {...place} />
-				</React.Suspense>
+				</SessionPart>
 			</ul>
 		</nav>
 	);

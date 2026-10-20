@@ -1,4 +1,5 @@
 import {
+	BookOpenIcon,
 	ChevronDownIcon,
 	CopyIcon,
 	HeartIcon,
@@ -46,8 +47,20 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import {
+	Sheet,
+	SheetClose,
+	SheetContent,
+	SheetDescription,
+	SheetFooter,
+	SheetHeader,
+	SheetTitle,
+	SheetTrigger,
+} from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { chapterLabels, chapters } from '@/domain/recipe/chapter';
 
 const tooltipSides = ['top', 'right', 'bottom', 'left'] as const;
 
@@ -201,6 +214,41 @@ function DialogSpecimen() {
 	);
 }
 
+function SheetSpecimen() {
+	return (
+		<Specimen label='side="bottom": on a short screen the body scrolls between the header and footer; Escape or the close button dismisses, and focus returns to the trigger'>
+			<Sheet>
+				<SheetTrigger render={<Button variant="outline" />}>
+					<BookOpenIcon data-icon="inline-start" aria-hidden="true" />
+					Change chapter
+				</SheetTrigger>
+				<SheetContent side="bottom">
+					<SheetHeader>
+						<SheetTitle>Chapter</SheetTitle>
+						<SheetDescription>Where Buttermilk biscuits goes in the cookbook.</SheetDescription>
+					</SheetHeader>
+					<div className="overflow-y-auto p-4">
+						<RadioGroup defaultValue="breads-rolls" aria-label="Chapter">
+							{chapters.map((chapter) => (
+								<Field key={chapter} orientation="horizontal">
+									<RadioGroupItem id={`sheet-chapter-${chapter}`} value={chapter} />
+									<FieldLabel htmlFor={`sheet-chapter-${chapter}`}>
+										{chapterLabels[chapter]}
+									</FieldLabel>
+								</Field>
+							))}
+						</RadioGroup>
+					</div>
+					<SheetFooter>
+						<SheetClose render={<Button variant="ghost" size="lg" />}>Cancel</SheetClose>
+						<SheetClose render={<Button size="lg" />}>Save chapter</SheetClose>
+					</SheetFooter>
+				</SheetContent>
+			</Sheet>
+		</Specimen>
+	);
+}
+
 function DropdownMenuSpecimen() {
 	return (
 		<Specimen label="Groups, shortcuts, a submenu, checkbox and radio items, disabled and destructive items">
@@ -317,6 +365,7 @@ export {
 	CollapsibleSpecimen,
 	DialogSpecimen,
 	DropdownMenuSpecimen,
+	SheetSpecimen,
 	TabsSpecimen,
 	TooltipSpecimen,
 };

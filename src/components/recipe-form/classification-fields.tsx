@@ -2,6 +2,7 @@
 
 import { cn } from 'cn';
 import type * as React from 'react';
+import { choiceListClassName, choiceRowClassName } from '@/components/forms/choice-list';
 import { describedBy } from '@/components/forms/described-by';
 import {
 	FieldNote,
@@ -36,12 +37,6 @@ const classificationFieldLabels = {
 	holidays: 'Holidays',
 	diets: 'Diet',
 } as const satisfies Record<RecipeFormChoiceField, string>;
-
-// Every choice's row, radio or checkbox: a comfortable tap without spreading the lists out. A
-// checkbox group's own gap is cleared, so both kinds of list keep one rhythm.
-const choiceRowClassName = 'min-h-9 items-center';
-const choiceListClassName =
-	'grid gap-x-6 gap-y-0 data-[slot=checkbox-group]:gap-x-6 data-[slot=checkbox-group]:gap-y-0';
 
 const veganDescription = 'Vegan recipes are vegetarian and dairy-free too.';
 

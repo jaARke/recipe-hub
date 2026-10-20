@@ -81,8 +81,9 @@ function DialogContent({
 						render={
 							<Button
 								variant="ghost"
-								// 44 px under a finger, like the site's other touch targets.
-								className="absolute top-4 right-4 pointer-coarse:size-11"
+								// 44 px under a finger, like the site's other touch targets, grown around the icon so it
+								// stays where a mouse's 32 px button puts it.
+								className="absolute top-4 right-4 pointer-coarse:top-2.5 pointer-coarse:right-2.5 pointer-coarse:size-11"
 								size="icon-sm"
 							/>
 						}

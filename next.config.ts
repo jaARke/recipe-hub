@@ -62,6 +62,11 @@ function nextConfig(phase: string): NextConfig {
 				},
 			},
 		},
+		// The Recipes page (recipeListPath) holds every search, so a link to /search lands there with
+		// its query, which a redirect carries along.
+		async redirects() {
+			return [{ source: '/search', destination: '/', permanent: true }];
+		},
 		async headers() {
 			return [
 				{

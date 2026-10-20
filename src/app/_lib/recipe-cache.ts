@@ -1,9 +1,14 @@
 import 'server-only';
 import { cacheLife, cacheTag } from 'next/cache';
-import { searchRecipes } from '@/app/_lib/search-recipes';
+import { countRecipes, searchRecipes } from '@/app/_lib/search-recipes';
 import type { RecipeSort } from '@/application/ports/recipe-repository';
 import type { PublicRecipeDto, RecipeSummaryPage } from '@/application/recipes/recipe-dtos';
-import type { RecipeSearchInput, RecipeSearchPage } from '@/application/search/recipe-search-dtos';
+import type {
+	RecipeCountsDto,
+	RecipeCountsInput,
+	RecipeSearchInput,
+	RecipeSearchPage,
+} from '@/application/search/recipe-search-dtos';
 import { defaultListSort } from '@/components/recipe/recipe-list-params';
 import { getRecipeService } from '@/composition/services';
 import type { MemberId } from '@/domain/member/member';
@@ -23,9 +28,6 @@ export const recipeCacheTags = {
 	// Every list whose filters name members, one tag however many there are, so a rename reaches them.
 	memberNames: 'member-names',
 };
-
-// A date filter's window moves with the clock, so its lists last an hour at most, even unread.
-const dateFilteredListLife = { revalidate: 60 * 60, expire: 60 * 60 };
 
 // Tagged with the slug asked for, so a miss clears once a recipe takes it, and with the current
 // slug. Writes invalidate the tags; revalidating a day after caching catches edits made outside
@@ -56,19 +58,38 @@ export async function getCachedRecipePage(
 	});
 }
 
-// Browse's lists, read through search for the counts its filters show: each filter set, order, and
-// page is its own entry. Null for input search refuses.
-export async function getCachedRecipeSearchPage(
+// Each filter set, order, and page is its own entry.
+async function getCachedRecipeSearchPage(
 	input: RecipeSearchInput
 ): Promise<RecipeSearchPage | null> {
 	'use cache: remote';
 	cacheTag(recipeCacheTags.list, recipeCacheTags.memberNames);
-	if (input.addedWithin === undefined) {
-		cacheLife('days');
-	} else {
-		cacheLife(dateFilteredListLife);
-	}
+	cacheLife('days');
 	return searchRecipes(input);
+}
+
+// The Recipes page's list, read through search for the counts its filters show. Cached without
+// words; with them it is read afresh, since every query makes its own URL and an entry would rarely
+// be read again. Null for input search refuses.
+export async function readRecipeSearchPage(
+	input: RecipeSearchInput
+): Promise<RecipeSearchPage | null> {
+	return input.text === undefined ? getCachedRecipeSearchPage(input) : searchRecipes(input);
+}
+
+// Each filter set is its own entry, whatever the order or page.
+async function getCachedRecipeCounts(input: RecipeCountsInput): Promise<RecipeCountsDto | null> {
+	'use cache: remote';
+	cacheTag(recipeCacheTags.list, recipeCacheTags.memberNames);
+	cacheLife('days');
+	return countRecipes(input);
+}
+
+// The counts the Recipes page would show for a filter set before it is applied, cached or read
+// afresh as the page's list is, so a count equals the total the page then shows. Null for input
+// search refuses.
+export async function readRecipeCounts(input: RecipeCountsInput): Promise<RecipeCountsDto | null> {
+	return input.text === undefined ? getCachedRecipeCounts(input) : countRecipes(input);
 }
 
 // The recipes a recipe's pages prerender for, its page and its cooking view: the list's first page.
