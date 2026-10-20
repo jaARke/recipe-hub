@@ -10,6 +10,7 @@ import {
 	RecipeSearch,
 	RecipeSearchSkeleton,
 	RecipesPageGrid,
+	recipesPageIdPrefix,
 	RecipesViewHeader,
 	RecipesViewHeaderSkeleton,
 } from '@/components/search/recipe-search';
@@ -21,8 +22,6 @@ import {
 	type RecipeSearchState,
 } from '@/components/search/search-params';
 import { settings } from '@/lib/settings';
-
-const recipesIdPrefix = 'recipes';
 
 type RecipesView = {
 	state: RecipeSearchState;
@@ -97,7 +96,7 @@ async function ViewHeader({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>
 
 	return (
 		<RecipesViewHeader
-			idPrefix={recipesIdPrefix}
+			idPrefix={recipesPageIdPrefix}
 			state={state}
 			chapterRows={readRecipesView(searchParams).then((view) => view?.chapterRows ?? [])}
 		/>
@@ -112,7 +111,7 @@ async function Results({ searchParams }: Pick<PageProps<'/'>, 'searchParams'>) {
 		notFound();
 	}
 
-	return <RecipeSearch idPrefix={recipesIdPrefix} {...view} />;
+	return <RecipeSearch idPrefix={recipesPageIdPrefix} {...view} />;
 }
 
 // Everything that reads the URL waits in a Suspense boundary, so the page's shell, which a link

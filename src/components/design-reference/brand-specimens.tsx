@@ -15,7 +15,7 @@ const mascotSizeUses: Record<MascotSize, string> = {
 const mascotPoseUses: Record<MascotPose, string> = {
 	grin: 'the lockups, the icons, the share cards, and the cooking view’s finish',
 	worried: 'the not-found and error pages',
-	sleeping: 'no recipes yet, no favorites yet, and no search results',
+	sleeping: 'no recipes yet, in the cookbook or a chapter; no matches; and no favorites yet',
 };
 
 const wordmarkHeights = ['h-5', 'h-8', 'h-12'] as const;

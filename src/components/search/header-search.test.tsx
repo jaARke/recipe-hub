@@ -16,16 +16,22 @@ vi.mock('next/navigation', async (importOriginal) => ({
 // Tailwind's lg breakpoint, from which the header's row holds the field.
 const lgViewport = { width: 1024, height: 768 };
 
+// The Recipes page's heading, which the search's focus moves to.
+const resultsHeadingId = 'recipes-heading';
+
 type SearchedPageProps = {
 	// Resolves as the navigation arrives with the page's loading state.
 	arrival: Promise<void>;
 	resultsShown: boolean;
+	// Whether the page the search leads to has the Recipes page's heading, which the not-found page,
+	// shown for words search refuses, lacks.
+	hasHeading: boolean;
 };
 
 // The page below the header: the one the search is typed on until a push navigates, in its
 // transition, to the one it leads to, which arrives with the Recipes page's loading state and then
 // shows its results.
-function SearchedPage({ arrival, resultsShown }: SearchedPageProps) {
+function SearchedPage({ arrival, resultsShown, hasHeading }: SearchedPageProps) {
 	const [searched, setSearched] = React.useState(false);
 	React.useEffect(() => {
 		router.push.mockImplementation(() => setSearched(true));
@@ -34,18 +40,36 @@ function SearchedPage({ arrival, resultsShown }: SearchedPageProps) {
 		return <p>Desserts</p>;
 	}
 	React.use(arrival);
-	return resultsShown ? <p>Results</p> : <RecipeResultsLoading />;
+	if (!resultsShown) {
+		return <RecipeResultsLoading />;
+	}
+	return hasHeading ? (
+		<>
+			<h1 id={resultsHeadingId} tabIndex={-1}>
+				All Recipes
+			</h1>
+			<p>Results</p>
+		</>
+	) : (
+		<p>Results</p>
+	);
 }
 
 // The header's search above the page; arrive brings the navigation in, and showResults its results.
-// Strict Mode runs effects twice, as the dev server does.
-async function renderHeaderSearch() {
+// A button beside them stands for the rest of the page, which can take focus as they load. Strict
+// Mode runs effects twice, as the dev server does.
+async function renderHeaderSearch({ hasHeading = true } = {}) {
 	const arrival = Promise.withResolvers<void>();
 	const header = (resultsShown: boolean) => (
 		<React.StrictMode>
-			<HeaderSearch idPrefix="header-search" queryName="q" />
+			<HeaderSearch idPrefix="header-search" queryName="q" resultsHeadingId={resultsHeadingId} />
+			<button type="button">Elsewhere</button>
 			<React.Suspense>
-				<SearchedPage arrival={arrival.promise} resultsShown={resultsShown} />
+				<SearchedPage
+					arrival={arrival.promise}
+					resultsShown={resultsShown}
+					hasHeading={hasHeading}
+				/>
 			</React.Suspense>
 		</React.StrictMode>
 	);
@@ -67,6 +91,10 @@ function searchIcon({ includeHidden = false } = {}) {
 
 function cancelButton() {
 	return page.getByRole('button', { name: 'Cancel' });
+}
+
+function resultsHeading() {
+	return page.getByRole('heading', { name: 'All Recipes' });
 }
 
 // Vitest's roles leave out the search element, so its landmark is found by its tag.
@@ -113,7 +141,7 @@ describe('HeaderSearch', () => {
 		await expect.element(searchField()).toHaveValue('brown butter');
 	});
 
-	it('empties and closes once its results show, giving its focus to the search icon', async () => {
+	it('empties and closes once its results show, giving its focus to the page’s heading', async () => {
 		const { arrive, showResults } = await renderHeaderSearch();
 		await searchIcon().click();
 		await searchField().fill('lemon');
@@ -123,13 +151,13 @@ describe('HeaderSearch', () => {
 
 		await showResults();
 
-		await expect.element(page.getByText('Results')).toBeVisible();
-		await expect.element(searchIcon()).toHaveFocus();
+		await expect.element(resultsHeading()).toHaveFocus();
 		await expect.element(searchField({ includeHidden: true })).not.toBeVisible();
 		await expect.element(searchField({ includeHidden: true })).toHaveValue('');
+		await expect.element(searchIcon()).toBeVisible();
 	});
 
-	it('gives the search icon the focus Cancel held as its results show', async () => {
+	it('gives the page’s heading the focus Cancel held as its results show', async () => {
 		const { arrive, showResults } = await renderHeaderSearch();
 		await searchIcon().click();
 		await searchField().fill('lemon');
@@ -141,8 +169,37 @@ describe('HeaderSearch', () => {
 
 		await showResults();
 
+		await expect.element(resultsHeading()).toHaveFocus();
+	});
+
+	it('gives its focus to the search icon on a page with no Recipes heading', async () => {
+		const { arrive, showResults } = await renderHeaderSearch({ hasHeading: false });
+		await searchIcon().click();
+		await searchField().fill('lemon');
+		await userEvent.keyboard('{Enter}');
+		arrive();
+		await expectSearching('lemon');
+
+		await showResults();
+
 		await expect.element(page.getByText('Results')).toBeVisible();
 		await expect.element(searchIcon()).toHaveFocus();
+	});
+
+	it('leaves focus where the reader moved it as the results loaded', async () => {
+		const { arrive, showResults } = await renderHeaderSearch();
+		await searchIcon().click();
+		await searchField().fill('lemon');
+		await userEvent.keyboard('{Enter}');
+		arrive();
+		await expectSearching('lemon');
+		page.getByRole('button', { name: 'Elsewhere' }).element().focus();
+
+		await showResults();
+
+		await expect.element(resultsHeading()).toBeVisible();
+		await expect.element(searchField({ includeHidden: true })).not.toBeVisible();
+		await expect.element(page.getByRole('button', { name: 'Elsewhere' })).toHaveFocus();
 	});
 
 	describe('from lg', () => {
@@ -169,7 +226,7 @@ describe('HeaderSearch', () => {
 			expect(router.push.mock.calls).toEqual([['/?q=sugar']]);
 		});
 
-		it('keeps its words, read-only with a spinner, as it navigates and its results load, then empties', async () => {
+		it('keeps its words, read-only with a spinner, as it navigates and its results load, then empties and gives its focus to the page’s heading', async () => {
 			const { arrive, showResults } = await renderHeaderSearch();
 			await searchField().fill('lemon');
 			await userEvent.keyboard('{Enter}');
@@ -186,7 +243,7 @@ describe('HeaderSearch', () => {
 			await expect.element(searchField()).toHaveValue('');
 			await expect.element(searchField()).not.toHaveAttribute('readonly');
 			expect(spinnerShown()).toBe(false);
-			await expect.element(searchField()).toHaveFocus();
+			await expect.element(resultsHeading()).toHaveFocus();
 		});
 	});
 });

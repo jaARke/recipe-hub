@@ -342,7 +342,7 @@ test('the page’s search looks within the chapter and the filters, its × clear
 	await expectListed(page, [gingerbread]);
 });
 
-test('the header’s search looks through every recipe, holding its words beside a spinner until the results show, then empties', async ({
+test('the header’s search looks through every recipe, holding its words beside a spinner until the results show, then empties and gives its focus to the heading', async ({
 	page,
 	isMobile,
 	member,
@@ -374,10 +374,11 @@ test('the header’s search looks through every recipe, holding its words beside
 			heldWords: true,
 			endedWith: { value: '', resultsShown: true, loading: false },
 		});
+	// Its focus moves to the heading of the view shown, not the chapter's, which Next keeps hidden.
+	await expect(viewHeading(page, 'All Recipes')).toBeFocused();
 	if (isMobile) {
-		// It closes, and its icon takes focus.
+		// It closes.
 		await expect(field).toBeHidden();
-		await expect(page.getByRole('button', { name: 'Search recipes' })).toBeFocused();
 	} else {
 		await expect(field).toHaveValue('');
 		await expect(field).toBeEditable();
