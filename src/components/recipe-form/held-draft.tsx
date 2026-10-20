@@ -33,7 +33,11 @@ const HeldDraftContext = React.createContext<HeldDraftContextValue | null>(null)
 // Shares the saved draft the page's recipe form holds with the rest of the page, such as the heading
 // that names it and the menu beside it that deletes it: the draft the page opened, then the one the
 // form last saved, until it is deleted. The form's controls go through it too, for the back link and
-// the menu. Keyed with the form, so another draft starts it afresh.
+// the menu. Keyed by the draft's id, so another draft starts it afresh.
+// The page renders again with the draft as the server now holds it, as a refresh does. A version newer
+// than any the page opened or its form saved was saved elsewhere, so the form starts again from it;
+// one the form made changes nothing, so what is being typed stays. Each save moves a draft's version
+// forward, so newer is a plain comparison.
 function HeldDraftProvider({
 	opened,
 	children,
@@ -41,7 +45,27 @@ function HeldDraftProvider({
 	opened: HeldDraft | undefined;
 	children: React.ReactNode;
 }) {
-	const [draft, hold] = React.useState(opened);
+	const [draft, setDraft] = React.useState(opened);
+	// The newest version the page has shown or its form saved.
+	const [newest, setNewest] = React.useState(opened?.savedAt.getTime());
+	// Counts the form's starts, so a version saved elsewhere starts the page's form again.
+	const [run, setRun] = React.useState(0);
+	const [rendered, setRendered] = React.useState(opened);
+	if (opened !== rendered) {
+		setRendered(opened);
+		const version = opened?.savedAt.getTime();
+		if (version !== undefined && (newest === undefined || version > newest)) {
+			setNewest(version);
+			setDraft(opened);
+			setRun((count) => count + 1);
+		}
+	}
+	const hold = React.useCallback((held: HeldDraft | undefined) => {
+		setDraft(held);
+		if (held !== undefined) {
+			setNewest((version) => Math.max(version ?? 0, held.savedAt.getTime()));
+		}
+	}, []);
 	// Read as events happen, so sharing them renders nothing again.
 	const shared = React.useRef<HeldDraftControls>(undefined);
 	const share = React.useCallback((controls: HeldDraftControls | undefined) => {
@@ -52,13 +76,17 @@ function HeldDraftProvider({
 		() => ({
 			draft,
 			hold,
-			release: (id: string) => hold((held) => (held?.id === id ? undefined : held)),
+			release: (id: string) => setDraft((held) => (held?.id === id ? undefined : held)),
 			share,
 			controls,
 		}),
-		[draft, share, controls]
+		[draft, hold, share, controls]
 	);
-	return <HeldDraftContext.Provider value={value}>{children}</HeldDraftContext.Provider>;
+	return (
+		<HeldDraftContext.Provider value={value}>
+			<React.Fragment key={run}>{children}</React.Fragment>
+		</HeldDraftContext.Provider>
+	);
 }
 
 // The saved draft the page's form holds, if any.

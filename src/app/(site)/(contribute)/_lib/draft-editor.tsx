@@ -62,8 +62,9 @@ export async function DraftEditor({ pageHref, draft }: DraftEditorProps) {
 
 	return (
 		<HeldDraftProvider
-			// A draft saved elsewhere since starts the form again, as Next keeps this page's state.
-			key={held === undefined ? 'new' : `${held.id}:${held.savedAt.toISOString()}`}
+			// Another draft starts the page afresh, as Next keeps this page's state; the provider starts the
+			// form again for a version saved elsewhere since.
+			key={held === undefined ? 'new' : held.id}
 			opened={
 				held === undefined
 					? undefined

@@ -2115,6 +2115,86 @@ describe('RecipeForm’s drafts', () => {
 		await expect.element(finishLater()).not.toBeInTheDocument();
 		await expect.element(page.getByText(/draft/i)).not.toBeInTheDocument();
 	});
+
+	describe('as a draft’s page renders again', () => {
+		// The draft's page as the server renders it at a version, with the draft's title as the form
+		// shows it then.
+		function DraftPage({
+			version,
+			title: savedTitle,
+			save,
+		}: {
+			version: Date;
+			title: string;
+			save: FormAction<SavedDraftResult>;
+		}) {
+			return (
+				<HeldDraftProvider opened={{ id: draftId, title: savedTitle, savedAt: version }}>
+					<DraftForm
+						initial={recipeFormValues({ ...lemonBars, title: savedTitle })}
+						drafts={draftsWith(save, { opened: { id: draftId, savedAt: version }, page: 'draft' })}
+					/>
+				</HeldDraftProvider>
+			);
+		}
+
+		// Saves the title, then types on without a pause, so what follows waits to be saved.
+		async function typeOnAfterASave(save: ReturnType<typeof saving>) {
+			await title().fill('Lemon squares');
+			await expect.element(status('Draft saved'), afterSaving).toBeInTheDocument();
+			expect(save).toHaveBeenCalledOnce();
+			title().element().setAttribute('data-kept', '');
+			await title().click();
+			await userEvent.keyboard('{End} with glaze');
+		}
+
+		it('keeps the form, its focus, and what is typed at a version its own save made', async () => {
+			const save = saving({ status: 'success', draftId, savedAt: laterSavedAt });
+			const screen = await render(<DraftPage version={savedAt} title="Lemon bars" save={save} />);
+			await typeOnAfterASave(save);
+
+			await screen.rerender(<DraftPage version={laterSavedAt} title="Lemon squares" save={save} />);
+
+			await expect.element(title()).toHaveValue('Lemon squares with glaze');
+			expect(title().element().hasAttribute('data-kept')).toBe(true);
+			await expect.element(title()).toHaveFocus();
+			await expect.poll(() => save, afterSaving).toHaveBeenCalledTimes(2);
+			expect(named(save, 1)).toEqual({ id: draftId, version: laterSavedAt.toISOString() });
+		});
+
+		it('keeps the form at a version older than its own last save', async () => {
+			const save = saving({ status: 'success', draftId, savedAt: laterSavedAt });
+			const screen = await render(<DraftPage version={savedAt} title="Lemon bars" save={save} />);
+			await typeOnAfterASave(save);
+
+			await screen.rerender(
+				<DraftPage version={new Date(savedAt.getTime() - 1)} title="Lemon bars" save={save} />
+			);
+
+			await expect.element(title()).toHaveValue('Lemon squares with glaze');
+			expect(title().element().hasAttribute('data-kept')).toBe(true);
+		});
+
+		it('starts the form again from a version saved elsewhere since', async () => {
+			const save = saving({ status: 'success', draftId, savedAt: laterSavedAt });
+			const screen = await render(<DraftPage version={savedAt} title="Lemon bars" save={save} />);
+			await typeOnAfterASave(save);
+			const elsewhere = new Date(laterSavedAt.getTime() + 60_000);
+
+			await screen.rerender(<DraftPage version={elsewhere} title="Lemon tart" save={save} />);
+
+			await expect.element(title()).toHaveValue('Lemon tart');
+			expect(title().element().hasAttribute('data-kept')).toBe(false);
+			await expect.element(status('Draft saved')).toBeInTheDocument();
+			await title().fill('Lemon tart with glaze');
+			// The form that went saves what waited, at its own version, which the server refuses.
+			const sentTitles = () =>
+				save.mock.calls.map((_call, index) => sentDraft(save, index).text.title);
+			await expect.poll(sentTitles, afterSaving).toContain('Lemon tart with glaze');
+			const restarted = sentTitles().indexOf('Lemon tart with glaze');
+			expect(named(save, restarted)).toEqual({ id: draftId, version: elsewhere.toISOString() });
+		});
+	});
 });
 
 describe('RecipeForm with its page’s menu', () => {
