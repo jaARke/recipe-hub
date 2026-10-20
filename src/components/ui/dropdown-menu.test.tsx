@@ -10,7 +10,7 @@ import {
 	DropdownMenuSubTrigger,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { displayAsPageShows } from '@/components/ui/testing/kept-page-popup';
+import { displayAsPageShows, expectPopupUnmounted } from '@/components/ui/testing/kept-page-popup';
 
 function popupParts(): Element[] {
 	return Array.from(document.querySelectorAll('[data-slot="dropdown-menu-content"]'));
@@ -31,7 +31,7 @@ describe('DropdownMenu', () => {
 		await keptPage.hide();
 
 		expect(await displayAsPageShows(popupParts(), keptPage.show)).toEqual(['none']);
-		await expect.poll(popupParts).toEqual([]);
+		await expectPopupUnmounted(popupParts);
 	});
 
 	it('still closes as its page hides after a submenu opened and closed', async () => {
@@ -59,6 +59,6 @@ describe('DropdownMenu', () => {
 		await keptPage.hide();
 
 		expect(await displayAsPageShows(popupParts(), keptPage.show)).toEqual(['none']);
-		await expect.poll(popupParts).toEqual([]);
+		await expectPopupUnmounted(popupParts);
 	});
 });

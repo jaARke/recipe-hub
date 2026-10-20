@@ -7,7 +7,7 @@ import {
 	AlertDialogTitle,
 	AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { displayAsPageShows } from '@/components/ui/testing/kept-page-popup';
+import { displayAsPageShows, expectPopupUnmounted } from '@/components/ui/testing/kept-page-popup';
 
 function popupParts(): Element[] {
 	return Array.from(
@@ -32,6 +32,6 @@ describe('AlertDialog', () => {
 		await keptPage.hide();
 
 		expect(await displayAsPageShows(popupParts(), keptPage.show)).toEqual(['none', 'none']);
-		await expect.poll(popupParts).toEqual([]);
+		await expectPopupUnmounted(popupParts);
 	});
 });
