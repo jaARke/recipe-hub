@@ -171,13 +171,16 @@ describe('RecipeListItem', () => {
 			document.documentElement.classList.remove('dark');
 		});
 		await renderItem();
-		const card = item().element().querySelector('[data-slot="card"]');
+		const card = item().element().querySelector<HTMLElement>('[data-slot="card"]');
 		if (card === null) {
 			throw new Error('The item has no card');
 		}
+		// The edge lands at once, since this checks where it lands, not how it moves: WebKit on CI can
+		// go a second without a frame, which left the poll reading a color halfway there.
+		card.style.transition = 'none';
 		const { boxShadow: edge } = getComputedStyle(card);
-		// A card inked in the text's color, as this browser writes the shadow, which differs between
-		// engines (WebKit on Linux writes the ring's color in rgb and the text's in oklch).
+		// A card inked in the text's color, read in this browser, so the check holds however it writes
+		// the shadow's colors.
 		const { container } = await render(<Card className="ring-foreground" />);
 		const inked = container.querySelector('[data-slot="card"]');
 		if (inked === null) {
