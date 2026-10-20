@@ -57,10 +57,13 @@ export type RecipeFormDrafts = {
 	page?: 'new' | 'draft';
 };
 
+// Leaving for the start page failed: as Finish later left, or once the page's menu deleted the draft.
+type LeaveFailure = { kind: 'leaveFailed' } | { kind: 'deletedLeaveFailed' };
+
 // What the form says of its draft: where saving stands; that the page stays because what it shows
 // isn't saved, and why; or that leaving for the start page failed.
 export type RecipeFormDraftStatus =
-	DraftSaveStatus | { kind: 'unsaved'; because: DraftSaveStatus } | { kind: 'leaveFailed' };
+	DraftSaveStatus | { kind: 'unsaved'; because: DraftSaveStatus } | LeaveFailure;
 
 // What a draft keeps of the form, with where a refused save's problems show.
 type DraftContent = {
@@ -180,7 +183,10 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 		coordinator?.getSnapshot ?? noDraftState
 	);
 	const [finishing, startFinishing] = React.useTransition();
-	const [leaveFailed, setLeaveFailed] = useTransientState<boolean>();
+	// Why leaving failed, and where saving stood then, which the status says until saving moves on.
+	const [leaveFailure, setLeaveFailure] = useTransientState<
+		LeaveFailure & { at: DraftSaveState<DraftContent> }
+	>();
 	// Where saving stood as Finish later stayed, which the status explains until saving moves on.
 	const [stayedAt, setStayedAt] = useTransientState<DraftSaveState<DraftContent>>();
 
@@ -268,8 +274,12 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 	useOnKeptPageHide(releaseAddress);
 
 	const leave = React.useCallback(
-		async (keptDraftId: string | undefined, history: 'push' | 'replace') => {
-			if (actions === undefined) {
+		async (
+			keptDraftId: string | undefined,
+			history: 'push' | 'replace',
+			failure: LeaveFailure = { kind: 'leaveFailed' }
+		) => {
+			if (actions === undefined || coordinator === undefined) {
 				return;
 			}
 			try {
@@ -277,11 +287,11 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 			} catch (error) {
 				if (!isNextNavigation(error)) {
 					releaseAddress();
-					setLeaveFailed(true);
+					setLeaveFailure({ ...failure, at: coordinator.getSnapshot() });
 				}
 			}
 		},
-		[actions, releaseAddress, setLeaveFailed]
+		[actions, coordinator, releaseAddress, setLeaveFailure]
 	);
 
 	// Stays wherever the server doesn't hold what the form shows, as after a failed save, a save
@@ -292,7 +302,7 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 			return;
 		}
 		holdAddress();
-		setLeaveFailed(false);
+		setLeaveFailure(undefined);
 		setStayedAt(undefined);
 		startFinishing(async () => {
 			const settled = await coordinator.settle();
@@ -314,7 +324,7 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 		releaseAddress,
 		nameInAddress,
 		leave,
-		setLeaveFailed,
+		setLeaveFailure,
 		setStayedAt,
 	]);
 
@@ -327,29 +337,33 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 						deleting: (remove) => async (previous, formData) => {
 							holdAddress();
 							const draft = await coordinator.stop();
-							if (draft === undefined) {
-								void leave(undefined, 'replace');
-								return { status: 'success' };
+							if (draft !== undefined) {
+								versionFields(formData, draft);
+								let result: FormState;
+								try {
+									result = await remove(previous, formData);
+								} catch (error) {
+									coordinator.resume();
+									releaseAddress();
+									throw error;
+								}
+								if (result.status !== 'success') {
+									coordinator.resume();
+									releaseAddress();
+									return result;
+								}
 							}
-							versionFields(formData, draft);
-							let result: FormState;
-							try {
-								result = await remove(previous, formData);
-							} catch (error) {
-								coordinator.resume();
-								releaseAddress();
-								throw error;
+							// Holds no draft before it leaves, so a leave that fails leaves a form that saves as a
+							// new draft once it changes. Nothing is on its way to be overtaken until leave sends.
+							coordinator.forget();
+							if (page !== undefined) {
+								nameInAddress(undefined);
 							}
-							if (result.status === 'success') {
-								void leave(undefined, 'replace');
-							} else {
-								coordinator.resume();
-								releaseAddress();
-							}
-							return result;
+							void leave(undefined, 'replace', { kind: 'deletedLeaveFailed' });
+							return { status: 'success' };
 						},
 					},
-		[coordinator, finishLater, holdAddress, releaseAddress, leave]
+		[coordinator, page, finishLater, holdAddress, releaseAddress, nameInAddress, leave]
 	);
 	useProvideHeldDraftControls(controls);
 
@@ -375,8 +389,8 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 	}, [coordinator, releaseAddress]);
 
 	let status: RecipeFormDraftStatus | undefined = state?.status;
-	if (leaveFailed === true) {
-		status = { kind: 'leaveFailed' };
+	if (state !== undefined && leaveFailure?.at === state) {
+		status = { kind: leaveFailure.kind };
 	} else if (state !== undefined && stayedAt === state) {
 		status = { kind: 'unsaved', because: state.status };
 	}

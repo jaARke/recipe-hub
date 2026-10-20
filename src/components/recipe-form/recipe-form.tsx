@@ -138,6 +138,8 @@ const draftStatusMessages = {
 	refused: 'The draft wasn’t saved.',
 	unsaved: 'Your changes here aren’t saved, so this page stays open.',
 	leaveFailed: 'We couldn’t reach the site. Check your connection and try again.',
+	deletedLeaveFailed:
+		'The draft was deleted, but we couldn’t reach the site to leave this page. Check your connection and try again.',
 } as const satisfies Record<RecipeFormDraftStatus['kind'], string>;
 
 // How the action bar marks each: a spinner while saving, a check once saved.
@@ -150,6 +152,7 @@ const draftStatusKinds = {
 	refused: 'progress',
 	unsaved: 'progress',
 	leaveFailed: 'progress',
+	deletedLeaveFailed: 'progress',
 } as const satisfies Record<RecipeFormDraftStatus['kind'], FormStatusKind>;
 
 // Why changes kept in this browser were for an earlier version of the recipe.

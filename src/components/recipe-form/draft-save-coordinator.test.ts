@@ -442,6 +442,40 @@ describe('createDraftSaveCoordinator', () => {
 		expect(coordinator.getSnapshot().unsaved).toBe(false);
 	});
 
+	it('forgets a draft deleted outside saving, sending nothing until the form changes, then saves a new draft', async () => {
+		const server = stalledServer();
+		const coordinator = coordinatorFor(server, { draft: firstSave, content: 'Lemon bars' });
+		coordinator.change('Lemon squares');
+		await coordinator.stop();
+
+		coordinator.forget();
+		coordinator.flush();
+		await expect(coordinator.settle()).resolves.toEqual({
+			held: undefined,
+			current: true,
+			halted: false,
+		});
+		expect(server.sent()).toEqual([]);
+
+		coordinator.change('Lemon squares with glaze');
+		await vi.advanceTimersByTimeAsync(debounceMs);
+		expect(server.sent()).toEqual([
+			{ kind: 'save', content: 'Lemon squares with glaze', held: undefined },
+		]);
+	});
+
+	it('keeps no draft for a form emptied once it holds none', async () => {
+		const server = stalledServer();
+		const coordinator = coordinatorFor(server, { draft: firstSave, content: 'Lemon bars' });
+		coordinator.forget();
+
+		coordinator.change('');
+		await vi.advanceTimersByTimeAsync(debounceMs);
+
+		expect(server.sent()).toEqual([]);
+		expect(coordinator.getSnapshot()).toMatchObject({ held: undefined, unsaved: false });
+	});
+
 	it('tells its listeners only when what it shares changes', async () => {
 		const server = stalledServer();
 		const coordinator = coordinatorFor(server);

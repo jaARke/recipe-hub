@@ -2461,6 +2461,65 @@ describe('RecipeForm with its page’s menu', () => {
 		await new Promise((resolve) => setTimeout(resolve, 1_500));
 		expect(save).toHaveBeenCalledOnce();
 	});
+
+	it('holds no draft once its menu deletes it, so a leave that fails leaves a form that saves anew', async () => {
+		const leave = vi.fn<RecipeFormDrafts['leave']>(async () => {
+			throw new TypeError('Failed to fetch');
+		});
+		const save = vi.fn<FormAction<SavedDraftResult>>(async () => ({
+			status: 'success',
+			draftId,
+			savedAt: new Date('2026-10-15T19:12:00.000Z'),
+		}));
+		await render(
+			<HeldDraftProvider opened={undefined}>
+				<HeldDraftMenu action={succeed} />
+				<RecipeForm
+					initial={recipeFormValues()}
+					action={refuse}
+					uploadFolders={uploadFolders}
+					uploader={vi.fn()}
+					drafts={{ save, delete: vi.fn(), leave, page: 'new' }}
+				/>
+			</HeldDraftProvider>
+		);
+		await title().fill('Lemon bars');
+		await expect
+			.element(page.getByRole('button', { name: 'Draft actions' }), { timeout: 5_000 })
+			.toBeVisible();
+
+		await confirmDelete('Draft actions', 'Delete draft');
+
+		await expect
+			.element(
+				page.getByRole('status').filter({
+					hasText:
+						'The draft was deleted, but we couldn’t reach the site to leave this page. Check your connection and try again.',
+				})
+			)
+			.toBeInTheDocument();
+		expect(location.pathname).toBe('/contribute/new');
+		await expect
+			.element(page.getByRole('button', { name: 'Draft actions' }))
+			.not.toBeInTheDocument();
+		save.mockResolvedValue({
+			status: 'success',
+			draftId: '0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6f',
+			savedAt: new Date('2026-10-15T19:14:00.000Z'),
+		});
+		await title().fill('Lemon bars squares');
+		await expect.poll(() => save, { timeout: 5_000 }).toHaveBeenCalledTimes(2);
+		expect(save.mock.calls[1]?.[1].get('draftId')).toBeNull();
+		await expect
+			.element(page.getByRole('status').filter({ hasText: 'Draft saved' }), { timeout: 5_000 })
+			.toBeInTheDocument();
+
+		leave.mockResolvedValue(undefined);
+		await page.getByRole('button', { name: 'Finish later' }).click();
+		await expect
+			.poll(() => leave)
+			.toHaveBeenLastCalledWith('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6f', 'push');
+	});
 });
 
 // Stands in for Next's boundary, which catches the redirect a save ends with.

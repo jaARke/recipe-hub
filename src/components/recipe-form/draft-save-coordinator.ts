@@ -89,6 +89,9 @@ export type DraftSaveCoordinator<Content> = {
 	stop: () => Promise<DraftVersion | undefined>;
 	// Lets saving go on after stop, as when adding or deleting failed.
 	resume: () => void;
+	// The draft it held was deleted outside saving, as its page's menu does: it holds none, takes what
+	// the form shows as nothing to send, and saves it as a new draft once it changes again.
+	forget: () => void;
 };
 
 export type DraftSaveCoordinatorOptions<Content> = {
@@ -222,12 +225,15 @@ export function createDraftSaveCoordinator<Content>({
 			publish();
 			return;
 		}
-		// Without a draft held, the server holds the empty content, which the check above caught.
 		const draft = held;
-		if (draft !== undefined && same(content, empty)) {
+		if (!same(content, empty)) {
+			send(content, () => requests.save(content, draft));
+		} else if (draft !== undefined) {
 			send(content, () => requests.delete(draft));
 		} else {
-			send(content, () => requests.save(content, draft));
+			// An empty form keeps no draft, and none is held.
+			saved = content;
+			publish();
 		}
 	}
 
@@ -366,6 +372,17 @@ export function createDraftSaveCoordinator<Content>({
 			} else {
 				publish();
 			}
+		},
+		forget() {
+			clearDebounce();
+			due = false;
+			held = undefined;
+			saved = latest;
+			failure = undefined;
+			halted = false;
+			stopped = false;
+			deleted = false;
+			publish();
 		},
 	};
 }
