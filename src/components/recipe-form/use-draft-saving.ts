@@ -56,8 +56,10 @@ export type RecipeFormDrafts = {
 	page?: 'new' | 'draft';
 };
 
-// What the form says of its draft: where saving stands, or that leaving for the start page failed.
-export type RecipeFormDraftStatus = DraftSaveStatus | { kind: 'leaveFailed' };
+// What the form says of its draft: where saving stands; that the page stays because what it shows
+// isn't saved, and why; or that leaving for the start page failed.
+export type RecipeFormDraftStatus =
+	DraftSaveStatus | { kind: 'unsaved'; because: DraftSaveStatus } | { kind: 'leaveFailed' };
 
 // What a draft keeps of the form, with where a refused save's problems show.
 type DraftContent = {
@@ -153,9 +155,9 @@ type DraftSavingOptions = {
 // keeps the page in step with the draft it holds: the heading and its menu, the address, and on the
 // new recipe's page the header's count. A change goes as the page hides or the tab does, so leaving
 // by any way loses nothing that can be saved. Finish later, the back link, adding, and deleting wait
-// for saving: leaving waits for what is waiting to be saved, and adding and deleting stop it first.
-// The address never changes while a navigation is on its way, since Next drops a Server Action's
-// navigation that a change of address overtakes.
+// for saving: leaving sends what is waiting and goes only once the server holds what the form shows,
+// and adding and deleting stop saving first. The address never changes while a navigation is on its
+// way, since Next drops a Server Action's navigation that a change of address overtakes.
 export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavingOptions) {
 	const router = useRouter();
 	const holdDraft = useHoldDraft();
@@ -178,6 +180,8 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 	);
 	const [finishing, startFinishing] = React.useTransition();
 	const [leaveFailed, setLeaveFailed] = useTransientState<boolean>();
+	// Where saving stood as Finish later stayed, which the status explains until saving moves on.
+	const [stayedAt, setStayedAt] = useTransientState<DraftSaveState<DraftContent>>();
 
 	const content = React.useMemo(() => draftContent(values), [values]);
 	React.useEffect(() => {
@@ -269,17 +273,21 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 		[actions, releaseAddress, setLeaveFailed]
 	);
 
-	// Stays where something the form shows couldn't be saved yet, which saving tries again.
+	// Stays wherever the server doesn't hold what the form shows, as after a failed save, a save
+	// another page made since, or an ended session, so what was typed is never left behind; the
+	// member can copy it, sign in again, or let saving try again.
 	const finishLater = React.useCallback(() => {
 		if (coordinator === undefined) {
 			return;
 		}
 		holdAddress();
 		setLeaveFailed(false);
+		setStayedAt(undefined);
 		startFinishing(async () => {
 			const settled = await coordinator.settle();
-			if (!settled.current && !settled.halted) {
+			if (!settled.current) {
 				releaseAddress();
+				setStayedAt(coordinator.getSnapshot());
 				return;
 			}
 			// So Back returns to the draft: nothing is on its way to be overtaken until leave sends.
@@ -288,7 +296,16 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 			}
 			await leave(settled.held?.id, 'push');
 		});
-	}, [coordinator, page, holdAddress, releaseAddress, nameInAddress, leave, setLeaveFailed]);
+	}, [
+		coordinator,
+		page,
+		holdAddress,
+		releaseAddress,
+		nameInAddress,
+		leave,
+		setLeaveFailed,
+		setStayedAt,
+	]);
 
 	const controls = React.useMemo<HeldDraftControls | undefined>(
 		() =>
@@ -346,8 +363,12 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 		releaseAddress();
 	}, [coordinator, releaseAddress]);
 
-	const status: RecipeFormDraftStatus | undefined =
-		leaveFailed === true ? { kind: 'leaveFailed' } : state?.status;
+	let status: RecipeFormDraftStatus | undefined = state?.status;
+	if (leaveFailed === true) {
+		status = { kind: 'leaveFailed' };
+	} else if (state !== undefined && stayedAt === state) {
+		status = { kind: 'unsaved', because: state.status };
+	}
 
 	return { status, finishLater, finishing, holdForAdding, resumeAfterAdding };
 }

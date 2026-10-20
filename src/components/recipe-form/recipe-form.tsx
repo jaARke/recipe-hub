@@ -128,7 +128,7 @@ import { settings } from '@/lib/settings';
 const failureMessage = 'We couldn’t save the recipe. Check your connection and try again.';
 
 // What the action bar says of the draft, by where saving stands. A refusal says its own message where
-// it has one.
+// it has one, and a page that stays unsaved goes on to say why.
 const draftStatusMessages = {
 	empty: 'Saves as a draft once you fill something in',
 	saving: 'Saving draft',
@@ -136,6 +136,7 @@ const draftStatusMessages = {
 	deleted: 'Form is empty, so the draft was deleted',
 	unreachable: 'We couldn’t save the draft. Check your connection; your next change tries again.',
 	refused: 'The draft wasn’t saved.',
+	unsaved: 'Your changes here aren’t saved, so this page stays open.',
 	leaveFailed: 'We couldn’t reach the site. Check your connection and try again.',
 } as const satisfies Record<RecipeFormDraftStatus['kind'], string>;
 
@@ -147,6 +148,7 @@ const draftStatusKinds = {
 	deleted: 'progress',
 	unreachable: 'progress',
 	refused: 'progress',
+	unsaved: 'progress',
 	leaveFailed: 'progress',
 } as const satisfies Record<RecipeFormDraftStatus['kind'], FormStatusKind>;
 
@@ -918,9 +920,14 @@ function outdatedTitle(outdatedAt: Date): string {
 
 // What the action bar says of the draft.
 function draftStatusMessage(status: RecipeFormDraftStatus): string {
-	return (
-		(status.kind === 'refused' ? status.message : undefined) ?? draftStatusMessages[status.kind]
-	);
+	switch (status.kind) {
+		case 'refused':
+			return status.message ?? draftStatusMessages.refused;
+		case 'unsaved':
+			return `${draftStatusMessages.unsaved} ${draftStatusMessage(status.because)}`;
+		default:
+			return draftStatusMessages[status.kind];
+	}
 }
 
 // Heads the form while it holds unsaved changes kept in this browser from an earlier visit: when they

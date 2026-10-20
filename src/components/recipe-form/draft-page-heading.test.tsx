@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { page } from 'vitest/browser';
-import type { FormAction } from '@/components/forms/form-state';
+import type { FormAction, FormState } from '@/components/forms/form-state';
 import { DraftPageHeading } from '@/components/recipe-form/draft-page-heading';
 import { HeldDraftProvider, type HeldDraft } from '@/components/recipe-form/held-draft';
 import { RecipeForm } from '@/components/recipe-form/recipe-form';
@@ -30,15 +30,14 @@ const afterSaving = { timeout: 5_000 };
 async function renderDraftPage({
 	openedDraft,
 	deleteDraft = vi.fn<FormAction>(),
+	saved = { status: 'success', draftId: openedDraft?.id ?? newId, savedAt },
 }: {
 	openedDraft?: HeldDraft;
 	deleteDraft?: FormAction;
+	// What every save answers.
+	saved?: FormState<SavedDraftResult>;
 } = {}) {
-	const save = vi.fn<FormAction<SavedDraftResult>>(async () => ({
-		status: 'success',
-		draftId: openedDraft?.id ?? newId,
-		savedAt,
-	}));
+	const save = vi.fn<FormAction<SavedDraftResult>>(async () => saved);
 	const leave = vi.fn<RecipeFormDrafts['leave']>(async () => {});
 	await render(
 		<HeldDraftProvider opened={openedDraft}>
@@ -120,6 +119,30 @@ describe('DraftPageHeading', () => {
 
 		await expect.poll(() => leave).toHaveBeenCalledWith(newId, 'push');
 		expect(save).toHaveBeenCalledOnce();
+	});
+
+	it('stays by its back link while what was typed isn’t saved, saying so', async () => {
+		const conflict =
+			'This draft was saved somewhere else after you opened it here. Copy anything you want to keep, then reload the page to see that version.';
+		const { leave } = await renderDraftPage({
+			openedDraft: { id: openedId, title: 'Lemon bars', savedAt: new Date('2026-10-14') },
+			saved: { status: 'error', message: conflict, fieldErrors: {} },
+		});
+		await page.getByRole('textbox', { name: 'Title' }).fill('Lemon squares');
+		await expect
+			.element(page.getByRole('status').filter({ hasText: conflict }), afterSaving)
+			.toBeInTheDocument();
+
+		await backLink().click();
+
+		await expect
+			.element(
+				page
+					.getByRole('status')
+					.filter({ hasText: 'Your changes here aren’t saved, so this page stays open.' })
+			)
+			.toBeInTheDocument();
+		expect(leave).not.toHaveBeenCalled();
 	});
 
 	it('leaves for the start page once its menu deletes the draft, which it then no longer names', async () => {

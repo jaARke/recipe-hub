@@ -2213,12 +2213,36 @@ describe('RecipeForm’s drafts', () => {
 
 		await expect
 			.element(
-				status('We couldn’t save the draft. Check your connection; your next change tries again.')
+				status(
+					'Your changes here aren’t saved, so this page stays open. We couldn’t save the draft. Check your connection; your next change tries again.'
+				)
 			)
 			.toBeInTheDocument();
 		expect(drafts.leave).not.toHaveBeenCalled();
 		await expect.element(finishLater()).toBeEnabled();
 	});
+
+	it.each([
+		['another page saved the draft since', conflict],
+		['the session has ended', 'Your session has ended. Sign in again to continue.'],
+	])(
+		'stays as it finishes later where %s, saying the changes aren’t saved and why, and keeps them',
+		async (_name, message) => {
+			const save = saving({ status: 'error', message, fieldErrors: {} });
+			const drafts = draftsWith(save, { opened: { id: draftId, savedAt }, page: 'draft' });
+			await render(<DraftForm initial={recipeFormValues(lemonBars)} drafts={drafts} />);
+			await title().fill('Lemon squares');
+			await expect.element(announced(message), afterSaving).toBeInTheDocument();
+
+			await finishLater().click();
+
+			await expect
+				.element(announced(`Your changes here aren’t saved, so this page stays open. ${message}`))
+				.toBeInTheDocument();
+			expect(drafts.leave).not.toHaveBeenCalled();
+			await expect.element(title()).toHaveValue('Lemon squares');
+		}
+	);
 
 	it('offers no draft when editing a published recipe', async () => {
 		await render(
