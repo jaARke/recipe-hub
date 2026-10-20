@@ -53,6 +53,7 @@ function classificationFieldIds(prefix: string, field: RecipeFormChoiceField) {
 	return {
 		description: `${group}-description`,
 		error: `${group}-error`,
+		legend: `${group}-legend`,
 		note: `${group}-note`,
 		choice: (value: string) => `${group}-${value}`,
 	};
@@ -94,6 +95,8 @@ function ClassificationFields({
 				note={noteFor({ kind: 'field', field: 'chapter' })}
 			>
 				<RadioGroup
+					// The legend names the field set, not the radio group inside it.
+					aria-labelledby={chapterIds.legend}
 					required
 					value={chapter ?? null}
 					onValueChange={(next: Chapter) => dispatch({ type: 'setChapter', chapter: next })}
@@ -203,7 +206,9 @@ function ChoiceFieldSet({
 				note !== undefined && fieldNoteMessageId(ids.note)
 			)}
 		>
-			<FieldLegend variant="label">{legend}</FieldLegend>
+			<FieldLegend id={ids.legend} variant="label">
+				{legend}
+			</FieldLegend>
 			{announced ? (
 				<FieldDescription
 					id={ids.description}

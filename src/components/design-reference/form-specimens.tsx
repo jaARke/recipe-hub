@@ -422,9 +422,15 @@ function RadioGroupSpecimen() {
 		<div className="flex flex-col gap-6">
 			<Specimen label="Field set with legend and description, in two columns from sm">
 				<FieldSet>
-					<FieldLegend variant="label">Chapter</FieldLegend>
+					<FieldLegend id="radio-chapter-legend" variant="label">
+						Chapter
+					</FieldLegend>
 					<FieldDescription>Where the recipe goes in the cookbook.</FieldDescription>
-					<RadioGroup defaultValue="desserts" className="sm:grid-cols-2">
+					<RadioGroup
+						defaultValue="desserts"
+						aria-labelledby="radio-chapter-legend"
+						className="sm:grid-cols-2"
+					>
 						{chapters.map((chapter) => (
 							<Field key={chapter} orientation="horizontal">
 								<RadioGroupItem id={`radio-chapter-${chapter}`} value={chapter} />
@@ -439,8 +445,10 @@ function RadioGroupSpecimen() {
 			<Specimen label="Disabled, then invalid with nothing chosen">
 				<FieldGroup className="grid gap-6 sm:grid-cols-2">
 					<FieldSet>
-						<FieldLegend variant="label">Disabled</FieldLegend>
-						<RadioGroup defaultValue="chosen" disabled>
+						<FieldLegend id="radio-disabled-legend" variant="label">
+							Disabled
+						</FieldLegend>
+						<RadioGroup defaultValue="chosen" disabled aria-labelledby="radio-disabled-legend">
 							<Field orientation="horizontal" data-disabled="true">
 								<RadioGroupItem id="radio-disabled" value="unchosen" />
 								<FieldLabel htmlFor="radio-disabled">Disabled</FieldLabel>
@@ -452,9 +460,11 @@ function RadioGroupSpecimen() {
 						</RadioGroup>
 					</FieldSet>
 					<FieldSet aria-describedby="radio-invalid-error">
-						<FieldLegend variant="label">Invalid</FieldLegend>
+						<FieldLegend id="radio-invalid-legend" variant="label">
+							Invalid
+						</FieldLegend>
 						<FieldError id="radio-invalid-error">{noChapterMessage}</FieldError>
-						<RadioGroup>
+						<RadioGroup aria-labelledby="radio-invalid-legend">
 							{invalidChapterSamples.map((chapter) => (
 								<Field key={chapter} orientation="horizontal">
 									<RadioGroupItem
