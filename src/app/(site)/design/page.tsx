@@ -21,7 +21,7 @@ export function generateMetadata(): Metadata {
 		notFound();
 	}
 
-	return { title: 'Design reference', robots: { index: false, follow: false } };
+	return { title: 'Design Reference', robots: { index: false, follow: false } };
 }
 
 const sections = [
@@ -83,7 +83,7 @@ export default function DesignReferencePage() {
 		<PageContainer width="wide" className="flex flex-col gap-12 py-12 sm:py-16">
 			<header className="flex flex-col gap-6">
 				<div className="flex flex-col gap-3">
-					<h1 className="font-heading text-4xl font-semibold">Design reference</h1>
+					<h1 className="font-heading text-4xl font-semibold">Design Reference</h1>
 					<p className="max-w-2xl text-lg text-muted-foreground">
 						The tokens, primitives, and compositions behind {siteName}, for tuning the design
 						language. It exists only in development and on preview deployments.

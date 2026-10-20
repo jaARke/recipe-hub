@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/empty';
 
 // The heading, and the title of the not-found pages that show it.
-const pageNotFoundTitle = 'Page not found';
+const pageNotFoundTitle = 'Page Not Found';
 
 // What a URL that names no page shows, whether a route matched it or not.
 function PageNotFoundState() {

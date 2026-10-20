@@ -9,7 +9,7 @@ import { contributePath } from '@/components/recipe/recipe-paths';
 import { settings } from '@/lib/settings';
 
 export const metadata: Metadata = {
-	title: 'Sign in',
+	title: 'Sign In',
 	// Kept out of search results, which would send strangers here; its links are followed.
 	robots: { index: false, follow: true },
 };
@@ -41,7 +41,7 @@ export default function SignInPage({ searchParams }: PageProps<'/sign-in'>) {
 	return (
 		<PageContainer width="reading" className="flex flex-col gap-8 py-12 sm:py-16">
 			<div className="flex flex-col gap-3">
-				<h1 className="font-heading text-4xl font-semibold">Sign in</h1>
+				<h1 className="font-heading text-4xl font-semibold">Sign In</h1>
 				<Suspense>
 					<SignInReason searchParams={searchParams} />
 				</Suspense>

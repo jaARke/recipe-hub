@@ -69,5 +69,5 @@ test('a recipe entered by hand is added, edited, and deleted', async ({ page, si
 	await expect(page.getByRole('link', { name: editedTitle })).toBeHidden();
 
 	await page.goto(recipePath(slugify(editedTitle)));
-	await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Page Not Found' })).toBeVisible();
 });

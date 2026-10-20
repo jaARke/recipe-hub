@@ -6,7 +6,7 @@ export type EditingPage = 'edit';
 
 // Each page's heading, which is its title too.
 export const editingPageTitles = {
-	edit: 'Edit recipe',
+	edit: 'Edit Recipe',
 } as const satisfies Record<EditingPage, string>;
 
 type EditingPageHeadingProps = {
