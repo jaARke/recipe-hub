@@ -78,7 +78,7 @@ const subsections = [
 		id: 'header-account',
 		title: 'Header account controls',
 		description:
-			'From md, the theme menu beside Sign in or the account menu, 8 px apart in a box as wide as they are with Sign in, so a member’s spare width falls to the theme menu’s left. The account menu’s button shows the member’s initial, and the menu holds only the account. Below md, one menu holds the sections (Admin last, for admins), the account items, and the theme. Sign out in these menus is real: it signs this browser out.',
+			'From md, the theme menu beside Sign in or the account menu, 8 px apart in a box as wide as they are with Sign in, so a member’s spare width falls to the theme menu’s left. The account menu’s button shows the member’s initial, and the menu holds only the account. Below md, one menu holds the sections (Add recipe with the member’s draft count, here two for the member and none for the admin; Admin last, for admins), the account items, and the theme. Sign out in these menus is real: it signs this browser out.',
 		Content: HeaderAccountSpecimen,
 	},
 	{
@@ -172,9 +172,9 @@ function HeaderAccountSpecimen() {
 				figureClassName="lg:col-span-3"
 			>
 				<div className="flex gap-3">
-					<SiteMenu member={Promise.resolve(null)} />
-					<SiteMenu member={Promise.resolve(sampleHeaderMember)} />
-					<SiteMenu member={Promise.resolve(sampleHeaderAdmin)} />
+					<SiteMenu member={Promise.resolve(null)} draftCount={Promise.resolve(0)} />
+					<SiteMenu member={Promise.resolve(sampleHeaderMember)} draftCount={Promise.resolve(2)} />
+					<SiteMenu member={Promise.resolve(sampleHeaderAdmin)} draftCount={Promise.resolve(0)} />
 					<PendingSiteMenu />
 				</div>
 			</Specimen>

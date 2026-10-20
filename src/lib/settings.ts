@@ -20,17 +20,11 @@ export const settings: z.output<typeof settingsSchema> = {
 		// Imports a member may start in any rolling 24 hours, so one account cannot spend the AI budget
 		// alone. Admins have no limit.
 		maxImportsPerDay: 50,
-		// The drafts listed beside the import forms, saved drafts and imports' drafts together, newest
-		// first: the ones a member is likely still working on.
-		maxUnsavedImports: 10,
-		// How long a member has to review an import's draft and save it as a recipe; then the draft and
-		// its source URL are cleared.
-		importDraftLifetimeDays: 7,
 	},
 	drafts: {
-		// How long a draft a member saves from the recipe form is kept after its last save: time to
-		// finish a recipe over a few weekends.
-		savedDraftLifetimeDays: 30,
+		// How long a draft is kept after its last change: a season, so a recipe set aside for a while is
+		// still there when its cook comes back to it.
+		draftLifetimeDays: 90,
 	},
 	ai: {
 		// The AI Gateway models that read a page's text and photos of a written recipe, chosen by
@@ -94,8 +88,6 @@ export const settings: z.output<typeof settingsSchema> = {
 		maxIngredientLineLength: 500,
 		// A long step written as one paragraph.
 		maxStepLength: 5_000,
-		// A label for browsing, such as "Weeknight", which search lists as a filter.
-		maxTagLength: 50,
 		// A description of a photo for someone who can't see it.
 		maxImageAltLength: 1_000,
 		// Ingredients across all a recipe's sections, more than any recipe needs.
@@ -104,7 +96,5 @@ export const settings: z.output<typeof settingsSchema> = {
 		maxStepsPerRecipe: 300,
 		// Sections in the ingredients, and in the steps: one for each part of a dish and then some.
 		maxSectionsPerList: 30,
-		// Enough to file a recipe under every course, occasion, and cook it belongs to.
-		maxTagsPerRecipe: 30,
 	},
 };

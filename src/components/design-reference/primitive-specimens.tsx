@@ -5,7 +5,6 @@ import {
 	ToggleSpecimen,
 } from '@/components/design-reference/action-specimens';
 import { AlertDialogSpecimen } from '@/components/design-reference/alert-dialog-specimen';
-import { ComboboxSpecimen } from '@/components/design-reference/combobox-specimen';
 import {
 	AlertSpecimen,
 	AttachmentSpecimen,
@@ -24,6 +23,7 @@ import {
 	InputSpecimen,
 	LabelSpecimen,
 	NumberFieldSpecimen,
+	RadioGroupSpecimen,
 	SelectSpecimen,
 	SwitchSpecimen,
 	TextareaSpecimen,
@@ -57,8 +57,8 @@ const primitives = [
 	{ id: 'label', title: 'Label', Content: LabelSpecimen },
 	{ id: 'field', title: 'Field', Content: FieldSpecimen },
 	{ id: 'select', title: 'Select', Content: SelectSpecimen },
-	{ id: 'combobox', title: 'Combobox', Content: ComboboxSpecimen },
 	{ id: 'checkbox', title: 'Checkbox', Content: CheckboxSpecimen },
+	{ id: 'radio-group', title: 'Radio group', Content: RadioGroupSpecimen },
 	{ id: 'switch', title: 'Switch', Content: SwitchSpecimen },
 	{ id: 'attachment', title: 'Attachment', Content: AttachmentSpecimen },
 	{ id: 'tabs', title: 'Tabs', Content: TabsSpecimen },

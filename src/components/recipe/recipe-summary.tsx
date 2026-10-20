@@ -4,13 +4,21 @@ import Link from 'next/link';
 import type { RecipeSummaryDto } from '@/application/recipes/recipe-dtos';
 import { RecipePhoto } from '@/components/recipe/recipe-photo';
 import { Badge } from '@/components/ui/badge';
+import { dietLabels } from '@/domain/recipe/diet';
 import { formatDuration } from '@/domain/recipe/duration';
+import { holidayLabels } from '@/domain/recipe/holiday';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import { formatYield } from '@/domain/recipe/recipe-yield';
 
 type RecipeFact = {
 	label: string;
 	value: string;
+};
+
+// A badge naming one of a recipe's holidays or diets, linked to the list it filters where given.
+type RecipeBadge = {
+	label: string;
+	href?: string;
 };
 
 function recipeFacts({
@@ -25,6 +33,18 @@ function recipeFacts({
 		facts.push({ label: 'Yield', value: formatYield(recipeYield) });
 	}
 	return facts;
+}
+
+// A card's or a result row's badges: the recipe's holidays, then its diets. The card or row is a link
+// itself, so its badges are not.
+function recipeBadges({
+	holidays,
+	diets,
+}: Pick<RecipeSummaryDto, 'holidays' | 'diets'>): RecipeBadge[] {
+	return [
+		...holidays.map((holiday) => ({ label: holidayLabels[holiday] })),
+		...diets.map((diet) => ({ label: dietLabels[diet] })),
+	];
 }
 
 function RecipeCover({
@@ -79,24 +99,17 @@ function RecipeFacts({ facts }: { facts: readonly RecipeFact[] }) {
 	);
 }
 
-function RecipeTags({
-	tags,
-	tagHref,
-}: {
-	tags: readonly string[];
-	// Links each tag where given; a card or a result row is a link itself, so its tags are not.
-	tagHref?: (tag: string) => string;
-}) {
+function RecipeBadges({ badges }: { badges: readonly RecipeBadge[] }) {
 	return (
 		<ul role="list" className="flex flex-wrap gap-1.5">
-			{tags.map((tag) => (
-				<li key={tag}>
+			{badges.map(({ label, href }) => (
+				<li key={label}>
 					<Badge
 						variant="secondary"
 						wrap
-						render={tagHref === undefined ? undefined : <Link href={tagHref(tag)} />}
+						render={href === undefined ? undefined : <Link href={href} />}
 					>
-						{tag}
+						{label}
 					</Badge>
 				</li>
 			))}
@@ -104,4 +117,4 @@ function RecipeTags({
 	);
 }
 
-export { RecipeCover, RecipeFacts, recipeFacts, RecipeTags };
+export { RecipeBadges, recipeBadges, RecipeCover, RecipeFacts, recipeFacts };

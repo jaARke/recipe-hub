@@ -9,11 +9,11 @@ import type {
 	UpdatedRecipe,
 } from '@/application/ports/recipe-repository';
 import { RecipeEditConflictError } from '@/application/recipes/errors';
+import type { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
 import type { MemberId } from '@/domain/member/member';
 import { recipeIdSchema, type Recipe, type RecipeId } from '@/domain/recipe/recipe';
 import type { RecipeImportId } from '@/domain/recipe/recipe-import';
 import { slugCandidate } from '@/domain/recipe/slug';
-import { tagKey } from '@/domain/recipe/tag-normalization';
 
 // Mirrors the database's title sort key: lowercased, with accents stripped.
 function titleSortKey(recipe: Recipe): string {
@@ -24,19 +24,18 @@ function compareText(a: string, b: string): number {
 	return a < b ? -1 : a > b ? 1 : 0;
 }
 
-// A tag in use, with the earliest recipe's spelling as its label.
-type TagUse = {
-	key: string;
-	label: string;
-	recipeCount: number;
-};
-
 export class InMemoryRecipeRepository implements RecipeRepository {
+	// Where a recipe added from a draft finds it; absent for tests that add none.
+	private readonly drafts: InMemorySavedDraftRepository | undefined;
 	private readonly recipes = new Map<RecipeId, Recipe>();
 	// Each old slug and the recipe it now names.
 	private readonly oldSlugs = new Map<string, RecipeId>();
 	// Each import a recipe was saved from, and that recipe.
 	private readonly importIds = new Map<RecipeImportId, RecipeId>();
+
+	constructor(drafts?: InMemorySavedDraftRepository) {
+		this.drafts = drafts;
+	}
 
 	async findById(id: RecipeId): Promise<Recipe | null> {
 		return this.recipes.get(id) ?? null;
@@ -75,26 +74,14 @@ export class InMemoryRecipeRepository implements RecipeRepository {
 	}
 
 	async create(recipe: NewRecipe): Promise<Recipe> {
-		if (recipe.importId !== undefined && this.importIds.has(recipe.importId)) {
-			throw new ImportUnavailableError();
+		const { fromDraft } = recipe;
+		if (fromDraft === undefined) {
+			return this.store(recipe);
 		}
-
-		const now = new Date();
-		const created: Recipe = {
-			...recipe.content,
-			id: recipeIdSchema.parse(crypto.randomUUID()),
-			slug: this.freeSlug(recipe.slugBase),
-			contributorId: recipe.contributorId,
-			provenance: recipe.provenance,
-			createdAt: now,
-			updatedAt: now,
-		};
-
-		this.recipes.set(created.id, created);
-		if (recipe.importId !== undefined) {
-			this.importIds.set(recipe.importId, created.id);
+		if (this.drafts === undefined) {
+			throw new Error('This repository was made without drafts to add a recipe from');
 		}
-		return created;
+		return this.drafts.consumeWith(fromDraft, recipe.contributorId, () => this.store(recipe));
 	}
 
 	async update(id: RecipeId, update: RecipeUpdate): Promise<UpdatedRecipe | null> {
@@ -149,19 +136,6 @@ export class InMemoryRecipeRepository implements RecipeRepository {
 		return existing;
 	}
 
-	async findTagLabels(keys: readonly string[], excludeRecipeId?: RecipeId): Promise<string[]> {
-		const wanted = new Set(keys);
-		return this.tagUses(excludeRecipeId)
-			.filter(({ key }) => wanted.has(key))
-			.map(({ label }) => label);
-	}
-
-	async listTagLabels(): Promise<string[]> {
-		return this.tagUses()
-			.sort((a, b) => b.recipeCount - a.recipeCount || compareText(a.key, b.key))
-			.map(({ label }) => label);
-	}
-
 	async findImagesInUse(
 		pathnames: readonly string[],
 		excludeContributorId?: MemberId
@@ -180,6 +154,30 @@ export class InMemoryRecipeRepository implements RecipeRepository {
 		return recipeId === undefined ? null : (this.recipes.get(recipeId) ?? null);
 	}
 
+	// Stores a new recipe. It does not await, so an add from a draft stays one uninterrupted step.
+	private store(recipe: NewRecipe): Recipe {
+		if (recipe.importId !== undefined && this.importIds.has(recipe.importId)) {
+			throw new ImportUnavailableError();
+		}
+
+		const now = new Date();
+		const created: Recipe = {
+			...recipe.content,
+			id: recipeIdSchema.parse(crypto.randomUUID()),
+			slug: this.freeSlug(recipe.slugBase),
+			contributorId: recipe.contributorId,
+			provenance: recipe.provenance,
+			createdAt: now,
+			updatedAt: now,
+		};
+
+		this.recipes.set(created.id, created);
+		if (recipe.importId !== undefined) {
+			this.importIds.set(recipe.importId, created.id);
+		}
+		return created;
+	}
+
 	private sorted(sort: RecipeSort): Recipe[] {
 		const recipes = [...this.recipes.values()];
 		switch (sort) {
@@ -191,30 +189,6 @@ export class InMemoryRecipeRepository implements RecipeRepository {
 					(a, b) => compareText(titleSortKey(a), titleSortKey(b)) || compareText(a.id, b.id)
 				);
 		}
-	}
-
-	// Earliest first, so the first spelling of a tag labels it. The stable sort keeps recipes created in
-	// the same millisecond in the order they were created, as the database's time-ordered ids do.
-	private tagUses(excludeRecipeId?: RecipeId): TagUse[] {
-		const uses = new Map<string, TagUse>();
-		const earliestFirst = [...this.recipes.values()].sort(
-			(a, b) => a.createdAt.getTime() - b.createdAt.getTime()
-		);
-		for (const recipe of earliestFirst) {
-			if (recipe.id === excludeRecipeId) {
-				continue;
-			}
-			for (const label of recipe.tags) {
-				const key = tagKey(label);
-				const use = uses.get(key);
-				uses.set(key, {
-					key,
-					label: use?.label ?? label,
-					recipeCount: (use?.recipeCount ?? 0) + 1,
-				});
-			}
-		}
-		return [...uses.values()];
 	}
 
 	// A recipe's own slugs, current or old, are free for it.

@@ -1,0 +1,8 @@
+ALTER TABLE "recipes" drop column "search_vector";--> statement-breakpoint
+ALTER TABLE "recipes" ADD COLUMN "search_vector" "tsvector" GENERATED ALWAYS AS (setweight(to_tsvector('public.recipe_english'::regconfig, "recipes"."content" ->> 'title'), 'A')
+	|| setweight(to_tsvector('public.recipe_english'::regconfig, jsonb_path_query_array("recipes"."content", '$.ingredientSections[*].lines[*].item')), 'B')
+	|| setweight(to_tsvector('public.recipe_english'::regconfig, public.immutable_array_to_string("recipes"."holidays" || "recipes"."diets", ' ')), 'B')
+	|| setweight(to_tsvector('public.recipe_english'::regconfig, jsonb_path_query_array("recipes"."content", '$.description') || jsonb_path_query_array("recipes"."content", '$.notes') || jsonb_path_query_array("recipes"."content", '$.source')), 'C')
+	|| setweight(to_tsvector('public.recipe_english'::regconfig, jsonb_path_query_array("recipes"."content", '$.instructionSections[*].steps[*].text')), 'D')) STORED NOT NULL;--> statement-breakpoint
+ALTER TABLE "recipes" drop column "search_words";--> statement-breakpoint
+ALTER TABLE "recipes" ADD COLUMN "search_words" text GENERATED ALWAYS AS (lower(public.immutable_unaccent(("recipes"."content" ->> 'title') || ' ' || jsonb_path_query_array("recipes"."content", '$.ingredientSections[*].lines[*].item')::text || ' ' || public.immutable_array_to_string("recipes"."holidays" || "recipes"."diets", ' ')))) STORED NOT NULL;

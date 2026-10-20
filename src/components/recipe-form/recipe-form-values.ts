@@ -3,20 +3,22 @@ import type { RecipeFormPayload } from '@/components/recipe-form/recipe-form-fie
 import type { Problem } from '@/domain/problem';
 import type { Amount } from '@/domain/recipe/amount';
 import { formatAmount } from '@/domain/recipe/amount-format';
+import type { Chapter } from '@/domain/recipe/chapter';
+import { diets as dietVocabulary, withoutImpliedDiets, type Diet } from '@/domain/recipe/diet';
+import { holidays as holidayVocabulary, type Holiday } from '@/domain/recipe/holiday';
 import { parseAmountText } from '@/domain/recipe/ingredient-parser';
 import { missingContentMessages, type RecipeContent } from '@/domain/recipe/recipe';
 import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
 import type { ImageSize, RecipeImage, RecipeImageRole } from '@/domain/recipe/recipe-image';
 import type { RecipeYield } from '@/domain/recipe/recipe-yield';
-import { tagKey, uniqueTagLabels } from '@/domain/recipe/tag-normalization';
 import {
 	transcriptionMarkersIn,
 	type TranscriptionMarker,
 } from '@/domain/recipe/transcription-markers';
 
 // The recipe form's value and every edit to it. Pure, so the form's behavior is tested without a
-// browser. Rows, tags, and photos carry ids that stay with them as they move, and a problem or a
-// review note attaches to the row it names, so it follows that row.
+// browser. Rows and photos carry ids that stay with them as they move, and a problem or a review
+// note attaches to the row it names, so it follows that row.
 
 export type RecipeFormListName = 'ingredientSections' | 'instructionSections';
 
@@ -44,11 +46,6 @@ export type RecipeFormList = {
 	rows: readonly RecipeFormRow[];
 	// About the list as a whole, such as having no ingredients at all.
 	error?: string;
-};
-
-export type RecipeFormTag = {
-	id: number;
-	label: string;
 };
 
 export type PhotoFailure = 'unreadable' | 'upload';
@@ -83,14 +80,17 @@ export type RecipeFormText = {
 	totalMinutes: string;
 	yieldAmount: string;
 	yieldUnit: string;
-	// A tag still being typed, which saving adds like the others.
-	tagDraft: string;
 };
 
 export type RecipeFormTextField = keyof RecipeFormText;
 
-// The fields a problem can land on directly. Problems with tags show at the tag field.
-export type RecipeFormErrorField = Exclude<RecipeFormTextField, 'tagDraft'> | 'tags';
+// The fields that file the recipe in the cookbook, each a choice from its vocabulary, in the order the
+// form shows them.
+export const recipeFormChoiceFields = ['chapter', 'holidays', 'diets'] as const;
+export type RecipeFormChoiceField = (typeof recipeFormChoiceFields)[number];
+
+// The fields a problem can land on directly.
+export type RecipeFormErrorField = RecipeFormTextField | RecipeFormChoiceField;
 
 export type RecipeYieldKind = RecipeYield['kind'];
 
@@ -99,7 +99,13 @@ export type RecipeFormValues = {
 	yieldKind: RecipeYieldKind;
 	ingredientSections: RecipeFormList;
 	instructionSections: RecipeFormList;
-	tags: readonly RecipeFormTag[];
+	// None until the member chooses one, which saving needs.
+	chapter?: Chapter;
+	// In calendar order.
+	holidays: readonly Holiday[];
+	// The diets the member chose, in display order. The form ticks and holds those a chosen one implies,
+	// and the recipe adds them as it saves.
+	diets: readonly Diet[];
 	photos: Readonly<Record<RecipeImageRole, readonly RecipeFormPhoto[]>>;
 	// A save's errors, which mark their fields invalid.
 	fieldErrors: Partial<Record<RecipeFormErrorField, string>>;
@@ -109,7 +115,7 @@ export type RecipeFormValues = {
 	// and a save's errors leave them. Keyed by where each shows, so a note follows its row; a
 	// removed row's note matches nothing again, since ids are never reused.
 	reviewNotes: ReadonlyMap<ProblemKey, RecipeFormReviewNote>;
-	// Rows, tags, and photos all take the next id, so ids are unique within the form.
+	// Rows and photos all take the next id, so ids are unique within the form.
 	nextId: number;
 };
 
@@ -206,9 +212,9 @@ export type RecipeFormEdit =
 			text: string;
 			rows: readonly RecipeFormRowText[];
 	  }
-	// Adds each tag not already chosen, as tagLabelsToAdd finds them, and clears the tag field.
-	| { type: 'addTags'; labels: readonly string[] }
-	| { type: 'removeTag'; tagId: number }
+	| { type: 'setChapter'; chapter: Chapter }
+	| { type: 'setHoliday'; holiday: Holiday; chosen: boolean }
+	| { type: 'setDiet'; diet: Diet; chosen: boolean }
 	| PhotoEdit
 	| { type: 'attachErrors'; fieldErrors: FieldErrors; targets: ProblemTargets }
 	// The member says the place looks right as it is, which resolves its note.
@@ -228,8 +234,9 @@ const itemKeys = {
 
 const photoRoles = ['dish', 'scan'] as const satisfies readonly RecipeImageRole[];
 
-// Text fields and the tags in the order the form shows them, around the lists.
-const fieldsBeforeLists = ['title', 'source'] as const satisfies readonly RecipeFormErrorField[];
+// Text fields in the order the form shows them, around the lists. The choices follow the text after
+// the lists.
+const fieldsBeforeLists = ['title', 'source'] as const satisfies readonly RecipeFormTextField[];
 const fieldsAfterLists = [
 	'notes',
 	'description',
@@ -238,8 +245,7 @@ const fieldsAfterLists = [
 	'totalMinutes',
 	'yieldAmount',
 	'yieldUnit',
-	'tags',
-] as const satisfies readonly RecipeFormErrorField[];
+] as const satisfies readonly RecipeFormTextField[];
 
 // Problems whose paths never change, whatever the form holds.
 const fixedTargets: ProblemTargets = new Map<string, ProblemTarget>([
@@ -252,7 +258,7 @@ const fixedTargets: ProblemTargets = new Map<string, ProblemTarget>([
 	['times.totalMinutes', { kind: 'field', field: 'totalMinutes' }],
 	['yield', { kind: 'field', field: 'yieldAmount' }],
 	['yield.unit', { kind: 'field', field: 'yieldUnit' }],
-	['tags', { kind: 'field', field: 'tags' }],
+	...recipeFormChoiceFields.map((field) => [field, { kind: 'field', field }] as const),
 	['ingredientSections', { kind: 'list', list: 'ingredientSections' }],
 	['instructionSections', { kind: 'list', list: 'instructionSections' }],
 ]);
@@ -267,7 +273,6 @@ const blankText: RecipeFormText = {
 	totalMinutes: '',
 	yieldAmount: '',
 	yieldUnit: '',
-	tagDraft: '',
 };
 
 function isBlank(text: string): boolean {
@@ -283,21 +288,14 @@ function minutesText(minutes: number | undefined): string {
 	return minutes === undefined ? '' : String(minutes);
 }
 
-// Each comma-separated tag in the text, trimmed, without blanks.
-export function tagLabelsFrom(text: string): string[] {
-	return text
-		.split(',')
-		.map((label) => label.trim())
-		.filter((label) => label !== '');
-}
-
-// The labels that add a tag: each tag once, by key, and none already chosen.
-export function tagLabelsToAdd(
-	tags: readonly RecipeFormTag[],
-	labels: readonly string[]
-): string[] {
-	const chosenKeys = new Set(tags.map((tag) => tagKey(tag.label)));
-	return uniqueTagLabels(labels).filter((label) => !chosenKeys.has(tagKey(label)));
+// What is chosen of a vocabulary once this member is chosen or not, in the vocabulary's order.
+function withChoice<Member extends string>(
+	vocabulary: readonly Member[],
+	chosen: readonly Member[],
+	member: Member,
+	isChosen: boolean
+): Member[] {
+	return vocabulary.filter((each) => (each === member ? isChosen : chosen.includes(each)));
 }
 
 // A photo still being processed or uploaded, which saving must wait for.
@@ -533,7 +531,6 @@ export function recipeFormValues(
 			texts: section.steps.map((step) => step.text),
 		}))
 	);
-	const tags = (content?.tags ?? []).map((label) => ({ id: newId(), label }));
 	const photos: Record<RecipeImageRole, RecipeFormPhoto[]> = { dish: [], scan: [] };
 	(content?.images ?? []).forEach((image, index) => {
 		const id = newId();
@@ -550,7 +547,10 @@ export function recipeFormValues(
 		yieldKind: recipeYield?.kind ?? 'servings',
 		ingredientSections,
 		instructionSections,
-		tags,
+		chapter: content?.chapter,
+		holidays: content?.holidays ?? [],
+		// So a recipe stored as vegan shows Vegetarian held by Vegan, as when the member ticks Vegan alone.
+		diets: withoutImpliedDiets(content?.diets ?? []),
 		photos,
 		fieldErrors: {},
 		reviewNotes: draftReviewNotes(problems, targets),
@@ -653,7 +653,9 @@ export function recipeFormSubmission(values: RecipeFormValues): RecipeFormSubmis
 			heading,
 			steps: texts,
 		})),
-		tags: [...values.tags.map((tag) => tag.label), ...tagLabelsFrom(text.tagDraft)],
+		chapter: values.chapter,
+		holidays: [...values.holidays],
+		diets: [...values.diets],
 		images,
 	};
 	return { payload, targets };
@@ -676,16 +678,9 @@ function hasItemText(list: RecipeFormList): boolean {
 	return list.rows.some((row) => row.kind === 'item' && !isBlank(row.text));
 }
 
-// The text a field holds; the tags field holds its tags and the one being typed, which saving adds.
-function fieldTexts(values: RecipeFormValues, field: RecipeFormErrorField): readonly string[] {
-	return field === 'tags'
-		? [...values.tags.map((tag) => tag.label), values.text.tagDraft]
-		: [values.text[field]];
-}
-
 function fieldPlaces(
 	values: RecipeFormValues,
-	fields: readonly RecipeFormErrorField[]
+	fields: readonly RecipeFormTextField[]
 ): RecipeFormPlace[] {
 	return fields.flatMap((field): RecipeFormPlace[] => {
 		// The unit shows only for a yield the recipe makes, and only then is it sent.
@@ -696,11 +691,20 @@ function fieldPlaces(
 			{
 				target: { kind: 'field', field },
 				error: values.fieldErrors[field],
-				texts: fieldTexts(values, field),
+				texts: [values.text[field]],
 				emptyRequired: field === 'title' && isBlank(values.text.title) ? field : undefined,
 			},
 		];
 	});
+}
+
+// The choices hold no text to check.
+function choicePlaces(values: RecipeFormValues): RecipeFormPlace[] {
+	return recipeFormChoiceFields.map((field) => ({
+		target: { kind: 'field', field },
+		error: values.fieldErrors[field],
+		emptyRequired: field === 'chapter' && values.chapter === undefined ? field : undefined,
+	}));
 }
 
 // A list's places: the list, then each row, and after each heading the section it starts, about
@@ -747,6 +751,7 @@ function recipeFormPlaces(values: RecipeFormValues): RecipeFormPlace[] {
 		...listPlaces(values, 'ingredientSections'),
 		...listPlaces(values, 'instructionSections'),
 		...fieldPlaces(values, fieldsAfterLists),
+		...choicePlaces(values),
 		...photoRoles.flatMap((role) => photoPlaces(values, role)),
 	];
 }
@@ -764,6 +769,7 @@ export function recipeFormProblems(values: RecipeFormValues): RecipeFormProblem[
 function requiredPaths(values: RecipeFormValues, content: RequiredContent): string[] {
 	switch (content) {
 		case 'title':
+		case 'chapter':
 			return [content];
 		case 'ingredientSections':
 		case 'instructionSections': {
@@ -1050,10 +1056,13 @@ function withDissolvedSectionNotesMoved(
 function answeredNoteTargets(edit: RecipeFormEdit): (ProblemTarget | { kind: 'form' })[] {
 	switch (edit.type) {
 		case 'setText':
-			return [{ kind: 'field', field: edit.field === 'tagDraft' ? 'tags' : edit.field }];
-		case 'addTags':
-		case 'removeTag':
-			return [{ kind: 'field', field: 'tags' }];
+			return [{ kind: 'field', field: edit.field }];
+		case 'setChapter':
+			return [{ kind: 'field', field: 'chapter' }];
+		case 'setHoliday':
+			return [{ kind: 'field', field: 'holidays' }];
+		case 'setDiet':
+			return [{ kind: 'field', field: 'diets' }];
 		case 'setPhotoAlt':
 			return [{ kind: 'photo', id: edit.photoId }];
 		case 'resolveReviewNote':
@@ -1130,20 +1139,15 @@ function editedRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): Recip
 				...updateRows(values, edit.list, (rows) => withRowsPasted(rows, edit, values.nextId)),
 				nextId: values.nextId + edit.rows.length,
 			};
-		case 'addTags': {
-			const labels = tagLabelsToAdd(values.tags, edit.labels);
+		case 'setChapter':
+			return { ...values, chapter: edit.chapter };
+		case 'setHoliday':
 			return {
 				...values,
-				text: { ...values.text, tagDraft: '' },
-				tags: [
-					...values.tags,
-					...labels.map((label, index) => ({ id: values.nextId + index, label })),
-				],
-				nextId: values.nextId + labels.length,
+				holidays: withChoice(holidayVocabulary, values.holidays, edit.holiday, edit.chosen),
 			};
-		}
-		case 'removeTag':
-			return { ...values, tags: values.tags.filter((tag) => tag.id !== edit.tagId) };
+		case 'setDiet':
+			return { ...values, diets: withChoice(dietVocabulary, values.diets, edit.diet, edit.chosen) };
 		case 'addPhotos':
 		case 'startPhotoUpload':
 		case 'setPhotoProgress':

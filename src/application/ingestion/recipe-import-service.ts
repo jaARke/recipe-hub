@@ -1,5 +1,6 @@
 import 'server-only';
 import { requireMember } from '@/application/authorization';
+import type { SavedDraftId } from '@/application/drafts/saved-draft';
 import {
 	ImportFailedError,
 	ImportNoRecipeError,
@@ -10,11 +11,7 @@ import {
 	ImportTimedOutError,
 	InvalidImportError,
 } from '@/application/ingestion/errors';
-import {
-	toImportDraftDto,
-	type ImportReviewDto,
-	type RecipeImportRef,
-} from '@/application/ingestion/recipe-import-dtos';
+import type { RecipeImportRef } from '@/application/ingestion/recipe-import-dtos';
 import type { ActorProvider, MemberActor } from '@/application/ports/actor-provider';
 import type { ImageStore } from '@/application/ports/image-store';
 import type {
@@ -47,10 +44,8 @@ import {
 	type RecipeImage,
 } from '@/domain/recipe/recipe-image';
 import {
-	importDraftCutoff,
+	importProvenance,
 	noScansMessage,
-	recipeImportIdSchema,
-	reviewableDraft,
 	urlImportBlankMessages,
 	type RecipeImport,
 	type RecipeImportMode,
@@ -265,34 +260,6 @@ export class RecipeImportService {
 		);
 	}
 
-	// Null for an import that is not the member's, failed, or whose draft expired or was cleared
-	// without a recipe. Ids arrive from URLs, so a malformed id names no import.
-	async getImportReview(id: string): Promise<ImportReviewDto | null> {
-		const actor = requireMember(await this.actors.currentActor());
-		const parsed = recipeImportIdSchema.safeParse(id);
-		const recipeImport = parsed.success ? await this.imports.findById(parsed.data) : null;
-		if (recipeImport === null || recipeImport.memberId !== actor.memberId) {
-			return null;
-		}
-
-		if (recipeImport.savedRecipeSlug !== undefined) {
-			return { status: 'saved', recipeSlug: recipeImport.savedRecipeSlug };
-		}
-
-		const draft = reviewableDraft(recipeImport, new Date());
-		if (draft === null) {
-			return null;
-		}
-
-		return { status: 'reviewable', draft: toImportDraftDto(recipeImport, draft) };
-	}
-
-	// A system use case with no actor, which the daily cleanup runs: clears the draft and source URL of
-	// every import past the draft lifetime, and returns how many it cleared.
-	async clearExpiredDrafts(): Promise<number> {
-		return this.imports.clearDraftsCreatedBefore(importDraftCutoff(new Date()));
-	}
-
 	// A system use case with no actor, which the daily cleanup runs: records every import still running
 	// past its lease as failed, and returns how many it recorded. Each is a problem to watch.
 	async settleInterruptedImports(): Promise<number> {
@@ -306,8 +273,9 @@ export class RecipeImportService {
 		return settled;
 	}
 
-	// Every outcome of a started import is recorded, with what the model calls cost. Recording a failure
-	// waits past the deadline, for a bound of its own that ends before the function does.
+	// Every outcome of a started import is recorded, with what the model calls cost: a success with the
+	// draft it makes. Recording a failure waits past the deadline, for a bound of its own that ends
+	// before the function does.
 	private async runImport(
 		actor: MemberActor,
 		source: ImportSource,
@@ -325,13 +293,13 @@ export class RecipeImportService {
 				throw new ImportNoRecipeError();
 			}
 
-			await withinImport(this.recordDraft(recipeImport, source, extraction), deadline);
+			return {
+				draftId: await withinImport(this.recordSuccess(recipeImport, source, extraction), deadline),
+			};
 		} catch (error) {
 			await this.recordFailure(recipeImport, error, extraction);
 			throw error;
 		}
-
-		return { id: recipeImport.id };
 	}
 
 	// A step before the import is recorded. No record will keep a timeout here, so it is logged.
@@ -369,24 +337,29 @@ export class RecipeImportService {
 		return recipeImport;
 	}
 
-	// The draft keeps the scans it was read from. Its provenance comes from the import's record when it
-	// is reviewed, so the record holds the source URL and model.
-	private async recordDraft(
+	// The success and the draft it makes are recorded together, so a failure after the extraction
+	// leaves a failed import and no draft. The draft keeps the scans it was read from, and the
+	// provenance its recipe takes.
+	private async recordSuccess(
 		recipeImport: RecipeImport,
 		source: ImportSource,
 		extraction: Extraction
-	): Promise<void> {
-		const draft = importDraftFromExtractedRecipe(
+	): Promise<SavedDraftId> {
+		const imported = importDraftFromExtractedRecipe(
 			extraction.recipe,
 			source.mode === 'photo' ? source.images : []
 		);
-		const recorded = await this.imports.recordSuccess(recipeImport.id, {
-			draft,
-			...(source.mode === 'url' && { sourceUrl: source.sourceUrl }),
+		const draftId = await this.imports.recordSuccess(recipeImport.id, {
 			...(extraction.model !== undefined && { aiModel: extraction.model }),
 			...(extraction.costUsd !== undefined && { costUsd: extraction.costUsd }),
+			draft: {
+				provenance: importProvenance(source, extraction.model),
+				...(imported.content.title !== undefined && { title: imported.content.title }),
+				imported,
+				imagePathnames: imported.content.images?.map(({ pathname }) => pathname) ?? [],
+			},
 		});
-		if (!recorded) {
+		if (draftId === null) {
 			throw new Error('Import was no longer running');
 		}
 
@@ -394,9 +367,11 @@ export class RecipeImportService {
 			importId: recipeImport.id,
 			memberId: recipeImport.memberId,
 			mode: recipeImport.mode,
+			draftId,
 			...(extraction.model !== undefined && { aiModel: extraction.model }),
 			...(extraction.costUsd !== undefined && { costUsd: extraction.costUsd }),
 		});
+		return draftId;
 	}
 
 	// Logged before it is recorded, so the logs keep the failure even when recording it fails. Import
@@ -500,7 +475,6 @@ export class RecipeImportService {
 		const othersScans = await imagesInUse(
 			pathnames,
 			this.recipes,
-			this.imports,
 			this.drafts,
 			new Date(),
 			memberId

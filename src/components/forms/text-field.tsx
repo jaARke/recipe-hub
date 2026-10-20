@@ -5,6 +5,7 @@ import {
 	fieldNoteMessageId,
 	type FieldNoteContent,
 } from '@/components/forms/field-note';
+import { optionalLabel } from '@/components/forms/optional-label';
 import { FieldProblem } from '@/components/forms/problem-summary';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -12,6 +13,8 @@ import { Input } from '@/components/ui/input';
 type TextFieldProps = Omit<React.ComponentProps<'input'>, 'id'> & {
 	id: string;
 	label: string;
+	// Shows "(optional)" in the label, which its note still names the field by without.
+	optional?: boolean;
 	description?: React.ReactNode;
 	error?: string;
 	// Something to check against the original, as when reviewing a draft. It is no error.
@@ -28,13 +31,21 @@ function textFieldIds(id: string) {
 }
 
 // A labeled input whose description, error, and note, when it has them, are tied to it.
-function TextField({ id, label, description, error, note, ...inputProps }: TextFieldProps) {
+function TextField({
+	id,
+	label,
+	optional = false,
+	description,
+	error,
+	note,
+	...inputProps
+}: TextFieldProps) {
 	const ids = textFieldIds(id);
 	const invalid = error !== undefined;
 
 	return (
 		<Field data-invalid={invalid ? 'true' : undefined}>
-			<FieldLabel htmlFor={id}>{label}</FieldLabel>
+			<FieldLabel htmlFor={id}>{optional ? optionalLabel(label) : label}</FieldLabel>
 			<Input
 				id={id}
 				aria-invalid={invalid ? 'true' : undefined}

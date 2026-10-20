@@ -9,7 +9,6 @@ import { anonymousActor } from '@/application/testing/actors';
 import { FixedActorProvider } from '@/application/testing/fixed-actor-provider';
 import { InMemoryImageMoveLock } from '@/application/testing/in-memory-image-move-lock';
 import { InMemoryProductionImages } from '@/application/testing/in-memory-production-images';
-import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
 import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
 import { stalledCall } from '@/application/testing/stalled-call';
@@ -590,6 +589,8 @@ describe('time limits', () => {
 		const listing = storeFor('development').listRemoved();
 		read.catch(() => undefined);
 		listing.catch(() => undefined);
+		// The listing's request reaches the fake Blob first, or its abort closes nothing it saw.
+		await vi.waitFor(() => expect(unansweredCount).toBe(1));
 		await vi.advanceTimersByTimeAsync(15_000);
 		vi.useRealTimers();
 
@@ -628,7 +629,6 @@ describe('a sweep through Blob', () => {
 		const recipes = new InMemoryRecipeRepository();
 		return new RecipeImageService(
 			recipes,
-			new InMemoryRecipeImportRepository(recipes),
 			new InMemorySavedDraftRepository(),
 			new BlobImageStore({ storeId: 'store_test', folders }),
 			new InMemoryProductionImages(),

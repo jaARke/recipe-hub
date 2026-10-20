@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { toFormError } from '@/app/_lib/form-errors';
-import { SavedDraftEditConflictError } from '@/application/drafts/errors';
+import {
+	SavedDraftDeleteConflictError,
+	SavedDraftEditConflictError,
+	SavedDraftGoneError,
+} from '@/application/drafts/errors';
 import { DeviceFavoritesFullError } from '@/application/favorites/errors';
 import {
 	ImportFailedError,
@@ -66,6 +70,24 @@ describe('toFormError', () => {
 			status: 'error',
 			message:
 				'This draft was saved somewhere else after you opened it here. Copy anything you want to keep, then reload the page to see that version.',
+			fieldErrors: {},
+		});
+	});
+
+	it('says a draft was added or deleted elsewhere, so it can be neither saved nor added', () => {
+		expect(toFormError(new SavedDraftGoneError())).toEqual({
+			status: 'error',
+			message:
+				'This draft was added to the cookbook or deleted somewhere else, so it can’t be saved or added here. Copy anything you want to keep.',
+			fieldErrors: {},
+		});
+	});
+
+	it('says a draft was saved elsewhere since the page showed it, so the delete was refused', () => {
+		expect(toFormError(new SavedDraftDeleteConflictError())).toEqual({
+			status: 'error',
+			message:
+				'This draft was saved somewhere else after this page showed it, so it wasn’t deleted. Reload the page to see that version.',
 			fieldErrors: {},
 		});
 	});

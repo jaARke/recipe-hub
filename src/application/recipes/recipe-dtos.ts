@@ -1,7 +1,10 @@
 import 'server-only';
 import { toPublicMemberDto, type PublicMemberDto } from '@/application/members/member-dtos';
 import type { Member } from '@/domain/member/member';
+import type { Chapter } from '@/domain/recipe/chapter';
+import type { Diet } from '@/domain/recipe/diet';
 import { totalMinutes } from '@/domain/recipe/duration';
+import type { Holiday } from '@/domain/recipe/holiday';
 import { sourceUrlSchema } from '@/domain/recipe/provenance';
 import type { Recipe, RecipeContent, RecipeId } from '@/domain/recipe/recipe';
 import { coverImage, dishImages, scanImages, type RecipeImage } from '@/domain/recipe/recipe-image';
@@ -28,7 +31,9 @@ export type RecipeSummaryDto = {
 	source?: string;
 	totalMinutes?: number;
 	yield?: RecipeYield;
-	tags: string[];
+	chapter: Chapter;
+	holidays: Holiday[];
+	diets: Diet[];
 	coverImage?: RecipeImage;
 	createdAt: Date;
 };
@@ -45,8 +50,6 @@ export type EditableRecipeDto = RecipeContent & {
 	slug: string;
 	// Changes with every save, so a form can tell its copy is out of date.
 	updatedAt: Date;
-	// The recipe's tags that no other recipe uses, which the edit can respell.
-	respellableTags: string[];
 };
 
 // What a signed-in member sees beside the public recipe: whether they may edit it.
@@ -116,7 +119,9 @@ export function toPublicRecipeDto(recipe: Recipe, contributor: Member): PublicRe
 		times: recipe.times,
 		ingredientSections: recipe.ingredientSections,
 		instructionSections: recipe.instructionSections,
-		tags: recipe.tags,
+		chapter: recipe.chapter,
+		holidays: recipe.holidays,
+		diets: recipe.diets,
 		images: dishImages(recipe.images),
 		scans: scanImages(recipe.images),
 		sourceUrl: publicSourceUrl(recipe),
@@ -125,7 +130,7 @@ export function toPublicRecipeDto(recipe: Recipe, contributor: Member): PublicRe
 	};
 }
 
-export function toEditableRecipeDto(recipe: Recipe, respellableTags: string[]): EditableRecipeDto {
+export function toEditableRecipeDto(recipe: Recipe): EditableRecipeDto {
 	return {
 		id: recipe.id,
 		slug: recipe.slug,
@@ -137,10 +142,11 @@ export function toEditableRecipeDto(recipe: Recipe, respellableTags: string[]): 
 		times: recipe.times,
 		ingredientSections: recipe.ingredientSections,
 		instructionSections: recipe.instructionSections,
-		tags: recipe.tags,
+		chapter: recipe.chapter,
+		holidays: recipe.holidays,
+		diets: recipe.diets,
 		images: recipe.images,
 		updatedAt: recipe.updatedAt,
-		respellableTags,
 	};
 }
 
@@ -156,7 +162,9 @@ export function toRecipeSummaryDto(recipe: Recipe): RecipeSummaryDto {
 		source: recipe.source,
 		totalMinutes: totalMinutes(recipe.times),
 		yield: recipe.yield,
-		tags: recipe.tags,
+		chapter: recipe.chapter,
+		holidays: recipe.holidays,
+		diets: recipe.diets,
 		coverImage: coverImage(recipe.images),
 		createdAt: recipe.createdAt,
 	};

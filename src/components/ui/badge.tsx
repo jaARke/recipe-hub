@@ -19,7 +19,8 @@ const badgeVariants = cva(
 				ghost: 'hover:bg-state-layer hover:text-muted-foreground',
 				link: 'text-primary underline-offset-4 hover:underline',
 			},
-			// User text, such as a tag, wraps within a narrow screen, curved at the corners as one line is.
+			// A label that can outgrow a narrow screen, such as a holiday's in large text, wraps within it,
+			// curved at the corners as one line is.
 			wrap: {
 				true: 'h-auto min-h-5 rounded-[10px] py-px whitespace-normal wrap-anywhere [a]:h-auto [a]:min-h-6 [a]:rounded-[12px]',
 			},

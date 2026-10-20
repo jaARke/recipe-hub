@@ -23,7 +23,7 @@ function PageErrorState({ onRetry }: { onRetry: () => void }) {
 					</EmptyMedia>
 					{/* EmptyTitle renders a div, so the role makes it this page's heading. */}
 					<EmptyTitle role="heading" aria-level={1}>
-						Something went wrong
+						Something Went Wrong
 					</EmptyTitle>
 					<EmptyDescription>
 						This page couldn’t load. Try again, or go back to the recipes.

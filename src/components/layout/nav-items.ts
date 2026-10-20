@@ -11,6 +11,8 @@ export type NavItem = {
 	label: string;
 	// Where else the section's pages live, besides at and below href.
 	otherPaths?: readonly string[];
+	// Shows the member's draft count beside the label.
+	showsDraftCount?: boolean;
 };
 
 // The site's sections, in the header's row and the phone menu. Signed out, Add recipe leads to
@@ -19,7 +21,7 @@ export type NavItem = {
 export const navItems: readonly NavItem[] = [
 	{ href: recipeListPath, label: 'Browse', otherPaths: [recipePagesPath] },
 	{ href: favoritesPath, label: 'Favorites' },
-	{ href: contributePath, label: 'Add recipe' },
+	{ href: contributePath, label: 'Add recipe', showsDraftCount: true },
 ];
 
 // Admins only, and last wherever it appears, so nothing moves when it streams in with the session.

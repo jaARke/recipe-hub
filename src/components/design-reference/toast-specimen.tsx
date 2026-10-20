@@ -17,8 +17,8 @@ const toastExamples = [
 		raise: () =>
 			toast.add({
 				type: 'success',
-				title: 'Recipe saved',
-				description: 'Buttermilk biscuits is now in the collection.',
+				title: 'Added to the cookbook',
+				description: 'Everyone in the family can see it now.',
 			}),
 	},
 	{
@@ -27,7 +27,7 @@ const toastExamples = [
 			toast.add({
 				type: 'info',
 				title: 'Reading the page…',
-				description: 'You’ll check what’s read before saving it.',
+				description: 'The recipe opens as a draft for you to check.',
 			}),
 	},
 	{

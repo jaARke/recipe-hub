@@ -14,7 +14,7 @@ let imports: InMemoryRecipeImportRepository;
 
 beforeEach(() => {
 	drafts = new InMemorySavedDraftRepository();
-	imports = new InMemoryRecipeImportRepository(new InMemoryRecipeRepository());
+	imports = new InMemoryRecipeImportRepository(new InMemoryRecipeRepository(), drafts);
 });
 
 describeSavedDraftRepositoryContract(() => ({

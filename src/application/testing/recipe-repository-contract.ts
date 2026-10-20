@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SavedDraftEditConflictError, SavedDraftGoneError } from '@/application/drafts/errors';
 import { ImportUnavailableError } from '@/application/ingestion/errors';
 import type { RecipeImportRepository } from '@/application/ports/recipe-import-repository';
 import type {
@@ -7,6 +8,7 @@ import type {
 	RecipeUpdate,
 	UpdatedRecipe,
 } from '@/application/ports/recipe-repository';
+import type { SavedDraft, SavedDraftRepository } from '@/application/ports/saved-draft-repository';
 import { RecipeEditConflictError } from '@/application/recipes/errors';
 import type { MemberId } from '@/domain/member/member';
 import type { Provenance } from '@/domain/recipe/provenance';
@@ -25,12 +27,13 @@ import {
 	sampleTomatoSalad,
 } from '@/domain/recipe/samples/sample-recipes';
 import { slugify } from '@/domain/recipe/slug';
-import { tagKey } from '@/domain/recipe/tag-normalization';
 
 export type RecipeRepositoryFixture = {
 	repository: RecipeRepository;
 	// Stores the imports a recipe can be saved from.
 	imports: RecipeImportRepository;
+	// Stores the drafts a recipe can be added from.
+	drafts: SavedDraftRepository;
 	// Two members the repository accepts as contributors.
 	contributorId: MemberId;
 	otherContributorId: MemberId;
@@ -83,6 +86,74 @@ export function describeRecipeRepositoryContract(fixture: () => RecipeRepository
 		const content = recipeContentSchema.parse(input);
 		return (await save(recipe, { content, slugBase: slugify(content.title) }))?.recipe;
 	}
+
+	describe('create from a draft', () => {
+		// A draft the member saved from the recipe form, which a recipe is added from.
+		function saveDraft(memberId: MemberId = fixture().contributorId): Promise<SavedDraft> {
+			return fixture().drafts.create({ memberId, values: {}, imagePathnames: [] });
+		}
+
+		function fromDraft(draft: SavedDraft, expectedUpdatedAt: Date = draft.updatedAt) {
+			return { fromDraft: { id: draft.id, expectedUpdatedAt } };
+		}
+
+		it("adds the recipe from the contributor's draft at its version, deleting the draft with it", async () => {
+			const { repository, drafts } = fixture();
+			const draft = await saveDraft();
+
+			const created = await create(sampleChickenSoup, fromDraft(draft));
+
+			expect(await repository.findById(created.id)).toEqual(created);
+			expect(await drafts.findById(draft.id)).toBeNull();
+		});
+
+		it('refuses a draft saved since, creating nothing and keeping the draft', async () => {
+			const { repository, drafts } = fixture();
+			const draft = await saveDraft();
+			const saved = await drafts.update(draft.id, {
+				values: { text: { title: 'Lemon squares' } },
+				imagePathnames: [],
+				expectedUpdatedAt: draft.updatedAt,
+			});
+
+			await expect(create(sampleChickenSoup, fromDraft(draft))).rejects.toThrow(
+				SavedDraftEditConflictError
+			);
+			expect(await repository.count()).toBe(0);
+			expect(await drafts.findById(draft.id)).toEqual(saved);
+		});
+
+		it("refuses a draft added already, or another member's, creating nothing", async () => {
+			const { repository, drafts, otherContributorId } = fixture();
+			const added = await saveDraft();
+			await create(sampleChickenSoup, fromDraft(added));
+			const theirs = await saveDraft(otherContributorId);
+
+			await expect(create(sampleTomatoSalad, fromDraft(added))).rejects.toThrow(
+				SavedDraftGoneError
+			);
+			await expect(create(sampleTomatoSalad, fromDraft(theirs))).rejects.toThrow(
+				SavedDraftGoneError
+			);
+			expect(await repository.count()).toBe(1);
+			expect(await drafts.findById(theirs.id)).toEqual(theirs);
+			expect((await create(sampleTomatoSalad)).slug).toBe('garden-tomato-salad');
+		});
+
+		it("keeps the draft when the recipe can't be created, as from an import already used", async () => {
+			const { repository, imports, drafts, contributorId } = fixture();
+			const started = await imports.start({ memberId: contributorId, mode: 'photo' });
+			const provenance: Provenance = { entryMode: 'photo', aiModel: 'example/model' };
+			await create(sampleChickenSoup, { provenance, importId: started?.id });
+			const draft = await saveDraft();
+
+			await expect(
+				create(sampleTomatoSalad, { provenance, importId: started?.id, ...fromDraft(draft) })
+			).rejects.toThrow(ImportUnavailableError);
+			expect(await repository.count()).toBe(1);
+			expect(await drafts.findById(draft.id)).toEqual(draft);
+		});
+	});
 
 	describe('create', () => {
 		// One test for every sample, so the samples share one store.
@@ -334,13 +405,14 @@ export function describeRecipeRepositoryContract(fixture: () => RecipeRepository
 	});
 
 	describe('update', () => {
-		it('replaces the content and tags, and keeps the slug, provenance, and creation time', async () => {
+		it('replaces the content, chapter, holidays and diets, and keeps the slug, provenance, and creation time', async () => {
 			const provenance: Provenance = { entryMode: 'photo', aiModel: 'example/model' };
 			const created = await create(sampleButtermilkBiscuits, { provenance });
 			// The new content has no description, so a merged document would show the old one.
 			const content = recipeContentSchema.parse({
 				...sampleChickenSoup,
-				tags: ['Soup', 'Make ahead'],
+				holidays: ['new-years-day'],
+				diets: ['dairy-free'],
 			});
 			const { repository, contributorId } = fixture();
 
@@ -495,88 +567,6 @@ export function describeRecipeRepositoryContract(fixture: () => RecipeRepository
 
 			expect(await repository.findBySlug('buttermilk-biscuits')).toBeNull();
 			expect((await create(sampleButtermilkBiscuits)).slug).toBe('buttermilk-biscuits');
-		});
-	});
-
-	describe('findTagLabels', () => {
-		it('finds labels in use whose key matches, across case and spacing', async () => {
-			await create(sampleChickenSoup);
-			await create(sampleLemonIceboxPie);
-			const keys = [' make  AHEAD', 'SOUP', 'Breakfast'].map(tagKey);
-
-			const labels = await fixture().repository.findTagLabels(keys);
-
-			expect(labels.toSorted()).toEqual(['Make ahead', 'Soup']);
-		});
-
-		it('ignores the excluded recipe, so its own spellings can change', async () => {
-			const pie = await create(sampleLemonIceboxPie);
-			await create({ ...sampleChickenSoup, tags: ['make  AHEAD'] });
-			const keys = ['Dessert', 'Make ahead'].map(tagKey);
-
-			const labels = await fixture().repository.findTagLabels(keys, pie.id);
-
-			expect(labels).toEqual(['make AHEAD']);
-		});
-
-		it("gives one label for each tag, the earliest recipe's spelling", async () => {
-			const soup = await create({ ...sampleChickenSoup, tags: ['Make ahead'] });
-			await create({ ...sampleTomatoSalad, tags: ['make AHEAD'] });
-			await create({ ...sampleButtermilkBiscuits, tags: ['MAKE AHEAD'] });
-			const { repository } = fixture();
-
-			expect(await repository.findTagLabels([tagKey('Make ahead')])).toEqual(['Make ahead']);
-			expect(await repository.findTagLabels([tagKey('Make ahead')], soup.id)).toEqual([
-				'make AHEAD',
-			]);
-		});
-	});
-
-	describe('listTagLabels', () => {
-		it('lists every tag once, most used first, and tags used as often by key', async () => {
-			await create({ ...sampleChickenSoup, tags: ['Soup', 'Weeknight'] });
-			await create({ ...sampleTomatoSalad, tags: ['salad', 'Weeknight', 'Make ahead'] });
-			await create({ ...sampleButtermilkBiscuits, tags: ['Baking', 'weeknight'] });
-
-			expect(await fixture().repository.listTagLabels()).toEqual([
-				'Weeknight',
-				'Baking',
-				'Make ahead',
-				'salad',
-				'Soup',
-			]);
-		});
-
-		it("labels a tag with the earliest recipe's spelling, and the next one's once it drops the tag", async () => {
-			const soup = await create({ ...sampleChickenSoup, tags: ['Make ahead'] });
-			await create({ ...sampleTomatoSalad, tags: ['make AHEAD'] });
-			const { repository } = fixture();
-			expect(await repository.listTagLabels()).toEqual(['Make ahead']);
-
-			await save(soup, { content: recipeContentSchema.parse({ ...sampleChickenSoup, tags: [] }) });
-
-			expect(await repository.listTagLabels()).toEqual(['make AHEAD']);
-		});
-
-		it('keeps the earliest spelling when that recipe is edited later', async () => {
-			const soup = await create({ ...sampleChickenSoup, tags: ['Make ahead'] });
-			await create({ ...sampleTomatoSalad, tags: ['make AHEAD'] });
-
-			await save(soup, {
-				content: recipeContentSchema.parse({
-					...sampleChickenSoup,
-					tags: ['Make ahead'],
-					notes: 'Edited.',
-				}),
-			});
-
-			expect(await fixture().repository.listTagLabels()).toEqual(['Make ahead']);
-		});
-
-		it('lists nothing when no recipe has tags', async () => {
-			await create({ ...sampleChickenSoup, tags: [] });
-
-			expect(await fixture().repository.listTagLabels()).toEqual([]);
 		});
 	});
 

@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { slugCandidate, slugify, slugSchema } from '@/domain/recipe/slug';
+import { slugCandidate, slugify, slugKey, slugSchema } from '@/domain/recipe/slug';
 
 const slugCap = 60;
+
+describe('slugKey', () => {
+	it('folds text as a slug does, without a cap or a fallback', () => {
+		const words = 'make-ahead family dinner for a crowd with leftovers to spare at Thanksgiving';
+		expect(slugKey(words)).toBe(
+			'make-ahead-family-dinner-for-a-crowd-with-leftovers-to-spare-at-thanksgiving'
+		);
+		expect(slugKey('St. Patrick’s Day')).toBe('st-patricks-day');
+		expect(slugKey('¡!')).toBe('');
+	});
+});
 
 describe('slugify', () => {
 	it('lowercases and hyphenates words', () => {

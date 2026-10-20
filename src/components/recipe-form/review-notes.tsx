@@ -1,6 +1,6 @@
 'use client';
 
-import { ListChecksIcon } from 'lucide-react';
+import { CircleCheckIcon, ListChecksIcon } from 'lucide-react';
 import * as React from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -26,17 +26,32 @@ export function checkedAnnouncement(left: number): string {
 }
 
 // Heads the form while anything is left to check against the original, and starts the member on
-// the first. It takes focus as an import's review opens, and isn't announced as its count changes,
-// since "Looks right" announces what is left.
+// the first; once nothing is left, it stays to say everything's checked and what comes next. It takes
+// focus as a form opens with notes to check, as an import's draft does, and as the last note looks
+// right. It isn't announced as its count changes, since "Looks right" announces what is left.
 function ReviewNotesIntro({
 	id,
 	count,
+	whenChecked,
 	onStart,
 }: {
 	id: string;
+	// What is left to check; none once everything is checked.
 	count: number;
+	// What to do once everything is checked, such as "Add it to the cookbook when you’re ready."
+	whenChecked: string;
 	onStart: () => void;
 }) {
+	if (count === 0) {
+		return (
+			<Alert id={id} tabIndex={-1} role={undefined} aria-live={undefined}>
+				<CircleCheckIcon aria-hidden="true" />
+				<AlertTitle>Everything’s checked</AlertTitle>
+				<AlertDescription>{whenChecked}</AlertDescription>
+			</Alert>
+		);
+	}
+
 	return (
 		<Alert id={id} tabIndex={-1} role={undefined} aria-live={undefined}>
 			<ListChecksIcon aria-hidden="true" />
@@ -82,6 +97,10 @@ type UncheckedSaveDialogProps = {
 	count: number;
 	// Moves focus to the first thing to check, once the dialog has closed.
 	onShow: () => void;
+	// What saving anyway is called, such as "Add anyway".
+	saveAnywayLabel: string;
+	// When the notes go, which ends the description, such as "it’s added to the cookbook".
+	notesKeptUntil: string;
 	onSaveAnyway: () => void;
 };
 
@@ -92,11 +111,26 @@ function UncheckedSaveDialog({
 	onOpenChange,
 	count,
 	onShow,
+	saveAnywayLabel,
+	notesKeptUntil,
 	onSaveAnyway,
 }: UncheckedSaveDialogProps) {
 	// Set by "Show me", whose focus goes to the first note rather than back to Save. It lasts until
 	// the dialog next opens, since the dialog decides where focus returns after it has closed.
 	const showing = React.useRef(false);
+	const popup = React.useRef<HTMLDivElement>(null);
+
+	// Back to Save as the dialog closes, unless "Show me" sends focus to a note, or the save it started
+	// has already moved focus outside it, as a failed save does to the problem summary.
+	function returnFocus(): boolean {
+		if (showing.current) {
+			return false;
+		}
+		const active = document.activeElement;
+		return (
+			active === null || active === document.body || (popup.current?.contains(active) ?? false)
+		);
+	}
 
 	return (
 		<AlertDialog
@@ -110,13 +144,13 @@ function UncheckedSaveDialog({
 				}
 			}}
 		>
-			<AlertDialogContent finalFocus={() => !showing.current}>
+			<AlertDialogContent ref={popup} finalFocus={returnFocus}>
 				<AlertDialogHeader>
 					<AlertDialogTitle>
 						{countedThings(count, 'hasn’t been checked', 'haven’t been checked')}
 					</AlertDialogTitle>
 					<AlertDialogDescription>
-						Each has a note in the form. The notes aren’t kept once the recipe is saved.
+						Each has a note in the form. The notes aren’t kept once {notesKeptUntil}.
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
@@ -136,7 +170,7 @@ function UncheckedSaveDialog({
 							onSaveAnyway();
 						}}
 					>
-						Save anyway
+						{saveAnywayLabel}
 					</AlertDialogAction>
 				</AlertDialogFooter>
 			</AlertDialogContent>

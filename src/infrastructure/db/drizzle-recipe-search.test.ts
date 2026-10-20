@@ -7,8 +7,12 @@ import type {
 	RecipeSearchResults,
 	RecipeTextQuery,
 } from '@/application/ports/recipe-search';
+import { noRecipeSearchFacets } from '@/application/testing/fixed-recipe-search';
 import { memberIdSchema, type MemberId } from '@/domain/member/member';
+import type { Chapter } from '@/domain/recipe/chapter';
+import type { Diet } from '@/domain/recipe/diet';
 import type { RecipeTimes } from '@/domain/recipe/duration';
+import type { Holiday } from '@/domain/recipe/holiday';
 import type { IngredientLine } from '@/domain/recipe/ingredient';
 import { recipeContentSchema, type RecipeContentInput } from '@/domain/recipe/recipe';
 import { slugify } from '@/domain/recipe/slug';
@@ -33,6 +37,9 @@ const dayInMilliseconds = 24 * 60 * 60 * 1000;
 type Fixture = {
 	title: string;
 	daysAgo: number;
+	chapter: Chapter;
+	holidays?: Holiday[];
+	diets?: Diet[];
 	// The contributor unless given.
 	addedBy?: MemberName;
 	description?: string;
@@ -40,7 +47,6 @@ type Fixture = {
 	source?: string;
 	lines?: Pick<IngredientLine, 'text' | 'item'>[];
 	steps?: string[];
-	tags?: string[];
 	times?: RecipeTimes;
 };
 
@@ -49,36 +55,42 @@ const fixtures: Fixture[] = [
 	{
 		title: 'Chicken pot pie',
 		daysAgo: 400,
+		chapter: 'main-dishes',
 		source: 'Grandma Rose',
 		lines: [
 			{ text: '1 pound chicken thighs', item: 'chicken thighs' },
 			{ text: '1 cup frozen peas', item: 'frozen peas' },
 		],
-		tags: ['Main', 'Make ahead'],
 		times: { totalMinutes: 90 },
 	},
 	{
 		title: 'Sunday pot roast',
 		daysAgo: 100,
+		chapter: 'main-dishes',
+		holidays: ['christmas'],
+		diets: ['gluten-free', 'dairy-free'],
 		description: 'A slow braise for a cold weekend.',
 		source: 'Aunt June',
 		lines: [
 			{ text: '3 pounds chuck roast', item: 'chuck roast' },
 			{ text: '4 carrots, cut in chunks', item: 'carrots' },
 		],
-		tags: ['Main', 'Slow cooked'],
 		times: { prepMinutes: 20, cookMinutes: 240 },
 	},
 	{
 		title: 'Roasted carrots',
 		daysAgo: 90,
+		chapter: 'vegetables-sides',
+		holidays: ['thanksgiving'],
+		diets: ['vegetarian', 'vegan', 'gluten-free', 'dairy-free'],
 		lines: [{ text: '1 pound carrots', item: 'carrots' }],
 		steps: ['Warm the pot, then roast the carrots until browned.'],
-		tags: ['Side'],
 	},
 	{
 		title: 'Chicken noodle soup',
 		daysAgo: 60,
+		chapter: 'soups-salads',
+		diets: ['dairy-free'],
 		addedBy: 'robin',
 		source: 'Grandpa Lou',
 		lines: [
@@ -86,34 +98,38 @@ const fixtures: Fixture[] = [
 			{ text: '4 ounces egg noodles', item: 'egg noodles' },
 			{ text: '2 carrots, sliced', item: 'carrots' },
 		],
-		tags: ['Soup'],
 		times: { prepMinutes: 15, cookMinutes: 35 },
 	},
 	{
 		title: 'Chicken and rice soup',
 		daysAgo: 50,
+		chapter: 'soups-salads',
+		diets: ['gluten-free', 'dairy-free'],
 		source: 'Grandpa Lou',
 		lines: [
 			{ text: '2 cups chicken, shredded', item: 'chicken' },
 			{ text: '1 cup rice', item: 'rice' },
 		],
-		tags: ['soup'],
 	},
 	{
 		title: 'Tomato soup',
 		daysAgo: 40,
+		chapter: 'soups-salads',
+		diets: ['vegetarian', 'gluten-free'],
 		addedBy: 'robin',
 		description: 'Bright and quick, with a swirl of cream.',
 		lines: [
 			{ text: '2 cans whole tomatoes', item: 'whole tomatoes' },
 			{ text: '½ cup heavy cream', item: 'heavy cream' },
 		],
-		tags: ['Soup', 'Vegetarian'],
 		times: { totalMinutes: 30 },
 	},
 	{
 		title: 'Buttermilk biscuits',
 		daysAgo: 30,
+		chapter: 'breads-rolls',
+		holidays: ['christmas'],
+		diets: ['vegetarian'],
 		description: 'Tall and flaky, from cold butter and a gentle hand.',
 		notes: 'Cut them with a juice glass and never twist it.',
 		lines: [
@@ -129,12 +145,13 @@ const fixtures: Fixture[] = [
 			'Pat the dough out, fold it in thirds, and cut rounds.',
 			'Bake them for 15 to 18 minutes until they turn deep golden.',
 		],
-		tags: ['Baking', 'Breakfast'],
 		times: { prepMinutes: 15, cookMinutes: 18, totalMinutes: 35 },
 	},
 	{
 		title: 'Rice bowl',
 		daysAgo: 20,
+		chapter: 'main-dishes',
+		diets: ['dairy-free'],
 		addedBy: 'robin',
 		description: 'A weeknight bowl built on leftovers.',
 		source: 'grandma rose',
@@ -143,27 +160,32 @@ const fixtures: Fixture[] = [
 			{ text: '2 scallions, thinly sliced', item: 'scallions' },
 		],
 		steps: ['Warm the rice.', 'Add the chicken and toss with the scallions.'],
-		tags: ['Weeknight'],
 		times: { prepMinutes: 10, cookMinutes: 15 },
 	},
 	{
 		title: 'Skillet <b>scones</b>',
 		daysAgo: 10,
+		chapter: 'breads-rolls',
+		holidays: ['easter'],
+		diets: ['vegetarian'],
 		description: 'Bake the <i>scones</i> in a hot skillet.',
-		tags: ['Baking'],
 	},
 	{
 		title: 'Crème brûlée',
 		daysAgo: 3,
+		chapter: 'desserts',
+		holidays: ['christmas'],
+		diets: ['vegetarian', 'gluten-free'],
 		description: 'A custard under a crackly sugar top.',
-		tags: ['Dessert'],
 		times: { totalMinutes: 300 },
 	},
 	{
 		title: 'Creme caramel',
 		daysAgo: 2,
+		chapter: 'desserts',
+		holidays: ['easter'],
+		diets: ['vegetarian', 'gluten-free'],
 		description: 'A custard that turns out of its dish.',
-		tags: ['dessert', 'Sweet, salty'],
 	},
 ];
 
@@ -178,7 +200,9 @@ function toContent(fixture: Fixture): RecipeContentInput {
 		instructionSections: [
 			{ steps: (fixture.steps ?? ['Mix everything together.']).map((text) => ({ text })) },
 		],
-		tags: fixture.tags ?? [],
+		chapter: fixture.chapter,
+		holidays: fixture.holidays ?? [],
+		diets: fixture.diets ?? [],
 		images: [],
 	};
 }
@@ -230,7 +254,15 @@ function searchFor(
 	text: RecipeTextQuery | undefined,
 	options: Partial<Omit<RecipeSearchQuery, 'text'>> = {}
 ): Promise<RecipeSearchResults> {
-	return search.search({ text, tags: [], sort: 'relevance', limit: 24, offset: 0, ...options });
+	return search.search({
+		text,
+		holidays: [],
+		diets: [],
+		sort: 'relevance',
+		limit: 24,
+		offset: 0,
+		...options,
+	});
 }
 
 function titles(results: RecipeSearchResults): string[] {
@@ -322,12 +354,33 @@ describe('matching text', () => {
 });
 
 describe('filters', () => {
-	it('requires every tag, ignoring case', async () => {
-		const results = await searchFor(undefined, { tags: ['soup', 'VEGETARIAN'] });
-		const withComma = await searchFor(undefined, { tags: ['sweet, SALTY'] });
+	it('keeps the recipes in the chapter', async () => {
+		const results = await searchFor(undefined, { chapter: 'desserts' });
 
-		expect(titles(results)).toEqual(['Tomato soup']);
-		expect(titles(withComma)).toEqual(['Creme caramel']);
+		expect(titles(results)).toEqual(['Creme caramel', 'Crème brûlée']);
+	});
+
+	it('keeps the recipes for any holiday chosen', async () => {
+		const results = await searchFor(undefined, { holidays: ['easter', 'christmas'] });
+
+		expect(titles(results)).toEqual([
+			'Creme caramel',
+			'Crème brûlée',
+			'Skillet <b>scones</b>',
+			'Buttermilk biscuits',
+			'Sunday pot roast',
+		]);
+	});
+
+	it('keeps the recipes that suit every diet chosen', async () => {
+		const results = await searchFor(undefined, { diets: ['vegetarian', 'gluten-free'] });
+
+		expect(titles(results)).toEqual([
+			'Creme caramel',
+			'Crème brûlée',
+			'Tomato soup',
+			'Roasted carrots',
+		]);
 	});
 
 	it('matches the source, ignoring case', async () => {
@@ -378,22 +431,61 @@ describe('filters', () => {
 });
 
 describe('facets', () => {
-	it('counts tags within the results, labeled by the earliest spelling', async () => {
+	it('counts every chapter, holiday, and diet, even at zero', async () => {
 		const results = await searchFor(undefined);
 
-		expect(results.facets.tags).toEqual([
-			{ label: 'Soup', count: 3 },
-			{ label: 'Baking', count: 2 },
-			{ label: 'Dessert', count: 2 },
-			{ label: 'Main', count: 2 },
-			{ label: 'Breakfast', count: 1 },
-			{ label: 'Make ahead', count: 1 },
-			{ label: 'Side', count: 1 },
-			{ label: 'Slow cooked', count: 1 },
-			{ label: 'Sweet, salty', count: 1 },
-			{ label: 'Vegetarian', count: 1 },
-			{ label: 'Weeknight', count: 1 },
-		]);
+		expect(results.facets.chapters).toEqual({
+			'breakfast-brunch': 0,
+			'appetizers-beverages': 0,
+			'soups-salads': 3,
+			'vegetables-sides': 1,
+			'main-dishes': 3,
+			'breads-rolls': 2,
+			desserts: 2,
+			'cookies-candy': 0,
+			'this-and-that': 0,
+		});
+		expect(results.facets.holidays).toEqual({
+			'new-years-day': 0,
+			'st-patricks-day': 0,
+			easter: 2,
+			'fourth-of-july': 0,
+			halloween: 0,
+			thanksgiving: 1,
+			christmas: 3,
+		});
+		expect(results.facets.diets).toEqual({
+			vegetarian: 6,
+			vegan: 1,
+			'gluten-free': 6,
+			'dairy-free': 5,
+		});
+	});
+
+	it('counts chapters and holidays with every filter but their own, and diets within the results', async () => {
+		const results = await searchFor(undefined, {
+			chapter: 'desserts',
+			holidays: ['christmas'],
+			diets: ['vegetarian'],
+		});
+
+		expect(titles(results)).toEqual(['Crème brûlée']);
+		expect(results.facets.chapters).toEqual({
+			...noRecipeSearchFacets.chapters,
+			'breads-rolls': 1,
+			desserts: 1,
+		});
+		expect(results.facets.holidays).toEqual({
+			...noRecipeSearchFacets.holidays,
+			easter: 1,
+			christmas: 1,
+		});
+		expect(results.facets.diets).toEqual({
+			vegetarian: 1,
+			vegan: 0,
+			'gluten-free': 1,
+			'dairy-free': 0,
+		});
 	});
 
 	it('counts sources with every filter but the source', async () => {
@@ -402,7 +494,6 @@ describe('facets', () => {
 		});
 
 		expect(results.total).toBe(2);
-		expect(results.facets.tags).toEqual([{ label: 'Soup', count: 2 }]);
 		expect(results.facets.sources).toEqual([
 			{ label: 'Grandma Rose', count: 2 },
 			{ label: 'Grandpa Lou', count: 2 },
@@ -431,7 +522,10 @@ describe('facets', () => {
 	});
 
 	it('lists the chosen member at zero when no result is left', async () => {
-		const results = await searchFor(undefined, { tags: ['Soup'], contributorId: memberIds.ada });
+		const results = await searchFor(undefined, {
+			chapter: 'soups-salads',
+			contributorId: memberIds.ada,
+		});
 
 		expect(results.total).toBe(0);
 		expect(results.facets.contributors).toEqual([
@@ -442,7 +536,10 @@ describe('facets', () => {
 	});
 
 	it('lists no one for a chosen id that names no member', async () => {
-		const results = await searchFor(undefined, { tags: ['Soup'], contributorId: unknownMemberId });
+		const results = await searchFor(undefined, {
+			chapter: 'soups-salads',
+			contributorId: unknownMemberId,
+		});
 
 		expect(results.total).toBe(0);
 		expect(results.facets.contributors.map(({ memberId }) => memberId)).toEqual([

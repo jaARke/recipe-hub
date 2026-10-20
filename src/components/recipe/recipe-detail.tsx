@@ -1,19 +1,25 @@
 import { cn } from 'cn';
 import type { ReactNode } from 'react';
 import type { PublicRecipeDto } from '@/application/recipes/recipe-dtos';
+import { TextLink } from '@/components/layout/text-link';
 import { RecipeActions, RecipeActionsSkeleton } from '@/components/recipe/recipe-actions';
 import { RecipeFilmstrip } from '@/components/recipe/recipe-filmstrip';
 import { RecipeIngredientsAndSteps } from '@/components/recipe/recipe-ingredients-and-steps';
+import { defaultListSort } from '@/components/recipe/recipe-list-params';
 import { RecipeParagraphs } from '@/components/recipe/recipe-paragraphs';
-import { RecipeTags } from '@/components/recipe/recipe-summary';
+import { RecipeSourceLink } from '@/components/recipe/recipe-source-link';
+import { RecipeBadges } from '@/components/recipe/recipe-summary';
 import {
 	recipeHeadingTags,
 	recipeTextStyles,
 	type RecipeHeadingLevel,
 } from '@/components/recipe/recipe-text-styles';
-import { recipeSearchHref } from '@/components/search/search-params';
+import { recipeSearchHref, type RecipeSearchState } from '@/components/search/search-params';
 import { Skeleton } from '@/components/ui/skeleton';
+import { chapterLabels } from '@/domain/recipe/chapter';
+import { dietLabels } from '@/domain/recipe/diet';
 import { formatDuration, totalMinutes } from '@/domain/recipe/duration';
+import { holidayLabels } from '@/domain/recipe/holiday';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import { formatYieldCount, yieldVerbs, type RecipeYield } from '@/domain/recipe/recipe-yield';
 import { formatDate } from '@/lib/dates';
@@ -29,16 +35,21 @@ type RecipeCell = {
 // A ruled row of cells, two across on phones and four from sm, so the rows' columns line up.
 const cellRowClassName = 'grid grid-cols-2 gap-x-4 gap-y-3 py-3 sm:grid-cols-4';
 
-// Who added the recipe takes the two columns the dates leave it from sm.
-const contributorCellClassName = 'sm:col-span-2';
+// Who added the recipe, and its chapter, take two columns from sm, leaving two for the dates or for
+// the holidays and diets.
+const wideCellClassName = 'sm:col-span-2';
+
+// Browse unfiltered, in its default order, to which each link in the ruled block adds one chapter,
+// holiday, or diet.
+const unfilteredBrowse: RecipeSearchState = {
+	holidays: [],
+	diets: [],
+	sort: defaultListSort,
+	page: 1,
+};
 
 // The description and the notes read as body text.
 const recipeParagraphsClassName = cn(recipeTextStyles.body, 'gap-4');
-
-// Browse filtered by the tag, newest first.
-function tagBrowseHref(tag: string): string {
-	return recipeSearchHref({ tags: [tag], sort: 'newest', page: 1 });
-}
 
 // The yield's verb labels what it counts: "Serves" 8, "Makes" 10 biscuits.
 function yieldCell(recipeYield: RecipeYield): RecipeCell {
@@ -81,12 +92,47 @@ function recipeProvenanceCells({
 		{
 			label: 'Added by',
 			value: contributor.displayName,
-			className: contributorCellClassName,
+			className: wideCellClassName,
 		},
 		{ label: 'Added', value: <RecipeDate date={createdAt} /> },
 	];
 	if (formatDate(updatedAt) !== formatDate(createdAt)) {
 		cells.push({ label: 'Edited', value: <RecipeDate date={updatedAt} /> });
+	}
+	return cells;
+}
+
+// Where the recipe sits in the cookbook: its chapter, then any holidays and diets, each a link to
+// Browse filtered by it.
+function recipeClassificationCells({
+	chapter,
+	holidays,
+	diets,
+}: Pick<PublicRecipeDto, 'chapter' | 'holidays' | 'diets'>): RecipeCell[] {
+	const cells: RecipeCell[] = [
+		{
+			label: 'Chapter',
+			value: (
+				<TextLink href={recipeSearchHref({ ...unfilteredBrowse, chapter })}>
+					{chapterLabels[chapter]}
+				</TextLink>
+			),
+			className: wideCellClassName,
+		},
+	];
+	if (holidays.length > 0) {
+		const badges = holidays.map((holiday) => ({
+			label: holidayLabels[holiday],
+			href: recipeSearchHref({ ...unfilteredBrowse, holidays: [holiday] }),
+		}));
+		cells.push({ label: 'Holidays', value: <RecipeBadges badges={badges} /> });
+	}
+	if (diets.length > 0) {
+		const badges = diets.map((diet) => ({
+			label: dietLabels[diet],
+			href: recipeSearchHref({ ...unfilteredBrowse, diets: [diet] }),
+		}));
+		cells.push({ label: 'Diet', value: <RecipeBadges badges={badges} /> });
 	}
 	return cells;
 }
@@ -111,7 +157,8 @@ function RecipeCellRow({
 }
 
 // Ruled like an index card: a row for the times and yield, one for who added the recipe and when,
-// and one for its tags. A row with nothing to show is left out; who added the recipe always shows.
+// and one for where it sits in the cookbook. A row with nothing to show is left out; who added the
+// recipe and its chapter always show.
 function RecipeRuledBlock({ recipe }: { recipe: PublicRecipeDto }) {
 	const facts = recipeFactCells(recipe);
 	return (
@@ -123,37 +170,11 @@ function RecipeRuledBlock({ recipe }: { recipe: PublicRecipeDto }) {
 				cells={recipeProvenanceCells(recipe)}
 				valueClassName={recipeTextStyles.cellValue}
 			/>
-			{recipe.tags.length > 0 && (
-				<dl className="flex flex-col gap-1.5 py-3">
-					<dt className={recipeTextStyles.cellLabel}>Tags</dt>
-					<dd>
-						<RecipeTags tags={recipe.tags} tagHref={tagBrowseHref} />
-					</dd>
-				</dl>
-			)}
+			<RecipeCellRow
+				cells={recipeClassificationCells(recipe)}
+				valueClassName={recipeTextStyles.cellValue}
+			/>
 		</div>
-	);
-}
-
-// A page the recipe came from, named by its host. Search engines don't follow the link, and the page
-// isn't told which recipe sent the reader.
-function RecipeSourceLink({ url }: { url: string }) {
-	return (
-		<a
-			href={url}
-			rel="nofollow noopener noreferrer"
-			className="text-primary underline underline-offset-4"
-		>
-			{new URL(url).hostname}
-		</a>
-	);
-}
-
-function RecipeImportedFrom({ sourceUrl }: { sourceUrl: string }) {
-	return (
-		<p className="text-sm text-muted-foreground">
-			Imported from <RecipeSourceLink url={sourceUrl} />
-		</p>
 	);
 }
 
@@ -307,16 +328,14 @@ function RecipeDetailSkeleton() {
 						<RecipeCellRowSkeleton cellCount={4} valueClassName="h-7" />
 						<RecipeCellRowSkeleton
 							cellCount={3}
-							firstCellClassName={contributorCellClassName}
+							firstCellClassName={wideCellClassName}
 							valueClassName="h-6"
 						/>
-						<div className="flex flex-col gap-1.5 py-3">
-							<Skeleton className="h-5 w-10" />
-							<div className="flex gap-1.5">
-								<Skeleton className="h-6 w-16 rounded-4xl" />
-								<Skeleton className="h-6 w-20 rounded-4xl" />
-							</div>
-						</div>
+						<RecipeCellRowSkeleton
+							cellCount={2}
+							firstCellClassName={wideCellClassName}
+							valueClassName="h-6"
+						/>
 					</div>
 					<RecipeActionsSkeleton />
 				</div>
@@ -335,4 +354,4 @@ function RecipeDetailSkeleton() {
 	);
 }
 
-export { RecipeDetail, RecipeDetailSkeleton, RecipeImportedFrom };
+export { RecipeDetail, RecipeDetailSkeleton };

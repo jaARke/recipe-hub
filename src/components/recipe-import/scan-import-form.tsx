@@ -18,6 +18,7 @@ import {
 	scanImportProblems,
 	scanImportSubmission,
 } from '@/components/recipe-import/scan-import-values';
+import { Skeleton } from '@/components/ui/skeleton';
 import { settings } from '@/lib/settings';
 
 const failureMessage = 'We couldn’t read the recipe. Check your connection and try again.';
@@ -70,7 +71,7 @@ function ScanImportForm({ action, uploadFolder, uploader = uploadPhoto }: ScanIm
 				idPrefix={photosId}
 				role="scan"
 				legend="Original recipe"
-				description={`Photos of the recipe as it was written, up to ${settings.photos.maxScansPerImport} pages in order, such as both sides of a recipe card. They stay with the recipe, and anyone can see them.`}
+				description={`Photos of the recipe as it was written, up to ${settings.photos.maxScansPerImport} pages in order, such as both sides of a recipe card. They stay with the recipe, and anyone can see them. The recipe opens as a draft for you to check before adding it to the cookbook.`}
 				limit={settings.photos.maxScansPerImport}
 				photos={values.photos.scan}
 				nextId={values.nextId}
@@ -90,4 +91,20 @@ function ScanImportForm({ action, uploadFolder, uploader = uploadPhoto }: ScanIm
 	);
 }
 
-export { ScanImportForm };
+// Mirrors the form while the page checks who is signed in: the photos' legend, description and
+// drop area, and the button.
+function ScanImportFormSkeleton() {
+	return (
+		<div role="status" aria-live="polite" className="flex flex-col gap-4">
+			<span className="sr-only">Loading the import</span>
+			<div className="flex flex-col gap-3">
+				<Skeleton className="h-5 w-32" />
+				<Skeleton className="h-10 w-full" />
+				<Skeleton className="h-40 w-full" />
+			</div>
+			<Skeleton className="h-9 w-32" />
+		</div>
+	);
+}
+
+export { ScanImportForm, ScanImportFormSkeleton };

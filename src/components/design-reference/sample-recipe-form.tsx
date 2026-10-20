@@ -8,14 +8,15 @@ import standInScanPage1 from '@/components/design-reference/stand-in-scans/anise
 import standInScanPage2 from '@/components/design-reference/stand-in-scans/anise-cakes-page-2.jpg';
 import { formText } from '@/components/forms/form-data';
 import type { FormAction, FormState } from '@/components/forms/form-state';
-import { EditingPageHeading } from '@/components/recipe-form/editing-page-heading';
+import { DraftPageHeading } from '@/components/recipe-form/draft-page-heading';
+import type { DraftVersion } from '@/components/recipe-form/draft-save-coordinator';
+import {
+	EditingPageHeading,
+	editingPageTitles,
+} from '@/components/recipe-form/editing-page-heading';
 import { HeldDraftProvider, type HeldDraft } from '@/components/recipe-form/held-draft';
 import type { PhotoUploader } from '@/components/recipe-form/photo-upload';
-import {
-	RecipeForm,
-	type OpenedDraft,
-	type RecipeFormDrafts,
-} from '@/components/recipe-form/recipe-form';
+import { RecipeForm } from '@/components/recipe-form/recipe-form';
 import { recipeContentFromForm } from '@/components/recipe-form/recipe-form-content';
 import {
 	recipeFormFieldNames,
@@ -27,11 +28,12 @@ import {
 	type RecipeFormEdit,
 	type RecipeFormValues,
 } from '@/components/recipe-form/recipe-form-values';
-import { DraftMenu, EditedRecipeMenu, HeldDraftMenu } from '@/components/recipe-form/subject-menus';
+import { EditedRecipeMenu, HeldDraftMenu } from '@/components/recipe-form/subject-menus';
+import type { RecipeFormDrafts } from '@/components/recipe-form/use-draft-saving';
+import { DraftProvenanceLine } from '@/components/recipe-import/draft-provenance-line';
 import { parseRecipeContent } from '@/domain/recipe/recipe';
 import type { ImageSize, RecipeImageRole } from '@/domain/recipe/recipe-image';
-import { daysInMilliseconds } from '@/lib/dates';
-import { settings } from '@/lib/settings';
+import type { RecipeImportMode } from '@/domain/recipe/recipe-import';
 
 // Photo pathnames name a folder the recipe accepts, though nothing is stored there.
 const sampleUploadFolders: Record<RecipeImageRole, string> = {
@@ -142,19 +144,14 @@ const saveSampleRecipe: FormAction = (_state, formData) =>
 	);
 
 // Says a draft was saved, under the one id the samples share, and keeps nothing.
-const saveSampleDraft: FormAction<SavedDraftResult> = () => {
-	const savedAt = new Date();
-	return standIn<FormState<SavedDraftResult>>({
+const saveSampleDraft: FormAction<SavedDraftResult> = () =>
+	standIn<FormState<SavedDraftResult>>({
 		status: 'success',
 		draftId: 'sample-draft',
-		savedAt,
-		expiresAt: new Date(
-			savedAt.getTime() + daysInMilliseconds(settings.drafts.savedDraftLifetimeDays)
-		),
+		savedAt: new Date(),
 	});
-};
 
-// Stands in for the member signed in, whose unsaved changes a menu's delete removes; deleting a
+// Stands in for the member signed in, whose unsaved changes the edit page's menu removes; deleting a
 // sample is refused, so none are.
 const sampleMemberId = 'sample-member';
 
@@ -166,24 +163,26 @@ const deleteSample: FormAction = () =>
 		fieldErrors: {},
 	});
 
-// The page's URL stays the design reference's.
+// Leaves nowhere, so the sample stays here.
+const leaveSample: RecipeFormDrafts['leave'] = () => standIn(undefined);
+
+// Emptying a sample deletes nothing, and its page's URL stays the design reference's.
 const sampleDrafts: RecipeFormDrafts = {
 	save: saveSampleDraft,
-	inUrl: false,
+	delete: () => standIn<FormState>({ status: 'success' }),
+	leave: leaveSample,
 };
 
 function SampleRecipeForm({
 	initial,
-	tagLabels,
 	editing,
 	openedDraft,
 	standInScans = false,
 }: {
 	initial: RecipeFormValues;
-	tagLabels: readonly string[];
 	editing?: EditedRecipe;
 	// The saved draft the form opens, when adding a recipe.
-	openedDraft?: OpenedDraft;
+	openedDraft?: DraftVersion;
 	// Adds the stand-in pages of an original recipe, as just uploaded.
 	standInScans?: boolean;
 }) {
@@ -200,38 +199,25 @@ function SampleRecipeForm({
 			initial={values}
 			action={saveSampleRecipe}
 			uploadFolders={sampleUploadFolders}
-			tagLabels={tagLabels}
 			uploader={sampleUpload}
-			editing={editing}
-			drafts={editing === undefined ? { ...sampleDrafts, opened: openedDraft } : undefined}
-			submitLabel={editing === undefined ? 'Save recipe' : 'Save changes'}
+			{...(editing === undefined
+				? { drafts: { ...sampleDrafts, opened: openedDraft } }
+				: { editing })}
 		/>
 	);
 }
 
-// What a sample page edits, which its heading's menu acts on: a new recipe, from a saved draft if
-// one is given; an import's draft; or a recipe.
+// What a sample page edits, which its heading's menu acts on: a new recipe, from a draft if one is
+// given, with how its import read it if one did; or a recipe.
 export type SampleEditingSubject =
-	| { page: 'add'; draft?: HeldDraft & OpenedDraft }
-	| { page: 'review'; importId: string; title: string | undefined }
+	| { page: 'add'; draft?: HeldDraft; importedFrom?: RecipeImportMode }
 	| { page: 'edit'; recipe: EditedRecipe; slug: string; title: string };
 
 // The heading's menu on each sample page, as the site's pages give it.
 function sampleMenu(subject: SampleEditingSubject): React.ReactNode {
 	switch (subject.page) {
 		case 'add':
-			return <HeldDraftMenu memberId={sampleMemberId} action={deleteSample} />;
-		case 'review':
-			return (
-				<DraftMenu
-					label="Draft actions"
-					draft={{ kind: 'import', id: subject.importId }}
-					title={subject.title}
-					formSubject={{ kind: 'import', importId: subject.importId }}
-					memberId={sampleMemberId}
-					action={deleteSample}
-				/>
-			);
+			return <HeldDraftMenu action={deleteSample} />;
 		case 'edit':
 			return (
 				<EditedRecipeMenu
@@ -244,25 +230,33 @@ function sampleMenu(subject: SampleEditingSubject): React.ReactNode {
 }
 
 // An editing page as the site composes it: its heading, under the design reference's own, with the
-// page's menu, over the sample form.
+// page's menu, over the sample form. Adding a recipe is headed by the draft's title, as a draft's
+// page is, over where its import read it, if one did.
 function SampleEditingPage({
 	subject,
 	initial,
-	tagLabels,
 	standInScans,
 }: {
 	subject: SampleEditingSubject;
 	initial: RecipeFormValues;
-	tagLabels: readonly string[];
 	standInScans?: boolean;
 }) {
 	const draft = subject.page === 'add' ? subject.draft : undefined;
 	return (
 		<HeldDraftProvider opened={draft}>
-			<EditingPageHeading page={subject.page} headingTag="h4" menu={sampleMenu(subject)} />
+			{subject.page === 'add' ? (
+				<DraftPageHeading headingTag="h4" menu={sampleMenu(subject)}>
+					<DraftProvenanceLine mode={subject.importedFrom} sourceUrl={undefined} />
+				</DraftPageHeading>
+			) : (
+				<EditingPageHeading
+					title={editingPageTitles[subject.page]}
+					headingTag="h4"
+					menu={sampleMenu(subject)}
+				/>
+			)}
 			<SampleRecipeForm
 				initial={initial}
-				tagLabels={tagLabels}
 				editing={subject.page === 'edit' ? subject.recipe : undefined}
 				openedDraft={draft}
 				standInScans={standInScans}
@@ -271,11 +265,4 @@ function SampleEditingPage({
 	);
 }
 
-export {
-	deleteSample,
-	SampleEditingPage,
-	sampleMemberId,
-	SampleRecipeForm,
-	sampleUpload,
-	sampleUploadFolders,
-};
+export { deleteSample, SampleEditingPage, SampleRecipeForm, sampleUpload, sampleUploadFolders };

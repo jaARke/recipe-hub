@@ -1,6 +1,7 @@
 import { beforeEach } from 'vitest';
 import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
+import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
 import { describeRecipeRepositoryContract } from '@/application/testing/recipe-repository-contract';
 import { memberIdSchema } from '@/domain/member/member';
 
@@ -10,15 +11,18 @@ const otherContributorId = memberIdSchema.parse('3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4
 
 let repository: InMemoryRecipeRepository;
 let imports: InMemoryRecipeImportRepository;
+let drafts: InMemorySavedDraftRepository;
 
 beforeEach(() => {
-	repository = new InMemoryRecipeRepository();
-	imports = new InMemoryRecipeImportRepository(repository);
+	drafts = new InMemorySavedDraftRepository();
+	repository = new InMemoryRecipeRepository(drafts);
+	imports = new InMemoryRecipeImportRepository(repository, drafts);
 });
 
 describeRecipeRepositoryContract(() => ({
 	repository,
 	imports,
+	drafts,
 	contributorId,
 	otherContributorId,
 }));

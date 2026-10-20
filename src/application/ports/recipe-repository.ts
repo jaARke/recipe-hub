@@ -1,4 +1,5 @@
 import 'server-only';
+import type { SavedDraftId } from '@/application/drafts/saved-draft';
 import type { MemberId } from '@/domain/member/member';
 import type { Provenance } from '@/domain/recipe/provenance';
 import type { Recipe, RecipeContent, RecipeId } from '@/domain/recipe/recipe';
@@ -12,6 +13,9 @@ export type NewRecipe = {
 	contributorId: MemberId;
 	// The repository stores the first free slugCandidate built from this base.
 	slugBase: string;
+	// The contributor's draft the recipe is added from, at the version their form had, which adding
+	// deletes in the same step.
+	fromDraft?: { id: SavedDraftId; expectedUpdatedAt: Date };
 };
 
 export type RecipeUpdate = {
@@ -62,7 +66,10 @@ export interface RecipeRepository {
 	list(page: RecipePage): Promise<Recipe[]>;
 	count(): Promise<number>;
 	// Never takes a slug another recipe holds, current or old, even when creates and renames race.
-	// Throws ImportUnavailableError when a recipe was already saved from the import.
+	// Throws ImportUnavailableError when a recipe was already saved from the import. Adding from a
+	// draft creates the recipe and deletes the draft in one transaction, or does neither: it throws
+	// SavedDraftGoneError when the draft is gone or isn't the contributor's, and
+	// SavedDraftEditConflictError when it was saved since the version given.
 	create(recipe: NewRecipe): Promise<Recipe>;
 	// Replaces the content, and moves the slug when given a slug base, in one transaction. Each save
 	// moves updatedAt forward by at least a millisecond, the precision a Date keeps, so it versions
@@ -72,11 +79,6 @@ export interface RecipeRepository {
 	// Returns the recipe as it was when deleted, or null when no recipe has this id. Its old slugs are
 	// freed with it.
 	delete(id: RecipeId): Promise<Recipe | null>;
-	// The label in use for each of the given tag keys, ignoring the excluded recipe's own tags. A tag's
-	// label is the earliest recipe's spelling, as search facets label it.
-	findTagLabels(keys: readonly string[], excludeRecipeId?: RecipeId): Promise<string[]>;
-	// Every tag in use, by the label findTagLabels gives it, most used first and then by key.
-	listTagLabels(): Promise<string[]>;
 	// The given image pathnames that some recipe still lists, ignoring the excluded contributor's
 	// recipes.
 	findImagesInUse(pathnames: readonly string[], excludeContributorId?: MemberId): Promise<string[]>;

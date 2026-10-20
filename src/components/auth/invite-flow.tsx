@@ -233,7 +233,6 @@ function InviteFlow({
 				<InviteEmailStep headingLevel={headingLevel}>
 					<RequestCodeForm
 						id={fieldIds.email}
-						autoComplete="email"
 						description="We’ll send a code to this address. It’s also the address you’ll sign in with."
 						defaultEmail={lastEmail}
 						action={requestCode}

@@ -9,22 +9,7 @@ import {
 	recipeFormValues,
 	type RecipeFormPhoto,
 } from '@/components/recipe-form/recipe-form-values';
-
-// A photo as a camera saves one, drawn at its size.
-function photo(name: string, size: { width: number; height: number }): Promise<File> {
-	const canvas = document.createElement('canvas');
-	canvas.width = size.width;
-	canvas.height = size.height;
-	return new Promise((resolve, reject) => {
-		canvas.toBlob(
-			(blob) =>
-				blob === null
-					? reject(new Error('The canvas drew no photo.'))
-					: resolve(new File([blob], name, { type: 'image/jpeg' })),
-			'image/jpeg'
-		);
-	});
-}
+import { cameraPhoto } from '@/components/recipe-form/testing/camera-photos';
 
 // The field's file input, which the visible button opens, out of the accessibility tree.
 function fileInput() {
@@ -101,7 +86,7 @@ describe('PhotoField', () => {
 		};
 		await render(<DiscardablePhotos uploader={uploader} />);
 
-		await fileInput().upload(await photo('bars.jpg', { width: 1600, height: 1200 }));
+		await fileInput().upload(await cameraPhoto('bars.jpg', { width: 1600, height: 1200 }));
 		await expect.element(page.getByText('Uploading')).toBeInTheDocument();
 		expect(signals).toHaveLength(1);
 		expect(signals[0]?.aborted).toBe(false);
@@ -122,7 +107,7 @@ describe('PhotoField', () => {
 			/>
 		);
 
-		await fileInput().upload(await photo('bars.jpg', { width: 3200, height: 2400 }));
+		await fileInput().upload(await cameraPhoto('bars.jpg', { width: 3200, height: 2400 }));
 
 		await expect.poll(() => onPhotos.mock.lastCall?.[0][0]?.upload.status).toBe('uploaded');
 		expect(onPhotos.mock.lastCall?.[0][0]?.upload).toEqual({

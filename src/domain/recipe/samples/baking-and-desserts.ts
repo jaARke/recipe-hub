@@ -52,7 +52,9 @@ export const sampleCremeBrulee: RecipeContentInput = {
 			],
 		},
 	],
-	tags: ['Dessert', 'Français', 'Make ahead'],
+	chapter: 'desserts',
+	holidays: [],
+	diets: ['vegetarian', 'gluten-free'],
 	images: [],
 };
 
@@ -115,7 +117,9 @@ export const sampleEclairs: RecipeContentInput = {
 			],
 		},
 	],
-	tags: ['Dessert', 'Baking', 'Holiday'],
+	chapter: 'desserts',
+	holidays: [],
+	diets: ['vegetarian'],
 	images: [],
 };
 
@@ -169,7 +173,9 @@ export const sampleJalapenoCornbread: RecipeContentInput = {
 			],
 		},
 	],
-	tags: ['Baking', 'Side'],
+	chapter: 'breads-rolls',
+	holidays: [],
+	diets: [],
 	images: [],
 };
 
@@ -236,7 +242,9 @@ export const sampleLemonBars: RecipeContentInput = {
 			],
 		},
 	],
-	tags: ['Dessert', 'Baking'],
+	chapter: 'cookies-candy',
+	holidays: [],
+	diets: ['vegetarian'],
 	images: [],
 };
 
@@ -291,7 +299,9 @@ export const sampleOatmealRaisinCookies: RecipeContentInput = {
 			],
 		},
 	],
-	tags: ['Baking', 'Dessert', 'Freezer friendly'],
+	chapter: 'cookies-candy',
+	holidays: [],
+	diets: ['vegetarian'],
 	images: [],
 };
 
@@ -350,7 +360,9 @@ export const sampleBrownButterChocolateChipCookies: RecipeContentInput = {
 			],
 		},
 	],
-	tags: ['Baking', 'Dessert'],
+	chapter: 'cookies-candy',
+	holidays: [],
+	diets: ['vegetarian'],
 	images: [],
 };
 
@@ -420,7 +432,9 @@ export const samplePeachCobbler: RecipeContentInput = {
 			],
 		},
 	],
-	tags: ['Dessert', 'Baking', 'Summer'],
+	chapter: 'desserts',
+	holidays: [],
+	diets: ['vegetarian'],
 	images: [],
 };
 
@@ -482,7 +496,9 @@ export const sampleOvernightCinnamonRolls: RecipeContentInput = {
 			],
 		},
 	],
-	tags: ['Breakfast', 'Baking', 'Holiday'],
+	chapter: 'breakfast-brunch',
+	holidays: ['christmas'],
+	diets: ['vegetarian'],
 	images: [],
 };
 
@@ -533,7 +549,9 @@ export const sampleZucchiniBread: RecipeContentInput = {
 			],
 		},
 	],
-	tags: ['Baking', 'Breakfast'],
+	chapter: 'breads-rolls',
+	holidays: [],
+	diets: ['vegetarian'],
 	images: [],
 };
 
@@ -568,6 +586,8 @@ export const sampleVanillaRicePudding: RecipeContentInput = {
 			],
 		},
 	],
-	tags: ['Dessert'],
+	chapter: 'desserts',
+	holidays: [],
+	diets: ['vegetarian', 'gluten-free'],
 	images: [],
 };

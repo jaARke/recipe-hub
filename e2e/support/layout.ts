@@ -51,6 +51,25 @@ export async function checkLayout(page: Page): Promise<LayoutFindings> {
 			return rect.width > 0 && rect.height > 0 && !visuallyHidden(element);
 		}
 
+		// The area a press lands on: the element's box, grown by an ::after placed around it, as the
+		// checkbox and radio draw a small box but take presses across a larger one.
+		function pressableSize(element: Element): { width: number; height: number } {
+			const rect = element.getBoundingClientRect();
+			const after = getComputedStyle(element, '::after');
+			if (
+				after.content === 'none' ||
+				after.position !== 'absolute' ||
+				getComputedStyle(element).position === 'static'
+			) {
+				return rect;
+			}
+			const outset = (inset: string) => Math.max(0, -Number.parseFloat(inset) || 0);
+			return {
+				width: rect.width + outset(after.left) + outset(after.right),
+				height: rect.height + outset(after.top) + outset(after.bottom),
+			};
+		}
+
 		// An ancestor that clips or scrolls its content sideways, such as a filmstrip, holds what
 		// passes its edge, so only the ancestor itself must fit.
 		function heldByAncestor(element: Element): boolean {
@@ -98,6 +117,7 @@ export async function checkLayout(page: Page): Promise<LayoutFindings> {
 			'[role="combobox"]',
 			'[role="link"]',
 			'[role="menuitem"]',
+			'[role="radio"]',
 			'[role="switch"]',
 			'[role="tab"]',
 		].join(', ');
@@ -108,9 +128,9 @@ export async function checkLayout(page: Page): Promise<LayoutFindings> {
 			.flatMap((element) => {
 				// A control inside its label is pressed through the label too.
 				const target = element.closest('label') ?? element;
-				const rect = target.getBoundingClientRect();
-				return rect.width + 0.5 < targetSize || rect.height + 0.5 < targetSize
-					? [`${describe(element)} is ${Math.round(rect.width)} by ${Math.round(rect.height)} px`]
+				const size = pressableSize(target);
+				return size.width + 0.5 < targetSize || size.height + 0.5 < targetSize
+					? [`${describe(element)} is ${Math.round(size.width)} by ${Math.round(size.height)} px`]
 					: [];
 			});
 

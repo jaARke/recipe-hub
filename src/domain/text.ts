@@ -4,6 +4,8 @@ import { normalizeText, withoutTrailingPunctuation } from '@/domain/text-normali
 // What a label or a list leaves after a title or heading, as in "For the glaze:".
 const headingSeparators = ';,:';
 
+const andListFormat = new Intl.ListFormat('en-US', { type: 'conjunction' });
+
 // Postgres text and jsonb cannot hold a NUL character, which a form or URL can still carry.
 export function hasNoNul(text: string): boolean {
 	return !text.includes('\0');
@@ -29,13 +31,18 @@ export function sentenceCase(text: string): string {
 	return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
 }
 
+// Items joined as a sentence lists them: "flour, sugar, and eggs".
+export function andList(items: readonly string[]): string {
+	return andListFormat.format(items);
+}
+
 // What every limit says when it is passed, such as "Use 12 photos or fewer."
 export function limitMessage(max: number, units: string): string {
 	return `Use ${max} ${units} or fewer.`;
 }
 
-// Text of at most max characters, measured once trimmed. Text other than plain text, such as a tag
-// or a field a form asks for by name, passes its own schema.
+// Text of at most max characters, measured once trimmed. Text other than plain text, such as a
+// yield's unit or a field a form asks for by name, passes its own schema.
 export function boundedTextSchema(max: number, text: z.ZodString = plainTextSchema): z.ZodString {
 	return text.max(max, limitMessage(max, 'characters'));
 }

@@ -6,6 +6,7 @@ import { getCachedRecipe, recipeStaticParams } from '@/app/_lib/recipe-cache';
 import { setFavorite } from '@/app/(site)/(browse)/favorites/actions';
 import { FavoriteToggle } from '@/components/favorites/favorite-toggle';
 import { PageContainer } from '@/components/layout/page-container';
+import { RecipeAddedToast } from '@/components/recipe/recipe-added-toast';
 import { RecipeBackLink } from '@/components/recipe/recipe-back-link';
 import { RecipeDetail, RecipeDetailSkeleton } from '@/components/recipe/recipe-detail';
 import { RecipeJsonLd } from '@/components/recipe/recipe-json-ld';
@@ -100,6 +101,7 @@ async function RecipeBySlug({ params }: Pick<PageProps<'/recipes/[slug]'>, 'para
 	return (
 		<>
 			<RecipeJsonLd recipe={recipe} siteUrl={siteUrl} />
+			<RecipeAddedToast />
 			<RecipeBackLink recipePathname={recipePath(recipe.slug)} className="mb-6" />
 			<RecipeDetail
 				recipe={recipe}

@@ -31,7 +31,6 @@ const recipeGridLayouts = {
 
 type RecipeGridLayout = keyof typeof recipeGridLayouts;
 
-// Each card records the page as where its recipe is opened from.
 function RecipeGridList({
 	layout,
 	children,
@@ -40,37 +39,40 @@ function RecipeGridList({
 	children: React.ReactNode;
 }) {
 	return (
-		<RecipeListLinks>
-			<ul role="list" className={cn('grid gap-6', recipeGridLayouts[layout].columnsClassName)}>
-				{children}
-			</ul>
-		</RecipeListLinks>
+		<ul role="list" className={cn('grid gap-6', recipeGridLayouts[layout].columnsClassName)}>
+			{children}
+		</ul>
 	);
 }
 
-// Browse's cards beside its filters, and Favorites' across the page.
+// Browse's cards beside its filters, and Favorites' across the page. Each card records the page, with
+// the list's back label, as where its recipe is opened from.
 function RecipeGrid({
 	layout,
 	recipes,
 	headingTag,
+	backLabel,
 }: {
 	layout: RecipeGridLayout;
 	recipes: readonly RecipeSummaryDto[];
 	headingTag: CardHeadingTag;
+	backLabel: string;
 }) {
 	return (
-		<RecipeGridList layout={layout}>
-			{recipes.map((recipe, index) => (
-				<li key={recipe.id}>
-					<RecipeCard
-						recipe={recipe}
-						headingTag={headingTag}
-						photoSizes={recipeGridLayouts[layout].photoSizes}
-						eager={index < firstScreenCardCount}
-					/>
-				</li>
-			))}
-		</RecipeGridList>
+		<RecipeListLinks backLabel={backLabel}>
+			<RecipeGridList layout={layout}>
+				{recipes.map((recipe, index) => (
+					<li key={recipe.id}>
+						<RecipeCard
+							recipe={recipe}
+							headingTag={headingTag}
+							photoSizes={recipeGridLayouts[layout].photoSizes}
+							eager={index < firstScreenCardCount}
+						/>
+					</li>
+				))}
+			</RecipeGridList>
+		</RecipeListLinks>
 	);
 }
 

@@ -4,12 +4,18 @@ import { render } from 'vitest-browser-react';
 import { page } from 'vitest/browser';
 import { holdPageLoads } from '@/components/auth/testing/page-loads';
 import { RecipeBackLink } from '@/components/recipe/recipe-back-link';
+import { recipeOpenedFromValue } from '@/components/recipe/recipe-opened-from';
 import { stubTabNavigation } from '@/components/recipe/testing/tab-navigation';
 import { writeTabStorage } from '@/lib/browser-storage';
 
 const origin = location.origin;
 const recipePathname = '/recipes/lemon-bars';
 const favoritesUrl = `${origin}/favorites?page=2`;
+
+// Records the list at the URL as where the recipe was opened from, as the list does.
+function recordOpenedFrom(url: string, backLabel = 'Back to Favorites') {
+	writeTabStorage(`opened-from:${recipePathname}`, recipeOpenedFromValue({ url, backLabel }));
+}
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -22,7 +28,7 @@ describe('RecipeBackLink', () => {
 		// Holds page loads through the browser's own Navigation API, before the stub stands in for it.
 		const loads = holdPageLoads();
 		stubTabNavigation([`${origin}/`, favoritesUrl, `${origin}${recipePathname}`]);
-		writeTabStorage(`opened-from:${recipePathname}`, favoritesUrl);
+		recordOpenedFrom(favoritesUrl);
 		const go = vi.spyOn(history, 'go').mockImplementation(() => {});
 		await render(<RecipeBackLink recipePathname={recipePathname} />);
 
@@ -42,7 +48,7 @@ describe('RecipeBackLink', () => {
 			`${origin}${recipePathname}`,
 			`${origin}${recipePathname}#lemon-bars-original`,
 		]);
-		writeTabStorage(`opened-from:${recipePathname}`, searchUrl);
+		recordOpenedFrom(searchUrl, 'Back to search results');
 		const go = vi.spyOn(history, 'go').mockImplementation(() => {});
 		await render(<RecipeBackLink recipePathname={recipePathname} />);
 
@@ -54,7 +60,7 @@ describe('RecipeBackLink', () => {
 
 	it('follows a history entry written while React commits, once the commit is done', async () => {
 		const tab = stubTabNavigation([favoritesUrl, `${origin}${recipePathname}`]);
-		writeTabStorage(`opened-from:${recipePathname}`, favoritesUrl);
+		recordOpenedFrom(favoritesUrl);
 		const consoleError = vi.spyOn(console, 'error');
 		// Writes the tab's history in an insertion effect, as Next's router does on navigating.
 		function HistoryWriter({ url }: { url?: string }) {
@@ -92,7 +98,7 @@ describe('RecipeBackLink', () => {
 			`${origin}${recipePathname}/edit`,
 			`${origin}${recipePathname}`,
 		]);
-		writeTabStorage(`opened-from:${recipePathname}`, favoritesUrl);
+		recordOpenedFrom(favoritesUrl);
 		await render(<RecipeBackLink recipePathname={recipePathname} />);
 
 		await expect.element(page.getByRole('link')).not.toBeInTheDocument();
@@ -100,7 +106,7 @@ describe('RecipeBackLink', () => {
 
 	it('shows none where the history the browser reports is not the address shown', async () => {
 		stubTabNavigation([favoritesUrl, `${origin}${recipePathname}`]);
-		writeTabStorage(`opened-from:${recipePathname}`, favoritesUrl);
+		recordOpenedFrom(favoritesUrl);
 		// As in a browser whose Navigation API missed the entries the page pushed since.
 		history.replaceState(null, '', `${origin}/recipes/sunday-pot-roast`);
 		await render(<RecipeBackLink recipePathname={recipePathname} />);
@@ -110,7 +116,7 @@ describe('RecipeBackLink', () => {
 
 	it('shows none where the browser has no Navigation API', async () => {
 		vi.stubGlobal('navigation', undefined);
-		writeTabStorage(`opened-from:${recipePathname}`, favoritesUrl);
+		recordOpenedFrom(favoritesUrl);
 		await render(<RecipeBackLink recipePathname={recipePathname} />);
 
 		await expect.element(page.getByRole('link')).not.toBeInTheDocument();

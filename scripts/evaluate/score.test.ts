@@ -15,6 +15,8 @@ const expected: ExtractedRecipe = {
 	instructionSections: [
 		{ steps: ['Press the crust into the pan.', "Bake 20 min. Don't let it brown."] },
 	],
+	holidays: [],
+	diets: [],
 	reviewNotes: [],
 };
 

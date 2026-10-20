@@ -15,7 +15,9 @@ const minimalPayload: RecipeFormPayload = {
 	times: {},
 	ingredientSections: [{ lines: ['1 slice bread'] }],
 	instructionSections: [{ steps: ['Toast the bread.'] }],
-	tags: [],
+	chapter: 'breakfast-brunch',
+	holidays: [],
+	diets: [],
 	images: [],
 };
 
@@ -40,12 +42,16 @@ const unreadablePayload = [
 ];
 
 describe('recipeContentFromForm', () => {
-	it.each(['', 'not json', '[]', JSON.stringify({ ...minimalPayload, tags: 'Soup' })])(
-		'refuses a payload the form never sends: %s',
-		(json) => {
-			expect(problemsFrom(() => recipeContentFromForm(json))).toEqual(unreadablePayload);
-		}
-	);
+	it.each([
+		'',
+		'not json',
+		'[]',
+		JSON.stringify({ ...minimalPayload, holidays: 'christmas' }),
+		JSON.stringify({ ...minimalPayload, chapter: 'Soups & Salads' }),
+		JSON.stringify({ ...minimalPayload, diets: ['keto'] }),
+	])('refuses a payload the form never sends: %s', (json) => {
+		expect(problemsFrom(() => recipeContentFromForm(json))).toEqual(unreadablePayload);
+	});
 
 	it('reads each ingredient line and wraps each step', () => {
 		expect(
@@ -162,6 +168,39 @@ describe('recipeContentFromForm', () => {
 				message: 'We couldn’t read this amount. Use a number, or two numbers for a range.',
 			},
 			{ path: 'title', message: 'Enter a title.' },
+		]);
+	});
+
+	it('reads the chapter, holidays, and diets, which the recipe completes with what they imply', () => {
+		const content = contentFrom({
+			chapter: 'desserts',
+			holidays: ['easter', 'christmas'],
+			diets: ['vegan'],
+		});
+
+		expect(content).toMatchObject({
+			chapter: 'desserts',
+			holidays: ['easter', 'christmas'],
+			diets: ['vegan'],
+		});
+		expect(parseRecipeContent(content).diets).toEqual(['vegetarian', 'vegan', 'dairy-free']);
+	});
+
+	it('refuses a recipe with no chapter, with its other problems', () => {
+		expect(problemsFrom(() => contentFrom({ title: '', chapter: undefined }))).toEqual([
+			{ path: 'title', message: 'Enter a title.' },
+			{ path: 'chapter', message: 'Choose a chapter.' },
+		]);
+		expect(
+			problemsFrom(() =>
+				contentFrom({ chapter: undefined, yield: { kind: 'servings', amount: 'a few' } })
+			)
+		).toEqual([
+			{
+				path: 'yield.amount',
+				message: 'We couldn’t read this amount. Use a number, or two numbers for a range.',
+			},
+			{ path: 'chapter', message: 'Choose a chapter.' },
 		]);
 	});
 

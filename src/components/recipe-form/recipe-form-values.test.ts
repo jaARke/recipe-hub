@@ -10,8 +10,6 @@ import {
 	recipeFormRequiredErrors,
 	recipeFormSubmission,
 	recipeFormValues,
-	tagLabelsFrom,
-	tagLabelsToAdd,
 	type RecipeFormEdit,
 	type RecipeFormListName,
 	type RecipeFormRowText,
@@ -42,8 +40,8 @@ const sliceSize = { width: 1800, height: 2400 };
 const drawnSize = { width: 2400, height: 1600 };
 
 // Ids follow the order the form builds things in: the ingredients' headings and lines (0 to 4), the
-// steps, whose section has no heading and so no row (5 and 6), tags (7 and 8), then images in the
-// recipe's order (9 to 11).
+// steps, whose section has no heading and so no row (5 and 6), then images in the recipe's order
+// (7 to 9).
 const lemonBars = parseRecipeContent({
 	title: 'Lemon bars',
 	description: 'Tart and sweet.',
@@ -59,7 +57,9 @@ const lemonBars = parseRecipeContent({
 	instructionSections: [
 		{ steps: [{ text: 'Press the crust into the pan.' }, { text: 'Bake 20 minutes.' }] },
 	],
-	tags: ['Dessert', 'Baking'],
+	chapter: 'desserts',
+	holidays: ['easter', 'fourth-of-july'],
+	diets: ['vegetarian'],
 	images: [
 		{ role: 'scan', pathname: 'scan/production/card.jpg', size: cardSize },
 		{
@@ -89,17 +89,18 @@ describe('recipeFormValues', () => {
 				totalMinutes: '',
 				yieldAmount: '',
 				yieldUnit: '',
-				tagDraft: '',
 			},
 			yieldKind: 'servings',
 			ingredientSections: { rows: [{ kind: 'item', id: 0, text: '' }] },
 			instructionSections: { rows: [{ kind: 'item', id: 1, text: '' }] },
-			tags: [],
+			holidays: [],
+			diets: [],
 			photos: { dish: [], scan: [] },
 			fieldErrors: {},
 			reviewNotes: new Map(),
 			nextId: 2,
 		});
+		expect(recipeFormValues().chapter).toBeUndefined();
 	});
 
 	it('fills every field from a recipe, each heading a row over its lines', () => {
@@ -130,32 +131,48 @@ describe('recipeFormValues', () => {
 				{ kind: 'item', id: 6, text: 'Bake 20 minutes.' },
 			],
 		});
-		expect(values.tags).toEqual([
-			{ id: 7, label: 'Dessert' },
-			{ id: 8, label: 'Baking' },
-		]);
+		expect(values).toMatchObject({
+			chapter: 'desserts',
+			holidays: ['easter', 'fourth-of-july'],
+			diets: ['vegetarian'],
+		});
 		expect(values.photos).toEqual({
 			dish: [
 				{
-					id: 10,
+					id: 8,
 					alt: 'Lemon bars on a plate',
 					upload: { status: 'saved', pathname: 'dish/production/bars.jpg', size: barsSize },
 				},
 				{
-					id: 11,
+					id: 9,
 					alt: '',
 					upload: { status: 'saved', pathname: 'dish/production/slice.jpg', size: sliceSize },
 				},
 			],
 			scan: [
 				{
-					id: 9,
+					id: 7,
 					alt: '',
 					upload: { status: 'saved', pathname: 'scan/production/card.jpg', size: cardSize },
 				},
 			],
 		});
-		expect(values.nextId).toBe(12);
+		expect(values.nextId).toBe(10);
+	});
+
+	it('holds the diets a recipe’s chosen ones imply rather than choosing them, and saves them all again', () => {
+		const vegan = recipeFormValues(
+			parseRecipeContent({ ...lemonBars, diets: ['gluten-free', 'vegan'] })
+		);
+		const sent = JSON.stringify(recipeFormSubmission(vegan).payload);
+
+		expect(vegan.diets).toEqual(['vegan', 'gluten-free']);
+		expect(parseRecipeContent(recipeContentFromForm(sent)).diets).toEqual([
+			'vegetarian',
+			'vegan',
+			'gluten-free',
+			'dairy-free',
+		]);
 	});
 
 	it('loads two sections without headings as one run of lines', () => {
@@ -357,6 +374,37 @@ describe('editRecipeForm', () => {
 		expect(values.yieldKind).toBe('makes');
 	});
 
+	it('chooses one chapter, and holidays and diets in their vocabularies’ order', () => {
+		const values = edited(
+			recipeFormValues(),
+			{ type: 'setChapter', chapter: 'soups-salads' },
+			{ type: 'setChapter', chapter: 'desserts' },
+			{ type: 'setHoliday', holiday: 'christmas', chosen: true },
+			{ type: 'setHoliday', holiday: 'easter', chosen: true },
+			{ type: 'setHoliday', holiday: 'halloween', chosen: true },
+			{ type: 'setHoliday', holiday: 'easter', chosen: false },
+			{ type: 'setDiet', diet: 'dairy-free', chosen: true },
+			{ type: 'setDiet', diet: 'vegetarian', chosen: true }
+		);
+
+		expect(values.chapter).toBe('desserts');
+		expect(values.holidays).toEqual(['halloween', 'christmas']);
+		expect(values.diets).toEqual(['vegetarian', 'dairy-free']);
+	});
+
+	it('keeps the diets the member chose before Vegan once Vegan goes', () => {
+		const vegetarian = edited(recipeFormValues(), {
+			type: 'setDiet',
+			diet: 'vegetarian',
+			chosen: true,
+		});
+		const vegan = edited(vegetarian, { type: 'setDiet', diet: 'vegan', chosen: true });
+		const notVegan = edited(vegan, { type: 'setDiet', diet: 'vegan', chosen: false });
+
+		expect(vegan.diets).toEqual(['vegetarian', 'vegan']);
+		expect(notVegan.diets).toEqual(['vegetarian']);
+	});
+
 	it('adds a blank line with the next id at the end, or below a row', () => {
 		const values = edited(
 			lemonBarsForm(),
@@ -367,13 +415,13 @@ describe('editRecipeForm', () => {
 		expect(rowsOf(values, 'ingredientSections')).toEqual([
 			{ kind: 'heading', id: 0, text: 'For the crust' },
 			{ kind: 'item', id: 1, text: '1 cup flour' },
-			{ kind: 'item', id: 13, text: '' },
+			{ kind: 'item', id: 11, text: '' },
 			{ kind: 'item', id: 2, text: '½ cup butter, softened' },
 			{ kind: 'heading', id: 3, text: 'For the filling' },
 			{ kind: 'item', id: 4, text: '2 eggs' },
-			{ kind: 'item', id: 12, text: '' },
+			{ kind: 'item', id: 10, text: '' },
 		]);
-		expect(values.nextId).toBe(14);
+		expect(values.nextId).toBe(12);
 	});
 
 	it('adds a heading at the end without changing the lines above it', () => {
@@ -386,7 +434,7 @@ describe('editRecipeForm', () => {
 		expect(values.ingredientSections.rows.slice(0, 5)).toEqual(
 			lemonBarsForm().ingredientSections.rows
 		);
-		expect(values.ingredientSections.rows[5]).toEqual({ kind: 'heading', id: 12, text: '' });
+		expect(values.ingredientSections.rows[5]).toEqual({ kind: 'heading', id: 10, text: '' });
 		// Blank, it sends nothing; named, it starts a section of its own.
 		expect(recipeFormSubmission(values).payload.ingredientSections).toEqual(
 			recipeFormSubmission(lemonBarsForm()).payload.ingredientSections
@@ -394,7 +442,7 @@ describe('editRecipeForm', () => {
 		const named = edited(values, {
 			type: 'setRowText',
 			list: 'ingredientSections',
-			rowId: 12,
+			rowId: 10,
 			text: 'For the glaze',
 		});
 		expect(recipeFormSubmission(named).payload.ingredientSections).toEqual([
@@ -554,8 +602,8 @@ describe('editRecipeForm', () => {
 		expect(rowsOf(edited(lemonBarsForm(), paste('1 cup flour')), 'ingredientSections')).toEqual([
 			{ kind: 'heading', id: 0, text: 'For the crust' },
 			{ kind: 'item', id: 1, text: '1 cup flour' },
-			{ kind: 'item', id: 12, text: '1 teaspoon salt' },
-			{ kind: 'item', id: 13, text: '1 cup sugar' },
+			{ kind: 'item', id: 10, text: '1 teaspoon salt' },
+			{ kind: 'item', id: 11, text: '1 cup sugar' },
 			{ kind: 'item', id: 2, text: '½ cup butter, softened' },
 			{ kind: 'heading', id: 3, text: 'For the filling' },
 			{ kind: 'item', id: 4, text: '2 eggs' },
@@ -564,25 +612,8 @@ describe('editRecipeForm', () => {
 			rowsOf(edited(lemonBarsForm(), paste('1 cup ')), 'ingredientSections').slice(1, 3)
 		).toEqual([
 			{ kind: 'item', id: 1, text: '1 cup ' },
-			{ kind: 'item', id: 12, text: '1 teaspoon salt' },
+			{ kind: 'item', id: 10, text: '1 teaspoon salt' },
 		]);
-	});
-
-	it('adds each tag not already chosen, once, and clears the tag field', () => {
-		const values = edited(
-			lemonBarsForm(),
-			{ type: 'setText', field: 'tagDraft', text: 'Summer, Make ahead, dessert, summer' },
-			{ type: 'addTags', labels: ['Summer', 'Make ahead', 'dessert', ' SUMMER '] },
-			{ type: 'removeTag', tagId: 7 }
-		);
-
-		expect(values.tags).toEqual([
-			{ id: 8, label: 'Baking' },
-			{ id: 12, label: 'Summer' },
-			{ id: 13, label: 'Make ahead' },
-		]);
-		expect(values.text.tagDraft).toBe('');
-		expect(values.nextId).toBe(14);
 	});
 
 	it('follows a photo from choosing it to its upload', () => {
@@ -592,22 +623,22 @@ describe('editRecipeForm', () => {
 			fileNames: ['IMG_0001.HEIC', 'IMG_0002.jpg'],
 		});
 		expect(added.photos.dish.slice(2)).toEqual([
-			{ id: 12, fileName: 'IMG_0001.HEIC', alt: '', upload: { status: 'processing' } },
-			{ id: 13, fileName: 'IMG_0002.jpg', alt: '', upload: { status: 'processing' } },
+			{ id: 10, fileName: 'IMG_0001.HEIC', alt: '', upload: { status: 'processing' } },
+			{ id: 11, fileName: 'IMG_0002.jpg', alt: '', upload: { status: 'processing' } },
 		]);
-		expect(added.nextId).toBe(14);
+		expect(added.nextId).toBe(12);
 		expect(hasPhotosInProgress(added)).toBe(true);
 
 		const uploading = edited(
 			added,
 			{
 				type: 'startPhotoUpload',
-				photoId: 12,
+				photoId: 10,
 				pathname: 'dish/development/a.jpg',
 				size: drawnSize,
 				file: photoFile,
 			},
-			{ type: 'setPhotoProgress', photoId: 12, fraction: 0.5 }
+			{ type: 'setPhotoProgress', photoId: 10, fraction: 0.5 }
 		);
 		expect(uploading.photos.dish[2]?.upload).toEqual({
 			status: 'uploading',
@@ -619,8 +650,8 @@ describe('editRecipeForm', () => {
 
 		const settled = edited(
 			uploading,
-			{ type: 'finishPhotoUpload', photoId: 12 },
-			{ type: 'failPhoto', photoId: 13, failure: 'unreadable' }
+			{ type: 'finishPhotoUpload', photoId: 10 },
+			{ type: 'failPhoto', photoId: 11, failure: 'unreadable' }
 		);
 		expect(settled.photos.dish.slice(2).map((photo) => photo.upload)).toEqual([
 			{ status: 'uploaded', pathname: 'dish/development/a.jpg', size: drawnSize, file: photoFile },
@@ -633,7 +664,7 @@ describe('editRecipeForm', () => {
 		const values = edited(
 			lemonBarsForm(),
 			{ type: 'addPhotos', role: 'scan', fileNames: ['card.jpg'] },
-			{ type: 'removePhoto', photoId: 12 }
+			{ type: 'removePhoto', photoId: 10 }
 		);
 
 		expect(
@@ -641,14 +672,14 @@ describe('editRecipeForm', () => {
 				values,
 				{
 					type: 'startPhotoUpload',
-					photoId: 12,
+					photoId: 10,
 					pathname: 'scan/development/a.jpg',
 					size: drawnSize,
 					file: photoFile,
 				},
-				{ type: 'setPhotoProgress', photoId: 10, fraction: 0.5 },
-				{ type: 'finishPhotoUpload', photoId: 10 },
-				{ type: 'failPhoto', photoId: 11, failure: 'upload' }
+				{ type: 'setPhotoProgress', photoId: 8, fraction: 0.5 },
+				{ type: 'finishPhotoUpload', photoId: 8 },
+				{ type: 'failPhoto', photoId: 9, failure: 'upload' }
 			)
 		).toEqual(values);
 	});
@@ -656,13 +687,13 @@ describe('editRecipeForm', () => {
 	it('makes a dish photo the cover and describes it', () => {
 		const values = edited(
 			lemonBarsForm(),
-			{ type: 'makeCoverPhoto', photoId: 11 },
-			{ type: 'setPhotoAlt', photoId: 11, alt: 'A slice on a fork' }
+			{ type: 'makeCoverPhoto', photoId: 9 },
+			{ type: 'setPhotoAlt', photoId: 9, alt: 'A slice on a fork' }
 		);
 
 		expect(values.photos.dish.map((photo) => [photo.id, photo.alt])).toEqual([
-			[11, 'A slice on a fork'],
-			[10, 'Lemon bars on a plate'],
+			[9, 'A slice on a fork'],
+			[8, 'Lemon bars on a plate'],
 		]);
 	});
 
@@ -674,14 +705,14 @@ describe('editRecipeForm', () => {
 		});
 		const scanIds = (values: RecipeFormValues) => values.photos.scan.map((photo) => photo.id);
 
-		expect(scanIds(added)).toEqual([9, 12, 13]);
-		expect(scanIds(edited(added, { type: 'movePhoto', photoId: 13, toIndex: 1 }))).toEqual([
-			9, 13, 12,
+		expect(scanIds(added)).toEqual([7, 10, 11]);
+		expect(scanIds(edited(added, { type: 'movePhoto', photoId: 11, toIndex: 1 }))).toEqual([
+			7, 11, 10,
 		]);
-		expect(scanIds(edited(added, { type: 'movePhoto', photoId: 9, toIndex: 1 }))).toEqual([
-			12, 9, 13,
+		expect(scanIds(edited(added, { type: 'movePhoto', photoId: 7, toIndex: 1 }))).toEqual([
+			10, 7, 11,
 		]);
-		expect(edited(added, { type: 'movePhoto', photoId: 9, toIndex: 1 }).photos.dish).toBe(
+		expect(edited(added, { type: 'movePhoto', photoId: 7, toIndex: 1 }).photos.dish).toBe(
 			added.photos.dish
 		);
 	});
@@ -692,15 +723,15 @@ describe('editRecipeForm', () => {
 			{ type: 'addPhotos', role: 'dish', fileNames: ['IMG_0001.jpg', 'IMG_0002.jpg'] },
 			{
 				type: 'startPhotoUpload',
-				photoId: 12,
+				photoId: 10,
 				pathname: 'dish/development/a.jpg',
 				size: drawnSize,
 				file: photoFile,
 			},
-			{ type: 'finishPhotoUpload', photoId: 12 },
+			{ type: 'finishPhotoUpload', photoId: 10 },
 			{
 				type: 'startPhotoUpload',
-				photoId: 13,
+				photoId: 11,
 				pathname: 'dish/development/b.jpg',
 				size: drawnSize,
 				file: photoFile,
@@ -708,7 +739,7 @@ describe('editRecipeForm', () => {
 		);
 
 		expect(
-			edited(values, { type: 'failMissingUpload', photoId: 12 }).photos.dish.map(
+			edited(values, { type: 'failMissingUpload', photoId: 10 }).photos.dish.map(
 				(photo) => photo.upload
 			)
 		).toEqual([
@@ -727,12 +758,12 @@ describe('editRecipeForm', () => {
 		expect(
 			edited(
 				values,
-				{ type: 'failMissingUpload', photoId: 10 },
-				{ type: 'failMissingUpload', photoId: 13 }
+				{ type: 'failMissingUpload', photoId: 8 },
+				{ type: 'failMissingUpload', photoId: 11 }
 			)
 		).toEqual(values);
-		const removed = edited(values, { type: 'removePhoto', photoId: 12 });
-		expect(edited(removed, { type: 'failMissingUpload', photoId: 12 })).toEqual(removed);
+		const removed = edited(values, { type: 'removePhoto', photoId: 10 });
+		expect(edited(removed, { type: 'failMissingUpload', photoId: 10 })).toEqual(removed);
 	});
 
 	it('replaces the whole form, going on from the higher next id so no id is given twice', () => {
@@ -741,13 +772,13 @@ describe('editRecipeForm', () => {
 			loaded,
 			{ type: 'setText', field: 'title', text: 'Lemon bars' },
 			{ type: 'addRow', list: 'ingredientSections', kind: 'item' },
-			{ type: 'addTags', labels: ['Dessert'] }
+			{ type: 'addRow', list: 'instructionSections', kind: 'item' }
 		);
 
 		const replaced = edited(added, { type: 'replaceForm', values: loaded });
 
 		expect(replaced).toEqual({ ...loaded, nextId: 4 });
-		expect(edited(replaced, { type: 'replaceForm', values: lemonBarsForm() }).nextId).toBe(12);
+		expect(edited(replaced, { type: 'replaceForm', values: lemonBarsForm() }).nextId).toBe(10);
 	});
 });
 
@@ -772,7 +803,9 @@ describe('recipeFormProblems', () => {
 			type: 'attachErrors',
 			fieldErrors: {
 				'images.1': 'Check this page.',
-				tags: 'Check the tags.',
+				diets: 'Check the diets.',
+				'holidays.0': 'Check the holidays.',
+				chapter: 'Choose a chapter.',
 				'instructionSections.0.steps.1': 'Check this step.',
 				'ingredientSections.1': 'Check this section.',
 				'ingredientSections.1.lines.0.amount': 'Check the amount.',
@@ -812,7 +845,9 @@ describe('recipeFormProblems', () => {
 			{ message: 'Check the notes.', target: { kind: 'field', field: 'notes' } },
 			{ message: 'Check the description.', target: { kind: 'field', field: 'description' } },
 			{ message: 'Check the yield.', target: { kind: 'field', field: 'yieldAmount' } },
-			{ message: 'Check the tags.', target: { kind: 'field', field: 'tags' } },
+			{ message: 'Choose a chapter.', target: { kind: 'field', field: 'chapter' } },
+			{ message: 'Check the holidays.', target: { kind: 'field', field: 'holidays' } },
+			{ message: 'Check the diets.', target: { kind: 'field', field: 'diets' } },
 			{
 				message: 'Check this page.',
 				target: { kind: 'photo', role: 'scan', index: 1, id: 7 },
@@ -845,10 +880,11 @@ describe('recipeFormRequiredErrors', () => {
 			title: 'Enter a title.',
 			'ingredientSections.0.lines': 'Add at least one ingredient.',
 			instructionSections: 'Add at least one step.',
+			chapter: 'Choose a chapter.',
 		});
 	});
 
-	it('finds nothing in a recipe with a title, an ingredient, and a step', () => {
+	it('finds nothing in a recipe with a title, an ingredient, a step, and a chapter', () => {
 		expect(recipeFormRequiredErrors(lemonBarsForm())).toEqual({});
 	});
 
@@ -902,6 +938,14 @@ describe('recipeFormRequiredErrors', () => {
 				target: { kind: 'section', list: 'ingredientSections', index: 2, id: 3 },
 			},
 		]);
+	});
+
+	it('asks for a chapter, as the server does', () => {
+		const noChapter = { ...lemonBarsForm(), chapter: undefined };
+		const atChapter = { chapter: 'Choose a chapter.' };
+
+		expect(recipeFormRequiredErrors(noChapter)).toEqual(atChapter);
+		expect(serverFieldErrors(noChapter)).toEqual(atChapter);
 	});
 
 	it('puts an empty list’s message at the list, as the server does', () => {
@@ -1353,34 +1397,46 @@ describe('review notes', () => {
 		]);
 	});
 
-	it('flags a marker in a chosen tag or the tag being typed, whether or not its note is open', () => {
-		// Ids: the blank ingredient (0) and step (1), then the tag (2).
-		const values = recipeFormValues({ title: 'Biscuits', tags: ['Sweet [?]'] }, [
-			{ path: 'tags', message: 'Check the tags against the card.' },
+	it('resolves a note on a choice once it changes, and offers Looks right only once a chapter is chosen', () => {
+		const filed = recipeFormValues({ title: 'Biscuits', chapter: 'breads-rolls' }, [
+			{ path: 'chapter', message: 'Check the chapter.' },
+			{ path: 'holidays', message: 'Check the holidays.' },
+			{ path: 'diets', message: 'Check the diets.' },
 		]);
-		const tagsCheck = (markers: string[], note?: string) => ({
-			target: { kind: 'field', field: 'tags' },
-			...(note === undefined ? {} : { note }),
-			markers,
-			confirmable: false,
-		});
-
-		expect(recipeFormChecks(values)).toEqual([
-			tagsCheck(['unsure'], 'Check the tags against the card.'),
+		const unfiled = recipeFormValues({ title: 'Biscuits' }, [
+			{ path: 'chapter', message: 'Choose a chapter. The original doesn’t say.' },
 		]);
-		// Typing another tag answers the note, but the marker stays to check.
-		const typing = edited(values, { type: 'setText', field: 'tagDraft', text: 'Baking' });
-		expect(typing.reviewNotes.get('field:tags')?.status).toBe('resolved');
-		expect(recipeFormChecks(typing)).toEqual([tagsCheck(['unsure'])]);
 
-		const replaced = edited(
-			typing,
-			{ type: 'removeTag', tagId: 2 },
-			{ type: 'setText', field: 'tagDraft', text: 'Baking, [illegible] cakes' }
+		expect(recipeFormChecks(filed)).toEqual([
+			{
+				target: { kind: 'field', field: 'chapter' },
+				note: 'Check the chapter.',
+				markers: [],
+				confirmable: true,
+			},
+			{
+				target: { kind: 'field', field: 'holidays' },
+				note: 'Check the holidays.',
+				markers: [],
+				confirmable: true,
+			},
+			{
+				target: { kind: 'field', field: 'diets' },
+				note: 'Check the diets.',
+				markers: [],
+				confirmable: true,
+			},
+		]);
+		expect(recipeFormChecks(unfiled).map(({ confirmable }) => confirmable)).toEqual([false]);
+
+		const changed = edited(
+			filed,
+			{ type: 'setChapter', chapter: 'desserts' },
+			{ type: 'setHoliday', holiday: 'christmas', chosen: true }
 		);
-		expect(recipeFormChecks(replaced)).toEqual([tagsCheck(['illegible'])]);
+		expect(recipeFormChecks(changed).map(({ note }) => note)).toEqual(['Check the diets.']);
 		expect(
-			recipeFormChecks(edited(replaced, { type: 'setText', field: 'tagDraft', text: 'Baking' }))
+			recipeFormChecks(edited(changed, { type: 'setDiet', diet: 'vegan', chosen: true }))
 		).toEqual([]);
 	});
 
@@ -1421,6 +1477,8 @@ describe('review notes', () => {
 				times: {},
 				ingredientSections: [{ lines: ['1 cup flour'] }],
 				instructionSections: [{ steps: ['Mix.'] }],
+				holidays: [],
+				diets: [],
 				reviewNotes: [{ field: 'step', section: 0, line: 0, note: 'Check this step.' }],
 			},
 			[]
@@ -1439,23 +1497,12 @@ describe('review notes', () => {
 				markers: [],
 				confirmable: true,
 			},
-		]);
-	});
-});
-
-describe('tagLabelsFrom', () => {
-	it('splits on commas and drops blanks', () => {
-		expect(tagLabelsFrom(' Soup,, Weeknight ,')).toEqual(['Soup', 'Weeknight']);
-	});
-});
-
-describe('tagLabelsToAdd', () => {
-	it('leaves out tags already chosen and repeats, by key', () => {
-		const { tags } = lemonBarsForm();
-
-		expect(tagLabelsToAdd(tags, ['BAKING', 'Make ahead', 'make  ahead', 'Soup'])).toEqual([
-			'Make ahead',
-			'Soup',
+			{
+				target: { kind: 'field', field: 'chapter' },
+				note: 'Choose a chapter.',
+				markers: [],
+				confirmable: false,
+			},
 		]);
 	});
 });
@@ -1467,10 +1514,9 @@ describe('recipeFormSubmission', () => {
 			{ type: 'setText', field: 'description', text: '   ' },
 			{ type: 'setText', field: 'source', text: ' Great-aunt Edie ' },
 			{ type: 'setText', field: 'prepMinutes', text: '' },
-			{ type: 'setText', field: 'tagDraft', text: 'Summer, Citrus' },
 			{ type: 'addRow', list: 'ingredientSections', kind: 'item', afterRowId: 2 },
 			{ type: 'addRow', list: 'instructionSections', kind: 'item' },
-			{ type: 'setRowText', list: 'instructionSections', rowId: 13, text: ' Cool completely. ' }
+			{ type: 'setRowText', list: 'instructionSections', rowId: 11, text: ' Cool completely. ' }
 		);
 
 		expect(recipeFormSubmission(values).payload).toEqual({
@@ -1487,7 +1533,9 @@ describe('recipeFormSubmission', () => {
 					steps: ['Press the crust into the pan.', 'Bake 20 minutes.', 'Cool completely.'],
 				},
 			],
-			tags: ['Dessert', 'Baking', 'Summer', 'Citrus'],
+			chapter: 'desserts',
+			holidays: ['easter', 'fourth-of-july'],
+			diets: ['vegetarian'],
 			images: [
 				{
 					role: 'dish',
@@ -1505,9 +1553,9 @@ describe('recipeFormSubmission', () => {
 		const values = edited(
 			lemonBarsForm(),
 			{ type: 'addRow', list: 'ingredientSections', kind: 'heading' },
-			{ type: 'addRow', list: 'ingredientSections', kind: 'item', afterRowId: 12 },
-			{ type: 'setRowText', list: 'ingredientSections', rowId: 13, text: '1 tablespoon zest' },
-			{ type: 'setRowText', list: 'ingredientSections', rowId: 12, text: '  ' }
+			{ type: 'addRow', list: 'ingredientSections', kind: 'item', afterRowId: 10 },
+			{ type: 'setRowText', list: 'ingredientSections', rowId: 11, text: '1 tablespoon zest' },
+			{ type: 'setRowText', list: 'ingredientSections', rowId: 10, text: '  ' }
 		);
 
 		expect(recipeFormSubmission(values).payload.ingredientSections).toEqual([
@@ -1556,7 +1604,8 @@ describe('recipeFormSubmission', () => {
 					{ kind: 'item', text: '2 eggs' },
 				],
 			},
-			{ type: 'setRowText', list: 'instructionSections', rowId: 1, text: 'Bake.' }
+			{ type: 'setRowText', list: 'instructionSections', rowId: 1, text: 'Bake.' },
+			{ type: 'setChapter', chapter: 'desserts' }
 		);
 		const { payload } = recipeFormSubmission(rows);
 		const saved = parseRecipeContent({
@@ -1609,20 +1658,20 @@ describe('recipeFormSubmission', () => {
 			{ type: 'addPhotos', role: 'dish', fileNames: ['a.jpg', 'b.jpg', 'c.heic'] },
 			{
 				type: 'startPhotoUpload',
-				photoId: 12,
+				photoId: 10,
 				pathname: 'dish/development/a.jpg',
 				size: drawnSize,
 				file: photoFile,
 			},
-			{ type: 'finishPhotoUpload', photoId: 12 },
+			{ type: 'finishPhotoUpload', photoId: 10 },
 			{
 				type: 'startPhotoUpload',
-				photoId: 13,
+				photoId: 11,
 				pathname: 'dish/development/b.jpg',
 				size: drawnSize,
 				file: photoFile,
 			},
-			{ type: 'failPhoto', photoId: 14, failure: 'unreadable' }
+			{ type: 'failPhoto', photoId: 12, failure: 'unreadable' }
 		);
 
 		expect(
@@ -1653,7 +1702,7 @@ describe('attaching errors', () => {
 		return editRecipeForm(values, { type: 'attachErrors', fieldErrors: problems, targets });
 	}
 
-	// A blank line (12) first under the crust's heading.
+	// A blank line (10) first under the crust's heading.
 	const withBlankLine = edited(lemonBarsForm(), {
 		type: 'addRow',
 		list: 'ingredientSections',
@@ -1672,7 +1721,7 @@ describe('attaching errors', () => {
 
 		expect(rowErrors(values)).toEqual([
 			{ id: 0, error: undefined },
-			{ id: 12, error: undefined },
+			{ id: 10, error: undefined },
 			{ id: 1, error: undefined },
 			{ id: 2, error: 'Make the end of the range larger than the start.' },
 			{ id: 3, error: undefined },
@@ -1755,12 +1804,13 @@ describe('attaching errors', () => {
 		expect(failed.instructionSections.error).toBe('Check these steps.');
 	});
 
-	it('puts problems with fields, tags, and photos on them', () => {
+	it('puts problems with fields, choices, and photos on them', () => {
 		const values = failedSave(lemonBarsForm(), {
 			'times.prepMinutes': 'Enter whole minutes.',
 			'yield.amount': 'We couldn’t read this amount. Use a number, or two numbers for a range.',
 			'yield.unit': 'Enter some text.',
-			'tags.1': 'Enter a tag.',
+			chapter: 'Choose a chapter.',
+			'diets.1': 'Choose a diet.',
 			'images.2.pathname': 'This photo didn’t upload. Remove it and add it again.',
 		});
 
@@ -1768,7 +1818,8 @@ describe('attaching errors', () => {
 			prepMinutes: 'Enter whole minutes.',
 			yieldAmount: 'We couldn’t read this amount. Use a number, or two numbers for a range.',
 			yieldUnit: 'Enter some text.',
-			tags: 'Enter a tag.',
+			chapter: 'Choose a chapter.',
+			diets: 'Choose a diet.',
 		});
 		expect(values.photos.scan[0]?.error).toBe(
 			'This photo didn’t upload. Remove it and add it again.'

@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, permanentRedirect, redirect } from 'next/navigation';
 import { Suspense } from 'react';
-import { getCachedRecipe, getCachedTagLabels } from '@/app/_lib/recipe-cache';
+import { getCachedRecipe } from '@/app/_lib/recipe-cache';
 import { loadFormMember } from '@/app/(site)/(contribute)/_lib/load-form-member';
 import { deleteRecipe, updateRecipe } from '@/app/(site)/(contribute)/recipes/[slug]/edit/actions';
 import { ForbiddenError, SignInRequiredError } from '@/application/authorization';
@@ -91,7 +91,7 @@ async function RecipeEditor({ params }: Pick<PageProps<'/recipes/[slug]/edit'>, 
 	if (recipe === null) {
 		return (
 			<>
-				<EditingPageHeading page="edit" />
+				<EditingPageHeading title={editingPageTitles.edit} />
 				<EditNotAllowedEmptyState slug={slug} />
 			</>
 		);
@@ -107,15 +107,14 @@ async function RecipeEditor({ params }: Pick<PageProps<'/recipes/[slug]/edit'>, 
 	// before the ids are listed, so changes kept for a recipe added meanwhile are never pruned.
 	const now = new Date();
 	// Every recipe's id, so the form's load drops unsaved changes kept for one deleted since.
-	const [member, tagLabels, recipeIds] = await Promise.all([
+	const [member, recipeIds] = await Promise.all([
 		loadFormMember(recipeEditPath(slug)),
-		getCachedTagLabels(),
 		getRecipeService().listRecipeIds(),
 	]);
 	return (
 		<>
 			<EditingPageHeading
-				page="edit"
+				title={editingPageTitles.edit}
 				menu={
 					<EditedRecipeMenu
 						recipe={{ id: recipe.id, slug: recipe.slug, title: recipe.title }}
@@ -130,14 +129,8 @@ async function RecipeEditor({ params }: Pick<PageProps<'/recipes/[slug]/edit'>, 
 				initial={recipeFormValues(recipe)}
 				action={updateRecipe}
 				uploadFolders={getRecipeImageService().uploadFolders()}
-				tagLabels={tagLabels}
-				editing={{
-					id: recipe.id,
-					version: recipe.updatedAt.toISOString(),
-					respellableTags: recipe.respellableTags,
-				}}
+				editing={{ id: recipe.id, version: recipe.updatedAt.toISOString() }}
 				autosave={{ memberId: member.id, existing: { knownAt: now, recipeIds } }}
-				submitLabel="Save changes"
 			/>
 		</>
 	);
@@ -149,7 +142,7 @@ export default function EditRecipePage({ params }: PageProps<'/recipes/[slug]/ed
 			<Suspense
 				fallback={
 					<>
-						<EditingPageHeading page="edit" />
+						<EditingPageHeading title={editingPageTitles.edit} />
 						<RecipeFormSkeleton besideOriginal />
 					</>
 				}

@@ -18,7 +18,6 @@ describe('recipeDraftContentSchema', () => {
 				{ heading: 'For the filling', steps: [] },
 				{ steps: [{ text: 'Chill.' }] },
 			],
-			tags: [],
 		};
 
 		expect(recipeDraftContentSchema.parse(content)).toEqual(content);
@@ -39,6 +38,12 @@ describe('recipeDraftContentSchema', () => {
 		expect(recipeDraftContentSchema.parse(content)).toEqual(content);
 	});
 
+	it('reads a stored draft carrying fields it does not know, without them', () => {
+		const content = { title: 'Lemon icebox pie' };
+
+		expect(recipeDraftContentSchema.parse({ ...content, tags: ['Dessert'] })).toEqual(content);
+	});
+
 	it('still rejects malformed values that are present', () => {
 		expect(recipeDraftContentSchema.safeParse({ title: '' }).success).toBe(false);
 		expect(
@@ -54,7 +59,9 @@ describe('recipeDraftSchema', () => {
 			title: 'Lemon icebox pie',
 			times: {},
 			ingredientSections: [{ lines: [{ text: '4 eggs' }] }],
-			tags: [],
+			chapter: 'desserts',
+			holidays: [],
+			diets: [],
 			images: [],
 		};
 		const validation = recipeContentSchema.safeParse(content);

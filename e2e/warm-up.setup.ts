@@ -6,6 +6,7 @@ import {
 	requestAccessPath,
 	signInPath,
 } from '@/components/auth/auth-paths';
+import { recipeEntryPaths, savedDraftPath } from '@/components/recipe-import/recipe-entry-paths';
 import { recipeImportPath } from '@/components/recipe-import/recipe-import-paths';
 import {
 	contributePath,
@@ -48,20 +49,26 @@ setup(
 			await loadAndHydrate(page, path);
 		}
 
-		const recipeImport = await seedLinkImportDraft(develop.db, member, {
+		const { importId, draftId } = await seedLinkImportDraft(develop.db, member, {
 			sourceUrl: 'https://example.com/lemonade',
 			recipe: {
 				title: 'Lemonade',
 				times: {},
 				ingredientSections: [{ lines: ['4 lemons'] }],
 				instructionSections: [{ steps: ['Squeeze the lemons.'] }],
+				holidays: [],
+				diets: [],
 				reviewNotes: [],
 			},
 		});
 		await signIn();
 		for (const path of [
 			contributePath,
-			recipeImportPath(recipeImport.id),
+			recipeEntryPaths.manual,
+			recipeEntryPaths.url,
+			recipeEntryPaths.photo,
+			recipeImportPath(importId),
+			savedDraftPath(draftId),
 			recipeEditPath(sampleRecipe.slug),
 			accountPath,
 			adminPath,

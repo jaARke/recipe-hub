@@ -1,4 +1,4 @@
-// Where a member reviews an import's draft and saves it as a recipe.
+// An import's address, which leads to the draft it made.
 export function recipeImportPath(id: string): string {
 	return `/contribute/imports/${id}`;
 }

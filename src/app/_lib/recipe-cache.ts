@@ -77,11 +77,3 @@ export async function recipeStaticParams(): Promise<{ slug: string }[]> {
 	// A param is required but production starts empty; this one fails the slug schema and prerenders a 404.
 	return recipes.length > 0 ? recipes.map(({ slug }) => ({ slug })) : [{ slug: '__placeholder__' }];
 }
-
-// Every tag label in use, which the recipe form suggests and filters in the browser.
-export async function getCachedTagLabels(): Promise<string[]> {
-	'use cache: remote';
-	cacheTag(recipeCacheTags.list);
-	cacheLife('days');
-	return getRecipeService().listTagLabels();
-}

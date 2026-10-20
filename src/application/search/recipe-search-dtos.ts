@@ -8,6 +8,9 @@ import type {
 	RecipeSearchSort,
 } from '@/application/ports/recipe-search';
 import { toRecipeSummaryDto, type RecipeSummaryDto } from '@/application/recipes/recipe-dtos';
+import type { Chapter } from '@/domain/recipe/chapter';
+import type { Diet } from '@/domain/recipe/diet';
+import type { Holiday } from '@/domain/recipe/holiday';
 
 // The total-time filter's choices, in minutes.
 export const recipeTotalTimeChoices = [15, 30, 60, 120] as const;
@@ -15,7 +18,9 @@ export type RecipeTotalTimeChoice = (typeof recipeTotalTimeChoices)[number];
 
 export type RecipeSearchInput = {
 	text?: string;
-	tags: string[];
+	chapter?: Chapter;
+	holidays: Holiday[];
+	diets: Diet[];
 	source?: string;
 	// A member's id, as the contributor facet lists it.
 	contributorId?: string;

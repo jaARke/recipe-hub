@@ -1,12 +1,23 @@
 import 'server-only';
 import { z } from 'zod';
+import { chapterLabels, chapters } from '@/domain/recipe/chapter';
+import { dietLabels, diets } from '@/domain/recipe/diet';
 import { reviewNoteFields, type ExtractedRecipe } from '@/domain/recipe/extracted-recipe';
+import { holidayLabels, holidays } from '@/domain/recipe/holiday';
 import { exampleIngredientLine } from '@/domain/recipe/ingredient-parser';
 import { transcriptionMarkers } from '@/domain/recipe/transcription-markers';
 
+// Each choice's value with the label a member reads it by, such as "desserts" for Desserts.
+function choiceList<Choice extends string>(
+	choices: readonly Choice[],
+	labels: Record<Choice, string>
+): string {
+	return choices.map((choice) => `"${choice}" for ${labels[choice]}`).join(', ');
+}
+
 // What the model returns, kept apart from the domain's draft so every provider's structured output
 // accepts it: every key is required with null for absent (OpenAI's strict mode), no oneOf (Gemini),
-// no length or number bounds, and 13 nullable fields where Anthropic allows 16 union-typed ones.
+// no length or number bounds, and 14 nullable fields where Anthropic allows 16 union-typed ones.
 const recipeFields = {
 	title: z
 		.string()
@@ -59,6 +70,19 @@ const recipeFields = {
 			steps: z.array(z.string()).describe('The steps in order, each written as sentences.'),
 		})
 	),
+	// After the lists, so the model has written the recipe out before it files it.
+	chapter: z
+		.enum(chapters)
+		.nullable()
+		.describe(`The cookbook chapter the recipe goes in: ${choiceList(chapters, chapterLabels)}.`),
+	holidays: z
+		.array(z.enum(holidays))
+		.describe(
+			`The holidays the source names the recipe for: ${choiceList(holidays, holidayLabels)}.`
+		),
+	diets: z
+		.array(z.enum(diets))
+		.describe(`The diets the source states the recipe suits: ${choiceList(diets, dietLabels)}.`),
 	reviewNotes: z
 		.array(
 			z.object({
@@ -140,6 +164,9 @@ export function toExtractedRecipe(output: RecipeOutput): ExtractedRecipe {
 			...(heading !== null && { heading }),
 			steps,
 		})),
+		...(output.chapter !== null && { chapter: output.chapter }),
+		holidays: output.holidays,
+		diets: output.diets,
 		reviewNotes: output.reviewNotes.map((reviewNote) => {
 			const section = reviewNoteSection(reviewNote, output);
 			return {

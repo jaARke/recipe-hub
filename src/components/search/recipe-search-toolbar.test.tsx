@@ -22,7 +22,7 @@ async function renderToolbar() {
 				filters={
 					<form aria-label="Filters" onSubmit={(event) => event.preventDefault()}>
 						<label>
-							<input type="checkbox" name="tag" value="Baking" /> Baking
+							<input type="checkbox" name="holiday" value="christmas" /> Christmas
 						</label>
 						<button type="submit">Apply filters</button>
 					</form>
@@ -72,13 +72,13 @@ describe('RecipeSearchToolbar', () => {
 	it('keeps a filter chosen but not applied when the panel closes and opens again', async () => {
 		await renderToolbar();
 		await filtersButton().click();
-		await page.getByRole('checkbox', { name: 'Baking' }).click();
+		await page.getByRole('checkbox', { name: 'Christmas' }).click();
 
 		await filtersButton().click();
 		await expect.element(filtersForm()).not.toBeInTheDocument();
 		await filtersButton().click();
 
-		await expect.element(page.getByRole('checkbox', { name: 'Baking' })).toBeChecked();
+		await expect.element(page.getByRole('checkbox', { name: 'Christmas' })).toBeChecked();
 	});
 
 	it('leaves the filters open and focus where it was when the order changes', async () => {

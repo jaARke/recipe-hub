@@ -15,6 +15,9 @@ import {
 	uuid,
 	type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
+import { chapters } from '@/domain/recipe/chapter';
+import { diets } from '@/domain/recipe/diet';
+import { holidays } from '@/domain/recipe/holiday';
 
 // English stemming that ignores accents, shared by the search vector and every text search query.
 export const recipeSearchConfiguration = sql.raw(`'public.recipe_english'::regconfig`);
@@ -24,6 +27,22 @@ const tsvector = customType<{ data: string }>({
 		return 'tsvector';
 	},
 });
+
+// Inlined, since a check constraint's definition cannot take parameters.
+function textLiterals(values: readonly string[]): SQL {
+	return sql
+		.join(
+			values.map((value) => sql`${value}`),
+			sql`, `
+		)
+		.inlineParams();
+}
+
+// The slugs of a recipe's holidays and diets, as words for search. Not its chapter's: a chapter
+// holds more than one kind of dish, so "soups-salads" would find every soup for "salad".
+function holidayAndDietWords(): SQL {
+	return sql`public.immutable_array_to_string(${recipes.holidays} || ${recipes.diets}, ' ')`;
+}
 
 export const recipes = pgTable(
 	'recipes',
@@ -36,33 +55,40 @@ export const recipes = pgTable(
 		contributorId: uuid('contributor_id')
 			.notNull()
 			.references(() => users.id),
-		// The JSON columns are untyped because the mapper validates every read. Content excludes tags.
+		// The JSON columns are untyped because the mapper validates every read. Content excludes the
+		// chapter, holidays and diets, which have columns of their own.
 		content: jsonb('content').notNull(),
 		provenance: jsonb('provenance').notNull(),
 		// The import the recipe was saved from. Unique, so an import saves one recipe.
 		importId: uuid('import_id')
 			.unique()
 			.references(() => recipeImports.id),
+		// Unread, as is tag_keys, and kept while the previous deployment may still read them.
 		tags: text('tags').array().notNull().default([]),
+		// Inserts that name no chapter, as the previous deployment's do, land in This & That.
+		chapter: text('chapter', { enum: chapters }).notNull().default('this-and-that'),
+		holidays: text('holidays', { enum: holidays }).array().notNull().default([]),
+		diets: text('diets', { enum: diets }).array().notNull().default([]),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-		// Postgres derives the columns below from the content for search, and recipe reads leave them out.
+		// Postgres derives the columns below from the content and filing for search, and recipe reads
+		// leave them out.
 		searchVector: tsvector('search_vector')
 			.notNull()
 			.generatedAlwaysAs(
 				(): SQL =>
 					sql`setweight(to_tsvector(${recipeSearchConfiguration}, ${recipes.content} ->> 'title'), 'A')
 	|| setweight(to_tsvector(${recipeSearchConfiguration}, jsonb_path_query_array(${recipes.content}, '$.ingredientSections[*].lines[*].item')), 'B')
-	|| setweight(to_tsvector(${recipeSearchConfiguration}, public.immutable_array_to_string(${recipes.tags}, ' ')), 'B')
+	|| setweight(to_tsvector(${recipeSearchConfiguration}, ${holidayAndDietWords()}), 'B')
 	|| setweight(to_tsvector(${recipeSearchConfiguration}, jsonb_path_query_array(${recipes.content}, '$.description') || jsonb_path_query_array(${recipes.content}, '$.notes') || jsonb_path_query_array(${recipes.content}, '$.source')), 'C')
 	|| setweight(to_tsvector(${recipeSearchConfiguration}, jsonb_path_query_array(${recipes.content}, '$.instructionSections[*].steps[*].text')), 'D')`
 			),
-		// The words close matches compare: the title, ingredient items, and tags.
+		// The words close matches compare: the title, ingredient items, and holiday and diet slugs.
 		searchWords: text('search_words')
 			.notNull()
 			.generatedAlwaysAs(
 				(): SQL =>
-					sql`lower(public.immutable_unaccent((${recipes.content} ->> 'title') || ' ' || jsonb_path_query_array(${recipes.content}, '$.ingredientSections[*].lines[*].item')::text || ' ' || public.immutable_array_to_string(${recipes.tags}, ' ')))`
+					sql`lower(public.immutable_unaccent((${recipes.content} ->> 'title') || ' ' || jsonb_path_query_array(${recipes.content}, '$.ingredientSections[*].lines[*].item')::text || ' ' || ${holidayAndDietWords()}))`
 			),
 		tagKeys: text('tag_keys')
 			.array()
@@ -89,6 +115,13 @@ export const recipes = pgTable(
 		index('recipes_tag_keys_idx').using('gin', table.tagKeys),
 		// Serves the contributor filter and its facet.
 		index('recipes_contributor_id_idx').on(table.contributorId),
+		// Serve the chapter, holiday and diet filters and their facets.
+		index('recipes_chapter_idx').on(table.chapter),
+		index('recipes_holidays_idx').using('gin', table.holidays),
+		index('recipes_diets_idx').using('gin', table.diets),
+		check('recipes_chapter_check', sql`${table.chapter} in (${textLiterals(chapters)})`),
+		check('recipes_holidays_check', sql`${table.holidays} <@ array[${textLiterals(holidays)}]`),
+		check('recipes_diets_check', sql`${table.diets} <@ array[${textLiterals(diets)}]`),
 	]
 );
 
@@ -105,7 +138,8 @@ export const oldRecipeSlugs = pgTable(
 	(table) => [index('old_recipe_slugs_recipe_id_idx').on(table.recipeId)]
 );
 
-// Every import a member starts, kept as a record of use and cost once its draft is cleared.
+// Every import a member starts, kept as a record of use and cost. What it read lives on the draft it
+// made, in recipe_drafts.
 export const recipeImports = pgTable(
 	'recipe_imports',
 	{
@@ -120,12 +154,13 @@ export const recipeImports = pgTable(
 		status: text('status', { enum: ['running', 'succeeded', 'failed'] })
 			.notNull()
 			.default('running'),
+		// Neither read nor written: declared only until no deployment that wrote them still serves.
 		sourceUrl: text('source_url'),
 		aiModel: text('ai_model'),
 		costUsd: numeric('cost_usd', { mode: 'number' }),
 		// The code of the error that ended a failed import.
 		failure: text('failure'),
-		// Untyped, like the recipe documents, because the mapper validates every read.
+		// Neither read nor written, as source_url.
 		draft: jsonb('draft'),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -141,9 +176,8 @@ export const recipeImports = pgTable(
 	]
 );
 
-// The drafts members save from the recipe form, each kept for a while after its last save. An
-// import's own draft lives on its record in recipe_imports; a draft here that continues an import's
-// review names the import.
+// The members' drafts, each kept for a while after its last change: those they save from the recipe
+// form, and those their imports make, which name the import.
 export const recipeDrafts = pgTable(
 	'recipe_drafts',
 	{
@@ -157,21 +191,33 @@ export const recipeDrafts = pgTable(
 		importId: uuid('import_id')
 			.unique()
 			.references(() => recipeImports.id, { onDelete: 'set null' }),
-		// The provenance of the import the draft continues, which outlasts the import's own source URL;
-		// null for a draft entered by hand. Untyped, as the recipes' is, because the mapper validates it.
+		// The provenance of the import that made the draft; null for a draft entered by hand. Untyped, as
+		// the recipes' is, because the mapper validates it.
 		provenance: jsonb('provenance'),
 		// What the member's list of drafts names it by; null while the recipe has no title.
 		title: text('title'),
-		// The recipe form's values, untyped because only the form reads them, and checks them as it does.
-		values: jsonb('values').notNull(),
-		// The images the values name, which the image sweep keeps while the draft lasts.
+		// The recipe form's values, untyped because only the form reads them, and checks them as it does;
+		// null on an import's draft until the form first saves it.
+		values: jsonb('values'),
+		// What the import read, which the draft opens with until the form saves its values. Untyped, as
+		// the recipe documents are, because the mapper validates it.
+		imported: jsonb('imported'),
+		// The images the values, or what the import read, name, which the image sweep keeps while the
+		// draft lasts.
 		imagePathnames: text('image_pathnames').array().notNull().default([]),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-		// When it was last saved, from which it expires.
+		// When it was last changed, from which it expires.
 		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 	},
-	// Serves a member's list of drafts, newest first.
-	(table) => [index('recipe_drafts_member_id_updated_at_idx').on(table.memberId, table.updatedAt)]
+	(table) => [
+		// Every draft opens the form with something.
+		check(
+			'recipe_drafts_contents_check',
+			sql`${table.values} is not null or ${table.imported} is not null`
+		),
+		// Serves a member's list of drafts, newest first.
+		index('recipe_drafts_member_id_updated_at_idx').on(table.memberId, table.updatedAt),
+	]
 );
 
 // The recipes each member keeps as favorites. Users are never deleted, so a member's removal deletes

@@ -28,7 +28,9 @@ const adaId = '0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e';
 
 const fullState: RecipeSearchState = {
 	text: 'brown butter',
-	tags: ['Baking', 'Make ahead'],
+	chapter: 'cookies-candy',
+	holidays: ['easter', 'christmas'],
+	diets: ['vegetarian', 'gluten-free'],
 	source: 'Aunt June',
 	contributorId: adaId,
 	maxTotalMinutes: 60,
@@ -39,27 +41,31 @@ const fullState: RecipeSearchState = {
 
 describe('parseRecipeSearchParams', () => {
 	it('lists every recipe newest first when nothing is asked for', () => {
-		expect(parse('')).toEqual({ tags: [], sort: 'newest', page: 1 });
+		expect(parse('')).toEqual({ holidays: [], diets: [], sort: 'newest', page: 1 });
 	});
 
 	it('ranks by relevance when there is a query', () => {
-		expect(parse('q=soup')).toEqual({ text: 'soup', tags: [], sort: 'relevance', page: 1 });
+		expect(parse('q=soup')).toEqual({
+			text: 'soup',
+			holidays: [],
+			diets: [],
+			sort: 'relevance',
+			page: 1,
+		});
 	});
 
 	it('reads every parameter', () => {
 		expect(
 			parse(
-				`q=brown+butter&tag=Baking&tag=Make+ahead&source=Aunt+June&contributor=${adaId}&time=60&added=month&sort=title&page=2`
+				`q=brown+butter&chapter=cookies-candy&holiday=easter&holiday=christmas&diet=vegetarian&diet=gluten-free&source=Aunt+June&contributor=${adaId}&time=60&added=month&sort=title&page=2`
 			)
 		).toEqual(fullState);
 	});
 
 	it('treats the empty values a form submits as absent', () => {
-		expect(parse('q=&tag=&source=&contributor=&time=&added=&sort=&page=')).toEqual({
-			tags: [],
-			sort: 'newest',
-			page: 1,
-		});
+		expect(
+			parse('q=&chapter=&holiday=&diet=&source=&contributor=&time=&added=&sort=&page=')
+		).toEqual({ holidays: [], diets: [], sort: 'newest', page: 1 });
 	});
 
 	it('trims the query and the source, so spaces alone are absent', () => {
@@ -67,24 +73,24 @@ describe('parseRecipeSearchParams', () => {
 			text: 'soup',
 			source: 'Aunt June',
 		});
-		expect(parse('q=+++')).toEqual({ tags: [], sort: 'newest', page: 1 });
+		expect(parse('q=+++')).toEqual({ holidays: [], diets: [], sort: 'newest', page: 1 });
 	});
 
 	it('lowercases the contributor id, as the filters list it', () => {
 		expect(parse(`contributor=+${adaId.toUpperCase()}+`)?.contributorId).toBe(adaId);
 	});
 
-	it('keeps the first spelling of a repeated tag and drops blank ones', () => {
-		expect(parse('tag=Make+ahead&tag=make++AHEAD&tag=+&tag=Soup')?.tags).toEqual([
-			'Make ahead',
-			'Soup',
-		]);
+	it('lists each holiday and diet once, in the vocabulary’s order', () => {
+		expect(
+			parse('holiday=christmas&holiday=easter&holiday=christmas&diet=dairy-free&diet=vegan')
+		).toMatchObject({ holidays: ['easter', 'christmas'], diets: ['vegan', 'dairy-free'] });
 	});
 
-	it('ignores parameters it does not know', () => {
-		expect(parse('q=soup&ref=share')).toEqual({
+	it('ignores parameters it does not know, such as the tags of older links', () => {
+		expect(parse('q=soup&ref=share&tag=Dessert')).toEqual({
 			text: 'soup',
-			tags: [],
+			holidays: [],
+			diets: [],
 			sort: 'relevance',
 			page: 1,
 		});
@@ -96,6 +102,11 @@ describe('parseRecipeSearchParams', () => {
 	});
 
 	it.each([
+		['an unknown chapter', 'chapter=nope'],
+		['a chapter by its label', 'chapter=Desserts'],
+		['a repeated chapter', 'chapter=desserts&chapter=desserts'],
+		['an unknown holiday among known ones', 'holiday=easter&holiday=boxing-day'],
+		['an unknown diet', 'diet=nut-free'],
 		['an unknown total time', 'time=45'],
 		['an unknown date range', 'added=decade'],
 		['an unknown order', 'sort=oldest'],
@@ -111,29 +122,44 @@ describe('parseRecipeSearchParams', () => {
 
 describe('recipeSearchHref', () => {
 	it('links bare Browse when nothing is asked for', () => {
-		expect(recipeSearchHref({ tags: [], sort: 'newest', page: 1 })).toBe('/');
+		expect(recipeSearchHref({ holidays: [], diets: [], sort: 'newest', page: 1 })).toBe('/');
 	});
 
 	it('links Browse with its filters without words, and Search with them', () => {
-		expect(recipeSearchHref({ tags: ['Dessert', 'Make ahead'], sort: 'newest', page: 1 })).toBe(
-			'/?tag=Dessert&tag=Make+ahead'
-		);
-		expect(recipeSearchHref({ text: 'lemon', tags: ['Dessert'], sort: 'relevance', page: 1 })).toBe(
-			'/search?q=lemon&tag=Dessert'
-		);
+		expect(
+			recipeSearchHref({
+				chapter: 'desserts',
+				holidays: ['christmas'],
+				diets: [],
+				sort: 'newest',
+				page: 1,
+			})
+		).toBe('/?chapter=desserts&holiday=christmas');
+		expect(
+			recipeSearchHref({
+				text: 'lemon',
+				chapter: 'desserts',
+				holidays: [],
+				diets: [],
+				sort: 'relevance',
+				page: 1,
+			})
+		).toBe('/search?q=lemon&chapter=desserts');
 	});
 
 	it('lists parameters in a fixed order and leaves out the default order and first page', () => {
 		expect(recipeSearchHref({ ...fullState, sort: 'relevance', page: 1 })).toBe(
-			`/search?q=brown+butter&tag=Baking&tag=Make+ahead&source=Aunt+June&contributor=${adaId}&time=60&added=month`
+			`/search?q=brown+butter&chapter=cookies-candy&holiday=easter&holiday=christmas&diet=vegetarian&diet=gluten-free&source=Aunt+June&contributor=${adaId}&time=60&added=month`
 		);
 	});
 
 	it('keeps an order that differs from the default', () => {
-		expect(recipeSearchHref({ text: 'soup', tags: [], sort: 'newest', page: 1 })).toBe(
-			'/search?q=soup&sort=newest'
+		expect(
+			recipeSearchHref({ text: 'soup', holidays: [], diets: [], sort: 'newest', page: 1 })
+		).toBe('/search?q=soup&sort=newest');
+		expect(recipeSearchHref({ holidays: [], diets: [], sort: 'title', page: 3 })).toBe(
+			'/?sort=title&page=3'
 		);
-		expect(recipeSearchHref({ tags: [], sort: 'title', page: 3 })).toBe('/?sort=title&page=3');
 	});
 
 	it('round-trips through the parser', () => {
@@ -152,29 +178,30 @@ describe('recipeSearchModePath', () => {
 
 describe('misplacedRecipeSearchHref', () => {
 	it('sends a search without words to Browse with its filters', () => {
-		expect(misplaced('/search?tag=Dessert')).toBe('/?tag=Dessert');
+		expect(misplaced('/search?chapter=desserts')).toBe('/?chapter=desserts');
 		expect(misplaced('/search')).toBe('/');
 	});
 
 	it('sends an emptied search to Browse with its filters and its order, its default left out', () => {
-		expect(misplaced('/search?q=&tag=Dessert&sort=title')).toBe('/?tag=Dessert&sort=title');
-		expect(misplaced('/search?q=+&tag=Dessert&sort=newest')).toBe('/?tag=Dessert');
+		expect(misplaced('/search?q=&diet=vegan&sort=title')).toBe('/?diet=vegan&sort=title');
+		expect(misplaced('/search?q=+&diet=vegan&sort=newest')).toBe('/?diet=vegan');
 	});
 
 	it('sends Browse given words to Search with its filters', () => {
 		expect(misplaced('/?q=lemon')).toBe('/search?q=lemon');
-		expect(misplaced('/?q=lemon&tag=Dessert')).toBe('/search?q=lemon&tag=Dessert');
+		expect(misplaced('/?q=lemon&holiday=easter')).toBe('/search?q=lemon&holiday=easter');
 	});
 
 	it('leaves Browse without words and Search with them where they are', () => {
-		expect(misplaced('/?tag=Dessert&sort=title')).toBeUndefined();
+		expect(misplaced('/?chapter=desserts&sort=title')).toBeUndefined();
 		expect(misplaced('/?q=')).toBeUndefined();
-		expect(misplaced('/search?q=lemon&tag=Dessert')).toBeUndefined();
+		expect(misplaced('/search?q=lemon&chapter=desserts')).toBeUndefined();
 	});
 
 	it('leaves parameters it refuses to the page, which answers them with a 404', () => {
-		expect(misplaced('/search?sort=relevance&tag=Dessert')).toBeUndefined();
+		expect(misplaced('/search?sort=relevance&chapter=desserts')).toBeUndefined();
 		expect(misplaced('/?q=lemon&q=lime')).toBeUndefined();
+		expect(misplaced('/?q=lemon&chapter=nope')).toBeUndefined();
 	});
 });
 
@@ -182,7 +209,9 @@ describe('carriedSearchParams', () => {
 	it('carries everything but the edited fields, and never the page', () => {
 		expect(
 			carriedSearchParams(fullState, [
-				'tags',
+				'chapter',
+				'holidays',
+				'diets',
 				'source',
 				'contributorId',
 				'maxTotalMinutes',
@@ -196,8 +225,18 @@ describe('carriedSearchParams', () => {
 
 	it('leaves out a default order, so clearing the query falls back to newest first', () => {
 		expect(
-			carriedSearchParams({ text: 'soup', tags: ['Soup'], sort: 'relevance', page: 2 }, ['text'])
-		).toEqual([{ name: 'tag', value: 'Soup' }]);
+			carriedSearchParams(
+				{
+					text: 'soup',
+					chapter: 'soups-salads',
+					holidays: [],
+					diets: [],
+					sort: 'relevance',
+					page: 2,
+				},
+				['text']
+			)
+		).toEqual([{ name: 'chapter', value: 'soups-salads' }]);
 	});
 });
 
@@ -209,9 +248,11 @@ describe('recipeSearchSortsFor', () => {
 });
 
 describe('appliedFilterCount', () => {
-	it('counts each tag and each chosen filter, but not the query or the order', () => {
-		expect(appliedFilterCount(fullState)).toBe(6);
-		expect(appliedFilterCount({ text: 'soup', tags: [], sort: 'title', page: 1 })).toBe(0);
+	it('counts the chapter, each holiday and diet, and each chosen filter, but not the query or the order', () => {
+		expect(appliedFilterCount(fullState)).toBe(9);
+		expect(
+			appliedFilterCount({ text: 'soup', holidays: [], diets: [], sort: 'title', page: 1 })
+		).toBe(0);
 	});
 });
 
@@ -219,7 +260,8 @@ describe('withoutFilters', () => {
 	it('keeps the query and the order and returns to the first page', () => {
 		expect(withoutFilters(fullState)).toEqual({
 			text: 'brown butter',
-			tags: [],
+			holidays: [],
+			diets: [],
 			sort: 'title',
 			page: 1,
 		});
@@ -232,9 +274,20 @@ describe('withoutText', () => {
 	});
 
 	it('turns best match, which ranks by the words, into newest first', () => {
-		expect(withoutText({ text: 'lemon', tags: ['Dessert'], sort: 'relevance', page: 2 })).toEqual({
+		expect(
+			withoutText({
+				text: 'lemon',
+				chapter: 'desserts',
+				holidays: [],
+				diets: [],
+				sort: 'relevance',
+				page: 2,
+			})
+		).toEqual({
 			text: undefined,
-			tags: ['Dessert'],
+			chapter: 'desserts',
+			holidays: [],
+			diets: [],
 			sort: 'newest',
 			page: 1,
 		});
@@ -252,7 +305,9 @@ describe('recipeSearchFiltersKey', () => {
 		const key = recipeSearchFiltersKey(fullState);
 
 		expect(recipeSearchFiltersKey({ ...fullState, text: 'butter' })).not.toBe(key);
-		expect(recipeSearchFiltersKey({ ...fullState, tags: ['Baking'] })).not.toBe(key);
+		expect(recipeSearchFiltersKey({ ...fullState, chapter: 'desserts' })).not.toBe(key);
+		expect(recipeSearchFiltersKey({ ...fullState, holidays: ['easter'] })).not.toBe(key);
+		expect(recipeSearchFiltersKey({ ...fullState, diets: ['vegetarian'] })).not.toBe(key);
 		expect(recipeSearchFiltersKey({ ...fullState, addedWithin: undefined })).not.toBe(key);
 	});
 });
@@ -261,7 +316,9 @@ describe('toRecipeSearchInput', () => {
 	it('asks for one page of results in an explicit order', () => {
 		expect(toRecipeSearchInput(fullState, 24)).toEqual({
 			text: 'brown butter',
-			tags: ['Baking', 'Make ahead'],
+			chapter: 'cookies-candy',
+			holidays: ['easter', 'christmas'],
+			diets: ['vegetarian', 'gluten-free'],
 			source: 'Aunt June',
 			contributorId: adaId,
 			maxTotalMinutes: 60,

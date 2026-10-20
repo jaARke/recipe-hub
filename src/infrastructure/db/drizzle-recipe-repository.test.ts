@@ -20,6 +20,7 @@ import { slugify } from '@/domain/recipe/slug';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
+import { DrizzleSavedDraftRepository } from '@/infrastructure/db/drizzle-saved-draft-repository';
 import { recipes } from '@/infrastructure/db/schema';
 import { requireBoundedWrites } from '@/infrastructure/db/testing/bounded-writes';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
@@ -96,6 +97,7 @@ $$`)
 describeRecipeRepositoryContract(() => ({
 	repository,
 	imports: new DrizzleRecipeImportRepository(db),
+	drafts: new DrizzleSavedDraftRepository(db),
 	contributorId,
 	otherContributorId,
 }));
@@ -200,12 +202,32 @@ describe('bounded writes', () => {
 	});
 });
 
-describe('findTagLabels and findImagesInUse', () => {
-	it('return nothing for nothing asked without querying', async () => {
+// Drizzle's insert names every column the schema declares, so a create that used it would fail once a
+// column the schema still declares is dropped while this code serves.
+describe('once the columns no code reads or writes are dropped', () => {
+	it('creates, finds, and renames recipes as before', async () => {
+		await db.execute(sql`alter table recipes drop column tag_keys, drop column tags`);
+		await db.execute(sql`drop function public.search_keys(text[])`);
+		const created = await repository.create(newRecipe(sampleChickenSoup));
+
+		expect(await repository.findById(created.id)).toEqual(created);
+
+		const renamed = await repository.update(created.id, {
+			content: recipeContentSchema.parse(sampleTomatoSalad),
+			expectedUpdatedAt: created.updatedAt,
+			slugBase: 'garden-tomato-salad',
+		});
+
+		expect(renamed?.recipe).toMatchObject({ id: created.id, slug: 'garden-tomato-salad' });
+		expect(await repository.findBySlug(created.slug)).toEqual(renamed?.recipe);
+	});
+});
+
+describe('findImagesInUse', () => {
+	it('returns nothing for nothing asked without querying', async () => {
 		await repository.create(newRecipe(sampleChickenSoup));
 		const query = vi.spyOn(db.$client, 'query');
 
-		expect(await repository.findTagLabels([])).toEqual([]);
 		expect(await repository.findImagesInUse([])).toEqual([]);
 		expect(query).not.toHaveBeenCalled();
 	});

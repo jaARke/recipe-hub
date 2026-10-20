@@ -1,4 +1,4 @@
-import { RecipeImportedFrom } from '@/components/recipe/recipe-detail';
+import { RecipeImportedFrom } from '@/components/recipe/recipe-source-link';
 import type { RecipeImportMode } from '@/domain/recipe/recipe-import';
 
 type DraftProvenanceLineProps = {
@@ -8,8 +8,8 @@ type DraftProvenanceLineProps = {
 	sourceUrl: string | undefined;
 };
 
-// Where an import's draft came from, under the heading of the page that opens it: an import's
-// review, or a draft saved from one. A draft entered by hand shows nothing.
+// Where an import's draft came from, under the heading of the draft's page. A draft entered by hand
+// shows nothing.
 function DraftProvenanceLine({ mode, sourceUrl }: DraftProvenanceLineProps) {
 	if (mode === 'photo') {
 		return <p className="text-sm text-muted-foreground">Read from your photos</p>;

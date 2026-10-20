@@ -10,7 +10,6 @@ import {
 	type StoredImage,
 } from '@/application/ports/image-store';
 import type { ProductionImages } from '@/application/ports/production-images';
-import type { RecipeImportRepository } from '@/application/ports/recipe-import-repository';
 import type { RecipeRepository } from '@/application/ports/recipe-repository';
 import type { SavedDraftRepository } from '@/application/ports/saved-draft-repository';
 import type { TaskScheduler } from '@/application/ports/task-scheduler';
@@ -175,7 +174,6 @@ function warnImagesNotRemoved(recipeId: RecipeId, pathnames: string[], err: unkn
 
 export class RecipeImageService {
 	private readonly recipes: RecipeRepository;
-	private readonly imports: RecipeImportRepository;
 	private readonly drafts: SavedDraftRepository;
 	private readonly images: ImageStore;
 	private readonly productionImages: ProductionImages;
@@ -189,7 +187,6 @@ export class RecipeImageService {
 	// task sweeps once it is done.
 	constructor(
 		recipes: RecipeRepository,
-		imports: RecipeImportRepository,
 		drafts: SavedDraftRepository,
 		images: ImageStore,
 		productionImages: ProductionImages,
@@ -200,7 +197,6 @@ export class RecipeImageService {
 		sweepsAfterWrites: boolean
 	) {
 		this.recipes = recipes;
-		this.imports = imports;
 		this.drafts = drafts;
 		this.images = images;
 		this.productionImages = productionImages;
@@ -320,8 +316,8 @@ export class RecipeImageService {
 	// After the write commits, so a failure leaves an unused image rather than a recipe naming a missing
 	// one; a failure is logged, and the sweep carries on. An image that fails to move alone, or whose
 	// caches were not purged once it moved, is named with why, and the rest are removed. An image
-	// another recipe still lists or an unexpired import or saved draft names is kept, as importing the
-	// same scans twice makes drafts share them.
+	// another recipe still lists or an unexpired draft names is kept, as importing the same scans twice
+	// makes drafts share them.
 	private async removeReleasedImages(
 		recipeId: RecipeId,
 		pathnames: string[],
@@ -329,7 +325,7 @@ export class RecipeImageService {
 	): Promise<void> {
 		try {
 			const inUse = await withinImageMove(deadline, () =>
-				imagesInUse(pathnames, this.recipes, this.imports, this.drafts, new Date())
+				imagesInUse(pathnames, this.recipes, this.drafts, new Date())
 			);
 			const unusedPathnames = pathnames.filter((pathname) => !inUse.has(pathname));
 			const keptPathnames = pathnames.filter((pathname) => inUse.has(pathname));
@@ -368,7 +364,6 @@ export class RecipeImageService {
 			imagesInUse(
 				[...removed.map(({ pathname }) => pathname), ...uploaded],
 				this.recipes,
-				this.imports,
 				this.drafts,
 				now
 			)

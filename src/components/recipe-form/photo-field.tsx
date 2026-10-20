@@ -13,6 +13,7 @@ import { flushSync } from 'react-dom';
 import { describedBy } from '@/components/forms/described-by';
 import { FieldNote, type FieldNoteContent } from '@/components/forms/field-note';
 import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
+import { optionalLabel } from '@/components/forms/optional-label';
 import { FieldProblem } from '@/components/forms/problem-summary';
 import { useFieldUndo } from '@/components/forms/use-field-undo';
 import { ItemActionsMenu, type ItemAction } from '@/components/recipe-form/item-actions-menu';
@@ -76,6 +77,8 @@ type PhotoFieldProps = {
 	idPrefix: string;
 	role: RecipeImageRole;
 	legend: string;
+	// Whether the legend says the field is optional.
+	optional?: boolean;
 	description: string;
 	// The most photos the field takes: a recipe's limit for the role, or fewer, as an import reads.
 	limit: number;
@@ -248,6 +251,7 @@ function PhotoField({
 	idPrefix,
 	role,
 	legend,
+	optional = false,
 	description,
 	limit,
 	photos,
@@ -516,7 +520,7 @@ function PhotoField({
 
 	return (
 		<FieldSet aria-describedby={describedBy(ids.description, error !== undefined && ids.error)}>
-			<FieldLegend>{legend}</FieldLegend>
+			<FieldLegend>{optional ? optionalLabel(legend) : legend}</FieldLegend>
 			<FieldDescription id={ids.description}>{description}</FieldDescription>
 			{error !== undefined && (
 				// Takes focus after a failed import in place of a field.

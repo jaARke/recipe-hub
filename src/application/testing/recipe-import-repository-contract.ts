@@ -5,9 +5,9 @@ import type {
 	RecipeImportRepository,
 } from '@/application/ports/recipe-import-repository';
 import type { RecipeRepository } from '@/application/ports/recipe-repository';
+import type { SavedDraftRepository } from '@/application/ports/saved-draft-repository';
 import type { MemberId } from '@/domain/member/member';
 import { recipeContentSchema } from '@/domain/recipe/recipe';
-import type { RecipeImage } from '@/domain/recipe/recipe-image';
 import {
 	recipeImportIdSchema,
 	type RecipeImport,
@@ -20,11 +20,15 @@ export type RecipeImportRepositoryFixture = {
 	imports: RecipeImportRepository;
 	// Where recipes saved from imports are stored, which the imports report.
 	recipes: RecipeRepository;
+	// Where the drafts a success makes are stored.
+	drafts: SavedDraftRepository;
 	// Two members the repositories accept.
 	memberId: MemberId;
 	otherMemberId: MemberId;
 	// Moves an import's start back in time.
 	backdate(id: RecipeImportId, createdAt: Date): Promise<void>;
+	// Stores a draft naming the import, as no write through the ports does while it runs.
+	storeDraftOf(id: RecipeImportId, memberId: MemberId): Promise<void>;
 };
 
 const missingId = recipeImportIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e');
@@ -32,16 +36,36 @@ const missingId = recipeImportIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d
 const hourMs = 60 * 60 * 1000;
 
 const urlSuccess: ImportSuccess = {
-	draft: {
-		content: {
-			title: 'Weeknight chicken soup',
-			ingredientSections: [{ lines: [{ text: '1 onion', item: 'onion' }] }],
-		},
-		problems: [{ path: 'instructionSections', message: 'No steps were found on the page.' }],
-	},
-	sourceUrl: 'https://example.com/soup',
 	aiModel: 'example/model',
 	costUsd: 0.0042,
+	draft: {
+		provenance: {
+			entryMode: 'url',
+			sourceUrl: 'https://example.com/soup',
+			aiModel: 'example/model',
+		},
+		title: 'Weeknight chicken soup',
+		imported: {
+			content: {
+				title: 'Weeknight chicken soup',
+				ingredientSections: [{ lines: [{ text: '1 onion', item: 'onion' }] }],
+			},
+			problems: [{ path: 'instructionSections', message: 'No steps were found on the page.' }],
+		},
+		imagePathnames: [],
+	},
+};
+
+// A photo import's success, whose draft keeps the scans it was read from, with no title found.
+const photoSuccess: ImportSuccess = {
+	draft: {
+		provenance: { entryMode: 'photo' },
+		imported: {
+			content: { images: [{ role: 'scan', pathname: 'scan/development/card.jpg' }] },
+			problems: [],
+		},
+		imagePathnames: ['scan/development/card.jpg'],
+	},
 };
 
 // What every RecipeImportRepository guarantees. The caller provides a fresh, empty fixture for each test.
@@ -60,16 +84,15 @@ export function describeRecipeImportRepositoryContract(
 		return started;
 	}
 
-	async function startSucceeded(
-		success: ImportSuccess = urlSuccess,
-		memberId?: MemberId
-	): Promise<RecipeImport> {
-		const started = await start('url', memberId);
-		await fixture().imports.recordSuccess(started.id, success);
+	async function startSucceeded(): Promise<RecipeImport> {
+		const started = await start('url');
+		if ((await fixture().imports.recordSuccess(started.id, urlSuccess)) === null) {
+			throw new Error('The import was no longer running');
+		}
 		return started;
 	}
 
-	// Saves a recipe from the import, as the recipe service does after the member's review.
+	// Saves a recipe from the import, as the recipe service does from the import's draft.
 	async function saveRecipeFrom(recipeImport: RecipeImport) {
 		return fixture().recipes.create({
 			content: recipeContentSchema.parse(sampleChickenSoup),
@@ -131,34 +154,75 @@ export function describeRecipeImportRepositoryContract(
 	});
 
 	describe('recordSuccess', () => {
-		it('records the draft, source URL, model, and cost of a running import', async () => {
-			const { imports } = fixture();
+		it('records the model and cost of a running import, and creates its draft for its member', async () => {
+			const { imports, drafts, memberId } = fixture();
 			const started = await start();
 
-			expect(await imports.recordSuccess(started.id, urlSuccess)).toBe(true);
+			const draftId = await imports.recordSuccess(started.id, urlSuccess);
 
 			expect(await imports.findById(started.id)).toEqual({
 				...started,
-				...urlSuccess,
 				status: 'succeeded',
+				aiModel: 'example/model',
+				costUsd: 0.0042,
 			});
+			const draft = await drafts.findById(draftId!);
+			expect(draft).toEqual({
+				id: draftId,
+				memberId,
+				importId: started.id,
+				provenance: urlSuccess.draft.provenance,
+				title: 'Weeknight chicken soup',
+				imported: urlSuccess.draft.imported,
+				imagePathnames: [],
+				createdAt: expect.any(Date),
+				updatedAt: draft?.createdAt,
+			});
+			expect(draft).not.toHaveProperty('values');
 		});
 
-		it('returns false and changes nothing when no running import has the id', async () => {
-			const { imports } = fixture();
+		it('keeps the images what was read names, and no title when it found none', async () => {
+			const { imports, drafts, otherMemberId } = fixture();
+			const started = await start('photo', otherMemberId);
+
+			const draft = await drafts.findById((await imports.recordSuccess(started.id, photoSuccess))!);
+
+			expect(draft).toMatchObject({
+				memberId: otherMemberId,
+				provenance: { entryMode: 'photo' },
+				imagePathnames: ['scan/development/card.jpg'],
+			});
+			expect(draft).not.toHaveProperty('title');
+		});
+
+		it('returns null and changes nothing when no running import has the id', async () => {
+			const { imports, drafts } = fixture();
 			const succeeded = await startSucceeded();
 			const failed = await start();
 			await imports.recordFailure(failed.id, { failure: 'import.failed' });
 			const recorded = [await imports.findById(succeeded.id), await imports.findById(failed.id)];
+			const draft = await drafts.findByImportId(succeeded.id);
 
 			for (const id of [succeeded.id, failed.id, missingId]) {
-				expect(await imports.recordSuccess(id, { draft: { content: {}, problems: [] } })).toBe(
-					false
-				);
+				expect(await imports.recordSuccess(id, photoSuccess)).toBeNull();
 			}
 			expect([await imports.findById(succeeded.id), await imports.findById(failed.id)]).toEqual(
 				recorded
 			);
+			expect(await drafts.findByImportId(succeeded.id)).toEqual(draft);
+			expect(await drafts.findByImportId(failed.id)).toBeNull();
+		});
+
+		it('throws and changes nothing when the import already has a draft, so neither is kept alone', async () => {
+			const { imports, drafts, memberId, storeDraftOf } = fixture();
+			const started = await start();
+			await storeDraftOf(started.id, memberId);
+			const draft = await drafts.findByImportId(started.id);
+
+			await expect(imports.recordSuccess(started.id, urlSuccess)).rejects.toThrow();
+
+			expect(await imports.findById(started.id)).toEqual(started);
+			expect(await drafts.findByImportId(started.id)).toEqual(draft);
 		});
 	});
 
@@ -212,175 +276,6 @@ export function describeRecipeImportRepositoryContract(
 				id: succeeded.id,
 				savedRecipeSlug: 'garden-tomato-salad',
 			});
-		});
-	});
-
-	describe('listUnsaved', () => {
-		it("lists the member's succeeded imports since the time that hold a draft and saved no recipe", async () => {
-			const { imports, memberId, otherMemberId, backdate } = fixture();
-			const since = new Date(Date.now() - hourMs);
-			const titled = await startSucceeded();
-			const untitled = await startSucceeded({ draft: { content: {}, problems: [] } });
-			const photo = await start('photo');
-			await imports.recordSuccess(photo.id, {
-				draft: { content: { title: 'Grandma’s biscuits' }, problems: [] },
-			});
-			await start('url');
-			await imports.recordFailure((await start('url')).id, { failure: 'import.failed' });
-			await startSucceeded(urlSuccess, otherMemberId);
-			await saveRecipeFrom(await startSucceeded());
-			await imports.clearDraft((await startSucceeded()).id);
-			await backdate((await startSucceeded()).id, new Date(since.getTime() - 1));
-
-			const listed = await imports.listUnsaved(memberId, since, 10);
-
-			expect(listed).toEqual([
-				{
-					id: photo.id,
-					mode: 'photo',
-					title: 'Grandma’s biscuits',
-					createdAt: photo.createdAt,
-				},
-				{ id: untitled.id, mode: 'url', createdAt: untitled.createdAt },
-				{
-					id: titled.id,
-					mode: 'url',
-					title: 'Weeknight chicken soup',
-					createdAt: titled.createdAt,
-				},
-			]);
-			expect(listed[1]).not.toHaveProperty('title');
-		});
-
-		it('lists at most the limit, newest first', async () => {
-			const { imports, memberId } = fixture();
-			const started = [];
-			for (let count = 0; count < 3; count += 1) {
-				started.push(await startSucceeded());
-			}
-
-			const listed = await imports.listUnsaved(memberId, new Date(Date.now() - hourMs), 2);
-
-			expect(listed.map(({ id }) => id)).toEqual([started[2]?.id, started[1]?.id]);
-		});
-	});
-
-	describe('findImagesInUnsavedImports', () => {
-		const cardScan: RecipeImage = { role: 'scan', pathname: 'scan/card.jpg' };
-		const backScan: RecipeImage = { role: 'scan', pathname: 'scan/card-back.jpg' };
-		const otherScan: RecipeImage = { role: 'scan', pathname: 'scan/other-card.jpg' };
-		const recentScan: RecipeImage = { role: 'scan', pathname: 'scan/recent-card.jpg' };
-
-		// A photo import whose draft keeps the scans it was read from.
-		async function startScanned(images: RecipeImage[], memberId?: MemberId): Promise<RecipeImport> {
-			const started = await start('photo', memberId);
-			await fixture().imports.recordSuccess(started.id, {
-				draft: { content: { title: 'Grandma’s biscuits', images }, problems: [] },
-			});
-			return started;
-		}
-
-		it("finds the given pathnames that an unsaved import's draft names, whoever started it", async () => {
-			const { imports, otherMemberId } = fixture();
-			await startScanned([cardScan, backScan]);
-			// The same scans imported again, as sending a photo import twice does.
-			await startScanned([cardScan]);
-			await startScanned([otherScan], otherMemberId);
-
-			const named = await imports.findImagesInUnsavedImports(
-				[cardScan.pathname, otherScan.pathname, 'scan/unlisted.jpg'],
-				new Date(Date.now() - hourMs)
-			);
-
-			expect(named.toSorted()).toEqual([cardScan.pathname, otherScan.pathname]);
-		});
-
-		it('ignores a draft that was cleared, expired, or had a recipe saved from it', async () => {
-			const { imports, backdate } = fixture();
-			const since = new Date(Date.now() - hourMs);
-			await imports.clearDraft((await startScanned([cardScan])).id);
-			await backdate((await startScanned([backScan])).id, new Date(since.getTime() - 1));
-			await saveRecipeFrom(await startScanned([otherScan]));
-			await backdate((await startScanned([recentScan])).id, since);
-
-			const named = await imports.findImagesInUnsavedImports(
-				[cardScan, backScan, otherScan, recentScan].map(({ pathname }) => pathname),
-				since
-			);
-
-			expect(named).toEqual([recentScan.pathname]);
-		});
-
-		it("ignores the excluded member's drafts", async () => {
-			const { imports, memberId, otherMemberId } = fixture();
-			const since = new Date(Date.now() - hourMs);
-			await startScanned([cardScan, backScan]);
-			await startScanned([backScan, otherScan], otherMemberId);
-			const pathnames = [cardScan, backScan, otherScan].map(({ pathname }) => pathname);
-
-			expect(
-				(await imports.findImagesInUnsavedImports(pathnames, since, memberId)).toSorted()
-			).toEqual([backScan.pathname, otherScan.pathname]);
-			expect(
-				(await imports.findImagesInUnsavedImports(pathnames, since, otherMemberId)).toSorted()
-			).toEqual([backScan.pathname, cardScan.pathname]);
-		});
-
-		it('finds nothing for no pathnames', async () => {
-			await startScanned([cardScan]);
-
-			expect(
-				await fixture().imports.findImagesInUnsavedImports([], new Date(Date.now() - hourMs))
-			).toEqual([]);
-		});
-	});
-
-	describe('clearDraft', () => {
-		it('clears the draft and source URL and keeps the rest as a record', async () => {
-			const { imports } = fixture();
-			const succeeded = await startSucceeded();
-
-			await imports.clearDraft(succeeded.id);
-
-			const cleared = await imports.findById(succeeded.id);
-			expect(cleared).toEqual({
-				...succeeded,
-				status: 'succeeded',
-				aiModel: urlSuccess.aiModel,
-				costUsd: urlSuccess.costUsd,
-			});
-			expect(cleared).not.toHaveProperty('draft');
-			expect(cleared).not.toHaveProperty('sourceUrl');
-		});
-	});
-
-	describe('clearDraftsCreatedBefore', () => {
-		it('clears the drafts of imports started before the time, and counts them', async () => {
-			const { imports, backdate } = fixture();
-			const cutoff = new Date(Date.now() - hourMs);
-			const before = new Date(cutoff.getTime() - 1);
-			const expired = await startSucceeded();
-			await backdate(expired.id, before);
-			const failed = await start();
-			await imports.recordFailure(failed.id, { failure: 'import.failed' });
-			await backdate(failed.id, before);
-			const current = await startSucceeded();
-			await backdate(current.id, cutoff);
-
-			expect(await imports.clearDraftsCreatedBefore(cutoff)).toBe(1);
-
-			expect(await imports.findById(expired.id)).toEqual({
-				...expired,
-				status: 'succeeded',
-				aiModel: urlSuccess.aiModel,
-				costUsd: urlSuccess.costUsd,
-				createdAt: before,
-			});
-			expect(await imports.findById(current.id)).toMatchObject({
-				draft: urlSuccess.draft,
-				sourceUrl: urlSuccess.sourceUrl,
-			});
-			expect(await imports.clearDraftsCreatedBefore(cutoff)).toBe(0);
 		});
 	});
 

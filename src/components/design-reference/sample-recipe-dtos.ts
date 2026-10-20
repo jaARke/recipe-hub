@@ -12,7 +12,6 @@ import {
 } from '@/application/search/recipe-search-dtos';
 import { memberIdSchema, memberSchema } from '@/domain/member/member';
 import { recipeSchema, type Recipe, type RecipeContentInput } from '@/domain/recipe/recipe';
-import { recipeImportIdSchema } from '@/domain/recipe/recipe-import';
 import {
 	sampleBrownButterChocolateChipCookies,
 	sampleOatmealRaisinCookies,
@@ -90,10 +89,12 @@ export const sampleRecipeSummaries: readonly RecipeSummaryDto[] = sampleRecipeCo
 const sampleBiscuits = sampleRecipe(sampleButtermilkBiscuits);
 
 // The biscuits lead the samples and fill in every part of the page but a source link. They borrow the
-// other seed photos, so the detail shows its row of thumbnails, the last without a description.
+// other seed photos, so the detail shows its row of thumbnails, the last without a description, and
+// two holidays beside their diet.
 export const sampleRecipeDetail = toPublicRecipeDto(
 	{
 		...sampleBiscuits,
+		holidays: ['thanksgiving', 'christmas'],
 		images: [
 			...sampleBiscuits.images,
 			...sampleRecipe(sampleChickenSoup).images,
@@ -108,16 +109,30 @@ export const sampleRecipeDetail = toPublicRecipeDto(
 	sampleContributor
 );
 
-// A search for "butter" among baking recipes added by the sample contributor, counted over its four
-// results. Contributors are counted without that filter, so another member can be chosen.
+// A search for "butter" among vegetarian recipes added by the sample contributor, counted over its
+// four results. Contributors are counted without that filter, so another member can be chosen.
 export const sampleSearchFacets: RecipeSearchFacets = {
-	tags: [
-		{ label: 'Baking', count: 4 },
-		{ label: 'Dessert', count: 2 },
-		{ label: 'Freezer friendly', count: 2 },
-		{ label: 'Breakfast', count: 1 },
-		{ label: 'Holiday', count: 1 },
-	],
+	chapters: {
+		'breakfast-brunch': 0,
+		'appetizers-beverages': 0,
+		'soups-salads': 0,
+		'vegetables-sides': 0,
+		'main-dishes': 0,
+		'breads-rolls': 1,
+		desserts: 0,
+		'cookies-candy': 3,
+		'this-and-that': 0,
+	},
+	holidays: {
+		'new-years-day': 0,
+		'st-patricks-day': 0,
+		easter: 0,
+		'fourth-of-july': 0,
+		halloween: 0,
+		thanksgiving: 0,
+		christmas: 1,
+	},
+	diets: { vegetarian: 4, vegan: 0, 'gluten-free': 0, 'dairy-free': 0 },
 	sources: [
 		{ label: 'Aunt June', count: 1 },
 		{ label: 'Cousin Maya', count: 1 },
@@ -129,28 +144,29 @@ export const sampleSearchFacets: RecipeSearchFacets = {
 	],
 };
 
-// Every sample recipe, with more tags than the filters show before folding the rest away.
+// Every sample recipe, filed as the samples are.
 export const sampleCatalogFacets: RecipeSearchFacets = {
-	tags: [
-		{ label: 'Baking', count: 10 },
-		{ label: 'Vegetarian', count: 9 },
-		{ label: 'Dessert', count: 8 },
-		{ label: 'Make ahead', count: 6 },
-		{ label: 'Dinner', count: 5 },
-		{ label: 'Soup', count: 5 },
-		{ label: 'Breakfast', count: 4 },
-		{ label: 'Summer', count: 4 },
-		{ label: 'Freezer friendly', count: 3 },
-		{ label: 'Holiday', count: 3 },
-		{ label: 'Weeknight', count: 3 },
-		{ label: 'Français', count: 2 },
-		{ label: 'Main', count: 2 },
-		{ label: 'Salad', count: 2 },
-		{ label: 'Appetizer', count: 1 },
-		{ label: 'Comfort food', count: 1 },
-		{ label: 'Side', count: 1 },
-		{ label: 'Slow cooked', count: 1 },
-	],
+	chapters: {
+		'breakfast-brunch': 2,
+		'appetizers-beverages': 1,
+		'soups-salads': 6,
+		'vegetables-sides': 2,
+		'main-dishes': 6,
+		'breads-rolls': 3,
+		desserts: 5,
+		'cookies-candy': 4,
+		'this-and-that': 1,
+	},
+	holidays: {
+		'new-years-day': 0,
+		'st-patricks-day': 0,
+		easter: 0,
+		'fourth-of-july': 0,
+		halloween: 0,
+		thanksgiving: 0,
+		christmas: 2,
+	},
+	diets: { vegetarian: 21, vegan: 3, 'gluten-free': 6, 'dairy-free': 6 },
 	sources: [
 		{ label: 'Aunt June', count: 4 },
 		{ label: 'Cousin Maya', count: 3 },
@@ -180,7 +196,7 @@ export const sampleBrowsePage: RecipeSearchPage = {
 	facets: sampleCatalogFacets,
 };
 
-// A search for "butter" among baking recipes added by the sample contributor, best match first.
+// A search for "butter" among vegetarian recipes added by the sample contributor, best match first.
 export const sampleSearchPage: RecipeSearchPage = {
 	results: [
 		toRecipeSearchResultDto({
@@ -213,50 +229,44 @@ export const sampleSearchPage: RecipeSearchPage = {
 	facets: sampleSearchFacets,
 };
 
-// When the drafts list renders, which each sample import's age counts back from.
-export const sampleImportsNow = new Date('2026-10-12T18:00:00.000Z');
+// When the drafts list renders, which each sample draft's age counts back from.
+export const sampleDraftsNow = new Date('2026-10-12T18:00:00.000Z');
 
-// A member's drafts, newest first: an import just read from photos with no title found, a draft
-// they saved this afternoon, one from a link, and one from photos two days ago. Each is deleted a
-// lifetime after it was saved or imported.
+// A member's drafts, newest first: one just read from photos with no title found, one they typed
+// this afternoon, one from a link, one from photos two days ago, and one from a link ten days ago.
+// Each is deleted a lifetime after its last change.
 export const sampleDrafts: readonly DraftSummaryDto[] = [
 	{
-		kind: 'import',
-		id: recipeImportIdSchema.parse('0199d2a0-1b2c-7d3e-8f40-000000000003'),
+		id: savedDraftIdSchema.parse('0199d2a0-1b2c-7d3e-8f40-000000000003'),
 		mode: 'photo',
-		importedAt: new Date('2026-10-12T17:59:30.000Z'),
-		expiresAt: new Date('2026-10-19T17:59:30.000Z'),
+		savedAt: new Date('2026-10-12T17:59:30.000Z'),
+		expiresAt: new Date('2027-01-10T17:59:30.000Z'),
 	},
 	{
-		kind: 'saved',
 		id: savedDraftIdSchema.parse('0199d2a0-1b2c-7d3e-8f40-000000000004'),
 		title: 'Grandma’s pound cake',
 		savedAt: new Date('2026-10-12T16:30:00.000Z'),
-		expiresAt: new Date('2026-11-11T16:30:00.000Z'),
+		expiresAt: new Date('2027-01-10T16:30:00.000Z'),
 	},
 	{
-		kind: 'import',
-		id: recipeImportIdSchema.parse('0199d2a0-1b2c-7d3e-8f40-000000000002'),
+		id: savedDraftIdSchema.parse('0199d2a0-1b2c-7d3e-8f40-000000000002'),
 		mode: 'url',
 		title: 'Sheet-pan gnocchi with sausage and peppers',
-		importedAt: new Date('2026-10-12T15:10:00.000Z'),
-		expiresAt: new Date('2026-10-19T15:10:00.000Z'),
+		savedAt: new Date('2026-10-12T15:10:00.000Z'),
+		expiresAt: new Date('2027-01-10T15:10:00.000Z'),
 	},
 	{
-		kind: 'import',
-		id: recipeImportIdSchema.parse('0199d2a0-1b2c-7d3e-8f40-000000000001'),
+		id: savedDraftIdSchema.parse('0199d2a0-1b2c-7d3e-8f40-000000000001'),
 		mode: 'photo',
 		title: 'Lemon bars',
-		importedAt: new Date('2026-10-10T12:00:00.000Z'),
-		expiresAt: new Date('2026-10-17T12:00:00.000Z'),
+		savedAt: new Date('2026-10-10T12:00:00.000Z'),
+		expiresAt: new Date('2027-01-08T12:00:00.000Z'),
 	},
-	// Saved from a link import's review, which has since gone, so it says where it came from itself.
 	{
-		kind: 'saved',
 		id: savedDraftIdSchema.parse('0199d2a0-1b2c-7d3e-8f40-000000000005'),
 		mode: 'url',
 		title: 'Buttermilk biscuits',
 		savedAt: new Date('2026-10-02T09:15:00.000Z'),
-		expiresAt: new Date('2026-11-01T09:15:00.000Z'),
+		expiresAt: new Date('2026-12-31T09:15:00.000Z'),
 	},
 ];

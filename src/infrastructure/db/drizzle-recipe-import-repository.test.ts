@@ -1,13 +1,14 @@
 import { eq, sql } from 'drizzle-orm';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ZodError } from 'zod';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { ImportSuccess } from '@/application/ports/recipe-import-repository';
 import { describeRecipeImportRepositoryContract } from '@/application/testing/recipe-import-repository-contract';
 import { memberIdSchema, type MemberId } from '@/domain/member/member';
 import type { RecipeImportId } from '@/domain/recipe/recipe-import';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
-import { recipeImports } from '@/infrastructure/db/schema';
+import { DrizzleSavedDraftRepository } from '@/infrastructure/db/drizzle-saved-draft-repository';
+import { recipeDrafts, recipeImports } from '@/infrastructure/db/schema';
 import { requireBoundedWrites } from '@/infrastructure/db/testing/bounded-writes';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 
@@ -41,14 +42,13 @@ async function backdate(id: RecipeImportId, createdAt: Date) {
 	await db.update(recipeImports).set({ createdAt }).where(eq(recipeImports.id, id));
 }
 
-async function startSucceeded(): Promise<RecipeImportId> {
-	const started = await imports.start({ memberId, mode: 'url' });
-	await imports.recordSuccess(started!.id, {
-		draft: { content: { title: 'Weeknight chicken soup' }, problems: [] },
-		sourceUrl: 'https://example.com/soup',
-	});
-	return started!.id;
-}
+const photoSuccess: ImportSuccess = {
+	draft: {
+		provenance: { entryMode: 'photo' },
+		imported: { content: { title: 'Weeknight chicken soup' }, problems: [] },
+		imagePathnames: [],
+	},
+};
 
 // Refuses any import stored without an advisory lock held, as an unserialized start would be.
 async function requireImportLock() {
@@ -72,9 +72,13 @@ $$`)
 describeRecipeImportRepositoryContract(() => ({
 	imports,
 	recipes: new DrizzleRecipeRepository(db),
+	drafts: new DrizzleSavedDraftRepository(db),
 	memberId,
 	otherMemberId,
 	backdate,
+	storeDraftOf: async (id, member) => {
+		await db.insert(recipeDrafts).values({ memberId: member, importId: id, values: {} });
+	},
 }));
 
 describe('start', () => {
@@ -125,7 +129,9 @@ describe('start', () => {
 	it('is checked here by a trigger that refuses an import stored without the lock', async () => {
 		await requireImportLock();
 
-		await expect(db.insert(recipeImports).values({ memberId, mode: 'url' })).rejects.toThrow(
+		await expect(
+			db.execute(sql`insert into recipe_imports (member_id, mode) values (${memberId}, 'url')`)
+		).rejects.toThrow(
 			expect.objectContaining({
 				cause: expect.objectContaining({ message: 'import started without the member lock' }),
 			})
@@ -133,13 +139,28 @@ describe('start', () => {
 	});
 });
 
-describe('findImagesInUnsavedImports', () => {
-	it('returns nothing for nothing asked without querying', async () => {
-		await startSucceeded();
-		const query = vi.spyOn(db.$client, 'query');
+describe('recordSuccess', () => {
+	it('records the success and creates its draft in a bounded transaction', async () => {
+		await requireBoundedWrites(db, 'recipe_imports', 'recipe_drafts');
+		const started = await imports.start({ memberId, mode: 'photo' });
 
-		expect(await imports.findImagesInUnsavedImports([], backdated)).toEqual([]);
-		expect(query).not.toHaveBeenCalled();
+		expect(await imports.recordSuccess(started!.id, photoSuccess)).not.toBeNull();
+	});
+});
+
+// Drizzle's insert names every column the schema declares, so a start that used it would fail once a
+// column the schema still declares is dropped while this code serves.
+describe('once the columns no code reads or writes are dropped', () => {
+	it('starts, records, and finds imports as before', async () => {
+		await db.execute(sql`alter table recipe_imports drop column draft, drop column source_url`);
+		const limit = { maxImports: 3, since: backdated };
+		const succeeded = await imports.start({ memberId, mode: 'photo' }, limit);
+		const failed = await imports.start({ memberId, mode: 'url' });
+
+		expect(await imports.recordSuccess(succeeded!.id, photoSuccess)).not.toBeNull();
+		expect(await imports.recordFailure(failed!.id, { failure: 'import.failed' })).toBe(true);
+		expect(await imports.findById(succeeded!.id)).toMatchObject({ status: 'succeeded' });
+		expect(await imports.failRunningCreatedBefore(new Date(), 'import.interrupted')).toBe(0);
 	});
 });
 
@@ -174,29 +195,5 @@ describe('the recipe_imports table', () => {
 
 		expect(row?.cost).toBe('0.000123');
 		expect((await imports.findById(started!.id))?.costUsd).toBe(0.000123);
-	});
-});
-
-describe('reading stored drafts', () => {
-	it('drops keys the schema does not know', async () => {
-		const id = await startSucceeded();
-		const stored = await imports.findById(id);
-		await db
-			.update(recipeImports)
-			.set({ draft: sql`${recipeImports.draft} || '{"retiredField": true}'::jsonb` })
-			.where(eq(recipeImports.id, id));
-
-		expect(await imports.findById(id)).toEqual(stored);
-	});
-
-	it('throws when a draft does not fit the schema, in one import and in the list', async () => {
-		const id = await startSucceeded();
-		await db
-			.update(recipeImports)
-			.set({ draft: sql`jsonb_set(${recipeImports.draft}, '{content,title}', '""')` })
-			.where(eq(recipeImports.id, id));
-
-		await expect(imports.findById(id)).rejects.toThrow(ZodError);
-		await expect(imports.listUnsaved(memberId, backdated, 10)).rejects.toThrow(ZodError);
 	});
 });

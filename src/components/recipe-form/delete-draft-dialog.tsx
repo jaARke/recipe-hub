@@ -7,13 +7,12 @@ import {
 import type { FormAction } from '@/components/forms/form-state';
 import { recipeFormFieldNames } from '@/components/recipe-form/recipe-form-fields';
 
-// A draft the member saved, or an import's draft awaiting review, by its id.
-export type DeletedDraft = { kind: 'saved'; id: string } | { kind: 'import'; id: string };
-
 type DeleteDraftDialogProps = {
-	draft: DeletedDraft;
+	draftId: string;
 	// The recipe's title, if it has one yet.
 	title: string | undefined;
+	// The version of the draft the page shows, which the delete names.
+	savedAt: Date;
 	// Opens the dialog from a menu's Delete draft.
 	opener: ConfirmActionDialogOpener;
 	action: FormAction;
@@ -22,7 +21,14 @@ type DeleteDraftDialogProps = {
 };
 
 // Asks before deleting a draft, as DeleteRecipeDialog does a recipe.
-function DeleteDraftDialog({ draft, title, opener, action, onDeleted }: DeleteDraftDialogProps) {
+function DeleteDraftDialog({
+	draftId,
+	title,
+	savedAt,
+	opener,
+	action,
+	onDeleted,
+}: DeleteDraftDialogProps) {
 	return (
 		<ConfirmActionDialog
 			variant="destructive"
@@ -37,11 +43,8 @@ function DeleteDraftDialog({ draft, title, opener, action, onDeleted }: DeleteDr
 			action={action}
 			onSuccess={onDeleted}
 		>
-			<input
-				type="hidden"
-				name={draft.kind === 'saved' ? recipeFormFieldNames.draftId : recipeFormFieldNames.importId}
-				value={draft.id}
-			/>
+			<input type="hidden" name={recipeFormFieldNames.draftId} value={draftId} />
+			<input type="hidden" name={recipeFormFieldNames.draftVersion} value={savedAt.toISOString()} />
 		</ConfirmActionDialog>
 	);
 }

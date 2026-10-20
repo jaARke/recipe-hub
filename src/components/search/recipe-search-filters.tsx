@@ -1,5 +1,4 @@
 import { cn } from 'cn';
-import { ChevronDownIcon } from 'lucide-react';
 import Form from 'next/form';
 import {
 	recipeAddedWithin,
@@ -21,7 +20,7 @@ import {
 	type RecipeSearchField,
 	type RecipeSearchState,
 } from '@/components/search/search-params';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
 	Field,
@@ -31,7 +30,9 @@ import {
 	FieldLegend,
 	FieldSet,
 } from '@/components/ui/field';
-import { tagKey } from '@/domain/recipe/tag-normalization';
+import { chapterLabels, chapters } from '@/domain/recipe/chapter';
+import { dietLabels, diets } from '@/domain/recipe/diet';
+import { holidayLabels, holidays } from '@/domain/recipe/holiday';
 
 const totalTimeLabels: Record<RecipeTotalTimeChoice, string> = {
 	15: '15 minutes or less',
@@ -47,44 +48,38 @@ const addedWithinLabels: Record<RecipeAddedWithin, string> = {
 };
 
 const filterFields: readonly RecipeSearchField[] = [
-	'tags',
+	'chapter',
+	'holidays',
+	'diets',
 	'source',
 	'contributorId',
 	'maxTotalMinutes',
 	'addedWithin',
 ];
 
-// The most common tags show; the rest fold away under "More tags".
-const shownTagCount = 8;
-
-type TagOption = RecipeFacetCount & {
+type VocabularyOption<Value extends string> = RecipeFacetCount & {
+	value: Value;
 	checked: boolean;
 };
 
 type FilterHeadingTag = 'h2' | 'h4';
 
-// The tags the results carry, but not one every result has, which would change nothing. A checked
-// tag always shows, even with no results left to count it, so it can be cleared.
-function tagOptions(
-	state: RecipeSearchState,
-	facetTags: readonly RecipeFacetCount[],
-	total: number
-) {
-	const checkedKeys = new Set(state.tags.map(tagKey));
-	const facetKeys = new Set(facetTags.map((tag) => tagKey(tag.label)));
-	const options: TagOption[] = [
-		...facetTags
-			.map((tag) => ({ ...tag, checked: checkedKeys.has(tagKey(tag.label)) }))
-			.filter((option) => option.checked || option.count < total),
-		...state.tags
-			.filter((tag) => !facetKeys.has(tagKey(tag)))
-			.map((label) => ({ label, count: 0, checked: true })),
-	];
-
-	return {
-		shown: options.filter((option, index) => index < shownTagCount || option.checked),
-		folded: options.filter((option, index) => index >= shownTagCount && !option.checked),
-	};
+// The members with recipes to count, in the vocabulary's order. A chosen one always shows, even at
+// zero, so it can be cleared.
+function vocabularyOptions<Value extends string>(
+	vocabulary: readonly Value[],
+	labels: Record<Value, string>,
+	counts: Record<Value, number>,
+	chosen: readonly Value[]
+): VocabularyOption<Value>[] {
+	return vocabulary
+		.map((value) => ({
+			value,
+			label: labels[value],
+			count: counts[value],
+			checked: chosen.includes(value),
+		}))
+		.filter((option) => option.checked || option.count > 0);
 }
 
 // Sources compare ignoring case, so the chosen one takes the spelling recipes use.
@@ -109,31 +104,44 @@ function chosenContributor(
 	return facetContributors.find((contributor) => contributor.memberId === state.contributorId);
 }
 
-function TagCheckboxes({
+// A checkbox for each option, left out when there is none to offer.
+function VocabularyFilter<Value extends string>({
 	idPrefix,
+	legend,
+	description,
+	name,
 	options,
-	className,
 }: {
 	idPrefix: string;
-	options: readonly TagOption[];
-	className?: string;
+	legend: string;
+	description: string;
+	name: string;
+	options: readonly VocabularyOption<Value>[];
 }) {
+	if (options.length === 0) {
+		return null;
+	}
+
 	return (
-		<FieldGroup data-slot="checkbox-group" className={className}>
-			{options.map((option, index) => (
-				<Field key={tagKey(option.label)} orientation="horizontal">
-					<Checkbox
-						id={`${idPrefix}-${index}`}
-						name={recipeSearchParamNames.tags}
-						value={option.label}
-						defaultChecked={option.checked}
-					/>
-					<FieldLabel htmlFor={`${idPrefix}-${index}`}>
-						{option.label} <span className="text-muted-foreground">{option.count}</span>
-					</FieldLabel>
-				</Field>
-			))}
-		</FieldGroup>
+		<FieldSet aria-describedby={`${idPrefix}-description`}>
+			<FieldLegend variant="label">{legend}</FieldLegend>
+			<FieldDescription id={`${idPrefix}-description`}>{description}</FieldDescription>
+			<FieldGroup data-slot="checkbox-group">
+				{options.map((option) => (
+					<Field key={option.value} orientation="horizontal">
+						<Checkbox
+							id={`${idPrefix}-${option.value}`}
+							name={name}
+							value={option.value}
+							defaultChecked={option.checked}
+						/>
+						<FieldLabel htmlFor={`${idPrefix}-${option.value}`}>
+							{option.label} <span className="text-muted-foreground">{option.count}</span>
+						</FieldLabel>
+					</Field>
+				))}
+			</FieldGroup>
+		</FieldSet>
 	);
 }
 
@@ -141,14 +149,17 @@ type RecipeSearchFiltersProps = {
 	idPrefix: string;
 	state: RecipeSearchState;
 	facets: RecipeSearchFacets;
-	// How many recipes the search finds, which the tags' counts are compared with.
-	total: number;
 };
 
 // Applied with its button rather than on each change, so choosing several filters loads once. It
 // submits to the search's own mode, so Browse's filters stay on Browse and Search's keep the words.
-function RecipeSearchFilters({ idPrefix, state, facets, total }: RecipeSearchFiltersProps) {
-	const tags = tagOptions(state, facets.tags, total);
+function RecipeSearchFilters({ idPrefix, state, facets }: RecipeSearchFiltersProps) {
+	const chapterOptions = vocabularyOptions(
+		chapters,
+		chapterLabels,
+		facets.chapters,
+		state.chapter === undefined ? [] : [state.chapter]
+	);
 	const source = sourceChoice(state, facets.sources);
 
 	return (
@@ -157,32 +168,29 @@ function RecipeSearchFilters({ idPrefix, state, facets, total }: RecipeSearchFil
 			{/* Remounted when the words or the filters change, so the fields show them, while a new order
 			    or page keeps choices not yet applied; the button keeps focus. */}
 			<FieldGroup key={recipeSearchFiltersKey(state)} className="gap-6">
-				{tags.shown.length > 0 && (
-					<FieldSet aria-describedby={`${idPrefix}-tags-description`}>
-						<FieldLegend variant="label">Tags</FieldLegend>
-						<FieldDescription id={`${idPrefix}-tags-description`}>
-							Recipes with every selected tag.
-						</FieldDescription>
-						<TagCheckboxes idPrefix={`${idPrefix}-tag`} options={tags.shown} />
-						{tags.folded.length > 0 && (
-							<details className="group/more-tags">
-								<summary className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
-									More tags ({tags.folded.length})
-									<ChevronDownIcon
-										data-icon="inline-end"
-										aria-hidden="true"
-										className="transition-transform group-open/more-tags:rotate-180"
-									/>
-								</summary>
-								<TagCheckboxes
-									idPrefix={`${idPrefix}-more-tag`}
-									options={tags.folded}
-									className="pt-3"
-								/>
-							</details>
-						)}
-					</FieldSet>
-				)}
+				<Field>
+					<FieldLabel htmlFor={`${idPrefix}-chapter`}>Chapter</FieldLabel>
+					<ChoiceSelect
+						id={`${idPrefix}-chapter`}
+						name={recipeSearchParamNames.chapter}
+						items={[{ value: null, label: 'Any chapter' }, ...chapterOptions]}
+						defaultValue={state.chapter ?? null}
+					/>
+				</Field>
+				<VocabularyFilter
+					idPrefix={`${idPrefix}-holiday`}
+					legend="Holidays"
+					description="Recipes for any selected holiday."
+					name={recipeSearchParamNames.holidays}
+					options={vocabularyOptions(holidays, holidayLabels, facets.holidays, state.holidays)}
+				/>
+				<VocabularyFilter
+					idPrefix={`${idPrefix}-diet`}
+					legend="Diet"
+					description="Recipes that suit every selected diet."
+					name={recipeSearchParamNames.diets}
+					options={vocabularyOptions(diets, dietLabels, facets.diets, state.diets)}
+				/>
 				<Field>
 					<FieldLabel htmlFor={`${idPrefix}-source`}>Source</FieldLabel>
 					<ChoiceSelect

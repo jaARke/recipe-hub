@@ -4,7 +4,6 @@ import { KeyRoundIcon } from 'lucide-react';
 import * as React from 'react';
 import { authClient } from '@/components/auth/auth-client';
 import {
-	isPasskeyCancellation,
 	isUnknownPasskeyError,
 	passkeySignInErrorMessage,
 	settleAuthCall,
@@ -45,38 +44,14 @@ type SignInPasskeyOptionProps = {
 	onSignIn: () => void;
 };
 
-async function canAutofillPasskeys(): Promise<boolean> {
-	return (
-		typeof PublicKeyCredential !== 'undefined' &&
-		typeof PublicKeyCredential.isConditionalMediationAvailable === 'function' &&
-		PublicKeyCredential.isConditionalMediationAvailable()
-	);
-}
-
-type PasskeySignInResult = { error: AuthClientError | null };
-
-// Null where the browser can't offer passkeys in the email field's autofill.
-type PasskeyAutofillResult = PasskeySignInResult | null;
-
 // When the site no longer knows the passkey picked, the browser is told, so the password manager can
 // stop offering it.
-async function requestPasskeySignIn(autoFill: boolean): Promise<PasskeySignInResult> {
-	const result = await settleAuthCall(
-		authClient.signIn.passkey({ autoFill, returnWebAuthnResponse: true })
-	);
+async function requestPasskeySignIn(): Promise<{ error: AuthClientError | null }> {
+	const result = await settleAuthCall(authClient.signIn.passkey({ returnWebAuthnResponse: true }));
 	if (result.error !== null && isUnknownPasskeyError(result.error) && 'webauthn' in result) {
 		void signalUnknownPasskey(result.webauthn.response.id);
 	}
 	return result;
-}
-
-// Resolves once the visitor picks a saved passkey from the email field's autofill, or the request
-// ends.
-async function signInWithPasskeyAutofill(): Promise<PasskeyAutofillResult> {
-	if (!(await canAutofillPasskeys())) {
-		return null;
-	}
-	return requestPasskeySignIn(true);
 }
 
 // The passkey alternative below the email code; the caller makes the passkey request.
@@ -111,7 +86,8 @@ function SignInPasskeyOption({ noteId, error, pending, onSignIn }: SignInPasskey
 	);
 }
 
-// An email code first, with a passkey offered below and in the email field's autofill.
+// An email code first, with a passkey offered below. Nothing asks for a passkey until the button is
+// pressed, so a visitor looking around meets no passkey prompt.
 function SignInForm({ next, codeLifetimeMinutes }: SignInFormProps) {
 	// Null while asking for the address; then the address the code went to.
 	const [email, setEmail] = React.useState<string | null>(null);
@@ -128,39 +104,16 @@ function SignInForm({ next, codeLifetimeMinutes }: SignInFormProps) {
 		loadPage(next);
 	}
 
-	// A newer passkey request cancels the autofill's, which is expected and stays quiet.
-	function handleAutofillResult(result: PasskeyAutofillResult) {
-		if (result === null) {
-			return;
-		}
-		if (result.error === null) {
-			finishSignIn();
-		} else if (!isPasskeyCancellation(result.error)) {
-			setPasskeyError(passkeySignInErrorMessage(result.error));
-		}
-	}
-
-	function offerPasskeyAutofill() {
-		void signInWithPasskeyAutofill().then(handleAutofillResult);
-	}
-
-	const onAutofillResult = React.useEffectEvent(handleAutofillResult);
-
-	React.useEffect(() => {
-		void signInWithPasskeyAutofill().then(onAutofillResult);
-	}, []);
-
 	// Started straight from the click, since Safari only opens the passkey dialog for a user gesture.
 	function signInWithPasskey() {
 		setPasskeyError(undefined);
 		startPasskey(async () => {
-			const { error } = await requestPasskeySignIn(false);
+			const { error } = await requestPasskeySignIn();
 			if (error === null) {
 				finishSignIn();
 				return;
 			}
 			setPasskeyError(passkeySignInErrorMessage(error));
-			offerPasskeyAutofill();
 		});
 	}
 
@@ -185,12 +138,7 @@ function SignInForm({ next, codeLifetimeMinutes }: SignInFormProps) {
 	return (
 		<div className="flex flex-col gap-8">
 			{email === null ? (
-				<RequestCodeForm
-					id={fieldIds.email}
-					autoComplete="username webauthn"
-					defaultEmail={lastEmail}
-					action={requestCode}
-				/>
+				<RequestCodeForm id={fieldIds.email} defaultEmail={lastEmail} action={requestCode} />
 			) : (
 				<ConfirmCodeForm
 					id={fieldIds.code}

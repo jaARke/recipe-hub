@@ -17,7 +17,7 @@ import { invitePath } from '@/lib/auth-paths';
 import { settings } from '@/lib/settings';
 
 export const metadata: Metadata = {
-	title: 'Accept your invite',
+	title: 'Accept Your Invite',
 	// Kept out of search results, which would send strangers here; its links are followed.
 	robots: { index: false, follow: true },
 };
@@ -47,7 +47,7 @@ async function InviteForVisitor({ searchParams }: InviteSearchParams) {
 export default function InvitePage({ searchParams }: PageProps<typeof invitePath>) {
 	return (
 		<PageContainer width="reading" className="flex flex-col gap-8 py-12 sm:py-16">
-			<h1 className="font-heading text-4xl font-semibold">Accept your invite</h1>
+			<h1 className="font-heading text-4xl font-semibold">Accept Your Invite</h1>
 			<Suspense fallback={<InviteFlowSkeleton />}>
 				<InviteForVisitor searchParams={searchParams} />
 			</Suspense>

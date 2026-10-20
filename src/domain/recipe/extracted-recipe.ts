@@ -1,7 +1,10 @@
 import type { z } from 'zod';
 import type { Problem } from '@/domain/problem';
 import { approximationWord } from '@/domain/recipe/amount-words';
+import { noChapterMessage, type Chapter } from '@/domain/recipe/chapter';
+import { dietLabels, withImpliedDiets, withoutImpliedDiets, type Diet } from '@/domain/recipe/diet';
 import { durationMinutesSchema, type RecipeTimes } from '@/domain/recipe/duration';
+import { holidayLabels, inHolidayOrder, type Holiday } from '@/domain/recipe/holiday';
 import { normalizeIngredientLine, parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import { withoutListMarkers } from '@/domain/recipe/list-markers';
 import { titleTextSchema } from '@/domain/recipe/recipe';
@@ -13,7 +16,7 @@ import {
 	yieldUnitTextSchema,
 	type RecipeYield,
 } from '@/domain/recipe/recipe-yield';
-import { plainTextSchema, sectionHeadingTextSchema } from '@/domain/text';
+import { andList, plainTextSchema, sectionHeadingTextSchema } from '@/domain/text';
 import { settings } from '@/lib/settings';
 
 // A recipe as an extractor read it, before validation: text as written, ingredient lines unparsed.
@@ -29,6 +32,11 @@ export type ExtractedRecipe = {
 	times: ExtractedTimes;
 	ingredientSections: ExtractedIngredientSection[];
 	instructionSections: ExtractedInstructionSection[];
+	// The chapter the extractor files the recipe in, when it can name one.
+	chapter?: Chapter;
+	// Only the holidays the source names and the diets it states, never ones worked out from the recipe.
+	holidays: Holiday[];
+	diets: Diet[];
 	reviewNotes: ReviewNote[];
 };
 
@@ -66,6 +74,9 @@ export const reviewNoteFields = [
 	'ingredient',
 	'step',
 	'notes',
+	'chapter',
+	'holidays',
+	'diets',
 ] as const;
 export type ReviewNoteField = (typeof reviewNoteFields)[number];
 
@@ -129,6 +140,9 @@ const reviewNotePaths = {
 	yield: 'yield',
 	times: 'times.totalMinutes',
 	notes: 'notes',
+	chapter: 'chapter',
+	holidays: 'holidays',
+	diets: 'diets',
 } as const satisfies Record<Exclude<ReviewNoteField, 'ingredient' | 'step'>, string>;
 
 const missingTitleProblem: Problem = {
@@ -144,6 +158,13 @@ const missingIngredientsProblem: Problem = {
 const missingStepsProblem: Problem = {
 	path: 'instructionSections',
 	message: 'Add the steps. The original doesn’t show any.',
+};
+
+const missingChapterProblem: Problem = { path: 'chapter', message: noChapterMessage };
+
+const chosenChapterProblem: Problem = {
+	path: 'chapter',
+	message: 'Check the chapter. It was chosen for you.',
 };
 
 // The second half of a character written as two UTF-16 code units, such as an emoji.
@@ -315,6 +336,33 @@ function draftTimes(extracted: ExtractedTimes, problems: Problem[]): RecipeTimes
 	return times;
 }
 
+// Each choice an import files the recipe under is a note for the member to check. The diet's note asks
+// the most care, since a wrong gluten-free claim can hurt someone, and names only the diets stated, not
+// those they imply.
+function filingProblems(
+	chapter: Chapter | undefined,
+	holidays: readonly Holiday[],
+	diets: readonly Diet[]
+): Problem[] {
+	const problems = [chapter === undefined ? missingChapterProblem : chosenChapterProblem];
+	if (holidays.length > 0) {
+		const named = andList(holidays.map((holiday) => holidayLabels[holiday]));
+		problems.push({
+			path: 'holidays',
+			message: `Check the holidays. The original mentions ${named}.`,
+		});
+	}
+	const stated = withoutImpliedDiets(diets);
+	if (stated.length > 0) {
+		const named = andList(stated.map((diet) => dietLabels[diet].toLowerCase()));
+		problems.push({
+			path: 'diets',
+			message: `Check the diet. Keep ${named} only if the original says so.`,
+		});
+	}
+	return problems;
+}
+
 function withoutRepeats(problems: readonly Problem[]): Problem[] {
 	const seen = new Set<string>();
 	return problems.filter(({ path, message }) => {
@@ -329,7 +377,8 @@ function withoutRepeats(problems: readonly Problem[]): Problem[] {
 
 // The draft a member reviews in the recipe form, which joins the problems for each field in order.
 // So what the draft could not keep as read comes first, then the extractor's notes, then what the
-// recipe lacks, and last the notes whose item was dropped and now sit on its section or list.
+// recipe lacks and what the import filed it under, and last the notes whose item was dropped and now
+// sit on its section or list.
 // The images are the scans the recipe was read from, which stay attached to it.
 export function importDraftFromExtractedRecipe(
 	recipe: ExtractedRecipe,
@@ -346,6 +395,8 @@ export function importDraftFromExtractedRecipe(
 		recipe.instructionSections.map(({ heading, steps }) => ({ heading, texts: steps })),
 		withoutListMarkers
 	);
+	const holidays = inHolidayOrder(recipe.holidays);
+	const diets = withImpliedDiets(recipe.diets);
 	const content: RecipeDraftContent = {
 		title: draftText(
 			recipe.title,
@@ -388,7 +439,9 @@ export function importDraftFromExtractedRecipe(
 				),
 			})),
 		})),
-		tags: [],
+		chapter: recipe.chapter,
+		holidays,
+		diets,
 		images: [...images],
 	};
 
@@ -415,6 +468,7 @@ export function importDraftFromExtractedRecipe(
 			...(content.title === undefined ? [missingTitleProblem] : []),
 			...(ingredientList.sections.length === 0 ? [missingIngredientsProblem] : []),
 			...(instructionList.sections.length === 0 ? [missingStepsProblem] : []),
+			...filingProblems(recipe.chapter, holidays, diets),
 			...enclosingNotes,
 		]),
 	};

@@ -29,6 +29,7 @@ import {
 	NumberFieldIncrement,
 	NumberFieldInput,
 } from '@/components/ui/number-field';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
 	Select,
 	SelectContent,
@@ -41,6 +42,8 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { chapterLabels, chapters, noChapterMessage, type Chapter } from '@/domain/recipe/chapter';
+import { dietLabels, diets } from '@/domain/recipe/diet';
 import { noStepsMessage } from '@/domain/recipe/instruction';
 
 function CourseSelectItems() {
@@ -235,21 +238,15 @@ function FieldSpecimen() {
 		<div className="grid gap-6 md:grid-cols-2">
 			<Specimen label="Field set with legend, description, and horizontal fields">
 				<FieldSet>
-					<FieldLegend>Dietary tags</FieldLegend>
-					<FieldDescription>Choose every tag that applies.</FieldDescription>
+					<FieldLegend>Diet</FieldLegend>
+					<FieldDescription>Choose every diet that applies.</FieldDescription>
 					<FieldGroup data-slot="checkbox-group">
-						<Field orientation="horizontal">
-							<Checkbox id="field-vegetarian" defaultChecked />
-							<FieldLabel htmlFor="field-vegetarian">Vegetarian</FieldLabel>
-						</Field>
-						<Field orientation="horizontal">
-							<Checkbox id="field-dairy-free" />
-							<FieldLabel htmlFor="field-dairy-free">Dairy free</FieldLabel>
-						</Field>
-						<Field orientation="horizontal">
-							<Checkbox id="field-nut-free" />
-							<FieldLabel htmlFor="field-nut-free">Nut free</FieldLabel>
-						</Field>
+						{diets.map((diet) => (
+							<Field key={diet} orientation="horizontal">
+								<Checkbox id={`field-diet-${diet}`} defaultChecked={diet === 'vegetarian'} />
+								<FieldLabel htmlFor={`field-diet-${diet}`}>{dietLabels[diet]}</FieldLabel>
+							</Field>
+						))}
 					</FieldGroup>
 				</FieldSet>
 			</Specimen>
@@ -417,6 +414,77 @@ function CheckboxSpecimen() {
 	);
 }
 
+// Two of the nine chapters, enough to show every row's invalid edge.
+const invalidChapterSamples = ['desserts', 'cookies-candy'] as const satisfies readonly Chapter[];
+
+function RadioGroupSpecimen() {
+	return (
+		<div className="flex flex-col gap-6">
+			<Specimen label="Field set with legend and description, in two columns from sm">
+				<FieldSet>
+					<FieldLegend id="radio-chapter-legend" variant="label">
+						Chapter
+					</FieldLegend>
+					<FieldDescription>Where the recipe goes in the cookbook.</FieldDescription>
+					<RadioGroup
+						defaultValue="desserts"
+						aria-labelledby="radio-chapter-legend"
+						className="sm:grid-cols-2"
+					>
+						{chapters.map((chapter) => (
+							<Field key={chapter} orientation="horizontal">
+								<RadioGroupItem id={`radio-chapter-${chapter}`} value={chapter} />
+								<FieldLabel htmlFor={`radio-chapter-${chapter}`}>
+									{chapterLabels[chapter]}
+								</FieldLabel>
+							</Field>
+						))}
+					</RadioGroup>
+				</FieldSet>
+			</Specimen>
+			<Specimen label="Disabled, then invalid with nothing chosen">
+				<FieldGroup className="grid gap-6 sm:grid-cols-2">
+					<FieldSet>
+						<FieldLegend id="radio-disabled-legend" variant="label">
+							Disabled
+						</FieldLegend>
+						<RadioGroup defaultValue="chosen" disabled aria-labelledby="radio-disabled-legend">
+							<Field orientation="horizontal" data-disabled="true">
+								<RadioGroupItem id="radio-disabled" value="unchosen" />
+								<FieldLabel htmlFor="radio-disabled">Disabled</FieldLabel>
+							</Field>
+							<Field orientation="horizontal" data-disabled="true">
+								<RadioGroupItem id="radio-disabled-chosen" value="chosen" />
+								<FieldLabel htmlFor="radio-disabled-chosen">Disabled and chosen</FieldLabel>
+							</Field>
+						</RadioGroup>
+					</FieldSet>
+					<FieldSet aria-describedby="radio-invalid-error">
+						<FieldLegend id="radio-invalid-legend" variant="label">
+							Invalid
+						</FieldLegend>
+						<FieldError id="radio-invalid-error">{noChapterMessage}</FieldError>
+						<RadioGroup aria-labelledby="radio-invalid-legend">
+							{invalidChapterSamples.map((chapter) => (
+								<Field key={chapter} orientation="horizontal">
+									<RadioGroupItem
+										id={`radio-invalid-${chapter}`}
+										value={chapter}
+										aria-invalid="true"
+									/>
+									<FieldLabel htmlFor={`radio-invalid-${chapter}`}>
+										{chapterLabels[chapter]}
+									</FieldLabel>
+								</Field>
+							))}
+						</RadioGroup>
+					</FieldSet>
+				</FieldGroup>
+			</Specimen>
+		</div>
+	);
+}
+
 const switchSizes = ['default', 'sm'] as const;
 
 function SwitchSpecimen() {
@@ -463,6 +531,7 @@ export {
 	InputSpecimen,
 	LabelSpecimen,
 	NumberFieldSpecimen,
+	RadioGroupSpecimen,
 	SelectSpecimen,
 	SwitchSpecimen,
 	TextareaSpecimen,

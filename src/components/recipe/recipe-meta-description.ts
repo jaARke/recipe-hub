@@ -2,6 +2,7 @@ import type { PublicRecipeDto } from '@/application/recipes/recipe-dtos';
 import { formatDuration, totalMinutes } from '@/domain/recipe/duration';
 import type { IngredientSection } from '@/domain/recipe/ingredient';
 import { formatYield } from '@/domain/recipe/recipe-yield';
+import { andList } from '@/domain/text';
 
 type DescribedRecipe = Pick<
 	PublicRecipeDto,
@@ -10,8 +11,6 @@ type DescribedRecipe = Pick<
 
 // Enough to suggest the dish without listing the whole recipe.
 const describedIngredientCount = 3;
-
-const ingredientListFormat = new Intl.ListFormat('en-US', { style: 'long', type: 'conjunction' });
 
 // The first few ingredients, each once as first written, ending in "more" when there are others.
 function ingredientList(sections: readonly IngredientSection[]): string {
@@ -25,9 +24,7 @@ function ingredientList(sections: readonly IngredientSection[]): string {
 
 	const items = [...itemsByKey.values()];
 	const described = items.slice(0, describedIngredientCount);
-	return ingredientListFormat.format(
-		items.length > described.length ? [...described, 'more'] : described
-	);
+	return andList(items.length > described.length ? [...described, 'more'] : described);
 }
 
 // For link previews and search results: the recipe's own description, or a few of its facts.

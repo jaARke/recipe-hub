@@ -43,18 +43,23 @@ describe('proxy', () => {
 	it.each([
 		{
 			where: 'a search without words',
-			url: '/search?tag=Dessert',
-			location: '/?tag=Dessert',
+			url: '/search?chapter=desserts&holiday=christmas',
+			location: '/?chapter=desserts&holiday=christmas',
 		},
 		{
 			where: 'a search emptied in the header',
-			url: '/search?q=&tag=Dessert&sort=title',
-			location: '/?tag=Dessert&sort=title',
+			url: '/search?q=&diet=vegan&sort=title',
+			location: '/?diet=vegan&sort=title',
 		},
 		{
 			where: 'Browse given words',
-			url: '/?q=lemon&tag=Dessert',
-			location: '/search?q=lemon&tag=Dessert',
+			url: '/?q=lemon&chapter=desserts',
+			location: '/search?q=lemon&chapter=desserts',
+		},
+		{
+			where: 'an older link’s search without words, dropping its tags',
+			url: '/search?tag=Dessert',
+			location: '/',
 		},
 	])('redirects $where to the list it belongs on, with its filters', ({ url, location }) => {
 		const response = proxy(new NextRequest(`https://recipes.example.com${url}`));
@@ -63,15 +68,17 @@ describe('proxy', () => {
 		expect(response.headers.get('location')).toBe(`https://recipes.example.com${location}`);
 	});
 
-	it.each(['/?tag=Dessert', '/search?q=lemon&tag=Dessert', '/search?sort=relevance'])(
-		'lets %s through to its page, signed out',
-		(url) => {
-			const response = proxy(new NextRequest(`https://recipes.example.com${url}`));
+	it.each([
+		'/?chapter=desserts',
+		'/search?q=lemon&chapter=desserts',
+		'/search?sort=relevance',
+		'/?q=lemon&chapter=nope',
+	])('lets %s through to its page, signed out', (url) => {
+		const response = proxy(new NextRequest(`https://recipes.example.com${url}`));
 
-			expect(response.headers.get('location')).toBeNull();
-			expect(response.headers.get('x-middleware-next')).toBe('1');
-		}
-	);
+		expect(response.headers.get('location')).toBeNull();
+		expect(response.headers.get('x-middleware-next')).toBe('1');
+	});
 
 	it('runs on Browse only with the query, so a list without words skips it', () => {
 		expect(config.matcher).toContainEqual({

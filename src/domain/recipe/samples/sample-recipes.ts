@@ -111,7 +111,9 @@ export const sampleButtermilkBiscuits: RecipeContentInput = {
 			],
 		},
 	],
-	tags: ['Breakfast', 'Baking'],
+	chapter: 'breads-rolls',
+	holidays: [],
+	diets: ['vegetarian'],
 	images: [
 		{
 			role: 'dish',
@@ -180,7 +182,9 @@ export const sampleChickenSoup: RecipeContentInput = {
 			],
 		},
 	],
-	tags: ['Soup', 'Weeknight'],
+	chapter: 'soups-salads',
+	holidays: [],
+	diets: [],
 	images: [
 		{
 			role: 'dish',
@@ -260,7 +264,9 @@ export const sampleLemonIceboxPie: RecipeContentInput = {
 			],
 		},
 	],
-	tags: ['Dessert', 'Make ahead'],
+	chapter: 'desserts',
+	holidays: [],
+	diets: ['vegetarian'],
 	images: [],
 };
 
@@ -401,7 +407,9 @@ export const sampleSundayPotRoast: RecipeContentInput = {
 			],
 		},
 	],
-	tags: ['Main', 'Slow cooked'],
+	chapter: 'main-dishes',
+	holidays: [],
+	diets: [],
 	images: [
 		{
 			role: 'dish',
@@ -470,7 +478,9 @@ export const sampleTomatoSalad: RecipeContentInput = {
 			],
 		},
 	],
-	tags: ['Salad', 'Vegetarian', 'Summer'],
+	chapter: 'soups-salads',
+	holidays: [],
+	diets: ['vegetarian', 'vegan', 'gluten-free', 'dairy-free'],
 	images: [
 		{
 			role: 'dish',
@@ -578,7 +588,9 @@ export const sampleMolassesSpiceCookies: RecipeContentInput = {
 			],
 		},
 	],
-	tags: ['Baking', 'Holiday', 'Freezer friendly'],
+	chapter: 'cookies-candy',
+	holidays: ['christmas'],
+	diets: ['vegetarian'],
 	images: [],
 };
 

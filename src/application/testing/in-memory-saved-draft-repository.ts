@@ -1,6 +1,7 @@
-import { SavedDraftEditConflictError } from '@/application/drafts/errors';
+import { SavedDraftEditConflictError, SavedDraftGoneError } from '@/application/drafts/errors';
 import { savedDraftIdSchema, type SavedDraftId } from '@/application/drafts/saved-draft';
 import type {
+	NewImportedDraft,
 	NewSavedDraft,
 	SavedDraft,
 	SavedDraftContents,
@@ -11,10 +12,17 @@ import type {
 import type { MemberId } from '@/domain/member/member';
 import type { RecipeImportId } from '@/domain/recipe/recipe-import';
 
+// What a draft keeps whatever its contents are.
+type DraftRecord = Omit<SavedDraft, keyof SavedDraftContents | 'imported'>;
+
+function newDraftId(): SavedDraftId {
+	return savedDraftIdSchema.parse(crypto.randomUUID());
+}
+
 // The draft as a write leaves it: a title left out is none, and the values a copy, as the database
 // stores its own.
 function withContents(
-	draft: Omit<SavedDraft, keyof SavedDraftContents>,
+	draft: DraftRecord,
 	{ title, values, imagePathnames }: SavedDraftContents
 ): SavedDraft {
 	return {
@@ -30,25 +38,10 @@ export class InMemorySavedDraftRepository implements SavedDraftRepository {
 	// Insertion order is creation order.
 	private readonly drafts = new Map<SavedDraftId, SavedDraft>();
 
-	async create(draft: NewSavedDraft): Promise<SavedDraft | null> {
-		const { memberId, importId, provenance, ...contents } = draft;
-		if (importId !== undefined && this.findWithImport(importId) !== undefined) {
-			return null;
-		}
-
+	async create({ memberId, ...contents }: NewSavedDraft): Promise<SavedDraft> {
 		const createdAt = new Date();
 		return this.store(
-			withContents(
-				{
-					id: savedDraftIdSchema.parse(crypto.randomUUID()),
-					memberId,
-					...(importId !== undefined && { importId }),
-					...(provenance !== undefined && { provenance }),
-					createdAt,
-					updatedAt: createdAt,
-				},
-				contents
-			)
+			withContents({ id: newDraftId(), memberId, createdAt, updatedAt: createdAt }, contents)
 		);
 	}
 
@@ -56,13 +49,9 @@ export class InMemorySavedDraftRepository implements SavedDraftRepository {
 		id: SavedDraftId,
 		{ expectedUpdatedAt, ...contents }: SavedDraftUpdate
 	): Promise<SavedDraft | null> {
-		const stored = this.drafts.get(id);
+		const stored = this.storedAt(id, expectedUpdatedAt);
 		if (stored === undefined) {
 			return null;
-		}
-
-		if (stored.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
-			throw new SavedDraftEditConflictError();
 		}
 
 		return this.store(
@@ -89,20 +78,24 @@ export class InMemorySavedDraftRepository implements SavedDraftRepository {
 		return this.findWithImport(importId) ?? null;
 	}
 
-	async list(memberId: MemberId, since: Date, limit: number): Promise<SavedDraftSummary[]> {
+	async list(memberId: MemberId, since: Date): Promise<SavedDraftSummary[]> {
 		// Reversed first, so the stable sort lists drafts saved in the same millisecond newest first.
 		return [...this.drafts.values()]
 			.filter((draft) => draft.memberId === memberId && draft.updatedAt >= since)
 			.reverse()
 			.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
-			.slice(0, limit)
-			.map(({ id, importId, provenance, title, updatedAt }) => ({
+			.map(({ id, provenance, title, updatedAt }) => ({
 				id,
-				...(importId !== undefined && { importId }),
 				...(provenance !== undefined && { provenance }),
 				...(title !== undefined && { title }),
 				updatedAt,
 			}));
+	}
+
+	async count(memberId: MemberId, since: Date): Promise<number> {
+		return [...this.drafts.values()].filter(
+			(draft) => draft.memberId === memberId && draft.updatedAt >= since
+		).length;
 	}
 
 	async findImagesInUse(
@@ -118,17 +111,14 @@ export class InMemorySavedDraftRepository implements SavedDraftRepository {
 		return [...new Set(pathnames)].filter((pathname) => named.has(pathname));
 	}
 
-	async delete(id: SavedDraftId): Promise<SavedDraft | null> {
-		const stored = this.drafts.get(id);
-		this.drafts.delete(id);
-		return stored ?? null;
-	}
-
-	async deleteByImportId(importId: RecipeImportId): Promise<void> {
-		const continued = this.findWithImport(importId);
-		if (continued !== undefined) {
-			this.drafts.delete(continued.id);
+	async delete(id: SavedDraftId, expectedUpdatedAt: Date): Promise<SavedDraft | null> {
+		const stored = this.storedAt(id, expectedUpdatedAt);
+		if (stored === undefined) {
+			return null;
 		}
+
+		this.drafts.delete(id);
+		return stored;
 	}
 
 	async deleteSavedBefore(cutoff: Date): Promise<number> {
@@ -140,6 +130,52 @@ export class InMemorySavedDraftRepository implements SavedDraftRepository {
 			}
 		}
 		return deleted;
+	}
+
+	// Stands in for the insert an import's success makes in its transaction, and throws as the import's
+	// unique key does when the import already has a draft. It does not await, so the success stays one
+	// uninterrupted step.
+	storeImported(
+		memberId: MemberId,
+		importId: RecipeImportId,
+		{ provenance, title, imported, imagePathnames }: NewImportedDraft
+	): SavedDraft {
+		if (this.findWithImport(importId) !== undefined) {
+			throw new Error('The import already has a draft');
+		}
+
+		const createdAt = new Date();
+		return this.store({
+			id: newDraftId(),
+			memberId,
+			importId,
+			provenance,
+			...(title !== undefined && { title }),
+			imported: structuredClone(imported),
+			imagePathnames: [...imagePathnames],
+			createdAt,
+			updatedAt: createdAt,
+		});
+	}
+
+	// Stands in for the transaction that adds a recipe from the member's draft at the version given: the
+	// add runs only while the draft is the member's at that version, and the draft goes with it. It does
+	// not await, so the add stays one uninterrupted step.
+	consumeWith<T>(
+		{ id, expectedUpdatedAt }: { id: SavedDraftId; expectedUpdatedAt: Date },
+		memberId: MemberId,
+		add: () => T
+	): T {
+		const stored = this.drafts.get(id);
+		if (stored?.memberId !== memberId) {
+			throw new SavedDraftGoneError();
+		}
+		if (stored.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+			throw new SavedDraftEditConflictError();
+		}
+		const added = add();
+		this.drafts.delete(id);
+		return added;
 	}
 
 	// Stands in for the delete a member's removal makes in its transaction. It does not await, so the
@@ -160,6 +196,15 @@ export class InMemorySavedDraftRepository implements SavedDraftRepository {
 		}
 
 		this.drafts.set(id, { ...stored, updatedAt });
+	}
+
+	// The draft a write at a version acts on, if there is one; one saved since is a conflict.
+	private storedAt(id: SavedDraftId, expectedUpdatedAt: Date): SavedDraft | undefined {
+		const stored = this.drafts.get(id);
+		if (stored !== undefined && stored.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+			throw new SavedDraftEditConflictError();
+		}
+		return stored;
 	}
 
 	private findWithImport(importId: RecipeImportId): SavedDraft | undefined {

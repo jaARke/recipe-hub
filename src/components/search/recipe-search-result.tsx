@@ -5,10 +5,11 @@ import { describedBy } from '@/components/forms/described-by';
 import { RecipeListLinks } from '@/components/recipe/recipe-list-links';
 import { recipePath } from '@/components/recipe/recipe-paths';
 import {
+	RecipeBadges,
+	recipeBadges,
 	RecipeCover,
 	RecipeFacts,
 	recipeFacts,
-	RecipeTags,
 } from '@/components/recipe/recipe-summary';
 import { HighlightedSegments } from '@/components/search/highlighted-segments';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -19,13 +20,27 @@ const resultPhotoSizes = '(min-width: 640px) 160px, 96px';
 // The first results, which are above the fold on a desktop.
 const firstResultCount = 3;
 
-// Each result records the page, query and filters included, as where its recipe is opened from.
-function RecipeSearchResultList({ children }: { children: React.ReactNode }) {
+// The rows' list, which the results and their skeletons share.
+function RecipeSearchResultRows({ children }: { children: React.ReactNode }) {
 	return (
-		<RecipeListLinks>
-			<ul role="list" className="divide-y">
-				{children}
-			</ul>
+		<ul role="list" className="divide-y">
+			{children}
+		</ul>
+	);
+}
+
+// Each result records the page, query and filters included, with the list's back label, as where its
+// recipe is opened from.
+function RecipeSearchResultList({
+	backLabel,
+	children,
+}: {
+	backLabel: string;
+	children: React.ReactNode;
+}) {
+	return (
+		<RecipeListLinks backLabel={backLabel}>
+			<RecipeSearchResultRows>{children}</RecipeSearchResultRows>
 		</RecipeListLinks>
 	);
 }
@@ -44,7 +59,8 @@ function RecipeSearchResult({
 }) {
 	const { recipe } = result;
 	const facts = recipeFacts(recipe);
-	const hasDetails = facts.length > 0 || recipe.tags.length > 0;
+	const badges = recipeBadges(recipe);
+	const hasDetails = facts.length > 0 || badges.length > 0;
 	const titleId = `${recipe.slug}-result-title`;
 	const sourceId = recipe.source === undefined ? undefined : `${recipe.slug}-result-source`;
 	const snippetId = result.snippet === undefined ? undefined : `${recipe.slug}-result-snippet`;
@@ -83,7 +99,7 @@ function RecipeSearchResult({
 				{hasDetails && (
 					<div id={detailsId} className="mt-2 flex flex-col gap-2">
 						{facts.length > 0 && <RecipeFacts facts={facts} />}
-						{recipe.tags.length > 0 && <RecipeTags tags={recipe.tags} />}
+						{badges.length > 0 && <RecipeBadges badges={badges} />}
 					</div>
 				)}
 			</div>
@@ -113,4 +129,10 @@ function RecipeSearchResultSkeleton() {
 	);
 }
 
-export { firstResultCount, RecipeSearchResult, RecipeSearchResultList, RecipeSearchResultSkeleton };
+export {
+	firstResultCount,
+	RecipeSearchResult,
+	RecipeSearchResultList,
+	RecipeSearchResultRows,
+	RecipeSearchResultSkeleton,
+};

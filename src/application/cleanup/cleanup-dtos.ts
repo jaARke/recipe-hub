@@ -5,9 +5,7 @@ import type { ImageSweepCounts } from '@/application/recipes/recipe-dtos';
 export type CleanupCounts = {
 	// Imports still running past their lease, recorded as failed.
 	interruptedImports: { settledCount: number };
-	// Imports whose drafts and source URLs expired, now cleared.
-	importDrafts: { clearedCount: number };
-	// Drafts members saved from the recipe form, past their lifetime.
+	// Drafts past their lifetime.
 	savedDrafts: { deletedCount: number };
 	// Invites no account used, closed for an invite lifetime.
 	invites: { deletedCount: number };

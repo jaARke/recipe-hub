@@ -1,5 +1,19 @@
 import 'server-only';
-import { and, count, desc, eq, gt, inArray, isNotNull, lte, or, sql, type SQL } from 'drizzle-orm';
+import {
+	and,
+	arrayContains,
+	arrayOverlaps,
+	count,
+	desc,
+	eq,
+	gt,
+	inArray,
+	isNotNull,
+	lte,
+	or,
+	sql,
+	type SQL,
+} from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import type {
 	HighlightedText,
@@ -8,6 +22,7 @@ import type {
 	RecipeFacetCount,
 	RecipeMatch,
 	RecipeSearch,
+	RecipeSearchFacets,
 	RecipeSearchHit,
 	RecipeSearchQuery,
 	RecipeSearchResults,
@@ -15,6 +30,9 @@ import type {
 	RecipeTextQuery,
 } from '@/application/ports/recipe-search';
 import { memberIdSchema, type MemberId } from '@/domain/member/member';
+import { chapters } from '@/domain/recipe/chapter';
+import { diets } from '@/domain/recipe/diet';
+import { holidays } from '@/domain/recipe/holiday';
 import type { Recipe } from '@/domain/recipe/recipe';
 import { recipeColumns, toRecipe } from '@/infrastructure/db/recipe-mapper';
 import { recipeOrders } from '@/infrastructure/db/recipe-order';
@@ -27,7 +45,6 @@ import {
 	toHighlightedText,
 	toSnippet,
 } from '@/infrastructure/db/search-headline';
-import { recipeTags, tagKeyColumn, tagLabel, tagOrder } from '@/infrastructure/db/tag-labels';
 
 // Below pg_trgm's default of 0.6, which misses a one-letter slip in a short word ("chiken" scores 0.5).
 const closeMatchSimilarity = 0.5;
@@ -46,14 +63,17 @@ type TextMatch = {
 	highlightQuery?: SQL;
 };
 
-// Kept apart, because the source and contributor facets count with every filter but their own.
+// Kept apart, so a facet can count with every filter but its own.
 type SearchFilters = {
-	tags?: SQL;
+	chapter?: SQL;
+	holidays?: SQL;
+	diets?: SQL;
 	source?: SQL;
 	contributor?: SQL;
 	maxTotalMinutes?: SQL;
 	addedWithin?: SQL;
 };
+type SearchFilter = keyof SearchFilters;
 
 // A field a snippet can come from, with its headline for the text query.
 type Passage = {
@@ -117,10 +137,10 @@ function closeMatch(text: RecipeTextQuery): TextMatch {
 
 function searchFilters(query: RecipeSearchQuery): SearchFilters {
 	return {
-		tags:
-			query.tags.length === 0
-				? undefined
-				: sql`${recipes.tagKeys} @> public.search_keys(${sql.param(query.tags)}::text[])`,
+		chapter: query.chapter === undefined ? undefined : eq(recipes.chapter, query.chapter),
+		holidays:
+			query.holidays.length === 0 ? undefined : arrayOverlaps(recipes.holidays, query.holidays),
+		diets: query.diets.length === 0 ? undefined : arrayContains(recipes.diets, query.diets),
 		source:
 			query.source === undefined
 				? undefined
@@ -140,15 +160,16 @@ function searchFilters(query: RecipeSearchQuery): SearchFilters {
 	};
 }
 
-function matching(match: TextMatch, filters: SearchFilters): SQL | undefined {
-	return and(
-		match.condition,
-		filters.tags,
-		filters.source,
-		filters.contributor,
-		filters.maxTotalMinutes,
-		filters.addedWithin
-	);
+// The recipes the text and every filter match, or every filter but the one a facet counts without.
+function matchingExcept(
+	match: TextMatch,
+	filters: SearchFilters,
+	except?: SearchFilter
+): SQL | undefined {
+	const kept = Object.entries(filters)
+		.filter(([name]) => name !== except)
+		.map(([, filter]) => filter);
+	return and(match.condition, ...kept);
 }
 
 function searchOrder(match: TextMatch, sort: RecipeSearchSort): SQL[] {
@@ -200,11 +221,11 @@ export class DrizzleRecipeSearch implements RecipeSearch {
 	async search(query: RecipeSearchQuery): Promise<RecipeSearchResults> {
 		const filters = searchFilters(query);
 		const exact = exactMatch(query.text);
-		const total = await this.db.$count(recipes, matching(exact, filters));
+		const total = await this.db.$count(recipes, matchingExcept(exact, filters));
 
 		if (total === 0 && query.text !== undefined && query.text.includedWords.length > 0) {
 			const close = closeMatch(query.text);
-			const closeTotal = await this.db.$count(recipes, matching(close, filters));
+			const closeTotal = await this.db.$count(recipes, matchingExcept(close, filters));
 			if (closeTotal > 0) {
 				return this.findResults(query, close, filters, closeTotal);
 			}
@@ -219,13 +240,18 @@ export class DrizzleRecipeSearch implements RecipeSearch {
 		filters: SearchFilters,
 		total: number
 	): Promise<RecipeSearchResults> {
-		const [hits, tags, sources, contributors] = await Promise.all([
+		const [hits, vocabularies, sources, contributors] = await Promise.all([
 			this.findHits(query, match, filters),
-			this.countTags(match, filters),
+			this.countVocabularies(match, filters),
 			this.countSources(match, filters),
 			this.countContributors(match, filters, query.contributorId),
 		]);
-		return { hits, total, match: match.kind, facets: { tags, sources, contributors } };
+		return {
+			hits,
+			total,
+			match: match.kind,
+			facets: { ...vocabularies, sources, contributors },
+		};
 	}
 
 	private async findHits(
@@ -238,7 +264,7 @@ export class DrizzleRecipeSearch implements RecipeSearch {
 		const page = this.db
 			.select({ id: recipes.id })
 			.from(recipes)
-			.where(matching(match, filters))
+			.where(matchingExcept(match, filters))
 			.orderBy(...order)
 			.limit(query.limit)
 			.offset(query.offset);
@@ -270,19 +296,51 @@ export class DrizzleRecipeSearch implements RecipeSearch {
 		);
 	}
 
-	// The earliest recipe's spelling labels each facet, most used first and then by key: the label
-	// ignoring case, the rule every list of tags shares.
-	private async countTags(match: TextMatch, filters: SearchFilters): Promise<RecipeFacetCount[]> {
-		return this.db
-			.select({ label: tagLabel, count: count() })
-			.from(recipes)
-			.crossJoin(recipeTags)
-			.where(matching(match, filters))
-			.groupBy(tagKeyColumn)
-			.orderBy(...tagOrder);
+	// Chapters and holidays count with every filter but their own, and diets within the results, since a
+	// recipe must suit every diet chosen.
+	private async countVocabularies(
+		match: TextMatch,
+		filters: SearchFilters
+	): Promise<Pick<RecipeSearchFacets, 'chapters' | 'holidays' | 'diets'>> {
+		const [chapterCounts, holidayCounts, dietCounts] = await Promise.all([
+			this.countEach(
+				chapters,
+				(chapter) => eq(recipes.chapter, chapter),
+				matchingExcept(match, filters, 'chapter')
+			),
+			this.countEach(
+				holidays,
+				(holiday) => arrayContains(recipes.holidays, [holiday]),
+				matchingExcept(match, filters, 'holidays')
+			),
+			this.countEach(
+				diets,
+				(diet) => arrayContains(recipes.diets, [diet]),
+				matchingExcept(match, filters)
+			),
+		]);
+		return { chapters: chapterCounts, holidays: holidayCounts, diets: dietCounts };
 	}
 
-	// Labeled and ordered as tags are.
+	// Each member of the vocabulary counted among the recipes the condition keeps, even at zero.
+	private async countEach<Value extends string>(
+		vocabulary: readonly Value[],
+		filedUnder: (value: Value) => SQL,
+		condition: SQL | undefined
+	): Promise<Record<Value, number>> {
+		const counts = vocabulary.map((value) => sql`count(*) filter (where ${filedUnder(value)})`);
+		// An aggregate without grouping always returns its one row.
+		const [row] = await this.db
+			.select({ counts: sql<number[]>`array[${sql.join(counts, sql`, `)}]::integer[]` })
+			.from(recipes)
+			.where(condition);
+		return Object.fromEntries(
+			vocabulary.map((value, index) => [value, row?.counts[index] ?? 0])
+		) as Record<Value, number>;
+	}
+
+	// The earliest recipe's spelling labels each source, most used first and then by key, the source
+	// ignoring case.
 	private async countSources(
 		match: TextMatch,
 		filters: SearchFilters
@@ -293,16 +351,7 @@ export class DrizzleRecipeSearch implements RecipeSearch {
 				count: count(),
 			})
 			.from(recipes)
-			.where(
-				and(
-					match.condition,
-					filters.tags,
-					filters.contributor,
-					filters.maxTotalMinutes,
-					filters.addedWithin,
-					isNotNull(recipes.sourceKey)
-				)
-			)
+			.where(and(matchingExcept(match, filters, 'source'), isNotNull(recipes.sourceKey)))
 			.groupBy(recipes.sourceKey)
 			.orderBy(desc(count()), recipes.sourceKey);
 	}
@@ -320,14 +369,7 @@ export class DrizzleRecipeSearch implements RecipeSearch {
 			.from(users)
 			.leftJoin(
 				recipes,
-				and(
-					eq(recipes.contributorId, users.id),
-					match.condition,
-					filters.tags,
-					filters.source,
-					filters.maxTotalMinutes,
-					filters.addedWithin
-				)
+				and(eq(recipes.contributorId, users.id), matchingExcept(match, filters, 'contributor'))
 			)
 			.groupBy(users.id)
 			.having(or(gt(recipeCount, 0), chosen === undefined ? undefined : eq(users.id, chosen)))

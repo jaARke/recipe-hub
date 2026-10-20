@@ -8,7 +8,6 @@ import { FixedActorProvider } from '@/application/testing/fixed-actor-provider';
 import { InMemoryImageMoveLock } from '@/application/testing/in-memory-image-move-lock';
 import { InMemoryImageStore } from '@/application/testing/in-memory-image-store';
 import { InMemoryProductionImages } from '@/application/testing/in-memory-production-images';
-import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
 import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
 
@@ -35,7 +34,6 @@ async function serveImages() {
 	const recipes = new InMemoryRecipeRepository();
 	services.imageService = new RecipeImageService(
 		recipes,
-		new InMemoryRecipeImportRepository(recipes),
 		new InMemorySavedDraftRepository(),
 		images,
 		productionImages,

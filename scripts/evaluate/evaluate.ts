@@ -12,7 +12,10 @@ import type {
 } from '@/application/ports/recipe-extractors';
 import type { WebPage } from '@/application/ports/web-page-fetcher';
 import { memberIdSchema } from '@/domain/member/member';
+import { chapters } from '@/domain/recipe/chapter';
+import { diets } from '@/domain/recipe/diet';
 import { reviewNoteFields, type ExtractedRecipe } from '@/domain/recipe/extracted-recipe';
+import { holidays } from '@/domain/recipe/holiday';
 import { AiPageRecipeExtractor } from '@/infrastructure/ai/ai-page-recipe-extractor';
 import { AiScanRecipeExtractor } from '@/infrastructure/ai/ai-scan-recipe-extractor';
 import { JsonLdPageRecipeExtractor } from '@/infrastructure/web/json-ld-page-recipe-extractor';
@@ -77,7 +80,8 @@ const caseDefinitionSchema = z.discriminatedUnion('kind', [
 ]);
 type CaseDefinition = z.infer<typeof caseDefinitionSchema>;
 
-// Strict, so a misspelled key in an expected.json fails the run instead of going unscored.
+// Strict, so a misspelled key in an expected.json fails the run instead of going unscored. The filing
+// is not scored, so a case may leave it out.
 const expectedRecipeSchema = z.strictObject({
 	title: z.string().optional(),
 	description: z.string().optional(),
@@ -101,6 +105,9 @@ const expectedRecipeSchema = z.strictObject({
 	instructionSections: z.array(
 		z.strictObject({ heading: z.string().optional(), steps: z.array(z.string()) })
 	),
+	chapter: z.enum(chapters).optional(),
+	holidays: z.array(z.enum(holidays)).default([]),
+	diets: z.array(z.enum(diets)).default([]),
 	reviewNotes: z.array(
 		z.strictObject({
 			field: z.enum(reviewNoteFields),

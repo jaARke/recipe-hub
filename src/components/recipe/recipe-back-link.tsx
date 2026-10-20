@@ -1,17 +1,16 @@
 'use client';
 
-import { cn } from 'cn';
-import { ChevronLeftIcon } from 'lucide-react';
 import type * as React from 'react';
+import { BackLink } from '@/components/layout/back-link';
 import { followsInThisTab } from '@/components/recipe/recipe-opened-from';
 import {
 	returnToRecipeList,
 	useRecipeOpenedFrom,
 } from '@/components/recipe/use-recipe-opened-from';
 
-// GOV.UK's back link, above the recipe's title: it names the list the recipe was opened from in
-// this tab and goes back in history to that page, so it returns as it was left. A recipe reached
-// any other way shows none, since the header's Browse serves it, and a printout shows none.
+// The back link above a recipe's title: it names the list the recipe was opened from in this tab, in
+// the words that list recorded, and goes back in history to that page, so it returns as it was left.
+// A recipe reached any other way shows none, since the header's Browse serves it.
 function RecipeBackLink({
 	recipePathname,
 	className,
@@ -23,7 +22,7 @@ function RecipeBackLink({
 	if (openedFrom === undefined) {
 		return null;
 	}
-	const { url, list } = openedFrom;
+	const { url, backLabel } = openedFrom;
 
 	// A click that opens another tab, or one after the list's entry is gone, loads the list's URL.
 	function handleClick(event: React.MouseEvent<HTMLAnchorElement>) {
@@ -33,17 +32,10 @@ function RecipeBackLink({
 	}
 
 	return (
-		<a
-			href={url}
-			onClick={handleClick}
-			className={cn(
-				'inline-flex items-center gap-1 text-sm underline underline-offset-4 print:hidden',
-				className
-			)}
-		>
-			<ChevronLeftIcon aria-hidden="true" className="size-4" />
-			{list.backLabel}
-		</a>
+		// Not prefetched: the click goes back in history, so loading the list's page ahead is wasted.
+		<BackLink href={url} prefetch={false} onClick={handleClick} className={className}>
+			{backLabel}
+		</BackLink>
 	);
 }
 

@@ -7,10 +7,7 @@ import {
 	signInPath,
 } from '@/components/auth/auth-paths';
 import { withCookingStepParam } from '@/components/cooking/cooking-screens';
-import {
-	recipeEntryParamNames,
-	type RecipeEntryTab,
-} from '@/components/recipe-import/recipe-entry-paths';
+import { recipeEntryPaths } from '@/components/recipe-import/recipe-entry-paths';
 import {
 	contributePath,
 	favoritesPath,
@@ -38,10 +35,6 @@ function cookingScreenPath(screen: number): string {
 	return hrefWithParams(sampleRecipe.cookPath, withCookingStepParam(new URLSearchParams(), screen));
 }
 
-function entryTabPath(tab: RecipeEntryTab): string {
-	return hrefWithParams(contributePath, new URLSearchParams({ [recipeEntryParamNames.tab]: tab }));
-}
-
 const checkedPages: CheckedPage[] = [
 	{ name: 'Browse', path: recipeListPath },
 	{ name: 'a recipe', path: sampleRecipe.path },
@@ -54,10 +47,10 @@ const checkedPages: CheckedPage[] = [
 	{ name: 'request access', path: requestAccessPath },
 	{ name: 'privacy', path: privacyPath },
 	{ name: 'a missing recipe', path: recipePath('no-such-recipe') },
-	{ name: 'manual entry', path: entryTabPath('manual'), signedInAs: 'member' },
-	{ name: 'a link import', path: entryTabPath('url'), signedInAs: 'member' },
-	{ name: 'a photo import', path: entryTabPath('photo'), signedInAs: 'member' },
-	{ name: 'drafts', path: entryTabPath('drafts'), signedInAs: 'member' },
+	{ name: 'Add a Recipe', path: contributePath, signedInAs: 'member' },
+	{ name: 'a new recipe', path: recipeEntryPaths.manual, signedInAs: 'member' },
+	{ name: 'a link import', path: recipeEntryPaths.url, signedInAs: 'member' },
+	{ name: 'a photo import', path: recipeEntryPaths.photo, signedInAs: 'member' },
 	{ name: 'the account', path: accountPath, signedInAs: 'member' },
 	{ name: 'a member’s Favorites', path: favoritesPath, signedInAs: 'member' },
 	{ name: 'a recipe’s editor', path: recipeEditPath(sampleRecipe.slug), signedInAs: 'admin' },

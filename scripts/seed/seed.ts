@@ -10,7 +10,6 @@ import { RecipeService } from '@/application/recipes/recipe-service';
 import type { Member } from '@/domain/member/member';
 import { pinFullSslVerification } from '@/infrastructure/db/connection-string';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
-import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { DrizzleSavedDraftRepository } from '@/infrastructure/db/drizzle-saved-draft-repository';
 import { poolDeadlines } from '@/infrastructure/db/pool-deadlines';
@@ -127,7 +126,6 @@ if (env.VERCEL_ENV === 'production') {
 			await seedSamples(
 				new RecipeService(
 					new DrizzleRecipeRepository(db),
-					new DrizzleRecipeImportRepository(db),
 					new DrizzleSavedDraftRepository(db),
 					members,
 					images,

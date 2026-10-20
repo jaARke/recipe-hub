@@ -1,34 +1,21 @@
 import 'server-only';
-import { and, desc, eq, gte, isNotNull, lt, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, gte, lt, sql } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
+import { savedDraftIdSchema, type SavedDraftId } from '@/application/drafts/saved-draft';
 import type {
 	ImportFailure,
 	ImportSuccess,
 	NewRecipeImport,
 	RecipeImportLimit,
 	RecipeImportRepository,
-	UnsavedImport,
 } from '@/application/ports/recipe-import-repository';
-import type { MemberId } from '@/domain/member/member';
+import { memberIdSchema, type MemberId } from '@/domain/member/member';
 import type { RecipeImport, RecipeImportId } from '@/domain/recipe/recipe-import';
 import { boundedTransaction } from '@/infrastructure/db/bounded-transaction';
-import {
-	recipeImportColumns,
-	toRecipeImport,
-	toUnsavedImport,
-	unsavedImportColumns,
-} from '@/infrastructure/db/recipe-import-mapper';
-import { recipeImports, recipes } from '@/infrastructure/db/schema';
+import { insertProvidedColumns } from '@/infrastructure/db/provided-columns-insert';
+import { recipeImportColumns, toRecipeImport } from '@/infrastructure/db/recipe-import-mapper';
+import { recipeDrafts, recipeImports, recipes } from '@/infrastructure/db/schema';
 import { lockForTransaction } from '@/infrastructure/db/transaction-lock';
-
-// Ends with the id, so imports started at the same moment keep one order.
-const newestFirst = [desc(recipeImports.createdAt), desc(recipeImports.id)];
-
-// Every image pathname an import's draft names, as a jsonb array of strings.
-const draftImagePathnames = sql`jsonb_path_query_array(${recipeImports.draft}, '$.content.images[*].pathname')`;
-
-// What clearing an import's draft writes; the rest of the row stays as a record.
-const clearedDraft = { draft: null, sourceUrl: null, updatedAt: sql`now()` };
 
 // A limited start takes a transaction-scoped lock keyed by this and its member, so the imports it
 // counted stay the member's only ones until the new import commits.
@@ -60,20 +47,47 @@ export class DrizzleRecipeImportRepository implements RecipeImportRepository {
 				}
 			}
 
-			const [row] = await tx
-				.insert(recipeImports)
-				.values(recipeImport)
-				.returning(recipeImportColumns);
-			return toRecipeImport(row!, null);
+			// Names only the row's columns, since the next deployment drops draft and source_url while this
+			// one serves.
+			const row = await insertProvidedColumns(
+				tx,
+				recipeImports,
+				{ memberId: recipeImport.memberId, mode: recipeImport.mode },
+				recipeImportColumns
+			);
+			return toRecipeImport(row, null);
 		});
 	}
 
-	async recordSuccess(id: RecipeImportId, success: ImportSuccess): Promise<boolean> {
-		return this.finish(id, { ...success, status: 'succeeded' });
+	// The draft is created in the success's transaction, so a draft the database refuses leaves the
+	// import running.
+	async recordSuccess(
+		id: RecipeImportId,
+		{ draft, ...success }: ImportSuccess
+	): Promise<SavedDraftId | null> {
+		return boundedTransaction(this.db, 'recording a successful import', async (tx) => {
+			const memberId = await this.finish(tx, id, { ...success, status: 'succeeded' });
+			if (memberId === null) {
+				return null;
+			}
+
+			const [created] = await tx
+				.insert(recipeDrafts)
+				.values({
+					memberId,
+					importId: id,
+					provenance: draft.provenance,
+					title: draft.title ?? null,
+					imported: draft.imported,
+					imagePathnames: [...draft.imagePathnames],
+				})
+				.returning({ id: recipeDrafts.id });
+			return savedDraftIdSchema.parse(created!.id);
+		});
 	}
 
 	async recordFailure(id: RecipeImportId, failure: ImportFailure): Promise<boolean> {
-		return this.finish(id, { ...failure, status: 'failed' });
+		return (await this.finish(this.db, id, { ...failure, status: 'failed' })) !== null;
 	}
 
 	async findById(id: RecipeImportId): Promise<RecipeImport | null> {
@@ -85,58 +99,6 @@ export class DrizzleRecipeImportRepository implements RecipeImportRepository {
 		return row === undefined ? null : toRecipeImport(row.recipeImport, row.savedRecipeSlug);
 	}
 
-	async listUnsaved(memberId: MemberId, since: Date, limit: number): Promise<UnsavedImport[]> {
-		const rows = await this.db
-			.select(unsavedImportColumns)
-			.from(recipeImports)
-			.where(and(eq(recipeImports.memberId, memberId), this.isUnsaved(since)))
-			.orderBy(...newestFirst)
-			.limit(limit);
-		return rows.map(toUnsavedImport);
-	}
-
-	async findImagesInUnsavedImports(
-		pathnames: readonly string[],
-		since: Date,
-		excludeMemberId?: MemberId
-	): Promise<string[]> {
-		const wanted = new Set(pathnames);
-		if (wanted.size === 0) {
-			return [];
-		}
-
-		// The drafts naming any of the pathnames, then each pathname they name that was asked about.
-		const rows = await this.db
-			.selectDistinct({ pathname: sql<string>`jsonb_array_elements_text(${draftImagePathnames})` })
-			.from(recipeImports)
-			.where(
-				and(
-					this.isUnsaved(since),
-					sql`${draftImagePathnames} ?| ${sql.param([...wanted])}::text[]`,
-					excludeMemberId === undefined ? undefined : ne(recipeImports.memberId, excludeMemberId)
-				)
-			);
-		return rows.map(({ pathname }) => pathname).filter((pathname) => wanted.has(pathname));
-	}
-
-	async clearDraft(id: RecipeImportId): Promise<void> {
-		await this.db.update(recipeImports).set(clearedDraft).where(eq(recipeImports.id, id));
-	}
-
-	async clearDraftsCreatedBefore(cutoff: Date): Promise<number> {
-		const rows = await this.db
-			.update(recipeImports)
-			.set(clearedDraft)
-			.where(
-				and(
-					lt(recipeImports.createdAt, cutoff),
-					or(isNotNull(recipeImports.draft), isNotNull(recipeImports.sourceUrl))
-				)
-			)
-			.returning({ id: recipeImports.id });
-		return rows.length;
-	}
-
 	async failRunningCreatedBefore(cutoff: Date, failure: string): Promise<number> {
 		const rows = await this.db
 			.update(recipeImports)
@@ -146,31 +108,18 @@ export class DrizzleRecipeImportRepository implements RecipeImportRepository {
 		return rows.length;
 	}
 
-	// Only a running import finishes, and only once.
+	// Only a running import finishes, and only once. Returns its member, or null when no running import
+	// has the id.
 	private async finish(
+		db: PgDatabase<PgQueryResultHKT>,
 		id: RecipeImportId,
 		changes: Partial<typeof recipeImports.$inferInsert>
-	): Promise<boolean> {
-		const rows = await this.db
+	): Promise<MemberId | null> {
+		const [row] = await db
 			.update(recipeImports)
 			.set({ ...changes, updatedAt: sql`now()` })
 			.where(and(eq(recipeImports.id, id), eq(recipeImports.status, 'running')))
-			.returning({ id: recipeImports.id });
-		return rows.length > 0;
-	}
-
-	// Succeeded since the given time, still holding its draft, and saved as no recipe.
-	private isUnsaved(since: Date): SQL | undefined {
-		return and(
-			eq(recipeImports.status, 'succeeded'),
-			isNotNull(recipeImports.draft),
-			gte(recipeImports.createdAt, since),
-			notExists(
-				this.db
-					.select({ id: recipes.id })
-					.from(recipes)
-					.where(eq(recipes.importId, recipeImports.id))
-			)
-		);
+			.returning({ memberId: recipeImports.memberId });
+		return row === undefined ? null : memberIdSchema.parse(row.memberId);
 	}
 }

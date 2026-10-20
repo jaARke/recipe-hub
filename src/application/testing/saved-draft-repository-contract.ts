@@ -1,24 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { SavedDraftEditConflictError } from '@/application/drafts/errors';
 import { savedDraftIdSchema, type SavedDraftId } from '@/application/drafts/saved-draft';
-import type { RecipeImportRepository } from '@/application/ports/recipe-import-repository';
+import type {
+	ImportSuccess,
+	RecipeImportRepository,
+} from '@/application/ports/recipe-import-repository';
 import type {
 	NewSavedDraft,
 	SavedDraft,
 	SavedDraftRepository,
 } from '@/application/ports/saved-draft-repository';
 import type { MemberId } from '@/domain/member/member';
-import type { Provenance } from '@/domain/recipe/provenance';
 import type { RecipeImportId } from '@/domain/recipe/recipe-import';
 
 export type SavedDraftRepositoryFixture = {
 	drafts: SavedDraftRepository;
-	// Where the imports drafts continue are started.
+	// Where the imports that make drafts are started.
 	imports: RecipeImportRepository;
 	// Two members the repositories accept.
 	memberId: MemberId;
 	otherMemberId: MemberId;
-	// Moves a draft's last save back in time.
+	// Moves a draft's last change back in time.
 	backdate(id: SavedDraftId, updatedAt: Date): Promise<void>;
 };
 
@@ -38,11 +40,24 @@ const lemonSquares = {
 	imagePathnames: ['dish/development/squares.jpg'],
 };
 
-// What a draft saved from a URL import's review keeps of the import.
-const fromLink: Provenance = {
-	entryMode: 'url',
-	sourceUrl: 'https://example.com/lemon-bars',
-	aiModel: 'example/model',
+// What a link import read, with the draft it makes.
+const linkImport: ImportSuccess = {
+	draft: {
+		provenance: {
+			entryMode: 'url',
+			sourceUrl: 'https://example.com/lemon-bars',
+			aiModel: 'example/model',
+		},
+		title: 'Lemon bars',
+		imported: {
+			content: {
+				title: 'Lemon bars',
+				images: [{ role: 'scan', pathname: 'scan/development/bars.jpg' }],
+			},
+			problems: [{ path: 'title', message: 'Check the title.' }],
+		},
+		imagePathnames: ['scan/development/bars.jpg'],
+	},
 };
 
 // What every SavedDraftRepository guarantees. The caller provides a fresh, empty fixture for each test.
@@ -50,15 +65,7 @@ export function describeSavedDraftRepositoryContract(
 	fixture: () => SavedDraftRepositoryFixture
 ): void {
 	async function create(draft: Partial<NewSavedDraft> = {}): Promise<SavedDraft> {
-		const created = await fixture().drafts.create({
-			...lemonBars,
-			memberId: fixture().memberId,
-			...draft,
-		});
-		if (created === null) {
-			throw new Error('The draft was refused');
-		}
-		return created;
+		return fixture().drafts.create({ ...lemonBars, memberId: fixture().memberId, ...draft });
 	}
 
 	async function startImport(memberId: MemberId = fixture().memberId): Promise<RecipeImportId> {
@@ -67,6 +74,19 @@ export function describeSavedDraftRepositoryContract(
 			throw new Error('The import was refused');
 		}
 		return started.id;
+	}
+
+	// The draft a link import makes as it succeeds, with the import.
+	async function importDraft(
+		memberId: MemberId = fixture().memberId
+	): Promise<{ importId: RecipeImportId; draft: SavedDraft }> {
+		const importId = await startImport(memberId);
+		const draftId = await fixture().imports.recordSuccess(importId, linkImport);
+		const draft = draftId === null ? null : await fixture().drafts.findById(draftId);
+		if (draft === null) {
+			throw new Error('The import made no draft');
+		}
+		return { importId, draft };
 	}
 
 	describe('create', () => {
@@ -91,63 +111,34 @@ export function describeSavedDraftRepositoryContract(
 			expect(created).not.toHaveProperty('title');
 			expect(created.imagePathnames).toEqual([]);
 		});
+	});
 
-		it('keeps the provenance of the import a draft continues, and none for one without', async () => {
+	describe("an import's draft", () => {
+		it('reads back with its import, provenance, and what was read in place of values', async () => {
 			const { drafts, memberId } = fixture();
-			const importId = await startImport();
 
-			const continuing = await create({ importId, provenance: fromLink });
-			const byHand = await create();
+			const { importId, draft } = await importDraft();
 
-			expect(continuing).toEqual({
+			expect(draft).toEqual({
 				id: expect.any(String),
 				memberId,
 				importId,
-				provenance: fromLink,
-				...lemonBars,
+				provenance: linkImport.draft.provenance,
+				title: 'Lemon bars',
+				imported: linkImport.draft.imported,
+				imagePathnames: ['scan/development/bars.jpg'],
 				createdAt: expect.any(Date),
-				updatedAt: continuing.createdAt,
+				updatedAt: draft.createdAt,
 			});
-			expect(await drafts.findById(continuing.id)).toEqual(continuing);
-			expect(await drafts.findByImportId(importId)).toEqual(continuing);
-			expect(byHand).not.toHaveProperty('provenance');
-			expect(await drafts.findById(byHand.id)).not.toHaveProperty('provenance');
-		});
-
-		it('stores no second draft for an import, and keeps the first as it was', async () => {
-			const { drafts, otherMemberId } = fixture();
-			const importId = await startImport();
-			const first = await create({ importId });
-
-			expect(
-				await drafts.create({ ...lemonSquares, memberId: fixture().memberId, importId })
-			).toBeNull();
-			expect(
-				await drafts.create({ ...lemonSquares, memberId: otherMemberId, importId })
-			).toBeNull();
-			expect(await drafts.findByImportId(importId)).toEqual(first);
-		});
-
-		it('stores one of two drafts for an import saved at once', async () => {
-			const { drafts, memberId } = fixture();
-			const importId = await startImport();
-
-			const both = await Promise.all([
-				drafts.create({ ...lemonBars, memberId, importId }),
-				drafts.create({ ...lemonSquares, memberId, importId }),
-			]);
-
-			const stored = both.filter((draft) => draft !== null);
-			expect(stored).toHaveLength(1);
-			expect(await drafts.findByImportId(importId)).toEqual(stored[0]);
+			expect(draft).not.toHaveProperty('values');
+			expect(await drafts.findByImportId(importId)).toEqual(draft);
 		});
 	});
 
 	describe('update', () => {
 		it('replaces the contents and marks the draft saved again, keeping the rest', async () => {
 			const { drafts } = fixture();
-			const importId = await startImport();
-			const created = await create({ importId, provenance: fromLink });
+			const created = await create();
 			const anHourAgo = new Date(Date.now() - hourMs);
 			await fixture().backdate(created.id, anHourAgo);
 
@@ -160,8 +151,6 @@ export function describeSavedDraftRepositoryContract(
 			expect(updated).toEqual({
 				id: created.id,
 				memberId: created.memberId,
-				importId,
-				provenance: fromLink,
 				values: lemonSquares.values,
 				imagePathnames: [],
 				createdAt: created.createdAt,
@@ -169,6 +158,28 @@ export function describeSavedDraftRepositoryContract(
 			});
 			expect(updated?.updatedAt.getTime()).toBeGreaterThan(Date.now() - hourMs);
 			expect(await drafts.findById(created.id)).toEqual(updated);
+		});
+
+		it('puts the values in place of what an import read, keeping its import and provenance', async () => {
+			const { drafts } = fixture();
+			const { importId, draft } = await importDraft();
+
+			const updated = await drafts.update(draft.id, {
+				...lemonSquares,
+				expectedUpdatedAt: draft.updatedAt,
+			});
+
+			expect(updated).toEqual({
+				id: draft.id,
+				memberId: draft.memberId,
+				importId,
+				provenance: linkImport.draft.provenance,
+				...lemonSquares,
+				createdAt: draft.createdAt,
+				updatedAt: expect.any(Date),
+			});
+			expect(updated).not.toHaveProperty('imported');
+			expect(await drafts.findById(draft.id)).toEqual(updated);
 		});
 
 		it('moves the version a millisecond on at least, so a save in the same millisecond is a new one', async () => {
@@ -223,59 +234,66 @@ export function describeSavedDraftRepositoryContract(
 	});
 
 	describe('list', () => {
-		it("lists the member's drafts saved since the time, newest first, without their values", async () => {
+		it("lists the member's drafts changed since the time, newest first, without their values", async () => {
 			const { drafts, memberId, otherMemberId } = fixture();
-			const importId = await startImport();
 			const older = await create({ title: undefined });
-			const newer = await create({ importId, provenance: fromLink });
+			const { draft: newer } = await importDraft();
 			const expired = await create();
 			await create({ memberId: otherMemberId });
+			await importDraft(otherMemberId);
 			await fixture().backdate(older.id, new Date(Date.now() - 2 * hourMs));
 			await fixture().backdate(newer.id, new Date(Date.now() - hourMs));
 			await fixture().backdate(expired.id, new Date(Date.now() - 4 * hourMs));
 
-			const listed = await drafts.list(memberId, new Date(Date.now() - 3 * hourMs), 10);
+			const listed = await drafts.list(memberId, new Date(Date.now() - 3 * hourMs));
 
 			expect(listed).toEqual([
 				{
 					id: newer.id,
-					importId,
-					provenance: fromLink,
+					provenance: linkImport.draft.provenance,
 					title: 'Lemon bars',
 					updatedAt: expect.any(Date),
 				},
 				{ id: older.id, updatedAt: expect.any(Date) },
 			]);
 		});
+	});
 
-		it('lists only the newest, up to its limit', async () => {
-			const { drafts, memberId } = fixture();
-			const created: SavedDraft[] = [];
-			for (let hours = 3; hours > 0; hours -= 1) {
-				const draft = await create();
-				await fixture().backdate(draft.id, new Date(Date.now() - hours * hourMs));
-				created.push(draft);
-			}
+	describe('count', () => {
+		it("counts the member's drafts changed since the time, an import's included", async () => {
+			const { drafts, memberId, otherMemberId } = fixture();
+			const older = await create({ title: undefined });
+			await importDraft();
+			const expired = await create();
+			await create({ memberId: otherMemberId });
+			await fixture().backdate(older.id, new Date(Date.now() - 2 * hourMs));
+			await fixture().backdate(expired.id, new Date(Date.now() - 4 * hourMs));
 
-			const listed = await drafts.list(memberId, new Date(Date.now() - 4 * hourMs), 2);
-
-			expect(listed.map(({ id }) => id)).toEqual([created[2]?.id, created[1]?.id]);
+			expect(await drafts.count(memberId, new Date(Date.now() - 3 * hourMs))).toBe(2);
+			expect(await drafts.count(memberId, new Date(Date.now() - hourMs))).toBe(1);
+			expect(await drafts.count(otherMemberId, new Date(Date.now() - hourMs))).toBe(1);
 		});
 	});
 
 	describe('findImagesInUse', () => {
-		it('finds the pathnames a draft saved since the time names', async () => {
+		it("finds the pathnames a draft changed since the time names, an import's included", async () => {
 			const { drafts } = fixture();
 			const expired = await create({ imagePathnames: ['dish/development/old.jpg'] });
 			await create();
+			await importDraft();
 			await fixture().backdate(expired.id, new Date(Date.now() - 2 * hourMs));
 
 			const named = await drafts.findImagesInUse(
-				['dish/development/bars.jpg', 'dish/development/old.jpg', 'dish/development/unused.jpg'],
+				[
+					'dish/development/bars.jpg',
+					'scan/development/bars.jpg',
+					'dish/development/old.jpg',
+					'dish/development/unused.jpg',
+				],
 				new Date(Date.now() - hourMs)
 			);
 
-			expect(named).toEqual(['dish/development/bars.jpg']);
+			expect(named.toSorted()).toEqual(['dish/development/bars.jpg', 'scan/development/bars.jpg']);
 		});
 
 		it("ignores the excluded member's drafts", async () => {
@@ -301,27 +319,39 @@ export function describeSavedDraftRepositoryContract(
 	});
 
 	describe('delete', () => {
-		it('deletes the draft and returns it, and returns null for an id no draft has', async () => {
+		it('deletes the draft at its version and returns it, and returns null for an id no draft has', async () => {
 			const { drafts } = fixture();
 			const created = await create();
 			const kept = await create();
 
-			expect(await drafts.delete(created.id)).toEqual(created);
+			expect(await drafts.delete(created.id, created.updatedAt)).toEqual(created);
 			expect(await drafts.findById(created.id)).toBeNull();
 			expect(await drafts.findById(kept.id)).toEqual(kept);
-			expect(await drafts.delete(created.id)).toBeNull();
+			expect(await drafts.delete(created.id, created.updatedAt)).toBeNull();
+			expect(await drafts.delete(missingId, new Date())).toBeNull();
 		});
 
-		it("deletes the import's draft, and no other", async () => {
+		it('refuses a version saved over since, and deletes nothing', async () => {
 			const { drafts } = fixture();
-			const importId = await startImport();
-			const continuing = await create({ importId });
-			const kept = await create({ importId: await startImport() });
+			const created = await create();
+			// Saved right away, so the delete names a version less than a millisecond old.
+			const saved = await drafts.update(created.id, {
+				...lemonSquares,
+				expectedUpdatedAt: created.updatedAt,
+			});
 
-			await drafts.deleteByImportId(importId);
+			await expect(drafts.delete(created.id, created.updatedAt)).rejects.toThrow(
+				SavedDraftEditConflictError
+			);
+			expect(await drafts.findById(created.id)).toEqual(saved);
+		});
 
-			expect(await drafts.findById(continuing.id)).toBeNull();
-			expect(await drafts.findById(kept.id)).toEqual(kept);
+		it("deletes an import's draft at the version it was made at", async () => {
+			const { drafts } = fixture();
+			const { importId, draft } = await importDraft();
+
+			expect(await drafts.delete(draft.id, draft.updatedAt)).toEqual(draft);
+			expect(await drafts.findByImportId(importId)).toBeNull();
 		});
 
 		it('deletes every draft last saved before the time, and counts them', async () => {

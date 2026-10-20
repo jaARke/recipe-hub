@@ -1,4 +1,5 @@
 import { imageRouteSrc } from '@/lib/image-paths';
+import { hrefWithParams } from '@/lib/url-query';
 
 export const recipeListPath = '/';
 
@@ -19,6 +20,14 @@ export const recipeListParamNames = {
 
 export function recipePath(slug: string): string {
 	return `${recipePagesPath}/${slug}`;
+}
+
+// The recipe page's parameter saying the member has just added the recipe, which the page says once.
+export const recipeAddedParamName = 'added';
+
+// The recipe's page as adding the recipe lands on it.
+export function addedRecipePath(slug: string): string {
+	return hrefWithParams(recipePath(slug), new URLSearchParams({ [recipeAddedParamName]: '1' }));
 }
 
 export function recipeEditPath(slug: string): string {

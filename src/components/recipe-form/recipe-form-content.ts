@@ -1,7 +1,10 @@
 import { z } from 'zod';
 import type { RecipeFormPayload } from '@/components/recipe-form/recipe-form-fields';
 import type { Problem } from '@/domain/problem';
+import { chapters, type Chapter } from '@/domain/recipe/chapter';
+import { diets } from '@/domain/recipe/diet';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
+import { holidays } from '@/domain/recipe/holiday';
 import { parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import { parseRecipeContent, type RecipeContentInput } from '@/domain/recipe/recipe';
 import { recipeImageRoleSchema, storedImageSizeSchema } from '@/domain/recipe/recipe-image';
@@ -33,7 +36,9 @@ const payloadSchema = z.object({
 	instructionSections: z.array(
 		z.object({ heading: z.string().optional(), steps: z.array(z.string()) })
 	),
-	tags: z.array(z.string()),
+	chapter: z.enum(chapters).optional(),
+	holidays: z.array(z.enum(holidays)),
+	diets: z.array(z.enum(diets)),
 	images: z.array(
 		z.object({
 			role: recipeImageRoleSchema,
@@ -80,8 +85,11 @@ function minutes(text: string | undefined): number | undefined {
 	return value === undefined ? undefined : Number(value.trim());
 }
 
+// The content the form sent, which has no chapter until the member chooses one.
+type FormContent = Omit<RecipeContentInput, 'chapter'> & { chapter?: Chapter };
+
 // The rest of the recipe's problems, so one save reports them all.
-function contentProblems(content: RecipeContentInput): readonly Problem[] {
+function contentProblems(content: FormContent): readonly Problem[] {
 	try {
 		parseRecipeContent(content);
 	} catch (error) {
@@ -93,11 +101,10 @@ function contentProblems(content: RecipeContentInput): readonly Problem[] {
 	return [];
 }
 
-// Throws InvalidRecipeError when the payload is malformed or the yield's amount can't be read. The
-// recipe service validates the rest.
-export function recipeContentFromForm(json: string): RecipeContentInput {
-	const payload = readPayload(json);
-	const content: RecipeContentInput = {
+// The payload as content. Throws InvalidRecipeError when the yield's amount can't be read, with the
+// recipe's other problems.
+function formContent(payload: RecipeFormPayload): FormContent {
+	const content: FormContent = {
 		title: payload.title,
 		description: optionalText(payload.description),
 		source: optionalText(payload.source),
@@ -115,7 +122,9 @@ export function recipeContentFromForm(json: string): RecipeContentInput {
 			heading: optionalText(section.heading),
 			steps: section.steps.map((text) => ({ text })),
 		})),
-		tags: payload.tags,
+		chapter: payload.chapter,
+		holidays: payload.holidays,
+		diets: payload.diets,
 		images: payload.images.map(({ role, pathname, size, alt }) => ({
 			role,
 			pathname,
@@ -139,4 +148,16 @@ export function recipeContentFromForm(json: string): RecipeContentInput {
 				? { kind: 'servings', amount }
 				: { kind: 'makes', amount, unit: optionalText(recipeYield.unit) },
 	};
+}
+
+// Throws InvalidRecipeError when the payload is malformed, the yield's amount can't be read, or no
+// chapter is chosen. The recipe service validates the rest.
+export function recipeContentFromForm(json: string): RecipeContentInput {
+	const content = formContent(readPayload(json));
+	const { chapter } = content;
+	if (chapter === undefined) {
+		// The domain names the missing chapter with the rest of the recipe's problems.
+		throw new InvalidRecipeError(contentProblems(content));
+	}
+	return { ...content, chapter };
 }

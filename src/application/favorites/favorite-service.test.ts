@@ -273,7 +273,9 @@ describe('listFavorites', () => {
 					source: 'Grandpa Lou',
 					totalMinutes: 50,
 					yield: { kind: 'servings', amount: { min: 6 } },
-					tags: ['Soup', 'Weeknight'],
+					chapter: 'soups-salads',
+					holidays: [],
+					diets: [],
 					coverImage: {
 						role: 'dish',
 						pathname: 'dish/seed/weeknight-chicken-soup.jpg',

@@ -16,6 +16,7 @@ import {
 	firstResultCount,
 	RecipeSearchResult,
 	RecipeSearchResultList,
+	RecipeSearchResultRows,
 	RecipeSearchResultSkeleton,
 } from '@/components/search/recipe-search-result';
 import { RecipeSearchToolbar } from '@/components/search/recipe-search-toolbar';
@@ -46,6 +47,12 @@ const searchResultsHeadingId = 'search-results-heading';
 const loadingLabels: Record<RecipeSearchMode, string> = {
 	browse: 'Loading recipes',
 	search: 'Loading results',
+};
+
+// The label each list records for a recipe's link back to it.
+const backLabels: Record<RecipeSearchMode, string> = {
+	browse: 'Back to recipes',
+	search: 'Back to search results',
 };
 
 const sortDescriptions: Record<RecipeSearchSort, string> = {
@@ -118,7 +125,6 @@ function RecipeSearch({
 				idPrefix={`${mode}-filters-sidebar`}
 				state={state}
 				facets={results.facets}
-				total={results.total}
 				headingTag={Section}
 				className="hidden lg:flex lg:w-64 lg:shrink-0"
 			/>
@@ -160,7 +166,6 @@ function RecipeSearch({
 							idPrefix={`${mode}-filters-panel`}
 							state={state}
 							facets={results.facets}
-							total={results.total}
 						/>
 					}
 				/>
@@ -175,9 +180,10 @@ function RecipeSearch({
 						layout="besideSidebar"
 						recipes={results.results.map(({ recipe }) => recipe)}
 						headingTag={Section}
+						backLabel={backLabels[mode]}
 					/>
 				) : (
-					<RecipeSearchResultList>
+					<RecipeSearchResultList backLabel={backLabels[mode]}>
 						{results.results.map((result, index) => (
 							<li key={result.recipe.id}>
 								<RecipeSearchResult
@@ -227,13 +233,13 @@ function RecipeSearchSkeleton({ mode }: { mode: RecipeSearchMode }) {
 					{mode === 'browse' ? (
 						<RecipeGridSkeletonCards layout="besideSidebar" />
 					) : (
-						<RecipeSearchResultList>
+						<RecipeSearchResultRows>
 							{Array.from({ length: skeletonResultCount }, (_, index) => (
 								<li key={index}>
 									<RecipeSearchResultSkeleton />
 								</li>
 							))}
-						</RecipeSearchResultList>
+						</RecipeSearchResultRows>
 					)}
 				</div>
 			</div>

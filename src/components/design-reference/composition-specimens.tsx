@@ -10,22 +10,27 @@ import {
 	sampleCatalogFacets,
 	sampleContributor,
 	sampleDrafts,
-	sampleImportsNow,
+	sampleDraftsNow,
 	sampleRecipeDetail,
 	sampleRecipeSummaries,
 	sampleSearchPage,
 } from '@/components/design-reference/sample-recipe-dtos';
-import { SampleRecipeEntryTabs } from '@/components/design-reference/sample-recipe-entry-tabs';
 import {
 	SampleEditingPage,
 	type SampleEditingSubject,
 } from '@/components/design-reference/sample-recipe-form';
+import {
+	SampleScanImportForm,
+	SampleUrlImportForm,
+} from '@/components/design-reference/sample-recipe-import';
+import { SampleRecipeStart } from '@/components/design-reference/sample-recipe-start';
 import { PageContainer } from '@/components/layout/page-container';
 import type { EditedRecipe } from '@/components/recipe-form/recipe-form-fields';
 import {
 	recipeFormValues,
 	type RecipeFormValues,
 } from '@/components/recipe-form/recipe-form-values';
+import { RecipeImportHeading } from '@/components/recipe-import/recipe-entry-heading';
 import { RecipeImportSubmit } from '@/components/recipe-import/recipe-import-submit';
 import { RecipeActions } from '@/components/recipe/recipe-actions';
 import { RecipeDetail, RecipeDetailSkeleton } from '@/components/recipe/recipe-detail';
@@ -50,47 +55,42 @@ import { sampleSundayPotRoast } from '@/domain/recipe/samples/sample-recipes';
 import { slugify } from '@/domain/recipe/slug';
 import { settings } from '@/lib/settings';
 
-const sampleBrowseState: RecipeSearchState = { tags: [], sort: 'newest', page: 1 };
+const sampleBrowseState: RecipeSearchState = { holidays: [], diets: [], sort: 'newest', page: 1 };
 
 const sampleSearchState: RecipeSearchState = {
 	text: 'butter',
-	tags: ['Baking'],
+	holidays: [],
+	diets: ['vegetarian'],
 	contributorId: sampleContributor.id,
 	sort: 'relevance',
-	page: 1,
-};
-
-// A tag past the first eight, which shows because it is checked.
-const sampleCatalogState: RecipeSearchState = {
-	tags: ['Comfort food'],
-	sort: 'newest',
 	page: 1,
 };
 
 const noResultStates: readonly { label: string; state: RecipeSearchState }[] = [
 	{
 		label: 'A query',
-		state: { text: 'biscuts', tags: [], sort: 'relevance', page: 1 },
+		state: { text: 'biscuts', holidays: [], diets: [], sort: 'relevance', page: 1 },
 	},
 	{
 		label: 'Filters',
-		state: { tags: ['Holiday', 'Soup'], sort: 'newest', page: 1 },
+		state: {
+			chapter: 'soups-salads',
+			holidays: ['christmas'],
+			diets: [],
+			sort: 'newest',
+			page: 1,
+		},
 	},
 	{
 		label: 'A query with filters',
-		state: { text: 'biscuts', tags: ['Holiday'], sort: 'relevance', page: 1 },
+		state: { text: 'biscuts', holidays: ['christmas'], diets: [], sort: 'relevance', page: 1 },
 	},
 ];
 
-// Every sample recipe's tags, most used first, as the recipe form suggests them.
-const sampleTagLabels = sampleCatalogFacets.tags.map(({ label }) => label);
-
-// Any id and version: the stand-in action never reads them, and they mark the form as editing. No
-// other sample recipe is slow cooked, so the pot roast can respell that tag.
+// Any id and version: the stand-in action never reads them, and they mark the form as editing.
 const sampleEditedRecipe: EditedRecipe = {
 	id: '0199c7a4-2c3e-7b1a-9f00-000000000001',
 	version: '2026-10-12T00:00:00.000Z',
-	respellableTags: ['Slow cooked'],
 };
 
 // The anise cakes card beside it, as the scan extractor might hand it over: the card's ground truth in
@@ -128,7 +128,6 @@ const sampleDraft: { content: RecipeDraftContent; problems: Problem[] } = {
 				],
 			},
 		],
-		tags: ['Baking'],
 	},
 	problems: [
 		{ path: 'title', message: 'Add a title. The card’s heading was hard to read.' },
@@ -163,8 +162,8 @@ const sampleSavedDraftContent: RecipeDraftContent = {
 };
 
 // The recipe form's pages, each with its heading's menu and its starting values as the page builds
-// them. The review adds stand-in pages of the original as the member's uploads, since no store holds
-// a sample draft's scans.
+// them. The draft read from photos adds stand-in pages of the original as the member's uploads, since
+// no store holds a sample draft's scans.
 const recipeFormSamples: readonly {
 	label: string;
 	subject: SampleEditingSubject;
@@ -188,20 +187,33 @@ const recipeFormSamples: readonly {
 		initial: recipeFormValues(parseRecipeContent(sampleSundayPotRoast)),
 	},
 	{
-		label: 'Reviewing an import, with its notes to check',
+		label: 'A draft read from photos, with its notes to check',
 		subject: {
-			page: 'review',
-			importId: '0199d2a0-1b2c-7d3e-8f40-000000000005',
-			title: sampleDraft.content.title,
+			page: 'add',
+			draft: {
+				id: '0199d2a0-1b2c-7d3e-8f40-000000000003',
+				title: sampleDraft.content.title,
+				savedAt: new Date('2026-10-12T17:59:30.000Z'),
+			},
+			importedFrom: 'photo',
 		},
 		initial: recipeFormValues(sampleDraft.content, sampleDraft.problems),
 		standInScans: true,
 	},
 ];
 
-// The entry tabs with the member's drafts, and with none, whose tab then shows no count.
-const entryDraftSamples: readonly { label: string; drafts: readonly DraftSummaryDto[] }[] = [
-	{ label: 'With drafts', drafts: sampleDrafts },
+// The start page as a draft's back link leaves for it, naming the draft, with the member's drafts,
+// and with none.
+const startSamples: readonly {
+	label: string;
+	drafts: readonly DraftSummaryDto[];
+	kept?: DraftSummaryDto;
+}[] = [
+	{
+		label: 'After leaving a draft',
+		drafts: sampleDrafts,
+		kept: sampleDrafts.find(({ mode }) => mode === undefined),
+	},
 	{ label: 'With no drafts', drafts: [] },
 ];
 
@@ -211,7 +223,7 @@ const subsections = [
 		id: 'browse',
 		title: 'Browse',
 		description:
-			'The collection as cards beside the search page’s filters, so one control serves Browse and Search, which differ in what they list. From lg the filters sit in a sidebar, every tag with its count and the first eight shown, over two columns of cards and three from xl; below lg the toolbar’s Filters opens the same form above the cards. Filters apply with their button and keep to Browse; the tags on offer are those that narrow the list. Each card is a single link to its recipe, and a recipe without a photo keeps the photo’s box. Here six of its cards; its links lead to Browse.',
+			'The collection as cards beside the search page’s filters, so one control serves Browse and Search, which differ in what they list. From lg the filters sit in a sidebar, each chapter, holiday, and diet with its count, over two columns of cards and three from xl; below lg the toolbar’s Filters opens the same form above the cards. Filters apply with their button and keep to Browse; the chapters, holidays, and diets on offer are those with recipes to count, and a chosen one stays so it can be cleared. Each card is a single link to its recipe, and a recipe without a photo keeps the photo’s box. Here six of its cards; its links lead to Browse.',
 		Content: BrowseSpecimen,
 	},
 	{
@@ -244,7 +256,7 @@ const subsections = [
 		id: 'recipe-detail',
 		title: 'Recipe detail',
 		description:
-			'Reading width, with ingredients and steps in text-lg: each ingredient bulleted and each step numbered in one muted marker column, so their text shares a left edge and a line that wraps stays one ingredient. Under the title and its credit, a ruled block holds a row of labelled cells for the times and yield, one for who added the recipe, when, and when it was edited if on a later day, and one for the tags; a row or cell with nothing to show is left out. The recipe’s actions follow, then the dish photos in a filmstrip, here a row of four, the description, and the original recipe’s pages in a filmstrip of their own, each image whole in its own shape and opening the viewer at itself. The pencil beside the title, for the contributor and admins, opens the edit page. Its headings start at h4 here, under this page’s own.',
+			'Reading width, with ingredients and steps in text-lg: each ingredient bulleted and each step numbered in one muted marker column, so their text shares a left edge and a line that wraps stays one ingredient. Under the title and its credit, a ruled block holds a row of labelled cells for the times and yield, one for who added the recipe, when, and when it was edited if on a later day, and one for its chapter, a link to the chapter’s list, then any holidays and diets as badges linking to theirs; a row or cell with nothing to show is left out. The recipe’s actions follow, then the dish photos in a filmstrip, here a row of four, the description, and the original recipe’s pages in a filmstrip of their own, each image whole in its own shape and opening the viewer at itself. The pencil beside the title, for the contributor and admins, opens the edit page. Its headings start at h4 here, under this page’s own.',
 		Content: RecipeDetailSpecimen,
 	},
 	{
@@ -285,7 +297,7 @@ const subsections = [
 		id: 'search-results',
 		title: 'Search results',
 		description:
-			'A search for butter among baking recipes added by one member, as it shows under the page’s heading and syntax hint. From lg the filters sit beside the results, over the count and the order. Below lg a toolbar holds Filters, with the applied count, and the order in one row, then the count; Filters opens the filters in the page’s flow beneath the row, and Apply filters closes them and moves focus to the results. Filters apply with their button, while the order applies on selection. The words and each active filter are inked pills that remove themselves, the words returning to Browse with the filters, and Clear filters keeps the words; focus moves to the results as one goes. The count is announced as it changes, and matches are marked. Its headings start at h4 here.',
+			'A search for butter among vegetarian recipes added by one member, as it shows under the page’s heading and syntax hint. From lg the filters sit beside the results, over the count and the order. Below lg a toolbar holds Filters, with the applied count, and the order in one row, then the count; Filters opens the filters in the page’s flow beneath the row, and Apply filters closes them and moves focus to the results. Filters apply with their button, while the order applies on selection. The words and each active filter are inked pills that remove themselves, the words returning to Browse with the filters, and Clear filters keeps the words; focus moves to the results as one goes. The count is announced as it changes, and matches are marked. Its headings start at h4 here.',
 		Content: SearchResultsSpecimen,
 	},
 	{
@@ -305,14 +317,14 @@ const subsections = [
 		id: 'recipe-form',
 		title: 'Recipe form',
 		description:
-			'For adding and editing a recipe, and for reviewing an import. An import’s notes sit under what they’re about, and an intro counts them and starts on the first; on the review page it takes focus. Editing a field clears its note, and so does Looks right, which moves on to the next note and says how many are left; an empty title or list must be filled instead. A scan’s [illegible] or [?] left in the text is noted too, and marked in the line’s preview, until it’s edited away. Saving with anything left to check asks first, with Show me and Save anyway; notes survive a failed save, whose errors a summary at the top lists and links to. Ingredients and steps are each one list of growing fields, with headings as rows among the lines: Enter adds a line below, Backspace in an empty one removes it, and a pasted list splits into lines and headings, each announced. A row’s menu moves it up or down, across headings, changes it between a line and a heading, or removes it, and a removed heading’s lines join the ones above; each ingredient shows how it will read. Tags show as chips and suggest the labels in use, still taking new ones, and editing can respell a tag no other recipe uses (here, Slow cooked on the pot roast). Chosen photos are resized and upload at once, and pages of the original recipe move up and down. From lg, a form with pages of the original holds them to the right of its fields, in view as the form scrolls, a page at a time, zooming as the viewer’s images do, with the zoom’s buttons and Full size above it and a strip of the pages below, so Save sits under the fields; below lg, View original opens the viewer. Adding a recipe and reviewing an import offer Save as draft beside Save (Save draft on phones), which saves whatever is there and says when in the action bar. The page’s heading holds a menu of what can be done to what it edits, each Delete confirmed in a dialog: View recipe and Delete recipe when editing, and Delete draft on an import’s review or once the form holds a saved draft, opened or just saved; a new recipe has none. Here uploads are simulated, the review is of an anise cakes card from the National Archives, whose two pages show as uploads, saving checks the recipe as the site does but saves nothing, a draft is saved nowhere, and nothing is deleted.',
+			'For adding and editing a recipe, an import’s draft included. An import’s notes sit under what they’re about, and an intro counts them and starts on the first, taking focus as the form opens, and once none are left says everything’s checked, taking focus as the last looks right. Editing a field clears its note, and so does Looks right, which moves on to the next note and says how many are left; an empty title or list must be filled instead. A scan’s [illegible] or [?] left in the text is noted too, and marked in the line’s preview where one shows, until it’s edited away. Saving with anything left to check asks first, with Show me and Add anyway (Save anyway when editing); notes survive a failed save, whose errors a summary at the top lists and links to, saying what fixing them is for: before adding it to the cookbook, or to save. Ingredients and steps are each one list of growing fields, with headings as rows among the lines: Enter adds a line below, Backspace in an empty one removes it, and a pasted list splits into lines and headings, each announced. A row’s menu moves it up or down, across headings, changes it between a line and a heading, or removes it, and a removed heading’s lines join the ones above; an ingredient the recipe will show otherwise than typed, such as 1/2 as ½, says how it will read. Chapter, Holidays and Diet file the recipe in the cookbook: one chapter, which saving needs, and any holidays and diets, each list in two columns (the chapters from sm); ticking Vegan ticks and holds Vegetarian and Dairy-free, and a line says why. Chosen photos are resized and upload at once, and pages of the original recipe move up and down. From lg, a form with pages of the original holds them to the right of its fields, in view as the form scrolls, a page at a time, zooming as the viewer’s images do, with the zoom’s buttons and Full size above it and a strip of the pages below, so Add to cookbook, or Save changes when editing, sits under the fields; below lg, View original opens the viewer. Adding a recipe saves a draft a moment after each change, once the form holds something, and deletes it once the form is emptied; the action bar’s right says while a draft saves, once it’s saved, and what went wrong, and nothing while there’s nothing to save. Finish later sits beside Add to cookbook and leaves for the start page once what the form shows is saved. Adding a recipe is headed by the draft’s title as saved, Untitled recipe until it has one, under the back link to the start page, which says there that the draft is kept once the form holds one, and over where an import read it. The page’s heading holds a menu of what can be done to what it edits, each Delete confirmed in a dialog: View recipe and Delete recipe when editing, and Delete draft once the form holds a saved draft, opened or just saved; a new recipe has none. Here uploads are simulated, the draft read from photos is of an anise cakes card from the National Archives, whose two pages show as uploads, saving checks the recipe as the site does but saves nothing, a draft is saved nowhere, Finish later stays here, and nothing is deleted.',
 		Content: RecipeFormSpecimen,
 	},
 	{
 		id: 'recipe-entry',
 		title: 'Adding a recipe',
 		description:
-			'Three ways in, one tab each, and a fourth for the member’s drafts, counted in its label: the drafts they saved and the imports they haven’t, newest first, each a link to where it continues with when it was saved and when it goes, and a menu holding Delete draft; hidden tabs keep what was entered. A link or photos of the pages, which upload as they’re chosen, are read into a draft that opens in the recipe form for review. Reading takes up to a minute or two, so the form shows what it’s reading and for how long, announcing the stage once and not each second. Here each import waits four seconds and then shows its error, since nothing is imported.',
+			'The start page offers the three ways to start a recipe, each a row with its icon, title, line, and chevron that opens its page, then the member’s drafts, newest first: those they saved and the imports they haven’t, each a link to where it continues, described by how it started, when it was saved, and when it goes, with a ⋯ menu holding Delete draft, which asks first. A draft’s back link leaves for it with a notice naming the draft, which back and forward don’t bring back, and back or forward read the drafts again, so each shows as it now is. A link and photos each have a page of their own under the back link to the start page; the photos upload as they’re chosen, and either is read into a draft that opens in the recipe form for review. Reading takes up to a minute or two, so the form shows what it’s reading and for how long, announcing the stage once and not each second. Here each import waits four seconds and then shows its error, since nothing is imported, and deleting a draft is refused.',
 		Content: RecipeEntrySpecimen,
 	},
 ] as const;
@@ -340,7 +352,14 @@ function BrowseSkeletonSpecimen() {
 }
 
 function RecipeGridSpecimen() {
-	return <RecipeGrid layout="fullWidth" recipes={sampleRecipeSummaries} headingTag="h4" />;
+	return (
+		<RecipeGrid
+			layout="fullWidth"
+			recipes={sampleRecipeSummaries}
+			headingTag="h4"
+			backLabel="Back to Favorites"
+		/>
+	);
 }
 
 function RecipeGridSkeletonSpecimen() {
@@ -455,9 +474,8 @@ function SearchResultsSpecimen() {
 				<Specimen label="From lg: the filters in a sidebar, over every sample recipe">
 					<RecipeSearchFiltersSidebar
 						idPrefix="design-filters-sidebar"
-						state={sampleCatalogState}
+						state={sampleBrowseState}
 						facets={sampleCatalogFacets}
-						total={sampleBrowsePage.total}
 						headingTag="h4"
 					/>
 				</Specimen>
@@ -489,12 +507,7 @@ function RecipeFormSpecimen() {
 	return recipeFormSamples.map(({ label, subject, initial, standInScans }) => (
 		<Specimen key={label} label={label} className="px-0 py-10 sm:py-14">
 			<PageContainer width="readingOrWide" className="flex flex-col gap-8">
-				<SampleEditingPage
-					subject={subject}
-					initial={initial}
-					tagLabels={sampleTagLabels}
-					standInScans={standInScans}
-				/>
+				<SampleEditingPage subject={subject} initial={initial} standInScans={standInScans} />
 			</PageContainer>
 		</Specimen>
 	));
@@ -503,23 +516,29 @@ function RecipeFormSpecimen() {
 function RecipeEntrySpecimen() {
 	return (
 		<>
-			{entryDraftSamples.map(({ label, drafts }) => (
+			{startSamples.map(({ label, drafts, kept }) => (
 				<Specimen key={label} label={label} className="px-0 py-10 sm:py-14">
-					<PageContainer width="readingOrWide">
-						<SampleRecipeEntryTabs
-							drafts={drafts}
-							now={sampleImportsNow}
-							tagLabels={sampleTagLabels}
-						/>
+					<PageContainer width="reading">
+						<SampleRecipeStart drafts={drafts} kept={kept} now={sampleDraftsNow} />
 					</PageContainer>
 				</Specimen>
 			))}
+			<div className="grid gap-6 lg:grid-cols-2">
+				<Specimen label="From a link" className="flex flex-col gap-8">
+					<RecipeImportHeading mode="url" headingTag="h4" />
+					<SampleUrlImportForm />
+				</Specimen>
+				<Specimen label="From photos" className="flex flex-col gap-8">
+					<RecipeImportHeading mode="photo" headingTag="h4" />
+					<SampleScanImportForm />
+				</Specimen>
+			</div>
 			<div className="grid gap-6 md:grid-cols-2">
 				<Specimen label="While a link is read">
 					<RecipeImportSubmit
 						pending
-						label="Import recipe"
-						pendingLabel="Importing recipe"
+						label="Read recipe"
+						pendingLabel="Reading recipe"
 						stage="Reading the page…"
 					/>
 				</Specimen>
