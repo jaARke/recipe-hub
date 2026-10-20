@@ -8,6 +8,7 @@ import { heldResult } from '@/components/forms/testing/held-result';
 import { hydrate, serverRender } from '@/components/forms/testing/hydrate';
 import { KeptPage, renderKeptPage } from '@/components/forms/testing/kept-page';
 import { HeldDraftProvider } from '@/components/recipe-form/held-draft';
+import type { PhotoUploader } from '@/components/recipe-form/photo-upload';
 import { RecipeForm } from '@/components/recipe-form/recipe-form';
 import type {
 	AutosavedRecipeForm,
@@ -25,6 +26,7 @@ import {
 	type RecipeFormValues,
 } from '@/components/recipe-form/recipe-form-values';
 import { EditedRecipeMenu, HeldDraftMenu } from '@/components/recipe-form/subject-menus';
+import { cameraPhoto } from '@/components/recipe-form/testing/camera-photos';
 import {
 	pasteText,
 	pressRedo,
@@ -1836,20 +1838,49 @@ describe('RecipeForm’s drafts', () => {
 		drafts,
 		initial = recipeFormValues(),
 		action = refuse,
+		uploader = vi.fn(),
 	}: {
 		drafts: RecipeFormDrafts;
 		initial?: RecipeFormValues;
 		action?: FormAction;
+		uploader?: PhotoUploader;
 	}) {
 		return (
 			<RecipeForm
 				initial={initial}
 				action={action}
 				uploadFolders={uploadFolders}
-				uploader={vi.fn()}
+				uploader={uploader}
 				drafts={drafts}
 			/>
 		);
+	}
+
+	// Holds each upload until the test lets it finish, keeping the signal that would stop it.
+	function heldUploads() {
+		const upload = heldResult<void>(undefined);
+		const signals: AbortSignal[] = [];
+		const uploader = vi.fn<PhotoUploader>(async (_pathname, _file, { signal }) => {
+			signals.push(signal);
+			await upload.promise;
+		});
+		return { uploader, signals, finish: () => upload.resolve() };
+	}
+
+	// Chooses a dish photo through the field's picker, which is out of the accessibility tree, and
+	// waits for it to start uploading.
+	async function chooseDishPhoto() {
+		const input = page
+			.getByRole('group', { name: 'Photos (optional)' })
+			.element()
+			.querySelector<HTMLInputElement>('input[type="file"]');
+		if (input === null) {
+			throw new Error('The dish photos have no file input.');
+		}
+		await page
+			.elementLocator(input)
+			.upload(await cameraPhoto('bars.jpg', { width: 1600, height: 1200 }));
+		await expect.element(page.getByText('Uploading', { exact: true })).toBeInTheDocument();
 	}
 
 	function finishLater() {
@@ -2292,16 +2323,19 @@ describe('RecipeForm’s drafts', () => {
 			version,
 			title: savedTitle,
 			save,
+			uploader,
 		}: {
 			version: Date;
 			title: string;
 			save: FormAction<SavedDraftResult>;
+			uploader?: PhotoUploader;
 		}) {
 			return (
 				<HeldDraftProvider opened={{ id: draftId, title: savedTitle, savedAt: version }}>
 					<DraftForm
 						initial={recipeFormValues({ ...lemonBars, title: savedTitle })}
 						drafts={draftsWith(save, { opened: { id: draftId, savedAt: version }, page: 'draft' })}
+						uploader={uploader}
 					/>
 				</HeldDraftProvider>
 			);
@@ -2377,6 +2411,31 @@ describe('RecipeForm’s drafts', () => {
 			await expect.element(title()).toHaveFocus();
 			expect(named(save, 1)).toEqual({ id: draftId, version: laterSavedAt.toISOString() });
 			expect(sentDraft(save, 1).text.title).toBe('Lemon squares with glaze');
+		});
+
+		it('keeps photos uploading over a version saved elsewhere, and their save once stored shows the conflict', async () => {
+			const save = saving({ status: 'success', draftId, savedAt: laterSavedAt });
+			const { uploader, signals, finish } = heldUploads();
+			const screen = await render(
+				<DraftPage version={savedAt} title="Lemon bars" save={save} uploader={uploader} />
+			);
+			await title().fill('Lemon squares');
+			await expect.element(status('Draft saved'), afterSaving).toBeInTheDocument();
+			await chooseDishPhoto();
+			save.mockResolvedValue({ status: 'error', message: conflict, fieldErrors: {} });
+			const elsewhere = new Date(laterSavedAt.getTime() + 60_000);
+
+			await screen.rerender(
+				<DraftPage version={elsewhere} title="Lemon tart" save={save} uploader={uploader} />
+			);
+
+			await expect.element(title()).toHaveValue('Lemon squares');
+			await expect.element(page.getByText('Uploading', { exact: true })).toBeInTheDocument();
+			expect(signals.map((signal) => signal.aborted)).toEqual([false]);
+			finish();
+			await expect.element(announced(conflict), afterSaving).toBeInTheDocument();
+			expect(named(save, 1)).toEqual({ id: draftId, version: laterSavedAt.toISOString() });
+			expect(sentDraft(save, 1).photos.dish).toHaveLength(1);
 		});
 
 		it('tries a failed save again once a version saved elsewhere arrives, which shows the conflict', async () => {

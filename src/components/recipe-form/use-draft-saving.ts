@@ -215,7 +215,8 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 
 	const held = state?.held;
 	const heldTitle = state === undefined ? undefined : recipeFormSnapshotTitle(state.saved.snapshot);
-	const unsaved = state?.unsaved === true;
+	// Photos still uploading aren't on the server yet either, and starting the form again stops them.
+	const unsaved = state?.unsaved === true || photosUploading;
 	React.useEffect(() => {
 		if (coordinator !== undefined) {
 			holdDraft?.(held === undefined ? undefined : { ...held, title: heldTitle }, unsaved);
