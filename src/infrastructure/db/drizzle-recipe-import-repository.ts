@@ -1,7 +1,6 @@
 import 'server-only';
 import { and, eq, gte, lt, sql } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
-import { z } from 'zod';
 import { savedDraftIdSchema, type SavedDraftId } from '@/application/drafts/saved-draft';
 import type {
 	ImportFailure,
@@ -13,6 +12,7 @@ import type {
 import { memberIdSchema, type MemberId } from '@/domain/member/member';
 import type { RecipeImport, RecipeImportId } from '@/domain/recipe/recipe-import';
 import { boundedTransaction } from '@/infrastructure/db/bounded-transaction';
+import { insertProvidedColumns } from '@/infrastructure/db/provided-columns-insert';
 import { recipeImportColumns, toRecipeImport } from '@/infrastructure/db/recipe-import-mapper';
 import { recipeDrafts, recipeImports, recipes } from '@/infrastructure/db/schema';
 import { lockForTransaction } from '@/infrastructure/db/transaction-lock';
@@ -21,9 +21,6 @@ import { lockForTransaction } from '@/infrastructure/db/transaction-lock';
 // counted stay the member's only ones until the new import commits.
 const importLockKeyPrefix = 'recipe-hub:recipe-imports:';
 
-// The one row a start's insert answers, which each driver returns under rows.
-const insertedImportSchema = z.object({ rows: z.tuple([z.object({ id: z.uuid() })]) });
-
 export class DrizzleRecipeImportRepository implements RecipeImportRepository {
 	private readonly db: PgDatabase<PgQueryResultHKT>;
 
@@ -31,8 +28,6 @@ export class DrizzleRecipeImportRepository implements RecipeImportRepository {
 		this.db = db;
 	}
 
-	// The insert names only the columns it sets, where Drizzle's names every column the schema declares,
-	// so imports still start once a column no code reads or writes is dropped while this code serves.
 	async start(
 		recipeImport: NewRecipeImport,
 		limit?: RecipeImportLimit
@@ -52,15 +47,15 @@ export class DrizzleRecipeImportRepository implements RecipeImportRepository {
 				}
 			}
 
-			const inserted = await tx.execute(
-				sql`insert into ${recipeImports} (${sql.identifier(recipeImports.memberId.name)}, ${sql.identifier(recipeImports.mode.name)}) values (${recipeImport.memberId}, ${recipeImport.mode}) returning ${sql.identifier(recipeImports.id.name)}`
+			// Names only the row's columns, since the next deployment drops draft and source_url while this
+			// one serves.
+			const row = await insertProvidedColumns(
+				tx,
+				recipeImports,
+				{ memberId: recipeImport.memberId, mode: recipeImport.mode },
+				recipeImportColumns
 			);
-			const [{ id }] = insertedImportSchema.parse(inserted).rows;
-			const [row] = await tx
-				.select(recipeImportColumns)
-				.from(recipeImports)
-				.where(eq(recipeImports.id, id));
-			return toRecipeImport(row!, null);
+			return toRecipeImport(row, null);
 		});
 	}
 

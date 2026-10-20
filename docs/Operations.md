@@ -4,7 +4,7 @@
 
 Every Vercel build migrates its database over a direct connection, makes the owner an admin, seeds, and only then runs `next build`. Outside production, each of these steps refuses production's database ([Infrastructure](Infrastructure.md#neon)).
 
-- **Migrations** apply before the new code goes live, while the previous deployment keeps serving, so every migration is backward compatible: add first, and remove in a later deployment.
+- **Migrations** apply before the new code goes live, while the previous deployment keeps serving, so every migration is backward compatible: add first, and remove in a later deployment. The ORM's insert names every column the schema declares, so the deployment before a removal stops naming that column in its inserts as well as its reads.
 - **The owner** is the account at `ADMIN_EMAIL`, which every build makes an admin, creating it if needed. No one can remove it or take its admin role, and only the owner removes another admin's role or account. Changing `ADMIN_EMAIL` moves ownership to the new address's account once the next deployment goes live (until then the previous deployment still treats the old address as the owner), and the previous owner stays an admin until the new owner removes that role.
 - **The seed** skips production. Elsewhere it adds whatever is missing of the synthetic sample recipes and their photos, credited to a "Sample contributor" member. On a preview it also deletes the sign-in records the branch copied from production, so production's sessions never work there.
 

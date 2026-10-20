@@ -200,6 +200,27 @@ describe('bounded writes', () => {
 	});
 });
 
+// Drizzle's insert names every column the schema declares, so a create that used it would fail once a
+// column the schema still declares is dropped while this code serves.
+describe('once the columns no code reads or writes are dropped', () => {
+	it('creates, finds, and renames recipes as before', async () => {
+		await db.execute(sql`alter table recipes drop column tag_keys, drop column tags`);
+		await db.execute(sql`drop function public.search_keys(text[])`);
+		const created = await repository.create(newRecipe(sampleChickenSoup));
+
+		expect(await repository.findById(created.id)).toEqual(created);
+
+		const renamed = await repository.update(created.id, {
+			content: recipeContentSchema.parse(sampleTomatoSalad),
+			expectedUpdatedAt: created.updatedAt,
+			slugBase: 'garden-tomato-salad',
+		});
+
+		expect(renamed?.recipe).toMatchObject({ id: created.id, slug: 'garden-tomato-salad' });
+		expect(await repository.findBySlug(created.slug)).toEqual(renamed?.recipe);
+	});
+});
+
 describe('findImagesInUse', () => {
 	it('returns nothing for nothing asked without querying', async () => {
 		await repository.create(newRecipe(sampleChickenSoup));

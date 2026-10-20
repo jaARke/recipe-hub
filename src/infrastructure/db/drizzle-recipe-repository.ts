@@ -20,6 +20,7 @@ import {
 } from '@/domain/recipe/recipe';
 import { slugCandidate } from '@/domain/recipe/slug';
 import { boundedTransaction } from '@/infrastructure/db/bounded-transaction';
+import { insertProvidedColumns } from '@/infrastructure/db/provided-columns-insert';
 import {
 	recipeColumns,
 	toContentColumns,
@@ -209,11 +210,14 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 			return await boundedTransaction(this.db, 'creating a recipe', async (tx) => {
 				await lockForTransaction(tx, slugLockKey);
 				const slug = await findFreeSlug(tx, recipe.slugBase);
-				const [row] = await tx
-					.insert(recipes)
-					.values(toInsertColumns(recipe, slug))
-					.returning(recipeColumns);
-				return toRecipe(row!);
+				// Names only the row's columns, since the next deployment drops tags while this one serves.
+				const row = await insertProvidedColumns(
+					tx,
+					recipes,
+					toInsertColumns(recipe, slug),
+					recipeColumns
+				);
+				return toRecipe(row);
 			});
 		} catch (error) {
 			throw violatesConstraint(error, importIdConstraint) ? new ImportUnavailableError() : error;
