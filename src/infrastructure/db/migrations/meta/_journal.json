@@ -120,6 +120,20 @@
       "when": 1792459417071,
       "tag": "0016_let-imports-make-drafts",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792469132582,
+      "tag": "0017_leave-chapter-out-of-recipe-search",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792469143497,
+      "tag": "0018_recreate-recipe-search-vector-index",
+      "breakpoints": true
     }
   ]
 }

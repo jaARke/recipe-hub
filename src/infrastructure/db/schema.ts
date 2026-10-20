@@ -38,9 +38,10 @@ function textLiterals(values: readonly string[]): SQL {
 		.inlineParams();
 }
 
-// The slugs of the chapter, holidays and diets a recipe is filed under, as words for search.
-function filingWords(): SQL {
-	return sql`public.immutable_array_to_string(array[${recipes.chapter}] || ${recipes.holidays} || ${recipes.diets}, ' ')`;
+// The slugs of a recipe's holidays and diets, as words for search. Not its chapter's: a chapter
+// holds more than one kind of dish, so "soups-salads" would find every soup for "salad".
+function holidayAndDietWords(): SQL {
+	return sql`public.immutable_array_to_string(${recipes.holidays} || ${recipes.diets}, ' ')`;
 }
 
 export const recipes = pgTable(
@@ -70,23 +71,24 @@ export const recipes = pgTable(
 		diets: text('diets', { enum: diets }).array().notNull().default([]),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-		// Postgres derives the columns below from the content for search, and recipe reads leave them out.
+		// Postgres derives the columns below from the content and filing for search, and recipe reads
+		// leave them out.
 		searchVector: tsvector('search_vector')
 			.notNull()
 			.generatedAlwaysAs(
 				(): SQL =>
 					sql`setweight(to_tsvector(${recipeSearchConfiguration}, ${recipes.content} ->> 'title'), 'A')
 	|| setweight(to_tsvector(${recipeSearchConfiguration}, jsonb_path_query_array(${recipes.content}, '$.ingredientSections[*].lines[*].item')), 'B')
-	|| setweight(to_tsvector(${recipeSearchConfiguration}, ${filingWords()}), 'B')
+	|| setweight(to_tsvector(${recipeSearchConfiguration}, ${holidayAndDietWords()}), 'B')
 	|| setweight(to_tsvector(${recipeSearchConfiguration}, jsonb_path_query_array(${recipes.content}, '$.description') || jsonb_path_query_array(${recipes.content}, '$.notes') || jsonb_path_query_array(${recipes.content}, '$.source')), 'C')
 	|| setweight(to_tsvector(${recipeSearchConfiguration}, jsonb_path_query_array(${recipes.content}, '$.instructionSections[*].steps[*].text')), 'D')`
 			),
-		// The words close matches compare: the title, ingredient items, and the filing's slugs.
+		// The words close matches compare: the title, ingredient items, and holiday and diet slugs.
 		searchWords: text('search_words')
 			.notNull()
 			.generatedAlwaysAs(
 				(): SQL =>
-					sql`lower(public.immutable_unaccent((${recipes.content} ->> 'title') || ' ' || jsonb_path_query_array(${recipes.content}, '$.ingredientSections[*].lines[*].item')::text || ' ' || ${filingWords()}))`
+					sql`lower(public.immutable_unaccent((${recipes.content} ->> 'title') || ' ' || jsonb_path_query_array(${recipes.content}, '$.ingredientSections[*].lines[*].item')::text || ' ' || ${holidayAndDietWords()}))`
 			),
 		tagKeys: text('tag_keys')
 			.array()

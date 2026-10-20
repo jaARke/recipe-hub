@@ -92,32 +92,31 @@ describe('chapter, holidays and diets', () => {
 		).rejects.toThrow(refusedBy('recipes_diets_check'));
 	});
 
-	it('give search the words of their slugs', async () => {
-		// At weight B, as are the soup's ingredient items, which use none of these words.
-		const matchesSlugWords = sql<boolean>`${recipes.searchVector} @@ to_tsquery(${recipeSearchConfiguration}, 'main:B & dishes:B & new:B & years:B & day:B & gluten:B & free:B')`;
-		async function searchColumns(input: RecipeContentInput) {
-			const { row } = await store(input);
-			const [columns] = await db
-				.select({ matchesSlugWords, searchWords: recipes.searchWords })
-				.from(recipes)
-				.where(eq(recipes.id, row!.id));
-			return columns;
-		}
-
-		expect(
-			await searchColumns({
-				...sampleChickenSoup,
-				chapter: 'main-dishes',
-				holidays: ['new-years-day'],
-				diets: ['gluten-free'],
-			})
-		).toEqual({
-			matchesSlugWords: true,
-			searchWords: expect.stringMatching(/ main-dishes new-years-day gluten-free$/),
+	it('give search the words of the holidays and diets, but not the chapter', async () => {
+		// The soup's own text uses none of these words. The holidays and diets are at weight B, as are its
+		// ingredient items.
+		const matchesHolidayAndDietWords = sql<boolean>`${recipes.searchVector} @@ to_tsquery(${recipeSearchConfiguration}, 'new:B & years:B & day:B & gluten:B & free:B')`;
+		const matchesChapterWords = sql<boolean>`${recipes.searchVector} @@ to_tsquery(${recipeSearchConfiguration}, 'main | dishes')`;
+		const { row } = await store({
+			...sampleChickenSoup,
+			chapter: 'main-dishes',
+			holidays: ['new-years-day'],
+			diets: ['gluten-free'],
 		});
-		expect(await searchColumns(sampleChickenSoup)).toEqual({
-			matchesSlugWords: false,
-			searchWords: expect.stringMatching(/ soups-salads$/),
+		const [columns] = await db
+			.select({
+				matchesHolidayAndDietWords,
+				matchesChapterWords,
+				searchWords: recipes.searchWords,
+			})
+			.from(recipes)
+			.where(eq(recipes.id, row!.id));
+
+		expect(columns).toEqual({
+			matchesHolidayAndDietWords: true,
+			matchesChapterWords: false,
+			// The holidays and diets follow the ingredient items' array directly.
+			searchWords: expect.stringMatching(/"\] new-years-day gluten-free$/),
 		});
 	});
 });
