@@ -1,3 +1,4 @@
+import { Mascot } from '@/components/brand/mascot';
 import { TextLink } from '@/components/layout/text-link';
 import { allRecipesTitle } from '@/components/recipe/recipe-paths';
 import { RecipesEmptyState } from '@/components/recipe/recipes-empty-state';
@@ -9,7 +10,13 @@ import {
 	withoutText,
 	type RecipeSearchState,
 } from '@/components/search/search-params';
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader } from '@/components/ui/empty';
+import {
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+} from '@/components/ui/empty';
 import { chapterLabels } from '@/domain/recipe/chapter';
 
 type WayOut = { label: string; href: string };
@@ -25,10 +32,10 @@ function emptyMessage(state: RecipeSearchState, hasFilters: boolean): string {
 	return hasFilters ? `No recipes${within} match these filters.` : `No recipes${within} yet.`;
 }
 
-// Says why the view shows nothing, and offers its ways out: the search cleared, the filters cleared,
-// and in a chapter, the words searched for in every recipe. Its message sits in the middle of the box,
-// alone where there is no way out, as in a chapter no one has filed a recipe in. A cookbook with no
-// recipes at all shows the recipes' empty state.
+// Says why the view shows nothing, below the sleeping mascot, and offers its ways out: the search
+// cleared, the filters cleared, and in a chapter, the words searched for in every recipe. Its message
+// stands alone where there is no way out, as in a chapter no one has filed a recipe in. A cookbook
+// with no recipes at all shows the recipes' empty state.
 function RecipeSearchEmptyState({ state }: { state: RecipeSearchState }) {
 	const hasFilters = appliedFilterCount(state) > 0;
 	if (state.text === undefined && state.chapter === undefined && !hasFilters) {
@@ -52,6 +59,9 @@ function RecipeSearchEmptyState({ state }: { state: RecipeSearchState }) {
 	return (
 		<Empty className="border p-8">
 			<EmptyHeader>
+				<EmptyMedia>
+					<Mascot pose="sleeping" size="lg" loading="eager" />
+				</EmptyMedia>
 				<EmptyDescription>{emptyMessage(state, hasFilters)}</EmptyDescription>
 			</EmptyHeader>
 			{waysOut.length > 0 && (

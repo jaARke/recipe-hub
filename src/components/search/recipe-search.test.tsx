@@ -405,6 +405,29 @@ describe('RecipeSearch', () => {
 				.not.toBeInTheDocument();
 		});
 
+		it.each([
+			{
+				view: 'a chapter with no recipes',
+				state: recipesView('appetizers-beverages'),
+				message: 'No recipes in Appetizers & Beverages yet.',
+			},
+			{
+				view: 'a search',
+				state: { ...recipesView(), text: 'biscuit', sort: 'relevance' as const },
+				message: 'No recipes match “biscuit”.',
+			},
+		])('shows the sleeping mascot above its message for $view', async ({ state, message }) => {
+			await render(recipesPage(state, nothing));
+
+			const shownMessage = page.getByText(message);
+			await expect.element(shownMessage).toBeVisible();
+			const mascot = resultsRegion().element().querySelector('img');
+			expect(mascot?.getAttribute('src')).toContain('mascot-sleeping');
+			expect(mascot?.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+				shownMessage.element().getBoundingClientRect().top
+			);
+		});
+
 		it('shows no close matches notice for a close search the filters empty', async () => {
 			await render(
 				recipesPage(

@@ -20,13 +20,17 @@ type HeaderSearchProps = {
 	idPrefix: string;
 	// The words' parameter, which search-params.ts names on the server.
 	queryName: string;
+	// The Recipes page's heading, focusable with tabIndex -1, which takes the search's focus once its
+	// results show.
+	resultsHeadingId: string;
 };
 
 // Searches every recipe from scratch, whatever page it is typed on. From lg a field that fills the
 // header's row; below lg an icon that turns the row into the field, with Cancel. Once submitted the
 // field keeps its words, read-only with a spinner, until the results show, then empties, and closes
-// below lg, since the Recipes page's own field holds the words.
-function HeaderSearch({ idPrefix, queryName }: HeaderSearchProps) {
+// below lg, since the Recipes page's own field holds the words. The focus the search held moves to
+// the page's heading, as a page link's would, so the results come next in reading order.
+function HeaderSearch({ idPrefix, queryName, resultsHeadingId }: HeaderSearchProps) {
 	const inputId = `${idPrefix}-query`;
 	const labelId = `${idPrefix}-label`;
 	const openButtonId = `${idPrefix}-open`;
@@ -38,8 +42,8 @@ function HeaderSearch({ idPrefix, queryName }: HeaderSearchProps) {
 	// The navigation's own transition, since next/form reports no pending navigation. It ends as the
 	// page's skeletons show, and the results' loading states say when they give way.
 	const [navigating, startNavigation] = React.useTransition();
-	// Whether the open field or Cancel, which leaves with it, held focus as its search ended, which the
-	// icon then takes.
+	// Whether the open field or Cancel, which leaves with it, held focus as its search ended on a page
+	// with no Recipes heading, such as the not-found page, so the icon takes it.
 	const focusOpenButton = React.useRef(false);
 
 	// Focused within the tap, so iOS raises the keyboard.
@@ -80,12 +84,18 @@ function HeaderSearch({ idPrefix, queryName }: HeaderSearchProps) {
 			if (input instanceof HTMLInputElement) {
 				input.value = '';
 				const focused = document.activeElement;
-				focusOpenButton.current = open && (focused === input || focused?.id === cancelButtonId);
+				const heldFocus = focused === input || focused?.id === cancelButtonId;
+				const heading = document.getElementById(resultsHeadingId);
+				if (heldFocus && heading !== null) {
+					heading.focus();
+				} else {
+					focusOpenButton.current = open && heldFocus;
+				}
 			}
 			setSearching(false);
 			setOpen(false);
 		});
-	}, [searching, navigating, inputId, cancelButtonId, open]);
+	}, [searching, navigating, inputId, cancelButtonId, resultsHeadingId, open]);
 
 	React.useLayoutEffect(() => {
 		if (open || !focusOpenButton.current) {

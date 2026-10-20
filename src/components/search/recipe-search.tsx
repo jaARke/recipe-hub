@@ -65,6 +65,10 @@ function recipesIds(idPrefix: string) {
 	};
 }
 
+// The Recipes page's own ids, whose heading the header's search focuses once its results show.
+const recipesPageIdPrefix = 'recipes';
+const recipesPageIds = recipesIds(recipesPageIdPrefix);
+
 const sortDescriptions: Record<RecipeSearchSort, string> = {
 	relevance: 'best match first',
 	newest: 'newest first',
@@ -307,6 +311,8 @@ export {
 	RecipeSearchCloseMatches,
 	RecipeSearchSkeleton,
 	RecipesPageGrid,
+	recipesPageIdPrefix,
+	recipesPageIds,
 	RecipesViewHeader,
 	RecipesViewHeaderSkeleton,
 };

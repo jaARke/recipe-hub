@@ -4,7 +4,7 @@ import { page } from 'vitest/browser';
 import { renderKeptPage } from '@/components/forms/testing/kept-page';
 import { useOnKeptPageHide } from '@/components/forms/use-on-kept-page-hide';
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { displayAsPageShows } from '@/components/ui/testing/kept-page-popup';
+import { displayAsPageShows, expectPopupUnmounted } from '@/components/ui/testing/kept-page-popup';
 
 function renamePasskey(onOpenChange?: (open: boolean) => void) {
 	return (
@@ -31,7 +31,7 @@ describe('Dialog', () => {
 		await keptPage.hide();
 
 		expect(await displayAsPageShows(popupParts(), keptPage.show)).toEqual(['none', 'none']);
-		await expect.poll(popupParts).toEqual([]);
+		await expectPopupUnmounted(popupParts);
 	});
 
 	it('gives focus back to what it opened from before its page hides', async () => {

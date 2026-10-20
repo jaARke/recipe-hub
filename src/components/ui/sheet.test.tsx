@@ -12,7 +12,7 @@ import {
 	SheetTitle,
 	SheetTrigger,
 } from '@/components/ui/sheet';
-import { displayAsPageShows } from '@/components/ui/testing/kept-page-popup';
+import { displayAsPageShows, expectPopupUnmounted } from '@/components/ui/testing/kept-page-popup';
 
 function chapterPicker(onOpenChange?: (open: boolean) => void) {
 	return (
@@ -42,7 +42,7 @@ describe('Sheet', () => {
 		await keptPage.hide();
 
 		expect(await displayAsPageShows(popupParts(), keptPage.show)).toEqual(['none', 'none']);
-		await expect.poll(popupParts).toEqual([]);
+		await expectPopupUnmounted(popupParts);
 	});
 
 	it('gives focus back to what it opened from before its page hides', async () => {

@@ -32,7 +32,7 @@ pnpm dev
 
 Sign in at [localhost:3000/sign-in](http://localhost:3000/sign-in) with a code emailed to `ADMIN_EMAIL`, the account `pnpm db:bootstrap` makes an admin. Development sends real email through Resend.
 
-pnpm applies `patches/next@16.4.2.patch` to Next's `"use cache"` wrapper and its dev server's manifest writes as it installs; the patch's header says what each part fixes and when to remove it. Changing Next's version fails `pnpm install` until the patch is re-made against the new version or removed, and re-making it with `pnpm patch` drops the header, so carry that over.
+pnpm applies `patches/next@16.4.2.patch` to Next's `"use cache"` wrapper and its dev server's manifest writes as it installs; the patch's header says what each part fixes and when to remove it. Changing Next's version fails `pnpm install` until the patch is re-made against the new version or removed, and re-making it with `pnpm patch` drops the header, so carry that over. Dependabot leaves Next's packages alone for the same reason, so its ignore of them in `.github/dependabot.yml` goes when the patch does.
 
 The design reference at [localhost:3000/design](http://localhost:3000/design) shows every design token, UI primitive, and composition. It exists in development and on preview deployments only. Add primitives with `pnpm shadcn add <name>`, then run `pnpm format` and `pnpm exec eslint . --fix`.
 
