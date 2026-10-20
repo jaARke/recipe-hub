@@ -589,6 +589,8 @@ describe('time limits', () => {
 		const listing = storeFor('development').listRemoved();
 		read.catch(() => undefined);
 		listing.catch(() => undefined);
+		// The listing's request reaches the fake Blob first, or its abort closes nothing it saw.
+		await vi.waitFor(() => expect(unansweredCount).toBe(1));
 		await vi.advanceTimersByTimeAsync(15_000);
 		vi.useRealTimers();
 
