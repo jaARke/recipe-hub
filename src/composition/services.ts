@@ -119,7 +119,6 @@ const actors: ActorProvider = { currentActor: cache(() => sessionActors.currentA
 export function getRecipeService(): RecipeService {
 	return new RecipeService(
 		new DrizzleRecipeRepository(db),
-		new DrizzleRecipeImportRepository(db),
 		new DrizzleSavedDraftRepository(db),
 		new DrizzleMemberRepository(db),
 		images,
@@ -135,7 +134,6 @@ export function getRecipeSearchService(): RecipeSearchService {
 export function getRecipeImageService(): RecipeImageService {
 	return new RecipeImageService(
 		new DrizzleRecipeRepository(db),
-		new DrizzleRecipeImportRepository(db),
 		new DrizzleSavedDraftRepository(db),
 		images,
 		productionImages,
@@ -165,7 +163,6 @@ export function getRecipeImportService(): RecipeImportService {
 export function getSavedDraftService(): SavedDraftService {
 	return new SavedDraftService(
 		new DrizzleSavedDraftRepository(db),
-		new DrizzleRecipeImportRepository(db),
 		new DrizzleRecipeRepository(db),
 		images,
 		actors,

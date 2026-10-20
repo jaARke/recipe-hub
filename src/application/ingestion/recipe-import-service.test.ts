@@ -16,6 +16,7 @@ import {
 } from '@/application/ingestion/recipe-import-service';
 import type { Actor, MemberActor } from '@/application/ports/actor-provider';
 import type { Extraction } from '@/application/ports/recipe-extractors';
+import type { SavedDraft } from '@/application/ports/saved-draft-repository';
 import type { WebPage } from '@/application/ports/web-page-fetcher';
 import { ImageFolders } from '@/application/recipes/image-folders';
 import { adminActor, anonymousActor, memberActor } from '@/application/testing/actors';
@@ -42,7 +43,6 @@ import { settings } from '@/lib/settings';
 
 const folders = new ImageFolders('development');
 const minuteInMilliseconds = 60 * 1000;
-const missingId = '0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e';
 
 const url = 'https://recipes.example.com/fresh-lemonade?ref=newsletter';
 const invalidUrlMessage = 'Enter a web address that starts with http:// or https://.';
@@ -128,8 +128,8 @@ function scanImages(pathnames: readonly string[]): RecipeImage[] {
 // the models read a recipe.
 function createImports(fakes: ImportFakes = {}) {
 	const recipes = new InMemoryRecipeRepository();
-	const imports = new InMemoryRecipeImportRepository(recipes);
 	const drafts = new InMemorySavedDraftRepository();
+	const imports = new InMemoryRecipeImportRepository(recipes, drafts);
 	const images = new InMemoryImageStore(folders);
 	const pages = fakes.pages ?? new FixedWebPageFetcher(page);
 	const structuredData = fakes.structuredData ?? new FixedPageRecipeExtractor(null);
@@ -159,12 +159,20 @@ function createImports(fakes: ImportFakes = {}) {
 		}
 		return stored;
 	};
+	// The draft the import the service started last made.
+	const lastDraft = async (): Promise<SavedDraft> => {
+		const draft = await drafts.findByImportId((await lastImport()).id);
+		if (draft === null) {
+			throw new Error('The import made no draft');
+		}
+		return draft;
+	};
 	const storeScans = async (pathnames: readonly string[], bytes = jpeg) => {
 		for (const pathname of pathnames) {
 			await images.put(pathname, bytes, 'image/jpeg');
 		}
 	};
-	// The member's recipe lists one scan and their draft awaiting review names another.
+	// The member's recipe lists one scan and their import's draft names another.
 	const nameScans = async (owner: MemberActor, recipeScan: string, draftScan: string) => {
 		await recipes.create({
 			content: parseRecipeContent({ ...sampleTomatoSalad, images: scanImages([recipeScan]) }),
@@ -177,7 +185,11 @@ function createImports(fakes: ImportFakes = {}) {
 			throw new Error('The import was refused');
 		}
 		await imports.recordSuccess(started.id, {
-			draft: { content: { title: 'Lemon bars', images: scanImages([draftScan]) }, problems: [] },
+			draft: {
+				provenance: { entryMode: 'photo' },
+				imported: { content: { images: scanImages([draftScan]) }, problems: [] },
+				imagePathnames: [draftScan],
+			},
 		});
 	};
 	// An import the member started directly, as earlier requests leave them.
@@ -201,6 +213,7 @@ function createImports(fakes: ImportFakes = {}) {
 		scanReader,
 		serviceFor,
 		lastImport,
+		lastDraft,
 		storeScans,
 		nameScans,
 		startImport,
@@ -291,7 +304,7 @@ describe('importFromUrl', () => {
 	});
 
 	it('uses complete structured data without calling the model', async () => {
-		const { pageReader, serviceFor, lastImport } = createImports({
+		const { pageReader, serviceFor, lastImport, lastDraft } = createImports({
 			structuredData: new FixedPageRecipeExtractor(structuredLemonade),
 		});
 
@@ -299,23 +312,25 @@ describe('importFromUrl', () => {
 
 		const recipeImport = await lastImport();
 		expect(pageReader.readPages).toEqual([]);
-		expect(recipeImport).toMatchObject({ status: 'succeeded', mode: 'url', sourceUrl: url });
+		expect(recipeImport).toMatchObject({ status: 'succeeded', mode: 'url' });
 		expect(recipeImport).not.toHaveProperty('aiModel');
 		expect(recipeImport).not.toHaveProperty('costUsd');
-		expect(recipeImport.draft?.content.title).toBe('Fresh lemonade');
+		const draft = await lastDraft();
+		expect(draft.provenance).toStrictEqual({ entryMode: 'url', sourceUrl: url });
+		expect(draft.imported?.content.title).toBe('Fresh lemonade');
 	});
 
 	it('uses complete structured data that names no chapter, leaving the member to choose one', async () => {
-		const { pageReader, serviceFor, lastImport } = createImports({
+		const { pageReader, serviceFor, lastDraft } = createImports({
 			structuredData: new FixedPageRecipeExtractor(structuredLemonade),
 		});
 
 		await serviceFor(memberActor()).importFromUrl(url);
 
-		const { draft } = await lastImport();
+		const { imported } = await lastDraft();
 		expect(pageReader.readPages).toEqual([]);
-		expect(draft?.content.chapter).toBeUndefined();
-		expect(draft?.problems).toEqual([{ path: 'chapter', message: 'Choose a chapter.' }]);
+		expect(imported?.content.chapter).toBeUndefined();
+		expect(imported?.problems).toEqual([{ path: 'chapter', message: 'Choose a chapter.' }]);
 	});
 
 	it.each([
@@ -352,8 +367,8 @@ describe('importFromUrl', () => {
 		expect(pageReader.receivedRequesters).toEqual([requester]);
 	});
 
-	it('stores the draft the domain builds from the reading, with the problems it found', async () => {
-		const { serviceFor, lastImport } = createImports({
+	it('makes the draft the domain builds from the reading, with the problems it found', async () => {
+		const { serviceFor, lastDraft } = createImports({
 			pageReader: new FixedPageRecipeExtractor({
 				...readLemonade,
 				recipe: { ...lemonade, title: undefined },
@@ -363,30 +378,58 @@ describe('importFromUrl', () => {
 		await serviceFor(memberActor()).importFromUrl(url);
 
 		const expected = importDraftFromExtractedRecipe({ ...lemonade, title: undefined }, []);
-		expect((await lastImport()).draft).toEqual({
-			content: expected.content,
-			problems: expected.problems,
-		});
+		const draft = await lastDraft();
+		expect(draft.imported).toEqual({ content: expected.content, problems: expected.problems });
+		expect(draft).not.toHaveProperty('title');
 		expect(expected.problems).toContainEqual(expect.objectContaining({ path: 'title' }));
 	});
 
 	it('fetches and records the address the member gave, not where the site redirected', async () => {
-		const { pages, serviceFor, lastImport } = createImports({
+		const { pages, serviceFor, lastDraft } = createImports({
 			pages: new FixedWebPageFetcher({ ...page, url: 'https://www.example.com/lemonade-2' }),
 		});
 
 		await serviceFor(memberActor()).importFromUrl(`  ${url}\n`);
 
 		expect(pages.fetchedUrls).toEqual([url]);
-		expect((await lastImport()).sourceUrl).toBe(url);
+		expect((await lastDraft()).provenance).toMatchObject({ sourceUrl: url });
 	});
 
-	it('returns the import, so the member can review its draft', async () => {
-		const { serviceFor, lastImport } = createImports();
+	it("makes the member's draft, which the recipe takes its provenance from, and returns it", async () => {
+		const { serviceFor, lastImport, lastDraft } = createImports();
+		const member = memberActor();
 
-		const ref = await serviceFor(memberActor()).importFromUrl(url);
+		const ref = await serviceFor(member).importFromUrl(url);
 
-		expect(ref).toEqual({ id: (await lastImport()).id });
+		expect(await lastDraft()).toEqual({
+			id: ref.draftId,
+			memberId: member.memberId,
+			importId: (await lastImport()).id,
+			provenance: { entryMode: 'url', sourceUrl: url, aiModel: 'example/text-model' },
+			title: 'Fresh lemonade',
+			imported: importDraftFromExtractedRecipe(lemonade, []),
+			imagePathnames: [],
+			createdAt: expect.any(Date),
+			updatedAt: expect.any(Date),
+		});
+	});
+
+	it('records no success and makes no draft when making the draft fails', async () => {
+		const { drafts, serviceFor, lastImport } = createImports();
+		const refused = new Error('The draft was refused');
+		vi.spyOn(drafts, 'storeImported').mockImplementation(() => {
+			throw refused;
+		});
+
+		await expect(serviceFor(memberActor()).importFromUrl(url)).rejects.toBe(refused);
+
+		const recipeImport = await lastImport();
+		expect(recipeImport).toMatchObject({
+			status: 'failed',
+			failure: 'unexpected',
+			costUsd: 0.0021,
+		});
+		expect(await drafts.findByImportId(recipeImport.id)).toBeNull();
 	});
 
 	it.each([
@@ -521,25 +564,6 @@ describe('import limit', () => {
 	});
 });
 
-describe('clearExpiredDrafts', () => {
-	it('clears drafts past their lifetime, and their source URLs, and counts them', async () => {
-		const { imports, serviceFor, backdate } = createImports();
-		const service = serviceFor(memberActor());
-		const expired = (await service.importFromUrl(url)).id;
-		const recent = (await service.importFromUrl(url)).id;
-		backdate(expired, settings.imports.importDraftLifetimeDays + 0.01);
-		backdate(recent, settings.imports.importDraftLifetimeDays - 0.01);
-
-		expect(await serviceFor(anonymousActor()).clearExpiredDrafts()).toBe(1);
-
-		const expiredImport = await imports.findById(expired);
-		expect(expiredImport).toMatchObject({ status: 'succeeded', aiModel: 'example/text-model' });
-		expect(expiredImport).not.toHaveProperty('draft');
-		expect(expiredImport).not.toHaveProperty('sourceUrl');
-		expect(await imports.findById(recent)).toMatchObject({ sourceUrl: url });
-	});
-});
-
 describe('settleInterruptedImports', () => {
 	it('settles imports still running 10 minutes after they started as failed, and counts them', async () => {
 		const { imports, serviceFor, startImport } = createImports();
@@ -579,18 +603,14 @@ describe('settleInterruptedImports', () => {
 });
 
 describe('starting an import', () => {
-	it('clears no expired draft and settles no interrupted import first, leaving them to the cleanup', async () => {
-		const { imports, serviceFor, backdate, startImport } = createImports();
+	it('settles no interrupted import first, leaving it to the cleanup', async () => {
+		const { imports, serviceFor, startImport } = createImports();
 		const member = memberActor();
-		const service = serviceFor(member);
-		const expired = (await service.importFromUrl(url)).id;
-		backdate(expired, settings.imports.importDraftLifetimeDays + 0.01);
 		const interrupted = await startImport(member);
 		imports.backdate(interrupted, new Date(Date.now() - 10 * minuteInMilliseconds - 1));
 
-		await service.importFromUrl(url);
+		await serviceFor(member).importFromUrl(url);
 
-		expect(await imports.findById(expired)).toMatchObject({ sourceUrl: url });
 		expect(await imports.findById(interrupted)).toMatchObject({ status: 'running' });
 	});
 });
@@ -882,7 +902,7 @@ describe('importFromScans', () => {
 	});
 
 	it('reads every photo in one call, in order, and keeps them on the draft as scans', async () => {
-		const { images, scanReader, serviceFor, lastImport } = createImports();
+		const { images, scanReader, serviceFor, lastImport, lastDraft } = createImports();
 		await images.put(scanPathname, jpeg, 'image/jpeg');
 		await images.put(secondScanPathname, backOfCard, 'image/jpeg');
 
@@ -898,15 +918,17 @@ describe('importFromScans', () => {
 			card,
 			scanImages([scanPathname, secondScanPathname])
 		);
-		const recipeImport = await lastImport();
-		expect(recipeImport).toMatchObject({
+		expect(await lastImport()).toMatchObject({
 			mode: 'photo',
 			status: 'succeeded',
 			aiModel: 'example/vision-model',
 			costUsd: 0.012,
 		});
-		expect(recipeImport).not.toHaveProperty('sourceUrl');
-		expect(recipeImport.draft).toEqual({ content: expected.content, problems: expected.problems });
+		expect(await lastDraft()).toMatchObject({
+			provenance: { entryMode: 'photo', aiModel: 'example/vision-model' },
+			imported: { content: expected.content, problems: expected.problems },
+			imagePathnames: [scanPathname, secondScanPathname],
+		});
 	});
 
 	it('reads the photos for the member, by their id alone', async () => {
@@ -960,111 +982,14 @@ describe('importFromScans', () => {
 	});
 });
 
-describe('getImportReview', () => {
-	it('refuses an anonymous visitor', async () => {
-		const { serviceFor } = createImports();
-
-		await expect(serviceFor(anonymousActor()).getImportReview(missingId)).rejects.toThrow(
-			SignInRequiredError
-		);
-	});
-
-	it('returns the draft to the member who imported it, with the page it was read from', async () => {
-		const { serviceFor } = createImports();
-		const service = serviceFor(memberActor());
-		const { id } = await service.importFromUrl(url);
-
-		const review = await service.getImportReview(id);
-
-		const expected = importDraftFromExtractedRecipe(lemonade, []);
-		expect(review).toEqual({
-			status: 'reviewable',
-			draft: {
-				id,
-				mode: 'url',
-				sourceUrl: url,
-				content: expected.content,
-				problems: expected.problems,
-			},
-		});
-	});
-
-	it('returns a photo import without a source URL', async () => {
-		const { storeScans, serviceFor } = createImports();
-		await storeScans([scanPathname]);
-		const service = serviceFor(memberActor());
-		const { id } = await service.importFromScans(uploadsOf([scanPathname]));
-
-		const review = await service.getImportReview(id);
-
-		expect(review).toMatchObject({ status: 'reviewable', draft: { id, mode: 'photo' } });
-		expect(review?.status === 'reviewable' && review.draft).not.toHaveProperty('sourceUrl');
-	});
-
-	it('names the recipe saved from the import, after its draft is cleared', async () => {
-		const { recipes, imports, serviceFor } = createImports();
-		const member = memberActor();
-		const service = serviceFor(member);
-		const { id } = await service.importFromUrl(url);
-		const recipe = await recipes.create({
-			content: parseRecipeContent(sampleTomatoSalad),
-			provenance: { entryMode: 'url', sourceUrl: url },
-			importId: id,
-			contributorId: member.memberId,
-			slugBase: 'tomato-salad',
-		});
-		await imports.clearDraft(id);
-
-		expect(await service.getImportReview(id)).toEqual({
-			status: 'saved',
-			recipeSlug: recipe.slug,
-		});
-	});
-
-	it.each(['not-an-import-id', missingId])('returns null for %s', async (id) => {
-		const { serviceFor } = createImports();
-
-		expect(await serviceFor(memberActor()).getImportReview(id)).toBeNull();
-	});
-
-	it("returns null for another member's import, even to an admin", async () => {
-		const { serviceFor } = createImports();
-		const { id } = await serviceFor(memberActor()).importFromUrl(url);
-
-		expect(await serviceFor(memberActor()).getImportReview(id)).toBeNull();
-		expect(await serviceFor(adminActor()).getImportReview(id)).toBeNull();
-	});
-
-	it('returns null for a failed import', async () => {
-		const { serviceFor, lastImport } = createImports({
-			pageReader: new FixedPageRecipeExtractor(emptyReading),
-		});
-		const service = serviceFor(memberActor());
-		await service.importFromUrl(url).catch(() => undefined);
-
-		expect(await service.getImportReview((await lastImport()).id)).toBeNull();
-	});
-
-	it('returns null for a draft that expired or was cleared without a recipe', async () => {
-		const { imports, serviceFor, backdate } = createImports();
-		const service = serviceFor(memberActor());
-		const expired = (await service.importFromUrl(url)).id;
-		const cleared = (await service.importFromUrl(url)).id;
-		backdate(expired, 7.01);
-		await imports.clearDraft(cleared);
-
-		expect(await service.getImportReview(expired)).toBeNull();
-		expect(await service.getImportReview(cleared)).toBeNull();
-	});
-});
-
 describe('logging', () => {
 	it('logs an import by ids, mode, model, and cost, never the address, email, or recipe', async () => {
-		const { serviceFor } = createImports();
+		const { serviceFor, lastImport } = createImports();
 		const member = memberActor();
 
-		const { id } = await serviceFor(member).importFromUrl(url);
+		const { draftId } = await serviceFor(member).importFromUrl(url);
 
+		const { id } = await lastImport();
 		expect(logged('Import started')).toEqual({
 			level: 'info',
 			logger: 'imports',
@@ -1080,6 +1005,7 @@ describe('logging', () => {
 			importId: id,
 			memberId: member.memberId,
 			mode: 'url',
+			draftId,
 			aiModel: 'example/text-model',
 			costUsd: 0.0021,
 		});

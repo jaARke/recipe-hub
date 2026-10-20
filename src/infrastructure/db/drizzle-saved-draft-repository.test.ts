@@ -5,6 +5,7 @@ import { SavedDraftEditConflictError } from '@/application/drafts/errors';
 import type { SavedDraftId } from '@/application/drafts/saved-draft';
 import { describeSavedDraftRepositoryContract } from '@/application/testing/saved-draft-repository-contract';
 import type { MemberId } from '@/domain/member/member';
+import type { RecipeImportId } from '@/domain/recipe/recipe-import';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
 import { DrizzleSavedDraftRepository } from '@/infrastructure/db/drizzle-saved-draft-repository';
@@ -48,29 +49,72 @@ describeSavedDraftRepositoryContract(() => ({
 	backdate,
 }));
 
+// The draft a link import makes as it succeeds.
+async function importDraft(): Promise<{ importId: RecipeImportId; draftId: SavedDraftId }> {
+	const started = await imports.start({ memberId, mode: 'url' });
+	const draftId = await imports.recordSuccess(started!.id, {
+		draft: {
+			provenance: { entryMode: 'url', sourceUrl: 'https://example.com/soup' },
+			title: 'Weeknight chicken soup',
+			imported: { content: { title: 'Weeknight chicken soup' }, problems: [] },
+			imagePathnames: [],
+		},
+	});
+	return { importId: started!.id, draftId: draftId! };
+}
+
 describe('create', () => {
 	it('gives the draft a uuidv7 id', async () => {
 		const draft = await drafts.create({ memberId, values: {}, imagePathnames: [] });
 
-		expect(draft?.id).toMatch(uuidV7);
+		expect(draft.id).toMatch(uuidV7);
 	});
+});
 
-	it('keeps the draft and its provenance without its import once the import is gone', async () => {
-		const started = await imports.start({ memberId, mode: 'url' });
-		const draft = await drafts.create({
-			memberId,
-			importId: started!.id,
-			provenance: { entryMode: 'url', sourceUrl: 'https://example.com/soup' },
-			values: {},
-			imagePathnames: [],
-		});
+describe("an import's draft", () => {
+	it('keeps its provenance without its import once the import is gone', async () => {
+		const { importId, draftId } = await importDraft();
+		const draft = await drafts.findById(draftId);
 
-		await db.delete(recipeImports).where(eq(recipeImports.id, started!.id));
+		await db.delete(recipeImports).where(eq(recipeImports.id, importId));
 
-		const found = await drafts.findById(draft!.id);
+		const found = await drafts.findById(draftId);
 		expect(found).not.toHaveProperty('importId');
 		expect(found).toEqual({ ...draft, importId: undefined });
 		expect(found?.provenance).toEqual({ entryMode: 'url', sourceUrl: 'https://example.com/soup' });
+	});
+
+	it('drops keys the schema does not know from what was read', async () => {
+		const { draftId } = await importDraft();
+		const stored = await drafts.findById(draftId);
+		await db
+			.update(recipeDrafts)
+			.set({ imported: sql`${recipeDrafts.imported} || '{"retiredField": true}'::jsonb` })
+			.where(eq(recipeDrafts.id, draftId));
+
+		expect(await drafts.findById(draftId)).toEqual(stored);
+	});
+
+	it('throws when what was read does not fit the schema', async () => {
+		const { draftId } = await importDraft();
+		await db
+			.update(recipeDrafts)
+			.set({ imported: sql`jsonb_set(${recipeDrafts.imported}, '{content,title}', '""')` })
+			.where(eq(recipeDrafts.id, draftId));
+
+		await expect(drafts.findById(draftId)).rejects.toThrow(ZodError);
+	});
+});
+
+describe('the recipe_drafts table', () => {
+	it('refuses a draft with neither values nor what an import read', async () => {
+		await expect(
+			db.execute(sql`insert into recipe_drafts (member_id) values (${memberId})`)
+		).rejects.toThrow(
+			expect.objectContaining({
+				cause: expect.objectContaining({ constraint: 'recipe_drafts_contents_check' }),
+			})
+		);
 	});
 });
 
@@ -80,11 +124,11 @@ describe('update', () => {
 		await db
 			.update(recipeDrafts)
 			.set({ updatedAt: sql`'2026-10-15T12:00:00.123987Z'::timestamptz` })
-			.where(eq(recipeDrafts.id, draft!.id));
-		const loaded = await drafts.findById(draft!.id);
+			.where(eq(recipeDrafts.id, draft.id));
+		const loaded = await drafts.findById(draft.id);
 		expect(loaded?.updatedAt.toISOString()).toBe('2026-10-15T12:00:00.123Z');
 
-		const updated = await drafts.update(draft!.id, {
+		const updated = await drafts.update(draft.id, {
 			title: 'Lemon bars',
 			values: {},
 			imagePathnames: [],
@@ -93,7 +137,7 @@ describe('update', () => {
 
 		expect(updated?.title).toBe('Lemon bars');
 		await expect(
-			drafts.update(draft!.id, {
+			drafts.update(draft.id, {
 				values: {},
 				imagePathnames: [],
 				expectedUpdatedAt: loaded!.updatedAt,
@@ -108,8 +152,8 @@ describe('findById', () => {
 		await db
 			.update(recipeDrafts)
 			.set({ provenance: { entryMode: 'url', sourceUrl: 'not a web address' } })
-			.where(eq(recipeDrafts.id, draft!.id));
+			.where(eq(recipeDrafts.id, draft.id));
 
-		await expect(drafts.findById(draft!.id)).rejects.toThrow(ZodError);
+		await expect(drafts.findById(draft.id)).rejects.toThrow(ZodError);
 	});
 });

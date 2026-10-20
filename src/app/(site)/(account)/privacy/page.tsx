@@ -108,15 +108,13 @@ export default function PrivacyPage() {
 						that id, so it can trace misuse to an account without knowing who you are.
 					</li>
 					<li>
-						An import’s draft is kept until you add it to the cookbook. One you don’t add is deleted
-						within a day of turning {dayCount(settings.imports.importDraftLifetimeDays)} old.
+						An import opens as a draft, which is kept until you add the recipe to the cookbook or
+						delete the draft, or for {dayCount(settings.drafts.draftLifetimeDays)} after its last
+						change, then deleted within a day.
 					</li>
 					<li>
-						A draft you save from an import’s review keeps the address of the page the recipe was
-						read from, so the recipe you add from it can credit that page. The address is kept as
-						long as the draft: until you add the recipe to the cookbook or delete the draft, or for{' '}
-						{dayCount(settings.drafts.draftLifetimeDays)} after your last save, then deleted within
-						a day.
+						An import’s draft keeps the address of the page the recipe was read from, so the recipe
+						you add from it can credit that page. The address is deleted with the draft.
 					</li>
 					<li>
 						A record of each import is kept: who started it, when, which AI model read it, and what
@@ -151,11 +149,10 @@ export default function PrivacyPage() {
 						When you sign in, your favorites move to your account and the cookie is cleared.
 					</li>
 					<li>
-						Changes you haven’t saved to a recipe you’re adding, editing, or reviewing are kept in
-						your browser, so they come back if the page reloads. They’re cleared when you save the
-						recipe, discard them, or sign out, and otherwise{' '}
-						{dayCount(settings.drafts.draftLifetimeDays)} after your last change; until then anyone
-						using this browser can see them.
+						Changes you haven’t saved to a recipe you’re adding or editing are kept in your browser,
+						so they come back if the page reloads. They’re cleared when you save the recipe, discard
+						them, or sign out, and otherwise {dayCount(settings.drafts.draftLifetimeDays)} after
+						your last change; until then anyone using this browser can see them.
 					</li>
 					<li>
 						In the cooking view, each browser tab remembers which ingredients you’ve checked off as

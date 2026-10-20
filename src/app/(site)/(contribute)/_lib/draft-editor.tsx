@@ -1,6 +1,4 @@
 import 'server-only';
-import { connection } from 'next/server';
-import { loadDrafts } from '@/app/(site)/(contribute)/_lib/load-drafts';
 import { loadFormMember } from '@/app/(site)/(contribute)/_lib/load-form-member';
 import { createRecipe, deleteDraft, saveDraft } from '@/app/(site)/(contribute)/contribute/actions';
 import type { SavedDraftDto } from '@/application/drafts/saved-draft-dtos';
@@ -12,62 +10,68 @@ import {
 	recipeFormSnapshotTitle,
 	restoredRecipeForm,
 } from '@/components/recipe-form/recipe-form-snapshot';
-import { recipeFormValues } from '@/components/recipe-form/recipe-form-values';
+import {
+	recipeFormValues,
+	type RecipeFormValues,
+} from '@/components/recipe-form/recipe-form-values';
 import { HeldDraftMenu } from '@/components/recipe-form/subject-menus';
 import { DraftProvenanceLine } from '@/components/recipe-import/draft-provenance-line';
-import { reviewableImportIds } from '@/components/recipe-import/listed-drafts';
 import { getRecipeImageService } from '@/composition/services';
 
 type DraftEditorProps = {
 	// The page's href, which signing in again returns to.
 	pageHref: string;
-	// The member's saved draft the page opens, or none for a new recipe.
+	// The member's draft the page opens, or none for a new recipe.
 	draft?: SavedDraftDto;
 };
 
-// A new recipe's page and a saved draft's: the heading, where a draft saved from an import's review
-// came from, and the recipe form, which saves its draft and holds it once saved, so the heading names
-// it and its menu deletes it.
-export async function DraftEditor({ pageHref, draft }: DraftEditorProps) {
-	// The request's time, not a prerender's: with partial prefetching the query resolves while the
-	// shell still prerenders, so the time waits for the request itself. Taken before the drafts are
-	// listed, so changes kept for an import started meanwhile are never pruned.
-	await connection();
-	const now = new Date();
-	const drafts = await loadDrafts(pageHref);
-	const member = await loadFormMember(pageHref);
-	// One the form can't read, as after a change to what it keeps, leaves the form empty.
+// What the draft opens the form with: its values as last saved, or, until the form first saves an
+// import's draft, what the import read. Values the form can't read, as after a change to what it
+// keeps, open it empty and holding no draft.
+function openedDraft(
+	draft: SavedDraftDto | undefined
+): { initial: RecipeFormValues; title: string | undefined } | undefined {
 	const snapshot = draft === undefined ? undefined : readRecipeFormSnapshot(draft.values);
-	const opened = snapshot === undefined ? undefined : draft;
+	if (snapshot !== undefined) {
+		return {
+			initial: restoredRecipeForm(snapshot, recipeFormValues()),
+			title: recipeFormSnapshotTitle(snapshot),
+		};
+	}
+	const imported = draft?.imported;
+	return imported === undefined
+		? undefined
+		: {
+				initial: recipeFormValues(imported.content, imported.problems),
+				title: imported.content.title,
+			};
+}
+
+// A new recipe's page and a draft's: the heading, where an import's draft came from, and the recipe
+// form, which saves its draft and holds it once saved, so the heading names it and its menu deletes
+// it.
+export async function DraftEditor({ pageHref, draft }: DraftEditorProps) {
+	const member = await loadFormMember(pageHref);
+	const opened = draft === undefined ? undefined : openedDraft(draft);
+	const held = opened === undefined ? undefined : draft;
 
 	return (
 		<HeldDraftProvider
 			// A draft saved elsewhere since starts the form again, as Next keeps this page's state.
-			key={opened === undefined ? 'new' : `${opened.id}:${opened.savedAt.toISOString()}`}
-			opened={
-				opened === undefined || snapshot === undefined
-					? undefined
-					: { id: opened.id, title: recipeFormSnapshotTitle(snapshot) }
-			}
+			key={held === undefined ? 'new' : `${held.id}:${held.savedAt.toISOString()}`}
+			opened={held === undefined ? undefined : { id: held.id, title: opened?.title }}
 		>
 			<DraftPageHeading menu={<HeldDraftMenu memberId={member.id} action={deleteDraft} />}>
 				<DraftProvenanceLine mode={draft?.mode} sourceUrl={draft?.sourceUrl} />
 			</DraftPageHeading>
 			<RecipeForm
-				initial={
-					snapshot === undefined
-						? recipeFormValues()
-						: restoredRecipeForm(snapshot, recipeFormValues())
-				}
+				initial={opened?.initial ?? recipeFormValues()}
 				action={createRecipe}
 				uploadFolders={getRecipeImageService().uploadFolders()}
-				autosave={{
-					memberId: member.id,
-					existing: { knownAt: now, importIds: reviewableImportIds(drafts) },
-				}}
+				autosave={{ memberId: member.id }}
 				drafts={{
 					save: saveDraft,
-					opened: opened === undefined ? undefined : { id: opened.id, savedAt: opened.savedAt },
+					opened: held === undefined ? undefined : { id: held.id, savedAt: held.savedAt },
 					inUrl: true,
 				}}
 			/>

@@ -1,6 +1,5 @@
 import 'server-only';
 import type { ImageStore } from '@/application/ports/image-store';
-import type { RecipeImportRepository } from '@/application/ports/recipe-import-repository';
 import type { RecipeRepository } from '@/application/ports/recipe-repository';
 import type { SavedDraftRepository } from '@/application/ports/saved-draft-repository';
 import type { ImageFolders } from '@/application/recipes/image-folders';
@@ -15,7 +14,6 @@ export type ImageAttachmentSources = {
 	folders: ImageFolders;
 	images: ImageStore;
 	recipes: RecipeRepository;
-	imports: RecipeImportRepository;
 	drafts: SavedDraftRepository;
 };
 
@@ -30,13 +28,13 @@ export async function unattachableImageProblems(
 	pathnames: readonly string[],
 	existing: readonly string[],
 	memberId: MemberId,
-	{ folders, images, recipes, imports, drafts }: ImageAttachmentSources
+	{ folders, images, recipes, drafts }: ImageAttachmentSources
 ): Promise<Problem[]> {
 	const existingPathnames = new Set(existing);
 	const added = pathnames.filter(
 		(pathname) => !existingPathnames.has(pathname) && folders.contains(pathname)
 	);
-	const othersImages = await imagesInUse(added, recipes, imports, drafts, new Date(), memberId);
+	const othersImages = await imagesInUse(added, recipes, drafts, new Date(), memberId);
 	const attachable = await Promise.all(
 		pathnames.map(
 			async (pathname) =>

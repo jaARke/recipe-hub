@@ -26,8 +26,8 @@ export function checkedAnnouncement(left: number): string {
 }
 
 // Heads the form while anything is left to check against the original, and starts the member on
-// the first. It takes focus as an import's review opens, and isn't announced as its count changes,
-// since "Looks right" announces what is left.
+// the first. It takes focus as a form opens with notes to check, as an import's draft does, and isn't
+// announced as its count changes, since "Looks right" announces what is left.
 function ReviewNotesIntro({
 	id,
 	count,

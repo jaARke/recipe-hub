@@ -136,7 +136,8 @@ export const oldRecipeSlugs = pgTable(
 	(table) => [index('old_recipe_slugs_recipe_id_idx').on(table.recipeId)]
 );
 
-// Every import a member starts, kept as a record of use and cost once its draft is cleared.
+// Every import a member starts, kept as a record of use and cost. What it read lives on the draft it
+// made, in recipe_drafts.
 export const recipeImports = pgTable(
 	'recipe_imports',
 	{
@@ -151,12 +152,13 @@ export const recipeImports = pgTable(
 		status: text('status', { enum: ['running', 'succeeded', 'failed'] })
 			.notNull()
 			.default('running'),
+		// Neither read nor written: declared only until no deployment that wrote them still serves.
 		sourceUrl: text('source_url'),
 		aiModel: text('ai_model'),
 		costUsd: numeric('cost_usd', { mode: 'number' }),
 		// The code of the error that ended a failed import.
 		failure: text('failure'),
-		// Untyped, like the recipe documents, because the mapper validates every read.
+		// Neither read nor written, as source_url.
 		draft: jsonb('draft'),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -172,9 +174,8 @@ export const recipeImports = pgTable(
 	]
 );
 
-// The drafts members save from the recipe form, each kept for a while after its last save. An
-// import's own draft lives on its record in recipe_imports; a draft here that continues an import's
-// review names the import.
+// The members' drafts, each kept for a while after its last change: those they save from the recipe
+// form, and those their imports make, which name the import.
 export const recipeDrafts = pgTable(
 	'recipe_drafts',
 	{
@@ -188,21 +189,33 @@ export const recipeDrafts = pgTable(
 		importId: uuid('import_id')
 			.unique()
 			.references(() => recipeImports.id, { onDelete: 'set null' }),
-		// The provenance of the import the draft continues, which outlasts the import's own source URL;
-		// null for a draft entered by hand. Untyped, as the recipes' is, because the mapper validates it.
+		// The provenance of the import that made the draft; null for a draft entered by hand. Untyped, as
+		// the recipes' is, because the mapper validates it.
 		provenance: jsonb('provenance'),
 		// What the member's list of drafts names it by; null while the recipe has no title.
 		title: text('title'),
-		// The recipe form's values, untyped because only the form reads them, and checks them as it does.
-		values: jsonb('values').notNull(),
-		// The images the values name, which the image sweep keeps while the draft lasts.
+		// The recipe form's values, untyped because only the form reads them, and checks them as it does;
+		// null on an import's draft until the form first saves it.
+		values: jsonb('values'),
+		// What the import read, which the draft opens with until the form saves its values. Untyped, as
+		// the recipe documents are, because the mapper validates it.
+		imported: jsonb('imported'),
+		// The images the values, or what the import read, name, which the image sweep keeps while the
+		// draft lasts.
 		imagePathnames: text('image_pathnames').array().notNull().default([]),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-		// When it was last saved, from which it expires.
+		// When it was last changed, from which it expires.
 		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 	},
-	// Serves a member's list of drafts, newest first.
-	(table) => [index('recipe_drafts_member_id_updated_at_idx').on(table.memberId, table.updatedAt)]
+	(table) => [
+		// Every draft opens the form with something.
+		check(
+			'recipe_drafts_contents_check',
+			sql`${table.values} is not null or ${table.imported} is not null`
+		),
+		// Serves a member's list of drafts, newest first.
+		index('recipe_drafts_member_id_updated_at_idx').on(table.memberId, table.updatedAt),
+	]
 );
 
 // The recipes each member keeps as favorites. Users are never deleted, so a member's removal deletes

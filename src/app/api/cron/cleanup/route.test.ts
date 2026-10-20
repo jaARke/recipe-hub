@@ -6,7 +6,6 @@ const secret = 'f3a9c1d7e5b2a8f4c6d0e9b1a7c3f5d2e8b4a6c0d9f1e7b3a5c2d8f0e6b4a1c9
 
 const report: CleanupReport = {
 	interruptedImports: { settledCount: 0 },
-	importDrafts: { clearedCount: 2 },
 	savedDrafts: { deletedCount: 1 },
 	invites: 'failed',
 	sessions: { deletedCount: 3 },

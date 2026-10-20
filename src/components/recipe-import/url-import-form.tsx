@@ -35,7 +35,7 @@ function UrlImportForm({ action }: UrlImportFormProps) {
 				label="Recipe link"
 				required
 				autoComplete="off"
-				description="Paste the address of the page with the recipe. You’ll check what’s read before saving it."
+				description="Paste the address of the page with the recipe. You’ll check what’s read before adding it to the cookbook."
 				error={failure?.fieldErrors[recipeImportFieldNames.url]}
 				defaultValue={failure?.values?.[recipeImportFieldNames.url]}
 			/>

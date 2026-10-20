@@ -6,10 +6,9 @@ import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { useConfirmActionDialogOpener } from '@/components/forms/confirm-action-dialog';
 import type { FormAction } from '@/components/forms/form-state';
-import { DeleteDraftDialog, type DeletedDraft } from '@/components/recipe-form/delete-draft-dialog';
+import { DeleteDraftDialog } from '@/components/recipe-form/delete-draft-dialog';
 import { DeleteRecipeDialog } from '@/components/recipe-form/delete-recipe-dialog';
 import { useHeldDraft, useReleaseDraft } from '@/components/recipe-form/held-draft';
-import type { RecipeFormEntrySubject } from '@/components/recipe-form/recipe-form-autosave';
 import { removeRecipeFormChanges } from '@/components/recipe-form/use-recipe-form-autosave';
 import { contributePath, recipeListPath, recipePath } from '@/components/recipe/recipe-paths';
 import { Button } from '@/components/ui/button';
@@ -79,11 +78,9 @@ function SubjectMenuItem({
 type DraftMenuProps = {
 	// Names the button, as "Draft actions" beside a page's heading or with the draft's name in a list.
 	label: string;
-	draft: DeletedDraft;
+	draftId: string;
 	// The recipe's title as saved, if it has one yet.
 	title: string | undefined;
-	// The form whose unsaved changes in this browser go with the draft.
-	formSubject: RecipeFormEntrySubject;
 	memberId: string;
 	action: FormAction;
 	// Where the page it was open on leaves for once it is deleted. A list stays, and the page renders
@@ -92,15 +89,7 @@ type DraftMenuProps = {
 };
 
 // Delete draft, for a draft open in the recipe form or listed among the member's drafts.
-function DraftMenu({
-	label,
-	draft,
-	title,
-	formSubject,
-	memberId,
-	action,
-	leavesFor,
-}: DraftMenuProps) {
+function DraftMenu({ label, draftId, title, memberId, action, leavesFor }: DraftMenuProps) {
 	const router = useRouter();
 	const releaseDraft = useReleaseDraft();
 	const triggerRef = React.useRef<HTMLButtonElement>(null);
@@ -118,14 +107,14 @@ function DraftMenu({
 				</SubjectMenuItem>
 			</SubjectMenu>
 			<DeleteDraftDialog
-				draft={draft}
+				draftId={draftId}
 				title={title}
 				opener={opener}
 				action={action}
 				onDeleted={() => {
-					removeRecipeFormChanges(memberId, formSubject);
+					removeRecipeFormChanges(memberId, { kind: 'draft', draftId });
 					// The page lets go of it if its form holds it, so its list of drafts stops showing it.
-					releaseDraft?.(draft.id);
+					releaseDraft?.(draftId);
 					// The draft is gone, so the drafts left take its place in the history.
 					if (leavesFor !== undefined) {
 						router.replace(leavesFor);
@@ -146,9 +135,8 @@ function HeldDraftMenu({ memberId, action }: { memberId: string; action: FormAct
 	return (
 		<DraftMenu
 			label="Draft actions"
-			draft={{ kind: 'saved', id: draft.id }}
+			draftId={draft.id}
 			title={draft.title}
-			formSubject={{ kind: 'draft', draftId: draft.id }}
 			memberId={memberId}
 			action={action}
 			leavesFor={contributePath}

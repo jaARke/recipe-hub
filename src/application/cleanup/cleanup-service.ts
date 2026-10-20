@@ -59,9 +59,6 @@ export class CleanupService {
 			interruptedImports: await runStep('interruptedImports', async () => ({
 				settledCount: await this.imports.settleInterruptedImports(),
 			})),
-			importDrafts: await runStep('importDrafts', async () => ({
-				clearedCount: await this.imports.clearExpiredDrafts(),
-			})),
 			savedDrafts: await runStep('savedDrafts', async () => ({
 				deletedCount: await this.drafts.deleteSavedBefore(savedDraftCutoff(now)),
 			})),

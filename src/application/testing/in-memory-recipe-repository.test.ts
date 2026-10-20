@@ -1,6 +1,7 @@
 import { beforeEach } from 'vitest';
 import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
+import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
 import { describeRecipeRepositoryContract } from '@/application/testing/recipe-repository-contract';
 import { memberIdSchema } from '@/domain/member/member';
 
@@ -13,7 +14,7 @@ let imports: InMemoryRecipeImportRepository;
 
 beforeEach(() => {
 	repository = new InMemoryRecipeRepository();
-	imports = new InMemoryRecipeImportRepository(repository);
+	imports = new InMemoryRecipeImportRepository(repository, new InMemorySavedDraftRepository());
 });
 
 describeRecipeRepositoryContract(() => ({

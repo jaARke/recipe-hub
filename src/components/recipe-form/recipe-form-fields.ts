@@ -10,12 +10,10 @@ export const recipeFormFieldNames = {
 	recipe: 'recipe',
 	recipeId: 'recipeId',
 	recipeVersion: 'recipeVersion',
-	// The import a create form reviews, whose provenance the saved recipe takes.
-	importId: 'importId',
 	// The form's snapshot as JSON, which saving a draft sends.
 	draft: 'draft',
-	// The saved draft the form holds, which saving the recipe deletes, and whose provenance the recipe
-	// takes when no import is named.
+	// The saved draft the form holds, which saving the recipe deletes, and whose provenance and import
+	// the recipe takes.
 	draftId: 'draftId',
 	// The version of that draft the form has, its savedAt, so saving a draft over a newer one is
 	// refused.

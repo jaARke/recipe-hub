@@ -10,7 +10,7 @@ import {
 	sampleCatalogFacets,
 	sampleContributor,
 	sampleDrafts,
-	sampleImportsNow,
+	sampleDraftsNow,
 	sampleRecipeDetail,
 	sampleRecipeSummaries,
 	sampleSearchPage,
@@ -162,8 +162,8 @@ const sampleSavedDraftContent: RecipeDraftContent = {
 };
 
 // The recipe form's pages, each with its heading's menu and its starting values as the page builds
-// them. The review adds stand-in pages of the original as the member's uploads, since no store holds
-// a sample draft's scans.
+// them. The draft read from photos adds stand-in pages of the original as the member's uploads, since
+// no store holds a sample draft's scans.
 const recipeFormSamples: readonly {
 	label: string;
 	subject: SampleEditingSubject;
@@ -187,11 +187,15 @@ const recipeFormSamples: readonly {
 		initial: recipeFormValues(parseRecipeContent(sampleSundayPotRoast)),
 	},
 	{
-		label: 'Reviewing an import, with its notes to check',
+		label: 'A draft read from photos, with its notes to check',
 		subject: {
-			page: 'review',
-			importId: '0199d2a0-1b2c-7d3e-8f40-000000000005',
-			title: sampleDraft.content.title,
+			page: 'add',
+			draft: {
+				id: '0199d2a0-1b2c-7d3e-8f40-000000000003',
+				title: sampleDraft.content.title,
+				savedAt: new Date('2026-10-12T17:59:30.000Z'),
+			},
+			importedFrom: 'photo',
 		},
 		initial: recipeFormValues(sampleDraft.content, sampleDraft.problems),
 		standInScans: true,
@@ -208,7 +212,7 @@ const startSamples: readonly {
 	{
 		label: 'After leaving a draft',
 		drafts: sampleDrafts,
-		kept: sampleDrafts.find(({ kind }) => kind === 'saved'),
+		kept: sampleDrafts.find(({ mode }) => mode === undefined),
 	},
 	{ label: 'With no drafts', drafts: [] },
 ];
@@ -313,7 +317,7 @@ const subsections = [
 		id: 'recipe-form',
 		title: 'Recipe form',
 		description:
-			'For adding and editing a recipe, and for reviewing an import. An import’s notes sit under what they’re about, and an intro counts them and starts on the first; on the review page it takes focus. Editing a field clears its note, and so does Looks right, which moves on to the next note and says how many are left; an empty title or list must be filled instead. A scan’s [illegible] or [?] left in the text is noted too, and marked in the line’s preview, until it’s edited away. Saving with anything left to check asks first, with Show me and Add anyway (Save anyway when editing); notes survive a failed save, whose errors a summary at the top lists and links to, saying what fixing them is for: before adding it to the cookbook, or to save. Ingredients and steps are each one list of growing fields, with headings as rows among the lines: Enter adds a line below, Backspace in an empty one removes it, and a pasted list splits into lines and headings, each announced. A row’s menu moves it up or down, across headings, changes it between a line and a heading, or removes it, and a removed heading’s lines join the ones above; each ingredient shows how it will read. Chapter, Holidays and Diet file the recipe in the cookbook: one chapter, which saving needs, and any holidays and diets, each list in two columns (the chapters from sm); ticking Vegan ticks and holds Vegetarian and Dairy-free, and a line says why. Chosen photos are resized and upload at once, and pages of the original recipe move up and down. From lg, a form with pages of the original holds them to the right of its fields, in view as the form scrolls, a page at a time, zooming as the viewer’s images do, with the zoom’s buttons and Full size above it and a strip of the pages below, so Add to cookbook, or Save changes when editing, sits under the fields; below lg, View original opens the viewer. Adding a recipe and reviewing an import offer Save as draft beside Add to cookbook (Save draft on phones), which saves whatever is there and says when in the action bar. Adding a recipe is headed by the draft’s title as saved, Untitled recipe until it has one, under the back link to the start page, which says there that the draft is kept once the form holds one. The page’s heading holds a menu of what can be done to what it edits, each Delete confirmed in a dialog: View recipe and Delete recipe when editing, and Delete draft on an import’s review or once the form holds a saved draft, opened or just saved; a new recipe has none. Here uploads are simulated, the review is of an anise cakes card from the National Archives, whose two pages show as uploads, saving checks the recipe as the site does but saves nothing, a draft is saved nowhere, and nothing is deleted.',
+			'For adding and editing a recipe, an import’s draft included. An import’s notes sit under what they’re about, and an intro counts them and starts on the first, taking focus as the form opens. Editing a field clears its note, and so does Looks right, which moves on to the next note and says how many are left; an empty title or list must be filled instead. A scan’s [illegible] or [?] left in the text is noted too, and marked in the line’s preview, until it’s edited away. Saving with anything left to check asks first, with Show me and Add anyway (Save anyway when editing); notes survive a failed save, whose errors a summary at the top lists and links to, saying what fixing them is for: before adding it to the cookbook, or to save. Ingredients and steps are each one list of growing fields, with headings as rows among the lines: Enter adds a line below, Backspace in an empty one removes it, and a pasted list splits into lines and headings, each announced. A row’s menu moves it up or down, across headings, changes it between a line and a heading, or removes it, and a removed heading’s lines join the ones above; each ingredient shows how it will read. Chapter, Holidays and Diet file the recipe in the cookbook: one chapter, which saving needs, and any holidays and diets, each list in two columns (the chapters from sm); ticking Vegan ticks and holds Vegetarian and Dairy-free, and a line says why. Chosen photos are resized and upload at once, and pages of the original recipe move up and down. From lg, a form with pages of the original holds them to the right of its fields, in view as the form scrolls, a page at a time, zooming as the viewer’s images do, with the zoom’s buttons and Full size above it and a strip of the pages below, so Add to cookbook, or Save changes when editing, sits under the fields; below lg, View original opens the viewer. Adding a recipe offers Save as draft beside Add to cookbook (Save draft on phones), which saves whatever is there and says when in the action bar. Adding a recipe is headed by the draft’s title as saved, Untitled recipe until it has one, under the back link to the start page, which says there that the draft is kept once the form holds one, and over where an import read it. The page’s heading holds a menu of what can be done to what it edits, each Delete confirmed in a dialog: View recipe and Delete recipe when editing, and Delete draft once the form holds a saved draft, opened or just saved; a new recipe has none. Here uploads are simulated, the draft read from photos is of an anise cakes card from the National Archives, whose two pages show as uploads, saving checks the recipe as the site does but saves nothing, a draft is saved nowhere, and nothing is deleted.',
 		Content: RecipeFormSpecimen,
 	},
 	{
@@ -515,7 +519,7 @@ function RecipeEntrySpecimen() {
 			{startSamples.map(({ label, drafts, kept }) => (
 				<Specimen key={label} label={label} className="px-0 py-10 sm:py-14">
 					<PageContainer width="reading">
-						<SampleRecipeStart drafts={drafts} kept={kept} now={sampleImportsNow} />
+						<SampleRecipeStart drafts={drafts} kept={kept} now={sampleDraftsNow} />
 					</PageContainer>
 				</Specimen>
 			))}

@@ -34,8 +34,6 @@ export const settingsSchema = z
 		}),
 		imports: z.object({
 			maxImportsPerDay: z.int().positive(),
-			maxUnsavedImports: z.int().positive(),
-			importDraftLifetimeDays: z.int().positive(),
 		}),
 		drafts: z.object({
 			draftLifetimeDays: z.int().positive(),

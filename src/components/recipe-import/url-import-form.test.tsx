@@ -5,7 +5,7 @@ import type { FormAction } from '@/components/forms/form-state';
 import { UrlImportForm } from '@/components/recipe-import/url-import-form';
 
 const fieldDescription =
-	'Paste the address of the page with the recipe. You’ll check what’s read before saving it.';
+	'Paste the address of the page with the recipe. You’ll check what’s read before adding it to the cookbook.';
 
 function linkField() {
 	return page.getByRole('textbox', { name: 'Recipe link' });

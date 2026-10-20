@@ -24,9 +24,10 @@ import { recipeDrafts } from '@/infrastructure/db/schema';
 // Ends with the id, so drafts saved at the same moment keep one order.
 const newestFirst = [desc(recipeDrafts.updatedAt), desc(recipeDrafts.id)];
 
-// The columns a save writes; a title left out is none.
+// The columns a save writes: a title left out is none, and the values take the place of what an
+// import read.
 function contentColumns({ title, values, imagePathnames }: SavedDraftContents) {
-	return { title: title ?? null, values, imagePathnames: [...imagePathnames] };
+	return { title: title ?? null, values, imported: null, imagePathnames: [...imagePathnames] };
 }
 
 // Each save moves updatedAt by a millisecond at least, so it versions the draft at a Date's precision.
@@ -46,25 +47,12 @@ export class DrizzleSavedDraftRepository implements SavedDraftRepository {
 		this.db = db;
 	}
 
-	// The import's unique key keeps a second draft for it out in the same statement, so of two saves at
-	// once only one is stored.
-	async create({
-		memberId,
-		importId,
-		provenance,
-		...contents
-	}: NewSavedDraft): Promise<SavedDraft | null> {
+	async create({ memberId, ...contents }: NewSavedDraft): Promise<SavedDraft> {
 		const [row] = await this.db
 			.insert(recipeDrafts)
-			.values({
-				memberId,
-				importId: importId ?? null,
-				provenance: provenance ?? null,
-				...contentColumns(contents),
-			})
-			.onConflictDoNothing({ target: recipeDrafts.importId })
+			.values({ memberId, ...contentColumns(contents) })
 			.returning(savedDraftColumns);
-		return row === undefined ? null : toSavedDraft(row);
+		return toSavedDraft(row!);
 	}
 
 	// The version is checked in the update's own condition, so a save made since is never replaced.
@@ -108,13 +96,12 @@ export class DrizzleSavedDraftRepository implements SavedDraftRepository {
 		return row === undefined ? null : toSavedDraft(row);
 	}
 
-	async list(memberId: MemberId, since: Date, limit: number): Promise<SavedDraftSummary[]> {
+	async list(memberId: MemberId, since: Date): Promise<SavedDraftSummary[]> {
 		const rows = await this.db
 			.select(savedDraftSummaryColumns)
 			.from(recipeDrafts)
 			.where(and(eq(recipeDrafts.memberId, memberId), gte(recipeDrafts.updatedAt, since)))
-			.orderBy(...newestFirst)
-			.limit(limit);
+			.orderBy(...newestFirst);
 		return rows.map(toSavedDraftSummary);
 	}
 
@@ -155,10 +142,6 @@ export class DrizzleSavedDraftRepository implements SavedDraftRepository {
 			.where(eq(recipeDrafts.id, id))
 			.returning(savedDraftColumns);
 		return row === undefined ? null : toSavedDraft(row);
-	}
-
-	async deleteByImportId(importId: RecipeImportId): Promise<void> {
-		await this.db.delete(recipeDrafts).where(eq(recipeDrafts.importId, importId));
 	}
 
 	async deleteSavedBefore(cutoff: Date): Promise<number> {

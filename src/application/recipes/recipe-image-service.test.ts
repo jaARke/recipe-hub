@@ -83,7 +83,6 @@ function serviceFor(
 		actors,
 		service: new RecipeImageService(
 			recipes,
-			new InMemoryRecipeImportRepository(recipes),
 			new InMemorySavedDraftRepository(),
 			images,
 			productionImages,
@@ -106,7 +105,6 @@ function productionServiceFor(
 	const recipes = new InMemoryRecipeRepository();
 	return new RecipeImageService(
 		recipes,
-		new InMemoryRecipeImportRepository(recipes),
 		new InMemorySavedDraftRepository(),
 		images,
 		productionImages,
@@ -135,15 +133,15 @@ function withinLifetime(days: number): Date {
 	return daysAgo(days - 1);
 }
 
-// Images stored past an unused upload's lifetime: this environment's, which a recipe lists, a draft
-// awaiting review names, a draft a member saved names, or nothing names, and the seed's and
+// Images stored past an unused upload's lifetime: this environment's, which a recipe lists, an
+// import's draft names, a draft a member saved names, or nothing names, and the seed's and
 // production's beside them. The sweep runs with no actor. By default the environment sweeps after
 // writes, as previews and the dev server do.
 async function createSweep(environment = 'development', sweepsAfterWrites = true) {
 	const sweepFolders = new ImageFolders(environment);
 	const recipes = new InMemoryRecipeRepository();
-	const imports = new InMemoryRecipeImportRepository(recipes);
 	const drafts = new InMemorySavedDraftRepository();
+	const imports = new InMemoryRecipeImportRepository(recipes, drafts);
 	const images = new InMemoryImageStore(sweepFolders);
 	const listed: RecipeImage = {
 		role: 'dish',
@@ -173,18 +171,19 @@ async function createSweep(environment = 'development', sweepsAfterWrites = true
 		throw new Error('The import was refused');
 	}
 	await imports.recordSuccess(started.id, {
-		draft: { content: { title: 'Soup card', images: [drafted] }, problems: [] },
+		draft: {
+			provenance: { entryMode: 'photo' },
+			title: 'Soup card',
+			imported: { content: { title: 'Soup card', images: [drafted] }, problems: [] },
+			imagePathnames: [drafted.pathname],
+		},
 	});
 	const savedDraft = await drafts.create({ memberId, values: {}, imagePathnames: [saved] });
-	if (savedDraft === null) {
-		throw new Error('The draft was refused');
-	}
 
 	const lock = new InMemoryImageMoveLock(moveLockWaitMs);
 	const { tasks, scheduleTask } = heldTasks();
 	const service = new RecipeImageService(
 		recipes,
-		imports,
 		drafts,
 		images,
 		new InMemoryProductionImages(),
@@ -394,7 +393,6 @@ describe('getPublicImage on each deployment', () => {
 		const recipes = new InMemoryRecipeRepository();
 		const service = new RecipeImageService(
 			recipes,
-			new InMemoryRecipeImportRepository(recipes),
 			new InMemorySavedDraftRepository(),
 			images,
 			productionImages,

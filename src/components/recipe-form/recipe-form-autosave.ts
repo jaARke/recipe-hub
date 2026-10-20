@@ -6,7 +6,6 @@ import {
 	type RecipeFormSnapshot,
 } from '@/components/recipe-form/recipe-form-snapshot';
 import type { RecipeFormValues } from '@/components/recipe-form/recipe-form-values';
-import { importDraftCutoff } from '@/domain/recipe/recipe-import';
 import { memberBrowserStorageKey } from '@/lib/browser-storage';
 import { daysInMilliseconds } from '@/lib/dates';
 import { settings } from '@/lib/settings';
@@ -17,19 +16,14 @@ import { settings } from '@/lib/settings';
 // browser never finds it; it records when it was written, and goes once it is as old as a saved
 // draft's lifetime, or once what it edits is gone.
 
-// What a form edits, which names its entry: a new recipe, an import's draft under review, a draft the
-// member saved, or a recipe.
+// What a form edits, which names its entry: a new recipe, a draft, or a recipe.
 export type RecipeFormEntrySubject =
-	| { kind: 'new' }
-	| { kind: 'import'; importId: string }
-	| { kind: 'draft'; draftId: string }
-	| { kind: 'recipe'; recipeId: string };
+	{ kind: 'new' } | { kind: 'draft'; draftId: string } | { kind: 'recipe'; recipeId: string };
 
 // The subject with the version of it the form loaded or last saved, which its entry records: a
-// recipe's, a saved draft's, and an import's once its review holds a saved draft.
+// recipe's or a draft's.
 export type RecipeFormSubject =
 	| { kind: 'new' }
-	| { kind: 'import'; importId: string; version?: string }
 	| { kind: 'draft'; draftId: string; version: string }
 	| { kind: 'recipe'; recipeId: string; version: string };
 
@@ -49,12 +43,10 @@ export type AutosavedRecipeForm = z.infer<typeof entrySchema>;
 export type KeptRecipeForm = { status: 'current' | 'outdated'; entry: AutosavedRecipeForm };
 
 // What a page knows still exists of what the member's forms edit, so a form's load removes the
-// member's entries for the rest: the imports whose reviews they can still open, and the recipes there
-// are. Each list, where given, names every one.
+// member's entries for the rest: the recipes there are. The list, where given, names every one.
 export type ExistingRecipeFormSubjects = {
 	// When the page found out, so an entry written since, as by another tab, is kept.
 	knownAt: Date;
-	importIds?: readonly string[];
 	recipeIds?: readonly string[];
 };
 
@@ -76,8 +68,6 @@ export function recipeFormAutosaveKey(memberId: string, subject: RecipeFormEntry
 	switch (subject.kind) {
 		case 'new':
 			return `${member}new`;
-		case 'import':
-			return `${member}import:${subject.importId}`;
 		case 'draft':
 			return `${member}draft:${subject.draftId}`;
 		case 'recipe':
@@ -99,8 +89,6 @@ function entrySubject(kind: string | undefined, id: string): RecipeFormEntrySubj
 	switch (kind) {
 		case 'new':
 			return { kind: 'new' };
-		case 'import':
-			return { kind: 'import', importId: id };
 		case 'draft':
 			return { kind: 'draft', draftId: id };
 		case 'recipe':
@@ -116,25 +104,17 @@ export function recipeFormAutosaveVersion(subject: RecipeFormSubject): string | 
 	return subject.kind === 'new' ? undefined : subject.version;
 }
 
-// What the form edits, from what it is given: a recipe to edit, a saved draft, an import to review,
-// or none of them. A saved draft that continues an import is named by the import, as its review
-// always opens it. A saved draft's version is when it was last saved.
+// What the form edits, from what it is given: a recipe to edit, a draft, or neither. A draft's
+// version is when it was last saved.
 export function recipeFormSubject({
 	editing,
-	importId,
 	draft,
 }: {
 	editing?: Pick<EditedRecipe, 'id' | 'version'>;
-	importId?: string;
 	draft?: { id: string; savedAt: Date };
 }): RecipeFormSubject {
 	if (editing !== undefined) {
 		return { kind: 'recipe', recipeId: editing.id, version: editing.version };
-	}
-	if (importId !== undefined) {
-		return draft === undefined
-			? { kind: 'import', importId }
-			: { kind: 'import', importId, version: draft.savedAt.toISOString() };
 	}
 	return draft === undefined
 		? { kind: 'new' }
@@ -189,9 +169,8 @@ function isExpired(entry: AutosavedRecipeForm, now: Date): boolean {
 export const recipeFormAutosavePrefix = keyPrefix;
 
 // Whether the entry under a key is of no more use: one that can't be read, as an entry from before a
-// change to what the form keeps; one past its lifetime, for a page this browser never opens again; any
-// member's for an import, written longer ago than an import's draft lasts, as its review has closed
-// since; or the member's for an import or a recipe their page knows is gone, written before it knew.
+// change to what the form keeps; one past its lifetime, for a page this browser never opens again; or
+// the member's for a recipe their page knows is gone, written before it knew.
 export function isStaleRecipeFormEntry(
 	key: string,
 	entry: string,
@@ -202,21 +181,17 @@ export function isStaleRecipeFormEntry(
 		return true;
 	}
 	const owner = keyOwner(key);
-	const writtenAt = new Date(read.writtenAt);
-	if (owner?.subject.kind === 'import' && writtenAt < importDraftCutoff(now)) {
-		return true;
-	}
-	if (owner?.memberId !== memberId || existing === undefined || writtenAt >= existing.knownAt) {
+	if (
+		owner?.memberId !== memberId ||
+		existing === undefined ||
+		new Date(read.writtenAt) >= existing.knownAt
+	) {
 		return false;
 	}
-	switch (owner.subject.kind) {
-		case 'import':
-			return existing.importIds?.includes(owner.subject.importId) === false;
-		case 'recipe':
-			return existing.recipeIds?.includes(owner.subject.recipeId) === false;
-		default:
-			return false;
-	}
+	return (
+		owner.subject.kind === 'recipe' &&
+		existing.recipeIds?.includes(owner.subject.recipeId) === false
+	);
 }
 
 // The stored uploads the form didn't load with. The image sweep removes an upload a day after nothing

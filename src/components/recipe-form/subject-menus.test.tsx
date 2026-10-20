@@ -15,11 +15,9 @@ vi.mock('next/navigation', async (importOriginal) => ({
 const memberId = '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b';
 const recipeId = '0b6f3c7e-3c1a-4d8e-9a57-2f1d6b8e4c10';
 const draftId = '0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e';
-const importId = '6d2b9f4a-8e1c-4b7d-a3f5-1c9e7d2b6a84';
 
 const recipeKey = `member:recipe-form:${memberId}:recipe:${recipeId}`;
 const draftKey = `member:recipe-form:${memberId}:draft:${draftId}`;
-const importKey = `member:recipe-form:${memberId}:import:${importId}`;
 
 const succeed: FormAction = async () => ({ status: 'success' });
 
@@ -116,15 +114,14 @@ describe('EditedRecipeMenu', () => {
 });
 
 describe('DraftMenu', () => {
-	it('deletes an import’s draft by its import, with the review’s unsaved changes, and leaves for the start page', async () => {
+	it('deletes the draft, with its unsaved changes, and leaves for the start page', async () => {
 		const action = vi.fn(succeed);
-		localStorage.setItem(importKey, '{}');
+		localStorage.setItem(draftKey, '{}');
 		await render(
 			<DraftMenu
 				label="Draft actions"
-				draft={{ kind: 'import', id: importId }}
+				draftId={draftId}
 				title="Lemon bars"
-				formSubject={{ kind: 'import', importId }}
 				memberId={memberId}
 				action={action}
 				leavesFor="/contribute"
@@ -147,9 +144,8 @@ describe('DraftMenu', () => {
 		await dialog.getByRole('button', { name: 'Delete draft' }).click();
 
 		await expect.poll(() => router.replace).toHaveBeenCalledWith('/contribute');
-		expect(action.mock.calls[0]?.[1].get('importId')).toBe(importId);
-		expect(action.mock.calls[0]?.[1].get('draftId')).toBeNull();
-		expect(localStorage.getItem(importKey)).toBeNull();
+		expect(action.mock.calls[0]?.[1].get('draftId')).toBe(draftId);
+		expect(localStorage.getItem(draftKey)).toBeNull();
 	});
 
 	it('stays where nothing to leave for is given, as a list does', async () => {
@@ -157,9 +153,8 @@ describe('DraftMenu', () => {
 		await render(
 			<DraftMenu
 				label="Actions for Lemon bars"
-				draft={{ kind: 'saved', id: draftId }}
+				draftId={draftId}
 				title="Lemon bars"
-				formSubject={{ kind: 'draft', draftId }}
 				memberId={memberId}
 				action={action}
 			/>
@@ -181,9 +176,8 @@ describe('DraftMenu', () => {
 		await render(
 			<DraftMenu
 				label="Draft actions"
-				draft={{ kind: 'saved', id: draftId }}
+				draftId={draftId}
 				title={undefined}
-				formSubject={{ kind: 'draft', draftId }}
 				memberId={memberId}
 				action={refuse}
 			/>

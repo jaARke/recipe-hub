@@ -31,9 +31,11 @@ import {
 	type RecipeFormEdit,
 	type RecipeFormValues,
 } from '@/components/recipe-form/recipe-form-values';
-import { DraftMenu, EditedRecipeMenu, HeldDraftMenu } from '@/components/recipe-form/subject-menus';
+import { EditedRecipeMenu, HeldDraftMenu } from '@/components/recipe-form/subject-menus';
+import { DraftProvenanceLine } from '@/components/recipe-import/draft-provenance-line';
 import { parseRecipeContent } from '@/domain/recipe/recipe';
 import type { ImageSize, RecipeImageRole } from '@/domain/recipe/recipe-image';
+import type { RecipeImportMode } from '@/domain/recipe/recipe-import';
 
 // Photo pathnames name a folder the recipe accepts, though nothing is stored there.
 const sampleUploadFolders: Record<RecipeImageRole, string> = {
@@ -202,11 +204,10 @@ function SampleRecipeForm({
 	);
 }
 
-// What a sample page edits, which its heading's menu acts on: a new recipe, from a saved draft if
-// one is given; an import's draft; or a recipe.
+// What a sample page edits, which its heading's menu acts on: a new recipe, from a draft if one is
+// given, with how its import read it if one did; or a recipe.
 export type SampleEditingSubject =
-	| { page: 'add'; draft?: HeldDraft & OpenedDraft }
-	| { page: 'review'; importId: string; title: string | undefined }
+	| { page: 'add'; draft?: HeldDraft & OpenedDraft; importedFrom?: RecipeImportMode }
 	| { page: 'edit'; recipe: EditedRecipe; slug: string; title: string };
 
 // The heading's menu on each sample page, as the site's pages give it.
@@ -214,17 +215,6 @@ function sampleMenu(subject: SampleEditingSubject): React.ReactNode {
 	switch (subject.page) {
 		case 'add':
 			return <HeldDraftMenu memberId={sampleMemberId} action={deleteSample} />;
-		case 'review':
-			return (
-				<DraftMenu
-					label="Draft actions"
-					draft={{ kind: 'import', id: subject.importId }}
-					title={subject.title}
-					formSubject={{ kind: 'import', importId: subject.importId }}
-					memberId={sampleMemberId}
-					action={deleteSample}
-				/>
-			);
 		case 'edit':
 			return (
 				<EditedRecipeMenu
@@ -238,7 +228,7 @@ function sampleMenu(subject: SampleEditingSubject): React.ReactNode {
 
 // An editing page as the site composes it: its heading, under the design reference's own, with the
 // page's menu, over the sample form. Adding a recipe is headed by the draft's title, as a draft's
-// page is.
+// page is, over where its import read it, if one did.
 function SampleEditingPage({
 	subject,
 	initial,
@@ -252,7 +242,9 @@ function SampleEditingPage({
 	return (
 		<HeldDraftProvider opened={draft}>
 			{subject.page === 'add' ? (
-				<DraftPageHeading headingTag="h4" menu={sampleMenu(subject)} />
+				<DraftPageHeading headingTag="h4" menu={sampleMenu(subject)}>
+					<DraftProvenanceLine mode={subject.importedFrom} sourceUrl={undefined} />
+				</DraftPageHeading>
 			) : (
 				<EditingPageHeading
 					title={editingPageTitles[subject.page]}

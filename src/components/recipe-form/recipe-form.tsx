@@ -132,7 +132,6 @@ const draftFailureMessage = 'We couldn’t save the draft. Check your connection
 // What Discard returns the form to, by what it edits; a form holding a saved draft returns to it.
 const discardTargets = {
 	new: 'an empty form',
-	import: 'the recipe as it was imported',
 	draft: 'your saved draft',
 	recipe: 'the recipe as it was saved',
 } as const satisfies Record<RecipeFormSubject['kind'], string>;
@@ -225,18 +224,17 @@ export type OpenedDraft = {
 	savedAt: Date;
 };
 
-// Saving the form as a draft, on a new recipe and an import's review. The page's menu deletes it.
+// Saving the form as a draft, when adding a recipe. The page's menu deletes it.
 export type RecipeFormDrafts = {
 	save: FormAction<SavedDraftResult>;
 	// The draft the form opened, if any.
 	opened?: OpenedDraft;
-	// Whether the page's URL names the draft once it is first saved, so a reload opens it: the add
-	// page's does, and an import's review is named by its import.
+	// Whether the page's URL names the draft once it is first saved, so a reload opens it.
 	inUrl: boolean;
 };
 
 type RecipeFormProps = {
-	// Built with recipeFormValues, from nothing, a recipe to edit, or a draft to review, or from a
+	// Built with recipeFormValues, from nothing, a recipe to edit, or what an import read, or from a
 	// saved draft with restoredRecipeForm.
 	initial: RecipeFormValues;
 	// Redirects to the recipe once it is saved, which also starts the form over.
@@ -246,9 +244,6 @@ type RecipeFormProps = {
 	uploader?: PhotoUploader;
 	// Absent when adding a recipe.
 	editing?: EditedRecipe;
-	// The import whose draft the form reviews, which the saved recipe takes its provenance from. The
-	// review's intro takes focus as the page loads, unless the reader is already in a field.
-	importId?: string;
 	// Keeps unsaved changes in this browser for the member signed in, and brings them back as the form
 	// loads again. What the page knows still exists of what the member's forms edit prunes the rest.
 	autosave?: { memberId: string; existing?: ExistingRecipeFormSubjects };
@@ -304,7 +299,6 @@ function RecipeForm({
 	uploadFolders,
 	uploader = uploadPhoto,
 	editing,
-	importId,
 	autosave,
 	drafts,
 }: RecipeFormProps) {
@@ -321,7 +315,7 @@ function RecipeForm({
 		() => showSameRecipeForm(recipeFormSnapshot(values), recipeFormSnapshot(baseline)),
 		[values, baseline]
 	);
-	const subject = recipeFormSubject({ editing, importId, draft: savedDraft });
+	const subject = recipeFormSubject({ editing, draft: savedDraft });
 	// Announced as "Looks right" clears a note and as unsaved changes come back or go, and never as a
 	// draft loads.
 	const [announcement, announce] = useLiveAnnouncement();
@@ -406,18 +400,19 @@ function RecipeForm({
 	// from.
 	const lastFocused = React.useRef<Element>(null);
 
-	// Reviewing an import starts on its intro, once, not again when a hidden page shows, and not where
-	// the reader went to a field before the page hydrated.
+	// A form that opens with notes to check, as an import's draft does, starts on their intro, which
+	// shows only while notes are left: once, not again when a hidden page shows, and not where the
+	// reader went to a field before the page hydrated.
 	const focusedReview = React.useRef(false);
 	React.useEffect(() => {
-		if (importId === undefined || focusedReview.current) {
+		if (focusedReview.current) {
 			return;
 		}
 		focusedReview.current = true;
 		if (focusFellToPage()) {
 			document.getElementById(ids.reviewIntro)?.focus();
 		}
-	}, [importId, ids.reviewIntro]);
+	}, [ids.reviewIntro]);
 
 	function fieldLabel(field: TextFieldName): string {
 		return field === 'yieldAmount' ? yieldAmountLabels[values.yieldKind] : textFieldLabels[field];
@@ -613,7 +608,7 @@ function RecipeForm({
 		if (drafts === undefined) {
 			return;
 		}
-		if (unchanged && (savedDraft !== undefined || importId === undefined)) {
+		if (unchanged) {
 			setDraftStatus({ kind: 'unchanged' });
 			return;
 		}
@@ -624,9 +619,6 @@ function RecipeForm({
 		if (savedDraft !== undefined) {
 			formData.set(recipeFormFieldNames.draftId, savedDraft.id);
 			formData.set(recipeFormFieldNames.draftVersion, savedDraft.savedAt.toISOString());
-		}
-		if (importId !== undefined) {
-			formData.set(recipeFormFieldNames.importId, importId);
 		}
 		startDraftSave(async () => {
 			let result: FormState<SavedDraftResult>;
@@ -729,9 +721,6 @@ function RecipeForm({
 					<input type="hidden" name={recipeFormFieldNames.recipeId} value={editing.id} />
 					<input type="hidden" name={recipeFormFieldNames.recipeVersion} value={editing.version} />
 				</>
-			)}
-			{importId !== undefined && (
-				<input type="hidden" name={recipeFormFieldNames.importId} value={importId} />
 			)}
 			{savedDraft !== undefined && (
 				<input type="hidden" name={recipeFormFieldNames.draftId} value={savedDraft.id} />
@@ -1078,7 +1067,7 @@ function BesideOriginal({
 }
 
 // Mirrors the top of the recipe form: its title and source, then the start of the ingredients. Where
-// the form most often has the original beside it, as when reviewing an import, its place shows too.
+// the form most often has the original beside it, its place shows too.
 function RecipeFormSkeleton({ besideOriginal = false }: { besideOriginal?: boolean }) {
 	return (
 		<BesideOriginal

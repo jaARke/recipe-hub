@@ -3,9 +3,9 @@ import { z } from 'zod';
 import { daysInMilliseconds } from '@/lib/dates';
 import { settings } from '@/lib/settings';
 
-// A draft a member saves from the recipe form: the form's values, incomplete ones included, which
-// only the form reads, so this layer keeps them as they came. It is kept for a while after its last
-// save, and an import's review saved as a draft continues that import.
+// A member's draft: the recipe form's values, incomplete ones included, which only the form reads, so
+// this layer keeps them as they came, or what an import read until the form first saves it. It is
+// kept for a while after its last change.
 
 export const savedDraftIdSchema = z.uuid().brand<'SavedDraftId'>();
 export type SavedDraftId = z.infer<typeof savedDraftIdSchema>;

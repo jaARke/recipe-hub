@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import type { CleanupReport } from '@/application/cleanup/cleanup-dtos';
 import { CleanupService } from '@/application/cleanup/cleanup-service';
+import type { SavedDraftId } from '@/application/drafts/saved-draft';
 import { RecipeImportService } from '@/application/ingestion/recipe-import-service';
 import { ImageFolders } from '@/application/recipes/image-folders';
 import { RecipeImageService } from '@/application/recipes/recipe-image-service';
@@ -56,8 +57,8 @@ function logLines(spy: MockInstance<(...args: unknown[]) => void>): unknown[] {
 // within it.
 async function createCleanup() {
 	const recipes = new InMemoryRecipeRepository();
-	const imports = new InMemoryRecipeImportRepository(recipes);
 	const drafts = new InMemorySavedDraftRepository();
+	const imports = new InMemoryRecipeImportRepository(recipes, drafts);
 	const invites = new InMemoryInviteRepository();
 	const signIns = new InMemorySignInRepository();
 	const images = new InMemoryImageStore(folders);
@@ -72,34 +73,35 @@ async function createCleanup() {
 		}
 		return started.id;
 	};
-	const importWithDraft = async (startedAt: Date): Promise<RecipeImportId> => {
-		const id = await startImport();
-		await imports.recordSuccess(id, {
-			draft: { content: { title: 'Fresh lemonade' }, problems: [] },
-			sourceUrl,
-		});
-		imports.backdate(id, startedAt);
-		return id;
-	};
 	const interruptedImport = await startImport();
 	imports.backdate(interruptedImport, new Date(Date.now() - 11 * 60 * 1000));
 	const runningImport = await startImport();
-	const expiredImport = await importWithDraft(
-		daysAgo(settings.imports.importDraftLifetimeDays + 1)
-	);
-	const recentImport = await importWithDraft(daysAgo(settings.imports.importDraftLifetimeDays - 1));
 
 	const saveDraft = async (savedAt: Date) => {
 		const draft = await drafts.create({ memberId, values: {}, imagePathnames: [] });
-		if (draft === null) {
-			throw new Error('The draft was refused');
-		}
 		drafts.backdate(draft.id, savedAt);
 		return draft.id;
+	};
+	// The draft an import made, last changed at the time.
+	const importDraft = async (changedAt: Date): Promise<SavedDraftId> => {
+		const draftId = await imports.recordSuccess(await startImport(), {
+			draft: {
+				provenance: { entryMode: 'url', sourceUrl },
+				imported: { content: { title: 'Fresh lemonade' }, problems: [] },
+				imagePathnames: [],
+			},
+		});
+		if (draftId === null) {
+			throw new Error('The import was no longer running');
+		}
+		drafts.backdate(draftId, changedAt);
+		return draftId;
 	};
 	const draftLifetime = settings.drafts.draftLifetimeDays;
 	const expiredDraft = await saveDraft(daysAgo(draftLifetime + 1));
 	const recentDraft = await saveDraft(daysAgo(draftLifetime - 1));
+	const expiredImportDraft = await importDraft(daysAgo(draftLifetime + 1));
+	const recentImportDraft = await importDraft(daysAgo(draftLifetime - 1));
 
 	// An invite issued at the time, closed by its revocation or its expiry, or used.
 	const invite = async (
@@ -160,7 +162,6 @@ async function createCleanup() {
 	);
 	const imageService = new RecipeImageService(
 		recipes,
-		imports,
 		drafts,
 		images,
 		new InMemoryProductionImages(),
@@ -186,10 +187,10 @@ async function createCleanup() {
 		lock,
 		interruptedImport,
 		runningImport,
-		expiredImport,
-		recentImport,
 		expiredDraft,
 		recentDraft,
+		expiredImportDraft,
+		recentImportDraft,
 		invitesByFate,
 		remainingInvites,
 	};
@@ -198,8 +199,7 @@ async function createCleanup() {
 // A run in which every step deletes what createCleanup left past its lifetime.
 const fullReport: CleanupReport = {
 	interruptedImports: { settledCount: 1 },
-	importDrafts: { clearedCount: 1 },
-	savedDrafts: { deletedCount: 1 },
+	savedDrafts: { deletedCount: 2 },
 	invites: { deletedCount: 2 },
 	sessions: { deletedCount: 1 },
 	verifications: { deletedCount: 2 },
@@ -225,10 +225,10 @@ describe('runCleanup', () => {
 		expect(await cleanup.imports.findById(cleanup.runningImport)).toMatchObject({
 			status: 'running',
 		});
-		expect(await cleanup.imports.findById(cleanup.expiredImport)).not.toHaveProperty('draft');
-		expect(await cleanup.imports.findById(cleanup.recentImport)).toMatchObject({ sourceUrl });
 		expect(await cleanup.drafts.findById(cleanup.expiredDraft)).toBeNull();
 		expect(await cleanup.drafts.findById(cleanup.recentDraft)).not.toBeNull();
+		expect(await cleanup.drafts.findById(cleanup.expiredImportDraft)).toBeNull();
+		expect(await cleanup.drafts.findById(cleanup.recentImportDraft)).not.toBeNull();
 		expect(await cleanup.remainingInvites(cleanup.invitesByFate.deleted)).toEqual([]);
 		expect(await cleanup.remainingInvites(cleanup.invitesByFate.kept)).toEqual(
 			cleanup.invitesByFate.kept
@@ -249,7 +249,6 @@ describe('runCleanup', () => {
 
 		expect(await cleanup.service.runCleanup()).toEqual({
 			interruptedImports: { settledCount: 0 },
-			importDrafts: { clearedCount: 0 },
 			savedDrafts: { deletedCount: 0 },
 			invites: { deletedCount: 0 },
 			sessions: { deletedCount: 0 },

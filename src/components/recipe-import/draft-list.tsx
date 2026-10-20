@@ -2,18 +2,14 @@ import Link from 'next/link';
 import type { DraftSummaryDto } from '@/application/drafts/saved-draft-dtos';
 import type { FormAction } from '@/components/forms/form-state';
 import { DraftMenu } from '@/components/recipe-form/subject-menus';
-import {
-	draftFormSubject,
-	draftName,
-	listedDraftPath,
-} from '@/components/recipe-import/listed-drafts';
+import { draftName } from '@/components/recipe-import/listed-drafts';
+import { savedDraftPath } from '@/components/recipe-import/recipe-entry-paths';
 import { formatTimeAgo } from '@/components/recipe-import/time-ago';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { Provenance } from '@/domain/recipe/provenance';
 import { formatDate } from '@/lib/dates';
 
-// How each draft started: typed in, or read from a link or photos, which a draft saved from an
-// import's review keeps once the review is gone.
+// How each draft started: typed in, or read from a link or photos.
 const startedLabels = {
 	manual: 'Typed in',
 	url: 'From a link',
@@ -29,9 +25,9 @@ type DraftListProps = {
 	deleteDraft: FormAction;
 };
 
-// The member's drafts, as the page lists them, each a link to where it continues, named by its title
-// and described by how it started, when it was saved, and when it goes, with a menu holding Delete
-// draft at the row's end. Deleting one refreshes the page, which drops its row.
+// The member's drafts, as the page lists them, each a link to its page, named by its title and
+// described by how it started, when it was saved, and when it goes, with a menu holding Delete draft
+// at the row's end. Deleting one refreshes the page, which drops its row.
 function DraftList({ drafts, now, memberId, deleteDraft }: DraftListProps) {
 	if (drafts.length === 0) {
 		return <p className="text-sm text-muted-foreground">No drafts.</p>;
@@ -41,7 +37,6 @@ function DraftList({ drafts, now, memberId, deleteDraft }: DraftListProps) {
 		<ul role="list" className="divide-y rounded-xl border">
 			{drafts.map((draft) => {
 				const name = draftName(draft.title);
-				const savedAt = draft.kind === 'saved' ? draft.savedAt : draft.importedAt;
 				// The title names the link, and each detail describes it, read apart as shown apart.
 				const ids = {
 					title: `${draft.id}-draft-title`,
@@ -52,7 +47,7 @@ function DraftList({ drafts, now, memberId, deleteDraft }: DraftListProps) {
 				return (
 					<li key={draft.id} className="flex items-center gap-3 pr-3">
 						<Link
-							href={listedDraftPath(draft)}
+							href={savedDraftPath(draft.id)}
 							aria-labelledby={ids.title}
 							aria-describedby={`${ids.started} ${ids.saved} ${ids.kept}`}
 							className="group flex min-w-0 flex-1 flex-col gap-1 p-4"
@@ -66,8 +61,10 @@ function DraftList({ drafts, now, memberId, deleteDraft }: DraftListProps) {
 							<span className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted-foreground">
 								<span id={ids.started}>{startedLabels[draft.mode ?? 'manual']}</span>
 								<span id={ids.saved}>
-									{draft.kind === 'import' ? 'Imported' : 'Saved'}{' '}
-									<time dateTime={savedAt.toISOString()}>{formatTimeAgo(savedAt, now)}</time>
+									Saved{' '}
+									<time dateTime={draft.savedAt.toISOString()}>
+										{formatTimeAgo(draft.savedAt, now)}
+									</time>
 								</span>
 								<span id={ids.kept}>
 									Kept until{' '}
@@ -79,9 +76,8 @@ function DraftList({ drafts, now, memberId, deleteDraft }: DraftListProps) {
 						</Link>
 						<DraftMenu
 							label={`Actions for ${name}`}
-							draft={{ kind: draft.kind, id: draft.id }}
+							draftId={draft.id}
 							title={draft.title}
-							formSubject={draftFormSubject(draft)}
 							memberId={memberId}
 							action={deleteDraft}
 						/>

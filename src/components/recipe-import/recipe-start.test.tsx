@@ -24,14 +24,12 @@ const now = new Date('2026-10-15T18:00:00.000Z');
 
 // A draft typed in and named, then one with no title yet.
 const lemonBars: DraftSummaryDto = {
-	kind: 'saved',
 	id: savedId,
 	title: 'Lemon bars',
 	savedAt: new Date('2026-10-15T17:50:00.000Z'),
 	expiresAt: new Date('2027-01-13T17:50:00.000Z'),
 };
 const untitled: DraftSummaryDto = {
-	kind: 'saved',
 	id: untitledId,
 	savedAt: new Date('2026-10-13T18:00:00.000Z'),
 	expiresAt: new Date('2027-01-11T18:00:00.000Z'),
@@ -79,7 +77,7 @@ describe('RecipeStart', () => {
 		await expect
 			.element(
 				page.getByText(
-					'Only you can see your drafts until you add them to the cookbook. Each is kept for 90 days after you last save it, and an import you haven’t saved for 7 days.'
+					'Only you can see your drafts until you add them to the cookbook. Each is kept for 90 days after its last change.'
 				)
 			)
 			.toBeVisible();

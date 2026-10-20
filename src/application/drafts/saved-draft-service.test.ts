@@ -4,7 +4,6 @@ import { SavedDraftEditConflictError } from '@/application/drafts/errors';
 import type { SavedDraftId } from '@/application/drafts/saved-draft';
 import type { SavedDraftRef } from '@/application/drafts/saved-draft-dtos';
 import { SavedDraftService, type SaveDraftInput } from '@/application/drafts/saved-draft-service';
-import { ImportUnavailableError } from '@/application/ingestion/errors';
 import type { Actor, MemberActor } from '@/application/ports/actor-provider';
 import { ImageFolders } from '@/application/recipes/image-folders';
 import { anonymousActor, memberActor } from '@/application/testing/actors';
@@ -13,13 +12,8 @@ import { InMemoryImageStore } from '@/application/testing/in-memory-image-store'
 import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
 import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
-import type { Provenance } from '@/domain/recipe/provenance';
 import { recipeContentSchema } from '@/domain/recipe/recipe';
-import {
-	importDraftCutoff,
-	type RecipeImportId,
-	type RecipeImportMode,
-} from '@/domain/recipe/recipe-import';
+import type { ImportDraft, RecipeImportId, RecipeImportMode } from '@/domain/recipe/recipe-import';
 import { sampleChickenSoup } from '@/domain/recipe/samples/sample-recipes';
 import { daysInMilliseconds } from '@/lib/dates';
 import { settings } from '@/lib/settings';
@@ -49,6 +43,12 @@ const lemonBars: SaveDraftInput = {
 // Another member's, which names none of the images, so it never keeps them from the member.
 const theirDraft: SaveDraftInput = { ...lemonBars, imagePathnames: [] };
 
+// What an import read from the card scan.
+const soupCard: ImportDraft = {
+	content: { title: 'Weeknight chicken soup', images: [{ role: 'scan', pathname: cardScan }] },
+	problems: [{ path: 'title', message: 'Check the title.' }],
+};
+
 const lifetime = settings.drafts.draftLifetimeDays;
 
 // What a form that opened or saved the draft sends to save over it: its id and its version.
@@ -64,53 +64,46 @@ function daysAgo(days: number): Date {
 // stored.
 async function createDrafts() {
 	const recipes = new InMemoryRecipeRepository();
-	const imports = new InMemoryRecipeImportRepository(recipes);
 	const drafts = new InMemorySavedDraftRepository();
+	const imports = new InMemoryRecipeImportRepository(recipes, drafts);
 	const images = new InMemoryImageStore(folders);
 	for (const pathname of [barsPhoto, slicePhoto, cardScan]) {
 		await images.put(pathname, jpeg, 'image/jpeg');
 	}
 	const serviceFor = (actor: Actor) =>
-		new SavedDraftService(drafts, imports, recipes, images, new FixedActorProvider(actor), folders);
-	// An import the member started whose draft awaits their review.
+		new SavedDraftService(drafts, recipes, images, new FixedActorProvider(actor), folders);
+	// An import the member started, with the draft it made of the card.
 	const importDraft = async (
 		actor: MemberActor,
 		mode: RecipeImportMode = 'url'
-	): Promise<RecipeImportId> => {
+	): Promise<{ importId: RecipeImportId; draftId: SavedDraftId }> => {
 		const started = await imports.start({ memberId: actor.memberId, mode });
-		if (started === null) {
-			throw new Error('The import was refused');
+		const draftId =
+			started === null
+				? null
+				: await imports.recordSuccess(started.id, {
+						aiModel: 'example/model',
+						draft: {
+							provenance:
+								mode === 'url'
+									? {
+											entryMode: 'url',
+											sourceUrl: 'https://example.com/soup',
+											aiModel: 'example/model',
+										}
+									: { entryMode: 'photo', aiModel: 'example/model' },
+							title: 'Weeknight chicken soup',
+							imported: soupCard,
+							imagePathnames: [cardScan],
+						},
+					});
+		if (started === null || draftId === null) {
+			throw new Error('The import made no draft');
 		}
-		await imports.recordSuccess(started.id, {
-			draft: {
-				content: {
-					title: 'Weeknight chicken soup',
-					images: [{ role: 'scan', pathname: cardScan }],
-				},
-				problems: [],
-			},
-			...(mode === 'url' && { sourceUrl: 'https://example.com/soup' }),
-			aiModel: 'example/model',
-		});
-		return started.id;
+		return { importId: started.id, draftId };
 	};
-	const backdateImport = (id: RecipeImportId, days: number) => imports.backdate(id, daysAgo(days));
 	const backdateDraft = (id: SavedDraftId, days: number) => drafts.backdate(id, daysAgo(days));
-	// The import's review gone, as the cleanup leaves it: its draft and source URL cleared.
-	const expireImport = async (id: RecipeImportId) => {
-		backdateImport(id, settings.imports.importDraftLifetimeDays + 0.01);
-		await imports.clearDraftsCreatedBefore(importDraftCutoff(new Date()));
-	};
-	return {
-		recipes,
-		imports,
-		drafts,
-		serviceFor,
-		importDraft,
-		backdateImport,
-		backdateDraft,
-		expireImport,
-	};
+	return { recipes, imports, drafts, serviceFor, importDraft, backdateDraft };
 }
 
 function logLines(spy: MockInstance<(...args: unknown[]) => void>): unknown[] {
@@ -136,7 +129,6 @@ describe('an anonymous visitor', () => {
 		['getImportDraft', (service: SavedDraftService) => service.getImportDraft(missingId)],
 		['saveDraft', (service: SavedDraftService) => service.saveDraft(lemonBars)],
 		['deleteDraft', (service: SavedDraftService) => service.deleteDraft(missingId)],
-		['deleteImportDraft', (service: SavedDraftService) => service.deleteImportDraft(missingId)],
 		['listDrafts', (service: SavedDraftService) => service.listDrafts()],
 	])('is refused %s', async (_name, call) => {
 		const { serviceFor } = await createDrafts();
@@ -152,9 +144,6 @@ describe('saveDraft', () => {
 
 		const saved = await service.saveDraft(lemonBars);
 
-		expect(saved.expiresAt).toEqual(
-			new Date(saved.savedAt.getTime() + daysInMilliseconds(lifetime))
-		);
 		expect(await service.getDraft(saved.id)).toEqual({
 			id: saved.id,
 			values: lemonBars.values,
@@ -253,84 +242,22 @@ describe('saveDraft', () => {
 		expect(await drafts.findById(opened.id)).toMatchObject({ title: 'Lemon bars' });
 	});
 
-	it("refuses an import's review saved first where another page has since saved a draft of it", async () => {
-		const member = memberActor();
-		const { drafts, serviceFor, importDraft } = await createDrafts();
-		const service = serviceFor(member);
-		const importId = await importDraft(member);
-		const elsewhere = await service.saveDraft({ ...lemonBars, importId });
-
-		await expect(
-			service.saveDraft({ ...lemonBars, importId, title: 'Lemon squares' })
-		).rejects.toThrow(SavedDraftEditConflictError);
-		expect(await drafts.findByImportId(importId)).toMatchObject({
-			id: elsewhere.id,
-			title: 'Lemon bars',
-		});
-		expect(logLines(consoleWarn)).toEqual([
-			expect.objectContaining({ message: 'Draft save refused as stale', importId }),
-		]);
-	});
-
-	it("refuses the second of two first saves of an import's review made at once", async () => {
-		const member = memberActor();
-		const { drafts, serviceFor, importDraft } = await createDrafts();
-		const service = serviceFor(member);
-		const importId = await importDraft(member);
-
-		const both = await Promise.allSettled([
-			service.saveDraft({ ...lemonBars, importId }),
-			service.saveDraft({ ...lemonBars, importId, title: 'Lemon squares' }),
-		]);
-
-		expect(both).toEqual([
-			{ status: 'fulfilled', value: expect.objectContaining({ id: expect.any(String) }) },
-			{ status: 'rejected', reason: expect.any(SavedDraftEditConflictError) },
-		]);
-		expect(await drafts.findByImportId(importId)).toMatchObject({ title: 'Lemon bars' });
-	});
-
-	it("keeps one draft for an import's review, which the next save replaces", async () => {
-		const member = memberActor();
-		const { serviceFor, importDraft } = await createDrafts();
-		const service = serviceFor(member);
-		const importId = await importDraft(member);
-
-		const first = await service.saveDraft({ ...lemonBars, importId });
-		const second = await service.saveDraft({
-			...lemonBars,
-			...over(first),
-			importId,
-			title: 'Lemon squares',
-		});
-
-		expect(second.id).toBe(first.id);
-		expect(await service.getImportDraft(importId)).toMatchObject({
-			id: first.id,
-			continuesImportId: importId,
-		});
-	});
-
-	it.each<{ mode: RecipeImportMode; provenance: Provenance }>([
-		{
-			mode: 'url',
-			provenance: {
-				entryMode: 'url',
-				sourceUrl: 'https://example.com/soup',
-				aiModel: 'example/model',
-			},
-		},
-		{ mode: 'photo', provenance: { entryMode: 'photo', aiModel: 'example/model' } },
-	])(
-		'keeps the provenance of the $mode import whose review it saves',
-		async ({ mode, provenance }) => {
+	it.each<RecipeImportMode>(['url', 'photo'])(
+		"saves over a %s import's draft, its values taking the place of what was read",
+		async (mode) => {
 			const member = memberActor();
 			const { drafts, serviceFor, importDraft } = await createDrafts();
-			const importId = await importDraft(member, mode);
+			const service = serviceFor(member);
+			const { importId, draftId } = await importDraft(member, mode);
+			const opened = await service.getDraft(draftId);
 
-			const saved = await serviceFor(member).saveDraft({ ...lemonBars, importId });
+			const saved = await service.saveDraft({ ...lemonBars, ...over(opened!) });
 
-			expect((await drafts.findById(saved.id))?.provenance).toEqual(provenance);
+			expect(saved.id).toBe(draftId);
+			const draft = await drafts.findById(draftId);
+			expect(draft).toMatchObject({ importId, values: lemonBars.values, title: 'Lemon bars' });
+			expect(draft).not.toHaveProperty('imported');
+			expect(await service.getDraft(draftId)).toMatchObject({ mode, values: lemonBars.values });
 		}
 	);
 
@@ -342,37 +269,8 @@ describe('saveDraft', () => {
 		expect(await drafts.findById(saved.id)).not.toHaveProperty('provenance');
 	});
 
-	it.each<{ name: string; unavailable: (ids: { importId: RecipeImportId }) => Promise<string> }>([
-		{ name: 'another member’s import', unavailable: async ({ importId }) => importId },
-		{ name: 'a malformed import id', unavailable: async () => 'not-an-import-id' },
-	])('refuses to save the review of $name', async ({ unavailable }) => {
-		const { serviceFor, importDraft } = await createDrafts();
-		const importId = await importDraft(memberActor());
-
-		await expect(
-			serviceFor(memberActor()).saveDraft({
-				...lemonBars,
-				importId: await unavailable({ importId }),
-			})
-		).rejects.toThrow(ImportUnavailableError);
-		expect(logLines(consoleWarn)).toEqual([
-			expect.objectContaining({ message: 'Draft save refused for an unavailable import' }),
-		]);
-	});
-
-	it('refuses to save the review of an import whose draft expired', async () => {
-		const member = memberActor();
-		const { serviceFor, importDraft, backdateImport } = await createDrafts();
-		const importId = await importDraft(member);
-		backdateImport(importId, settings.imports.importDraftLifetimeDays + 0.01);
-
-		await expect(serviceFor(member).saveDraft({ ...lemonBars, importId })).rejects.toThrow(
-			ImportUnavailableError
-		);
-	});
-
 	it("refuses an image never stored, or one another member's recipe or draft names, at its place", async () => {
-		const { recipes, serviceFor } = await createDrafts();
+		const { recipes, serviceFor, importDraft } = await createDrafts();
 		const owner = memberActor();
 		await recipes.create({
 			content: recipeContentSchema.parse({
@@ -384,16 +282,18 @@ describe('saveDraft', () => {
 			slugBase: 'chicken-soup',
 		});
 		await serviceFor(owner).saveDraft({ ...lemonBars, imagePathnames: [slicePhoto] });
+		await importDraft(owner, 'photo');
 
 		await expect(
 			serviceFor(memberActor()).saveDraft({
 				...lemonBars,
-				imagePathnames: [cardScan, barsPhoto, slicePhoto, unfinishedPhoto],
+				imagePathnames: [barsPhoto, slicePhoto, cardScan, unfinishedPhoto],
 			})
 		).rejects.toThrow(
 			expect.objectContaining({
 				code: 'draft.invalid',
 				problems: [
+					{ path: 'images.0.pathname', message: unstoredImageMessage },
 					{ path: 'images.1.pathname', message: unstoredImageMessage },
 					{ path: 'images.2.pathname', message: unstoredImageMessage },
 					{ path: 'images.3.pathname', message: unstoredImageMessage },
@@ -402,21 +302,20 @@ describe('saveDraft', () => {
 		);
 	});
 
-	it("keeps the images the member's draft already names, and their import's scans", async () => {
+	it("keeps the scans the member's import's draft already names", async () => {
 		const member = memberActor();
 		const { drafts, serviceFor, importDraft } = await createDrafts();
 		const service = serviceFor(member);
-		const importId = await importDraft(member, 'photo');
-		const saved = await service.saveDraft({ ...lemonBars, importId, imagePathnames: [cardScan] });
+		const { draftId } = await importDraft(member, 'photo');
+		const opened = await service.getDraft(draftId);
 
 		await service.saveDraft({
 			...lemonBars,
-			...over(saved),
-			importId,
+			...over(opened!),
 			imagePathnames: [cardScan, slicePhoto],
 		});
 
-		expect((await drafts.findById(saved.id))?.imagePathnames).toEqual([cardScan, slicePhoto]);
+		expect((await drafts.findById(draftId))?.imagePathnames).toEqual([cardScan, slicePhoto]);
 	});
 });
 
@@ -438,68 +337,68 @@ describe('getDraft', () => {
 		expect(await service.getDraft(kept.id)).not.toBeNull();
 	});
 
-	it('names the import a draft continues only while its review can still be saved', async () => {
+	it("opens an import's draft with what was read and where it came from, until the form saves it", async () => {
 		const member = memberActor();
-		const { serviceFor, importDraft, backdateImport } = await createDrafts();
-		const service = serviceFor(member);
-		const open = await importDraft(member);
-		const expired = await importDraft(member);
-		const openDraft = await service.saveDraft({ ...lemonBars, importId: open });
-		const expiredDraft = await service.saveDraft({ ...lemonBars, importId: expired });
-		backdateImport(expired, settings.imports.importDraftLifetimeDays + 0.01);
+		const { serviceFor, importDraft } = await createDrafts();
+		const { draftId } = await importDraft(member);
 
-		expect(await service.getDraft(openDraft.id)).toMatchObject({ continuesImportId: open });
-		expect(await service.getDraft(expiredDraft.id)).not.toHaveProperty('continuesImportId');
-		expect(await service.getImportDraft(expired)).toMatchObject({ id: expiredDraft.id });
-	});
+		const opened = await serviceFor(member).getDraft(draftId);
 
-	it("says where a draft saved from an import's review came from once the review is gone", async () => {
-		const member = memberActor();
-		const { serviceFor, importDraft, expireImport } = await createDrafts();
-		const service = serviceFor(member);
-		const importId = await importDraft(member);
-		const saved = await service.saveDraft({ ...lemonBars, importId });
-		await expireImport(importId);
-
-		// Saved again where it now opens, the add page, which names the draft and no import.
-		const resaved = await service.saveDraft({ ...lemonBars, ...over(saved) });
-
-		expect(resaved.id).toBe(saved.id);
-		expect(await service.getDraft(saved.id)).toEqual({
-			id: saved.id,
+		expect(opened).toEqual({
+			id: draftId,
 			mode: 'url',
 			sourceUrl: 'https://example.com/soup',
+			imported: soupCard,
+			savedAt: expect.any(Date),
+			expiresAt: new Date(opened!.savedAt.getTime() + daysInMilliseconds(lifetime)),
+		});
+	});
+});
+
+describe('getImportDraft', () => {
+	it("finds the member's draft an import made, whatever it holds now", async () => {
+		const member = memberActor();
+		const { serviceFor, importDraft } = await createDrafts();
+		const service = serviceFor(member);
+		const { importId, draftId } = await importDraft(member, 'photo');
+		await service.saveDraft({ ...lemonBars, ...over((await service.getDraft(draftId))!) });
+
+		expect(await service.getImportDraft(importId)).toMatchObject({
+			id: draftId,
+			mode: 'photo',
 			values: lemonBars.values,
-			savedAt: resaved.savedAt,
-			expiresAt: new Date(resaved.savedAt.getTime() + daysInMilliseconds(lifetime)),
 		});
 	});
 
-	it("finds no draft for another member's import", async () => {
+	it("finds none for another member's import, a draft deleted or expired, or a malformed id", async () => {
 		const owner = memberActor();
-		const { serviceFor, importDraft } = await createDrafts();
-		const importId = await importDraft(owner);
-		await serviceFor(owner).saveDraft({ ...lemonBars, importId });
+		const { serviceFor, importDraft, backdateDraft } = await createDrafts();
+		const service = serviceFor(owner);
+		const theirs = await importDraft(memberActor());
+		const deleted = await importDraft(owner);
+		const expired = await importDraft(owner);
+		await service.deleteDraft(deleted.draftId);
+		backdateDraft(expired.draftId, lifetime + 0.01);
 
-		expect(await serviceFor(memberActor()).getImportDraft(importId)).toBeNull();
-		expect(await serviceFor(owner).getImportDraft(malformedId)).toBeNull();
+		expect(await service.getImportDraft(theirs.importId)).toBeNull();
+		expect(await service.getImportDraft(deleted.importId)).toBeNull();
+		expect(await service.getImportDraft(expired.importId)).toBeNull();
+		expect(await service.getImportDraft(malformedId)).toBeNull();
 	});
 });
 
 describe('deleteDraft', () => {
-	it("deletes the member's draft and the import's draft it continues", async () => {
+	it("deletes the member's draft, an import's too, and keeps the import's record", async () => {
 		const member = memberActor();
 		const { imports, drafts, serviceFor, importDraft } = await createDrafts();
 		const service = serviceFor(member);
-		const importId = await importDraft(member);
-		const continuing = await service.saveDraft({ ...lemonBars, importId });
+		const { importId, draftId } = await importDraft(member);
 		const kept = await service.saveDraft(lemonBars);
 
-		await service.deleteDraft(continuing.id);
+		await service.deleteDraft(draftId);
 
-		expect(await drafts.findById(continuing.id)).toBeNull();
-		expect(await imports.findById(importId)).not.toHaveProperty('draft');
-		expect(await drafts.findById(kept.id)).not.toBeNull();
+		expect(await drafts.findById(draftId)).toBeNull();
+		expect(await imports.findById(importId)).toMatchObject({ status: 'succeeded' });
 		expect(await service.listDrafts()).toEqual([expect.objectContaining({ id: kept.id })]);
 	});
 
@@ -516,48 +415,22 @@ describe('deleteDraft', () => {
 	});
 });
 
-describe('deleteImportDraft', () => {
-	it("clears the member's import's draft, with the draft that continues it, and keeps the record", async () => {
-		const member = memberActor();
-		const { imports, drafts, serviceFor, importDraft } = await createDrafts();
-		const service = serviceFor(member);
-		const importId = await importDraft(member);
-		const continuing = await service.saveDraft({ ...lemonBars, importId });
-
-		await service.deleteImportDraft(importId);
-
-		expect(await imports.findById(importId)).toMatchObject({ status: 'succeeded' });
-		expect(await imports.findById(importId)).not.toHaveProperty('draft');
-		expect(await drafts.findById(continuing.id)).toBeNull();
-	});
-
-	it("leaves another member's import as it is", async () => {
-		const { imports, serviceFor, importDraft } = await createDrafts();
-		const importId = await importDraft(memberActor());
-
-		await serviceFor(memberActor()).deleteImportDraft(importId);
-		await serviceFor(memberActor()).deleteImportDraft(malformedId);
-
-		expect(await imports.findById(importId)).toHaveProperty('draft');
-	});
-});
-
 describe('listDrafts', () => {
-	it("lists the member's drafts with their imports' drafts, newest first, each with when it goes", async () => {
+	it("lists the member's drafts, their imports' included, newest first, each with how it started and when it goes", async () => {
 		const member = memberActor();
-		const { serviceFor, importDraft, backdateImport, backdateDraft } = await createDrafts();
+		const { serviceFor, importDraft, backdateDraft } = await createDrafts();
 		const service = serviceFor(member);
-		const photoImport = await importDraft(member, 'photo');
-		const continued = await importDraft(member);
-		const expiredImport = await importDraft(member);
+		const fromPhotos = await importDraft(member, 'photo');
+		const fromLink = await importDraft(member);
 		const untitled = await service.saveDraft({ values: {}, imagePathnames: [] });
-		const continuing = await service.saveDraft({ ...lemonBars, importId: continued });
 		const expired = await service.saveDraft(lemonBars);
+		const resaved = await service.saveDraft({
+			...lemonBars,
+			...over((await service.getDraft(fromLink.draftId))!),
+		});
 		await serviceFor(memberActor()).saveDraft(theirDraft);
 		await importDraft(memberActor());
-		backdateImport(photoImport, 2);
-		backdateImport(continued, 3);
-		backdateImport(expiredImport, settings.imports.importDraftLifetimeDays + 0.01);
+		backdateDraft(fromPhotos.draftId, 2);
 		backdateDraft(untitled.id, 1);
 		backdateDraft(expired.id, lifetime + 0.01);
 
@@ -565,99 +438,58 @@ describe('listDrafts', () => {
 
 		expect(listed).toEqual([
 			{
-				kind: 'saved',
-				id: continuing.id,
-				continuesImportId: continued,
+				id: fromLink.draftId,
 				mode: 'url',
 				title: 'Lemon bars',
-				savedAt: continuing.savedAt,
-				expiresAt: new Date(continuing.savedAt.getTime() + daysInMilliseconds(lifetime)),
+				savedAt: resaved.savedAt,
+				expiresAt: new Date(resaved.savedAt.getTime() + daysInMilliseconds(lifetime)),
 			},
+			{ id: untitled.id, savedAt: expect.any(Date), expiresAt: expect.any(Date) },
 			{
-				kind: 'saved',
-				id: untitled.id,
+				id: fromPhotos.draftId,
+				mode: 'photo',
+				title: 'Weeknight chicken soup',
 				savedAt: expect.any(Date),
 				expiresAt: expect.any(Date),
 			},
-			{
-				kind: 'import',
-				id: photoImport,
-				mode: 'photo',
-				title: 'Weeknight chicken soup',
-				importedAt: expect.any(Date),
-				expiresAt: expect.any(Date),
-			},
 		]);
-		const [, , imported] = listed;
-		expect(imported?.expiresAt.getTime()).toBe(
-			(imported?.kind === 'import' ? imported.importedAt.getTime() : 0) +
-				daysInMilliseconds(settings.imports.importDraftLifetimeDays)
-		);
 	});
 
-	it('lists a draft for its lifetime after its last change, with when it goes', async () => {
-		const { drafts, serviceFor } = await createDrafts();
+	it.each([
+		['a draft', false],
+		["an import's draft", true],
+	])(
+		'lists %s for its lifetime after its last change, with when it goes',
+		async (_name, imported) => {
+			const member = memberActor();
+			const { drafts, serviceFor, importDraft } = await createDrafts();
+			const service = serviceFor(member);
+			const draftOf = async () =>
+				imported ? (await importDraft(member)).draftId : (await service.saveDraft(lemonBars)).id;
+			const kept = await draftOf();
+			const expired = await draftOf();
+			const lastChanged = daysAgo(lifetime - 1);
+			drafts.backdate(kept, lastChanged);
+			drafts.backdate(expired, daysAgo(lifetime + 1));
+
+			expect(await service.listDrafts()).toEqual([
+				expect.objectContaining({
+					id: kept,
+					savedAt: lastChanged,
+					expiresAt: new Date(lastChanged.getTime() + daysInMilliseconds(lifetime)),
+				}),
+			]);
+		}
+	);
+
+	it('lists every draft, however many', async () => {
+		const { serviceFor } = await createDrafts();
 		const service = serviceFor(memberActor());
-		const kept = await service.saveDraft(lemonBars);
-		const expired = await service.saveDraft(lemonBars);
-		const lastChanged = daysAgo(lifetime - 1);
-		drafts.backdate(kept.id, lastChanged);
-		drafts.backdate(expired.id, daysAgo(lifetime + 1));
-
-		expect(await service.listDrafts()).toEqual([
-			{
-				kind: 'saved',
-				id: kept.id,
-				title: 'Lemon bars',
-				savedAt: lastChanged,
-				expiresAt: new Date(lastChanged.getTime() + daysInMilliseconds(lifetime)),
-			},
-		]);
-	});
-
-	it("lists a draft saved from an import's review by how the import read it, once the review is gone", async () => {
-		const member = memberActor();
-		const { serviceFor, importDraft, expireImport } = await createDrafts();
-		const service = serviceFor(member);
-		const importId = await importDraft(member, 'photo');
-		const saved = await service.saveDraft({ ...lemonBars, importId });
-		await expireImport(importId);
-
-		expect(await service.listDrafts()).toEqual([
-			{
-				kind: 'saved',
-				id: saved.id,
-				mode: 'photo',
-				title: 'Lemon bars',
-				savedAt: saved.savedAt,
-				expiresAt: new Date(saved.savedAt.getTime() + daysInMilliseconds(lifetime)),
-			},
-		]);
-	});
-
-	it('lists only the newest of both, up to its limit', async () => {
-		const member = memberActor();
-		const { serviceFor, importDraft, backdateImport, backdateDraft } = await createDrafts();
-		const service = serviceFor(member);
-		const limit = settings.imports.maxUnsavedImports;
-		const expected: string[] = [];
-		// Saved drafts and imports in turn, each an hour older than the one before.
-		for (let index = 0; index <= limit; index += 1) {
-			const hours = index / 24;
-			if (index % 2 === 0) {
-				const { id } = await service.saveDraft(lemonBars);
-				backdateDraft(id, hours);
-				expected.push(id);
-			} else {
-				const id = await importDraft(member);
-				backdateImport(id, hours);
-				expected.push(id);
-			}
+		for (let count = 0; count < 12; count += 1) {
+			await service.saveDraft(lemonBars);
 		}
 
-		const listed = await service.listDrafts();
-
-		expect(listed.map(({ id }) => id)).toEqual(expected.slice(0, limit));
+		expect(await service.listDrafts()).toHaveLength(12);
 	});
 });
 

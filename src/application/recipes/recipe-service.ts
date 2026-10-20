@@ -8,7 +8,6 @@ import { paginationSchema } from '@/application/pagination';
 import type { ActorProvider } from '@/application/ports/actor-provider';
 import type { ImageStore } from '@/application/ports/image-store';
 import type { MemberRepository } from '@/application/ports/member-repository';
-import type { RecipeImportRepository } from '@/application/ports/recipe-import-repository';
 import {
 	recipeSorts,
 	type NewRecipe,
@@ -41,7 +40,6 @@ import {
 import { assertCanModifyRecipe, canModifyRecipe } from '@/application/recipes/recipe-policy';
 import type { MemberId } from '@/domain/member/member';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
-import type { Provenance } from '@/domain/recipe/provenance';
 import {
 	parseRecipeContent,
 	recipeIdSchema,
@@ -50,11 +48,7 @@ import {
 	type RecipeId,
 } from '@/domain/recipe/recipe';
 import type { RecipeImage } from '@/domain/recipe/recipe-image';
-import {
-	recipeImportIdSchema,
-	reviewableDraft,
-	type RecipeImportId,
-} from '@/domain/recipe/recipe-import';
+import type { RecipeImportId } from '@/domain/recipe/recipe-import';
 import { slugify, slugSchema } from '@/domain/recipe/slug';
 import { getLogger } from '@/lib/logger';
 
@@ -64,20 +58,16 @@ const logger = getLogger('recipes');
 
 export type CreateRecipeInput = {
 	content: RecipeContentInput;
-	// The import the member reviewed, whose provenance the recipe takes; absent for manual entry.
-	importId?: string;
-	// The draft the member saved the recipe from, which goes once the recipe is saved. With no import
-	// named, the recipe takes the provenance the draft kept from an import whose review is gone.
+	// The draft the member saved the recipe from, which goes once the recipe is saved. The recipe takes
+	// the provenance and the import of the import that made the draft, if one did.
 	draftId?: string;
 };
 
-// Where a new recipe came from: manual entry, an import it is saved from, or a draft that kept an
-// import's provenance.
+// Where a new recipe came from: manual entry, or the import that made its draft.
 type RecipeOrigin = Pick<NewRecipe, 'provenance' | 'importId'>;
 
 export class RecipeService {
 	private readonly recipes: RecipeRepository;
-	private readonly imports: RecipeImportRepository;
 	private readonly drafts: SavedDraftRepository;
 	private readonly members: MemberRepository;
 	private readonly images: ImageStore;
@@ -86,7 +76,6 @@ export class RecipeService {
 
 	constructor(
 		recipes: RecipeRepository,
-		imports: RecipeImportRepository,
 		drafts: SavedDraftRepository,
 		members: MemberRepository,
 		images: ImageStore,
@@ -94,7 +83,6 @@ export class RecipeService {
 		folders: ImageFolders
 	) {
 		this.recipes = recipes;
-		this.imports = imports;
 		this.drafts = drafts;
 		this.members = members;
 		this.images = images;
@@ -162,12 +150,11 @@ export class RecipeService {
 	}
 
 	// Writes resolve the actor first, so an anonymous caller learns nothing about which recipes exist.
-	// The browser never names the provenance: a recipe saved from an import takes the import's, and
-	// one saved from the member's draft of an import takes what the draft kept.
+	// The browser never names the provenance: a recipe saved from an import's draft takes what the
+	// draft kept.
 	async createRecipe(input: CreateRecipeInput): Promise<RecipeRef> {
 		const actor = requireMember(await this.actors.currentActor());
-		// Checked before the content, since no edit to the content can save an unavailable import.
-		const origin = await this.recipeOrigin(input, actor.memberId);
+		const origin = await this.recipeOrigin(input.draftId, actor.memberId);
 		const content = parseRecipeContent(input.content);
 		await this.assertImagesAttachable(content.images, [], actor.memberId);
 
@@ -192,9 +179,6 @@ export class RecipeService {
 			entryMode: recipe.provenance.entryMode,
 			...(origin.importId !== undefined && { importId: origin.importId }),
 		});
-		if (origin.importId !== undefined) {
-			await this.clearImportDraft(origin.importId, recipe.id);
-		}
 		if (input.draftId !== undefined) {
 			await this.deleteSavedDraft(input.draftId, actor.memberId, recipe.id);
 		}
@@ -270,39 +254,24 @@ export class RecipeService {
 		};
 	}
 
-	// Without an import id, the recipe takes the provenance its draft kept, or was entered by hand.
-	// Import ids arrive from forms, so a malformed one names no import. The import must be the
-	// member's and its draft still reviewable.
+	// The provenance and the import the member's draft kept from the import that made it, however long
+	// ago; otherwise the recipe was entered by hand. Ids arrive from forms, so a malformed one, or one
+	// naming another member's draft, gives neither. A draft that expired while its form was open still
+	// gives its own, since the recipe was written from it.
 	private async recipeOrigin(
-		{ importId, draftId }: Pick<CreateRecipeInput, 'importId' | 'draftId'>,
-		memberId: MemberId
-	): Promise<RecipeOrigin> {
-		if (importId === undefined) {
-			const provenance = await this.savedDraftProvenance(draftId, memberId);
-			return { provenance: provenance ?? { entryMode: 'manual' } };
-		}
-
-		const parsed = recipeImportIdSchema.safeParse(importId);
-		const recipeImport = parsed.success ? await this.imports.findById(parsed.data) : null;
-		const draft =
-			recipeImport?.memberId === memberId ? reviewableDraft(recipeImport, new Date()) : null;
-		if (recipeImport === null || draft === null) {
-			throw this.unavailableImport(parsed.data, memberId);
-		}
-
-		return { provenance: draft.provenance, importId: recipeImport.id };
-	}
-
-	// The provenance the member's draft kept from the import it was saved from, if any. Ids arrive
-	// from forms, so a malformed one, or one naming another member's draft, gives none. A draft that
-	// expired while its form was open still gives its own, since the recipe was written from it.
-	private async savedDraftProvenance(
 		draftId: string | undefined,
 		memberId: MemberId
-	): Promise<Provenance | undefined> {
+	): Promise<RecipeOrigin> {
 		const parsed = savedDraftIdSchema.safeParse(draftId);
 		const draft = parsed.success ? await this.drafts.findById(parsed.data) : null;
-		return draft?.memberId === memberId ? draft.provenance : undefined;
+		if (draft?.memberId !== memberId || draft.provenance === undefined) {
+			return { provenance: { entryMode: 'manual' } };
+		}
+
+		return {
+			provenance: draft.provenance,
+			...(draft.importId !== undefined && { importId: draft.importId }),
+		};
 	}
 
 	// Slugs arrive from URLs, so a malformed slug names no recipe.
@@ -335,7 +304,6 @@ export class RecipeService {
 				folders: this.folders,
 				images: this.images,
 				recipes: this.recipes,
-				imports: this.imports,
 				drafts: this.drafts,
 			}
 		);
@@ -344,20 +312,9 @@ export class RecipeService {
 		}
 	}
 
-	// After the recipe commits, with the draft the member saved from the import's review. A failure
-	// leaves the drafts for their expiry to clear, and the import is already spent, since the recipe
-	// names it.
-	private async clearImportDraft(importId: RecipeImportId, recipeId: RecipeId): Promise<void> {
-		try {
-			await this.imports.clearDraft(importId);
-			await this.drafts.deleteByImportId(importId);
-		} catch (err) {
-			logger.warn('Import draft could not be cleared', { importId, recipeId, err });
-		}
-	}
-
-	// After the recipe commits, as clearImportDraft does. Ids arrive from forms, so a malformed one, or
-	// one that names another member's draft, deletes nothing.
+	// After the recipe commits. A failure leaves the draft for its expiry to clear, and its import is
+	// already spent, since the recipe names it. Ids arrive from forms, so a malformed one, or one that
+	// names another member's draft, deletes nothing.
 	private async deleteSavedDraft(
 		draftId: string,
 		memberId: MemberId,
@@ -383,7 +340,7 @@ export class RecipeService {
 		return new RecipeEditConflictError();
 	}
 
-	// Logged, since the member has to import the recipe again. A malformed id is left out.
+	// Logged, since the member has to import the recipe again.
 	private unavailableImport(
 		importId: RecipeImportId | undefined,
 		memberId: MemberId

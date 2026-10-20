@@ -19,11 +19,11 @@ import {
 	recipeFormSnapshotImages,
 	recipeFormSnapshotTitle,
 } from '@/components/recipe-form/recipe-form-snapshot';
+import { savedDraftPath } from '@/components/recipe-import/recipe-entry-paths';
 import {
 	recipeImportFieldNames,
 	scanUploadsFromForm,
 } from '@/components/recipe-import/recipe-import-forms';
-import { recipeImportPath } from '@/components/recipe-import/recipe-import-paths';
 import { addedRecipePath } from '@/components/recipe/recipe-paths';
 import {
 	getRecipeImageService,
@@ -41,7 +41,6 @@ export async function createRecipe(_state: FormState, formData: FormData): Promi
 	try {
 		recipe = await getRecipeService().createRecipe({
 			content: recipeContentFromForm(formText(formData, recipeFormFieldNames.recipe)),
-			importId: optionalFormText(formData, recipeFormFieldNames.importId),
 			draftId: optionalFormText(formData, recipeFormFieldNames.draftId),
 		});
 	} catch (error) {
@@ -67,7 +66,6 @@ export async function saveDraft(
 		draft = await getSavedDraftService().saveDraft({
 			draftId: optionalFormText(formData, recipeFormFieldNames.draftId),
 			draftVersion: optionalFormText(formData, recipeFormFieldNames.draftVersion),
-			importId: optionalFormText(formData, recipeFormFieldNames.importId),
 			values: snapshot,
 			title: recipeFormSnapshotTitle(snapshot),
 			imagePathnames: recipeFormSnapshotImages(snapshot),
@@ -80,14 +78,10 @@ export async function saveDraft(
 	return { status: 'success', draftId: draft.id, savedAt: draft.savedAt };
 }
 
-// Deletes a saved draft, or an import's draft awaiting review, whichever the form names. The page
-// renders again, so the list of drafts drops it.
+// Deletes the draft the form names. The page renders again, so the list of drafts drops it.
 export async function deleteDraft(_state: FormState, formData: FormData): Promise<FormState> {
-	const draftId = optionalFormText(formData, recipeFormFieldNames.draftId);
 	try {
-		await (draftId === undefined
-			? getSavedDraftService().deleteImportDraft(formText(formData, recipeFormFieldNames.importId))
-			: getSavedDraftService().deleteDraft(draftId));
+		await getSavedDraftService().deleteDraft(formText(formData, recipeFormFieldNames.draftId));
 	} catch (error) {
 		return toFormError(error);
 	}
@@ -97,8 +91,8 @@ export async function deleteDraft(_state: FormState, formData: FormData): Promis
 	return { status: 'success' };
 }
 
-// Opens the draft for review. Nothing cached changes until it is saved as a recipe, so there is no
-// tag to update. The page sets how long the action may run.
+// Opens the draft the import made. Nothing cached changes until it is saved as a recipe, so there is
+// no tag to update. The page sets how long the action may run.
 export async function importFromUrl(_state: FormState, formData: FormData): Promise<FormState> {
 	let recipeImport: RecipeImportRef;
 	try {
@@ -110,10 +104,10 @@ export async function importFromUrl(_state: FormState, formData: FormData): Prom
 	}
 
 	getRecipeImageService().scheduleSweep();
-	redirect(recipeImportPath(recipeImport.id));
+	redirect(savedDraftPath(recipeImport.draftId));
 }
 
-// Opens the draft for review, as importFromUrl does.
+// Opens the draft the import made, as importFromUrl does.
 export async function importFromScans(_state: FormState, formData: FormData): Promise<FormState> {
 	let recipeImport: RecipeImportRef;
 	try {
@@ -123,5 +117,5 @@ export async function importFromScans(_state: FormState, formData: FormData): Pr
 	}
 
 	getRecipeImageService().scheduleSweep();
-	redirect(recipeImportPath(recipeImport.id));
+	redirect(savedDraftPath(recipeImport.draftId));
 }

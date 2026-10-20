@@ -61,8 +61,8 @@ export class ImportTimedOutError extends AppError {
 	}
 }
 
-// One error for an import that is not the member's, did not succeed, was saved already, or expired,
-// so the review form tells the member only to import the recipe again.
+// A recipe was already saved from the import, as when two pages add its draft at once, so the form
+// tells the member to import the recipe again.
 export class ImportUnavailableError extends AppError {
 	readonly code = 'import.unavailable';
 

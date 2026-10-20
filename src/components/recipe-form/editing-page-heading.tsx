@@ -1,12 +1,11 @@
 import type * as React from 'react';
 
-// The pages that hold the recipe form under a heading of their own: reviewing an import, and editing a
-// recipe. A draft's page is headed by its recipe's title.
-export type EditingPage = 'review' | 'edit';
+// The pages that hold the recipe form under a heading of their own, which only editing a recipe does:
+// a draft's page is headed by its recipe's title.
+export type EditingPage = 'edit';
 
 // Each page's heading, which is its title too.
 export const editingPageTitles = {
-	review: 'Review the import',
 	edit: 'Edit recipe',
 } as const satisfies Record<EditingPage, string>;
 

@@ -15,7 +15,6 @@ import {
 	recipeEntryTitles,
 } from '@/components/recipe-import/recipe-entry-heading';
 import { savedDraftPath } from '@/components/recipe-import/recipe-entry-paths';
-import { recipeImportPath } from '@/components/recipe-import/recipe-import-paths';
 import { contributePath } from '@/components/recipe/recipe-paths';
 import {
 	Empty,
@@ -62,8 +61,8 @@ function DraftUnavailableState() {
 						This Draft Isn’t Available
 					</EmptyTitle>
 					<EmptyDescription>
-						A draft is kept for {settings.drafts.draftLifetimeDays} days after it was last saved,
-						and only the member who saved it can open it.
+						A draft is kept for {settings.drafts.draftLifetimeDays} days after its last change, and
+						only the member who started it can open it.
 					</EmptyDescription>
 				</EmptyHeader>
 			</Empty>
@@ -76,10 +75,6 @@ async function SavedDraftEditor({ params }: Pick<PageProps<'/contribute/drafts/[
 	const draft = await loadSavedDraft(id);
 	if (draft === null) {
 		return <DraftUnavailableState />;
-	}
-	// A draft that continues an import opens in the import's review.
-	if (draft.continuesImportId !== undefined) {
-		redirect(recipeImportPath(draft.continuesImportId));
 	}
 	return <DraftEditor pageHref={savedDraftPath(id)} draft={draft} />;
 }

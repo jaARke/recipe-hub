@@ -7,7 +7,6 @@ import { InMemoryFavoriteRepository } from '@/application/testing/in-memory-favo
 import { InMemoryImageStore } from '@/application/testing/in-memory-image-store';
 import { InMemoryInviteRepository } from '@/application/testing/in-memory-invite-repository';
 import { InMemoryMemberRepository } from '@/application/testing/in-memory-member-repository';
-import { InMemoryRecipeImportRepository } from '@/application/testing/in-memory-recipe-import-repository';
 import { InMemoryRecipeRepository } from '@/application/testing/in-memory-recipe-repository';
 import { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
 import { seedSamples } from './seed-samples';
@@ -56,7 +55,6 @@ async function createSeed() {
 	const images = new InMemoryImageStore(folders);
 	const service = new RecipeService(
 		recipes,
-		new InMemoryRecipeImportRepository(recipes),
 		drafts,
 		members,
 		images,

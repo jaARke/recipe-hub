@@ -1121,7 +1121,6 @@ describe('RecipeForm’s undo', () => {
 const memberId = '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b';
 const otherMemberId = '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6c';
 const recipeId = '0b6f3c7e-3c1a-4d8e-9a57-2f1d6b8e4c10';
-const importId = '6d2b9f4a-8e1c-4b7d-a3f5-1c9e7d2b6a84';
 const draftId = '0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e';
 
 const newRecipeKey = `member:recipe-form:${memberId}:new`;
@@ -1131,7 +1130,6 @@ type AutosavedFormProps = {
 	initial?: RecipeFormValues;
 	action?: FormAction;
 	editing?: EditedRecipe;
-	importId?: string;
 	drafts?: RecipeFormDrafts;
 	member?: string;
 	existing?: ExistingRecipeFormSubjects;
@@ -1141,7 +1139,6 @@ function AutosavedForm({
 	initial = recipeFormValues(),
 	action = refuse,
 	editing,
-	importId: reviewed,
 	drafts,
 	member = memberId,
 	existing,
@@ -1153,7 +1150,6 @@ function AutosavedForm({
 			uploadFolders={uploadFolders}
 			uploader={vi.fn()}
 			editing={editing}
-			importId={reviewed}
 			autosave={{ memberId: member, existing }}
 			drafts={drafts}
 		/>
@@ -1443,66 +1439,56 @@ describe('RecipeForm’s autosave', () => {
 		await expect.element(page.getByText(restoredNotice)).not.toBeInTheDocument();
 	});
 
-	it.each([
-		{ name: 'a saved draft', props: { inUrl: true }, key: `draft:${draftId}` },
-		{
-			name: 'an import’s review holding a saved draft',
-			props: { inUrl: false, importId },
-			key: `import:${importId}`,
-		},
-	])(
-		'brings changes to $name back only to the version of the draft they were made on',
-		async ({ props, key }) => {
-			const entryKey = `member:recipe-form:${memberId}:${key}`;
-			const openedAt = (savedAt: string) => ({
-				save: vi.fn<FormAction<SavedDraftResult>>(),
-				inUrl: props.inUrl,
-				opened: { id: draftId, savedAt: new Date(savedAt) },
-			});
-			const first = await render(
-				<AutosavedForm
-					initial={recipeFormValues(lemonBars)}
-					importId={props.importId}
-					drafts={openedAt('2026-10-14T12:00:00.000Z')}
-				/>
-			);
-			await title().fill('Lemon bars squares');
-			await expect.poll(() => storedEntry(entryKey)?.version).toBe('2026-10-14T12:00:00.000Z');
-			await first.unmount();
-
-			// Another page saved the draft since.
-			await render(
-				<AutosavedForm
-					initial={recipeFormValues(lemonBars)}
-					importId={props.importId}
-					drafts={openedAt('2026-10-15T09:30:00.000Z')}
-				/>
-			);
-
-			await expect.poll(() => localStorage.getItem(entryKey)).toBeNull();
-			await expect.element(title()).toHaveValue('Lemon bars');
-			await expect.element(page.getByText(restoredNotice)).not.toBeInTheDocument();
-			await expect.element(page.getByText(outdatedNotice)).toBeVisible();
-			await expect
-				.element(
-					page.getByText(
-						'This draft was saved somewhere else after you made them, so they weren’t restored.'
-					)
-				)
-				.toBeVisible();
-		}
-	);
-
-	it('brings an import’s review back with its notes as they were', async () => {
-		const initial = recipeFormValues(lemonBars, threeNotes);
-		const first = await render(<AutosavedForm initial={initial} importId={importId} />);
-		await lookRight('Ingredient 2').click();
-		await expect
-			.poll(() => stored(`member:recipe-form:${memberId}:import:${importId}`))
-			.toBeDefined();
+	it('brings changes to a draft back only to the version of the draft they were made on', async () => {
+		const openedAt = (savedAt: string) => ({
+			save: vi.fn<FormAction<SavedDraftResult>>(),
+			inUrl: true,
+			opened: { id: draftId, savedAt: new Date(savedAt) },
+		});
+		const first = await render(
+			<AutosavedForm
+				initial={recipeFormValues(lemonBars)}
+				drafts={openedAt('2026-10-14T12:00:00.000Z')}
+			/>
+		);
+		await title().fill('Lemon bars squares');
+		await expect.poll(() => storedEntry(draftKey)?.version).toBe('2026-10-14T12:00:00.000Z');
 		await first.unmount();
 
-		await render(<AutosavedForm initial={initial} importId={importId} />);
+		// Another page saved the draft since.
+		await render(
+			<AutosavedForm
+				initial={recipeFormValues(lemonBars)}
+				drafts={openedAt('2026-10-15T09:30:00.000Z')}
+			/>
+		);
+
+		await expect.poll(() => localStorage.getItem(draftKey)).toBeNull();
+		await expect.element(title()).toHaveValue('Lemon bars');
+		await expect.element(page.getByText(restoredNotice)).not.toBeInTheDocument();
+		await expect.element(page.getByText(outdatedNotice)).toBeVisible();
+		await expect
+			.element(
+				page.getByText(
+					'This draft was saved somewhere else after you made them, so they weren’t restored.'
+				)
+			)
+			.toBeVisible();
+	});
+
+	it('brings an import’s draft back with its notes as they were', async () => {
+		const initial = recipeFormValues(lemonBars, threeNotes);
+		const drafts = {
+			save: vi.fn<FormAction<SavedDraftResult>>(),
+			inUrl: true,
+			opened: { id: draftId, savedAt: new Date('2026-10-14T12:00:00.000Z') },
+		};
+		const first = await render(<AutosavedForm initial={initial} drafts={drafts} />);
+		await lookRight('Ingredient 2').click();
+		await expect.poll(() => stored(draftKey)).toBeDefined();
+		await first.unmount();
+
+		await render(<AutosavedForm initial={initial} drafts={drafts} />);
 
 		await expect.element(page.getByText(restoredNotice)).toBeVisible();
 		await expect.element(page.getByText('2 things need a second look')).toBeVisible();
@@ -1611,13 +1597,26 @@ describe('RecipeForm’s autosave', () => {
 			text: { ...recipeFormSnapshot(initial).text, title: 'Lemon squares' },
 		});
 		const imported = recipeFormValues(lemonBars, threeNotes);
+		const savedAt = new Date('2026-10-14T12:00:00.000Z');
 		localStorage.setItem(
-			`member:recipe-form:${memberId}:import:${importId}`,
-			entryFor(restoredOver(imported))
+			draftKey,
+			JSON.stringify({
+				...JSON.parse(entryFor(restoredOver(imported))),
+				version: savedAt.toISOString(),
+			})
 		);
-		const review = await render(<AutosavedForm initial={imported} importId={importId} />);
+		const review = await render(
+			<AutosavedForm
+				initial={imported}
+				drafts={{
+					save: vi.fn<FormAction<SavedDraftResult>>(),
+					inUrl: true,
+					opened: { id: draftId, savedAt },
+				}}
+			/>
+		);
 		await expect
-			.element(page.getByText('Discard them to go back to the recipe as it was imported.'))
+			.element(page.getByText('Discard them to go back to your saved draft.'))
 			.toBeVisible();
 		await review.unmount();
 
@@ -1666,29 +1665,23 @@ describe('RecipeForm’s autosave', () => {
 		await expect.element(title()).toHaveValue('');
 	});
 
-	it('removes the member’s entries for imports and recipes the page knows are gone, as a form loads', async () => {
-		const reviewedImportId = '6d2b9f4a-8e1c-4b7d-a3f5-1c9e7d2b6a85';
+	it('removes the member’s entries for recipes the page knows are gone, as a form loads', async () => {
 		const newRecipeId = '0b6f3c7e-3c1a-4d8e-9a57-2f1d6b8e4c11';
 		const knownAt = new Date();
 		const before = new Date(knownAt.getTime() - 60 * 1000);
-		const goneImport = `member:recipe-form:${memberId}:import:${importId}`;
 		const goneRecipe = `member:recipe-form:${memberId}:recipe:${recipeId}`;
-		const keptImport = `member:recipe-form:${memberId}:import:${reviewedImportId}`;
 		const othersRecipe = `member:recipe-form:${otherMemberId}:recipe:${recipeId}`;
 		// A recipe the page never knew of, edited in another tab since.
 		const writtenSince = `member:recipe-form:${memberId}:recipe:${newRecipeId}`;
-		for (const key of [goneImport, goneRecipe, keptImport, othersRecipe]) {
+		for (const key of [goneRecipe, othersRecipe]) {
 			localStorage.setItem(key, entryFor(storedNewRecipe, before));
 		}
 		localStorage.setItem(writtenSince, entryFor(storedNewRecipe, knownAt));
 
-		await render(
-			<AutosavedForm existing={{ knownAt, importIds: [reviewedImportId], recipeIds: [] }} />
-		);
+		await render(<AutosavedForm existing={{ knownAt, recipeIds: [] }} />);
 
-		await expect.poll(() => localStorage.getItem(goneImport)).toBeNull();
-		expect(localStorage.getItem(goneRecipe)).toBeNull();
-		for (const key of [keptImport, othersRecipe, writtenSince]) {
+		await expect.poll(() => localStorage.getItem(goneRecipe)).toBeNull();
+		for (const key of [othersRecipe, writtenSince]) {
 			expect(localStorage.getItem(key)).not.toBeNull();
 		}
 	});
@@ -1762,9 +1755,7 @@ describe('RecipeForm as its page hydrates', () => {
 	});
 
 	it('leaves focus and the caret in the field the reader was typing in, not the review’s intro', async () => {
-		const form = (
-			<AutosavedForm initial={recipeFormValues(lemonBars, threeNotes)} importId={importId} />
-		);
+		const form = <AutosavedForm initial={recipeFormValues(lemonBars, threeNotes)} />;
 		const container = serverRender(form);
 		await textbox('Ingredient 1').fill('1 cup sifted flour');
 		textControl(textbox('Ingredient 1')).setSelectionRange(6, 12);
@@ -1780,10 +1771,8 @@ describe('RecipeForm as its page hydrates', () => {
 		});
 	});
 
-	it('starts an import’s review on its intro where the reader went to no field first', async () => {
-		const form = (
-			<AutosavedForm initial={recipeFormValues(lemonBars, threeNotes)} importId={importId} />
-		);
+	it('starts a form opened with notes to check, as an import’s draft is, on their intro where the reader went to no field first', async () => {
+		const form = <AutosavedForm initial={recipeFormValues(lemonBars, threeNotes)} />;
 		const container = serverRender(form);
 
 		await hydrate(container, form);
@@ -1983,24 +1972,29 @@ describe('RecipeForm’s drafts', () => {
 		expect(action.mock.calls[0]?.[1].get('draftId')).toBe(draftId);
 	});
 
-	it('keeps an import’s review at its own address, and saves its import with the draft', async () => {
+	it('saves over an import’s draft with its notes, at the draft’s own address', async () => {
 		const save = saving();
-		window.history.replaceState(null, '', `/contribute/imports/${importId}`);
+		const openedAt = new Date('2026-10-15T12:00:00.000Z');
+		window.history.replaceState(null, '', `/contribute/drafts/${draftId}`);
 		await render(
 			<AutosavedForm
 				initial={recipeFormValues(lemonBars, threeNotes)}
-				importId={importId}
-				drafts={draftsWith(save, { inUrl: false })}
+				drafts={draftsWith(save, { opened: { id: draftId, savedAt: openedAt } })}
 			/>
 		);
 
-		// Unlike a new recipe, an import's review is worth keeping as it was read.
+		// What was read is the draft already, so there is nothing to save until something changes.
+		await saveDraft().click();
+		await expect.element(page.getByText('No changes since the draft was saved')).toBeVisible();
+		await title().fill('Lemon squares');
 		await saveDraft().click();
 
 		await expect.element(page.getByText(`Draft saved at ${formatTime(savedAt)}`)).toBeVisible();
-		expect(save.mock.calls[0]?.[1].get('importId')).toBe(importId);
+		expect(save).toHaveBeenCalledOnce();
+		expect(save.mock.calls[0]?.[1].get('draftId')).toBe(draftId);
+		expect(save.mock.calls[0]?.[1].get('draftVersion')).toBe(openedAt.toISOString());
 		expect(sentDraft(save).reviewNotes).toHaveLength(3);
-		expect(location.pathname).toBe(`/contribute/imports/${importId}`);
+		expect(location.pathname).toBe(`/contribute/drafts/${draftId}`);
 	});
 
 	it('shows an image the draft may not keep at its photo, and says the draft wasn’t saved', async () => {

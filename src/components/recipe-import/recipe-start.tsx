@@ -3,8 +3,9 @@ import type { DraftSummaryDto } from '@/application/drafts/saved-draft-dtos';
 import type { FormAction } from '@/components/forms/form-state';
 import { DraftList, DraftListSkeleton } from '@/components/recipe-import/draft-list';
 import { KeptDraftNotice } from '@/components/recipe-import/kept-draft-notice';
-import { draftName, listedDraftPath } from '@/components/recipe-import/listed-drafts';
+import { draftName } from '@/components/recipe-import/listed-drafts';
 import { recipeEntryTitles } from '@/components/recipe-import/recipe-entry-heading';
+import { savedDraftPath } from '@/components/recipe-import/recipe-entry-paths';
 import { RecipeStartList } from '@/components/recipe-import/recipe-start-list';
 import { settings } from '@/lib/settings';
 
@@ -63,7 +64,7 @@ function RecipeStart({
 		<div className="flex flex-col gap-10">
 			<Heading className="font-heading text-4xl font-semibold">{recipeEntryTitles.start}</Heading>
 			{kept !== undefined && (
-				<KeptDraftNotice name={draftName(kept.title)} href={listedDraftPath(kept)} />
+				<KeptDraftNotice name={draftName(kept.title)} href={savedDraftPath(kept.id)} />
 			)}
 			<StartSection heading={section} title="Start a new recipe">
 				<RecipeStartList />
@@ -72,8 +73,7 @@ function RecipeStart({
 				<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={deleteDraft} />
 				<p className="text-sm text-muted-foreground">
 					Only you can see your drafts until you add them to the cookbook. Each is kept for{' '}
-					{settings.drafts.draftLifetimeDays} days after you last save it, and an import you haven’t
-					saved for {settings.imports.importDraftLifetimeDays} days.
+					{settings.drafts.draftLifetimeDays} days after its last change.
 				</p>
 			</StartSection>
 		</div>

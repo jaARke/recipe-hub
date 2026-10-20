@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { WebPage } from '@/application/ports/web-page-fetcher';
+import { savedDraftPath } from '@/components/recipe-import/recipe-entry-paths';
 import { recipeImportPath } from '@/components/recipe-import/recipe-import-paths';
-import { recipePath } from '@/components/recipe/recipe-paths';
+import { contributePath, recipePath } from '@/components/recipe/recipe-paths';
 import { slugify } from '@/domain/recipe/slug';
 import { expect, test } from './support/fixtures';
 import { deleteRecipeInEditor } from './support/recipe-editor';
@@ -26,7 +27,7 @@ function recipePage(slug: string, filing: object): WebPage {
 
 // A member reviews a link import's draft, edits it, and saves it as a recipe, then deletes the
 // recipe. The draft is seeded as the import service stores one after reading the page, so the run
-// spends no AI credit; saving clears the draft, and the member fixture deletes the import's record.
+// spends no AI credit; saving deletes the draft, and the member fixture deletes the import's record.
 test('an import’s draft is reviewed, edited, and saved as a recipe', async ({
 	page,
 	develop,
@@ -36,7 +37,7 @@ test('an import’s draft is reviewed, edited, and saved as a recipe', async ({
 	// Each run's own title, so runs in parallel never share a slug.
 	const title = `End-to-end lemonade ${randomUUID().slice(0, 8)}`;
 	const reviewNote = 'The original’s amount of water is smudged.';
-	const recipeImport = await seedLinkImportDraft(develop.db, member, {
+	const { importId, draftId } = await seedLinkImportDraft(develop.db, member, {
 		sourceUrl: 'https://example.com/lemonade',
 		recipe: {
 			title: 'Lemonade',
@@ -53,8 +54,10 @@ test('an import’s draft is reviewed, edited, and saved as a recipe', async ({
 	});
 	await signIn();
 
-	await page.goto(recipeImportPath(recipeImport.id));
-	await expect(page.getByRole('heading', { name: 'Review the import', level: 1 })).toBeVisible();
+	// The import's earlier address leads to its draft.
+	await page.goto(recipeImportPath(importId));
+	await expect(page).toHaveURL(savedDraftPath(draftId));
+	await expect(page.getByRole('heading', { name: 'Lemonade', level: 1 })).toBeVisible();
 	await expect(page.getByText('Imported from')).toContainText('example.com');
 	await expect(page.getByRole('textbox', { name: 'Title' })).toHaveValue('Lemonade');
 	await expect(page.getByText(reviewNote)).toBeVisible();
@@ -70,9 +73,10 @@ test('an import’s draft is reviewed, edited, and saved as a recipe', async ({
 	await expect(page.getByText(reviewNote)).toBeHidden();
 	await page.getByRole('button', { name: 'Looks right: Chapter' }).click();
 	await expect(page.getByText('Check the chapter. It was chosen for you.')).toBeHidden();
-	await page.getByRole('button', { name: 'Save recipe' }).click();
+	await page.getByRole('button', { name: 'Add to cookbook' }).click();
 
 	await expect(page).toHaveURL(recipePath(slugify(title)));
+	await expect(page.getByRole('dialog', { name: 'Added to the cookbook' })).toBeVisible();
 	const recipe = page.getByRole('article', { name: title });
 	await expect(recipe.getByRole('heading', { name: title, level: 1 })).toBeVisible();
 	await expect(recipe.getByText('From Aunt May (example.com)')).toBeVisible();
@@ -85,15 +89,11 @@ test('an import’s draft is reviewed, edited, and saved as a recipe', async ({
 	]);
 	await expect(recipe.getByRole('definition').filter({ hasText: testMemberName })).toBeVisible();
 
-	// A saved import's review leads to its recipe for good.
-	await page.goto(recipeImportPath(recipeImport.id));
-	await expect(page).toHaveURL(recipePath(slugify(title)));
+	// Saving deleted the draft, so the import's address leads to the start page.
+	await page.goto(recipeImportPath(importId));
+	await expect(page).toHaveURL(contributePath);
 
 	await deleteRecipeInEditor(page, title);
-
-	// Saving cleared the draft, so with the recipe gone the review has nothing left to show.
-	await page.goto(recipeImportPath(recipeImport.id));
-	await expect(page.getByText('This draft isn’t available')).toBeVisible();
 });
 
 // Each draft is seeded from a page's JSON-LD by the reader the import service uses, so its filing comes
@@ -120,7 +120,7 @@ test('a page’s JSON-LD files its import for review, or leaves the chapter to t
 	);
 	await signIn();
 
-	await page.goto(recipeImportPath(filed.id));
+	await page.goto(savedDraftPath(filed.draftId));
 	const chapter = page.getByRole('group', { name: 'Chapter' });
 	await expect(chapter.getByRole('radio', { name: 'Desserts' })).toBeChecked();
 	await expect(chapter.getByText('Check the chapter. It was chosen for you.')).toBeVisible();
@@ -136,7 +136,7 @@ test('a page’s JSON-LD files its import for review, or leaves the chapter to t
 	).toBeVisible();
 	await expect(page.locator(':focus')).toContainText('3 things need a second look');
 
-	await page.goto(recipeImportPath(unfiled.id));
+	await page.goto(savedDraftPath(unfiled.draftId));
 	await expect(page.locator(':focus')).toContainText('1 thing needs a second look');
 	await expect(chapter.getByText('Choose a chapter.')).toBeVisible();
 	await expect(chapter.getByRole('radio', { checked: true })).toHaveCount(0);

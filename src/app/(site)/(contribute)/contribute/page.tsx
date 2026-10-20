@@ -40,7 +40,7 @@ async function RecipeStartForMember({
 	const pageHref = requestedPageHref(contributePath, params);
 	const [drafts, member] = await Promise.all([loadDrafts(pageHref), loadFormMember(pageHref)]);
 	const keptId = parseKeptDraftParam(params[keptDraftParamName]);
-	const kept = drafts.find(({ kind, id }) => kind === 'saved' && id === keptId);
+	const kept = drafts.find(({ id }) => id === keptId);
 
 	return (
 		<>
