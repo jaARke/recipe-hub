@@ -3,6 +3,7 @@ import { SignInRequiredError } from '@/application/authorization';
 import {
 	SavedDraftDeleteConflictError,
 	SavedDraftEditConflictError,
+	SavedDraftGoneError,
 } from '@/application/drafts/errors';
 import type { SavedDraftId } from '@/application/drafts/saved-draft';
 import type { SavedDraftRef } from '@/application/drafts/saved-draft-dtos';
@@ -186,33 +187,69 @@ describe('saveDraft', () => {
 		expect(await drafts.findById(first.id)).not.toHaveProperty('title');
 	});
 
-	it('saves as a new draft over another member’s draft, which stays as it was', async () => {
+	it('refuses a save naming another member’s draft, as one gone, which stays as it was', async () => {
 		const { drafts, serviceFor } = await createDrafts();
 		const theirs = await serviceFor(memberActor()).saveDraft(theirDraft);
+		const member = memberActor();
 
-		const saved = await serviceFor(memberActor()).saveDraft({ ...lemonBars, draftId: theirs.id });
-
-		expect(saved.id).not.toBe(theirs.id);
+		await expect(serviceFor(member).saveDraft({ ...lemonBars, ...over(theirs) })).rejects.toThrow(
+			SavedDraftGoneError
+		);
 		expect(await drafts.findById(theirs.id)).toMatchObject({ title: 'Lemon bars' });
+		expect(await serviceFor(member).listDrafts()).toEqual([]);
 	});
 
-	it.each([missingId, malformedId])('saves as a new draft for the id %s', async (draftId) => {
-		const { serviceFor } = await createDrafts();
+	it.each([missingId, malformedId])(
+		'refuses a save naming the id %s, storing nothing',
+		async (draftId) => {
+			const { serviceFor } = await createDrafts();
+			const service = serviceFor(memberActor());
 
-		const saved = await serviceFor(memberActor()).saveDraft({ ...lemonBars, draftId });
+			await expect(
+				service.saveDraft({ ...lemonBars, draftId, draftVersion: new Date().toISOString() })
+			).rejects.toThrow(SavedDraftGoneError);
+			expect(await service.listDrafts()).toEqual([]);
+		}
+	);
 
-		expect(saved.id).not.toBe(draftId);
-	});
-
-	it('saves an expired draft as a new one', async () => {
+	it('refuses a save naming an expired draft, as one gone', async () => {
 		const { serviceFor, backdateDraft } = await createDrafts();
 		const service = serviceFor(memberActor());
 		const expired = await service.saveDraft(lemonBars);
 		backdateDraft(expired.id, lifetime + 0.01);
 
-		const saved = await service.saveDraft({ ...lemonBars, draftId: expired.id });
+		await expect(service.saveDraft({ ...lemonBars, draftId: expired.id })).rejects.toThrow(
+			SavedDraftGoneError
+		);
+	});
 
-		expect(saved.id).not.toBe(expired.id);
+	it("refuses a save naming an import's draft another page added, rather than a copy without its import", async () => {
+		const member = memberActor();
+		const { drafts, serviceFor, importDraft } = await createDrafts();
+		const service = serviceFor(member);
+		const { draftId } = await importDraft(member);
+		const opened = await service.getDraft(draftId);
+		// Another page added the recipe, which took the draft with it.
+		await drafts.delete(draftId, opened!.savedAt);
+
+		await expect(service.saveDraft({ ...lemonBars, ...over(opened!) })).rejects.toThrow(
+			SavedDraftGoneError
+		);
+		expect(await service.listDrafts()).toEqual([]);
+		expect(logLines(consoleWarn)).toEqual([
+			expect.objectContaining({ message: 'Draft save refused for a missing draft', draftId }),
+		]);
+	});
+
+	it('refuses a save over a draft deleted between finding it and writing it', async () => {
+		const { drafts, serviceFor } = await createDrafts();
+		const service = serviceFor(memberActor());
+		const opened = await service.saveDraft(lemonBars);
+		vi.spyOn(drafts, 'update').mockResolvedValueOnce(null);
+
+		await expect(service.saveDraft({ ...lemonBars, ...over(opened) })).rejects.toThrow(
+			SavedDraftGoneError
+		);
 	});
 
 	it('refuses to save over a draft another page saved since, which stays as that page saved it', async () => {

@@ -4,6 +4,7 @@ import {
 	InvalidSavedDraftError,
 	SavedDraftDeleteConflictError,
 	SavedDraftEditConflictError,
+	SavedDraftGoneError,
 } from '@/application/drafts/errors';
 import {
 	savedDraftCutoff,
@@ -128,16 +129,19 @@ export class SavedDraftService {
 		return this.isOwnDraft(draft, actor.memberId, new Date()) ? toSavedDraftDto(draft) : null;
 	}
 
-	// Saves whatever the form holds, with nothing required: over the member's draft the form opened or
-	// last saved, or else as a new draft, as when the draft was deleted elsewhere. A save over a draft
-	// must name the version the form has of it, so one another page saved since is never replaced: that
-	// save is a conflict, which the form reports. A draft an import made keeps its provenance, so its
-	// recipe still credits the import's source. Its images are checked as a recipe's are, so a draft
-	// keeps alive only images the member could attach.
+	// Saves whatever the form holds, with nothing required: as a new draft where the form names none,
+	// or over the member's draft the form opened or last saved. A draft named that is gone, as one
+	// another page added or deleted, is refused rather than stored anew, which would copy it without its
+	// import. A save over a draft must name the version the form has of it, so one another page saved
+	// since is never replaced: that save is a conflict, which the form reports. A draft an import made
+	// keeps its provenance, so its recipe still credits the import's source. Its images are checked as
+	// a recipe's are, so a draft keeps alive only images the member could attach.
 	async saveDraft(input: SaveDraftInput): Promise<SavedDraftRef> {
 		const actor = requireMember(await this.actors.currentActor());
-		const found = await this.findDraft(input.draftId);
-		const existing = this.isOwnDraft(found, actor.memberId, new Date()) ? found : null;
+		const existing = input.draftId === undefined ? null : await this.findDraft(input.draftId);
+		if (input.draftId !== undefined && !this.isOwnDraft(existing, actor.memberId, new Date())) {
+			throw this.goneSave(actor.memberId, input.draftId);
+		}
 		// Checked before the images, so a stale copy is not checked against images saved since.
 		const version = editVersionSchema.safeParse(input.draftVersion);
 		if (
@@ -168,15 +172,14 @@ export class SavedDraftService {
 			imagePathnames: input.imagePathnames,
 		};
 		// At the version the form named, which is the one found.
-		const updated =
+		const saved =
 			existing === null
-				? null
+				? await this.drafts.create({ ...contents, memberId: actor.memberId })
 				: await this.updateDraft(
 						existing.id,
 						{ ...contents, expectedUpdatedAt: existing.updatedAt },
 						actor.memberId
 					);
-		const saved = updated ?? (await this.drafts.create({ ...contents, memberId: actor.memberId }));
 
 		logger.info('Draft saved', { draftId: saved.id, memberId: actor.memberId });
 		return { id: saved.id, savedAt: saved.updatedAt };
@@ -235,18 +238,29 @@ export class SavedDraftService {
 		);
 	}
 
-	// The repository checks the version again as it writes, so a save made since is never replaced.
-	// Null for a draft deleted meanwhile, which the save then stores anew.
+	// The repository checks the version again as it writes, so a save made since is never replaced,
+	// and a draft deleted meanwhile is gone.
 	private async updateDraft(
 		id: SavedDraftId,
 		update: SavedDraftUpdate,
 		memberId: MemberId
-	): Promise<SavedDraft | null> {
+	): Promise<SavedDraft> {
+		let updated: SavedDraft | null;
 		try {
-			return await this.drafts.update(id, update);
+			updated = await this.drafts.update(id, update);
 		} catch (error) {
 			throw error instanceof SavedDraftEditConflictError ? this.staleSave(memberId, id) : error;
 		}
+		if (updated === null) {
+			throw this.goneSave(memberId, id);
+		}
+		return updated;
+	}
+
+	// Logged, since the member's form outlived its draft, as when another page added it.
+	private goneSave(memberId: MemberId, draftId: string): SavedDraftGoneError {
+		logger.warn('Draft save refused for a missing draft', { draftId, memberId });
+		return new SavedDraftGoneError();
 	}
 
 	// Logged, since the member has to open the draft again and redo their changes.

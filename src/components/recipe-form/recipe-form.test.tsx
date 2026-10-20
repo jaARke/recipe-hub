@@ -2014,6 +2014,27 @@ describe('RecipeForm’s drafts', () => {
 		await expect.element(title()).toHaveValue('Lemon bars squares with glaze');
 	});
 
+	it('stops saving once its draft was added or deleted elsewhere, saying so and keeping what was typed', async () => {
+		const gone =
+			'This draft was added to the cookbook or deleted somewhere else, so it can’t be saved or added here. Copy anything you want to keep.';
+		const save = saving({ status: 'error', message: gone, fieldErrors: {} });
+		await render(
+			<DraftForm
+				initial={recipeFormValues(lemonBars)}
+				drafts={draftsWith(save, { opened: { id: draftId, savedAt }, page: 'draft' })}
+			/>
+		);
+
+		await title().fill('Lemon bars squares');
+		await expect.element(announced(gone), afterSaving).toBeInTheDocument();
+		await title().fill('Lemon bars squares with glaze');
+		await new Promise((resolve) => setTimeout(resolve, 1_500));
+
+		expect(save).toHaveBeenCalledOnce();
+		expect(named(save)).toEqual({ id: draftId, version: savedAt.toISOString() });
+		await expect.element(title()).toHaveValue('Lemon bars squares with glaze');
+	});
+
 	it('shows an image the draft may not keep at its photo, and says the draft wasn’t saved', async () => {
 		const withPhoto = recipeFormValues({
 			title: 'Lemon bars',
