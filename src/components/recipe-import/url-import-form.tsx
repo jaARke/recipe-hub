@@ -35,14 +35,15 @@ function UrlImportForm({ action }: UrlImportFormProps) {
 				label="Recipe link"
 				required
 				autoComplete="off"
-				description="Paste the address of the page with the recipe. You’ll check what’s read before adding it to the cookbook."
+				placeholder="https://"
+				description="Paste the address of the page with the recipe. The recipe opens as a draft for you to check before adding it to the cookbook."
 				error={failure?.fieldErrors[recipeImportFieldNames.url]}
 				defaultValue={failure?.values?.[recipeImportFieldNames.url]}
 			/>
 			<RecipeImportSubmit
 				pending={pending}
-				label="Import recipe"
-				pendingLabel="Importing recipe"
+				label="Read recipe"
+				pendingLabel="Reading recipe"
 				stage="Reading the page…"
 			/>
 		</form>

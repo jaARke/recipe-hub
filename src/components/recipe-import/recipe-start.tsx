@@ -63,8 +63,8 @@ function RecipeStart({ headingLevel = 1, kept, drafts, now, deleteDraft }: Recip
 			<StartSection heading={section} title="Your drafts">
 				<DraftList drafts={drafts} now={now} deleteDraft={deleteDraft} />
 				<p className="text-sm text-muted-foreground">
-					Only you can see your drafts until you add them to the cookbook. Each is kept for{' '}
-					{settings.drafts.draftLifetimeDays} days after its last change.
+					Drafts save as you go, and only you can see them until you add them to the cookbook. Each
+					is kept for {settings.drafts.draftLifetimeDays} days after you last change it.
 				</p>
 			</StartSection>
 		</div>

@@ -5,7 +5,7 @@ import type { FormAction } from '@/components/forms/form-state';
 import { UrlImportForm } from '@/components/recipe-import/url-import-form';
 
 const fieldDescription =
-	'Paste the address of the page with the recipe. You’ll check what’s read before adding it to the cookbook.';
+	'Paste the address of the page with the recipe. The recipe opens as a draft for you to check before adding it to the cookbook.';
 
 function linkField() {
 	return page.getByRole('textbox', { name: 'Recipe link' });
@@ -16,7 +16,7 @@ describe('UrlImportForm', () => {
 		const action = vi.fn<FormAction>();
 		await render(<UrlImportForm action={action} />);
 
-		await page.getByRole('button', { name: 'Import recipe' }).click();
+		await page.getByRole('button', { name: 'Read recipe' }).click();
 
 		await expect.element(linkField()).toHaveFocus();
 		await expect.element(linkField()).toHaveAttribute('aria-invalid', 'true');
@@ -34,7 +34,7 @@ describe('UrlImportForm', () => {
 		await render(<UrlImportForm action={action} />);
 
 		await linkField().fill('recipes.example.com/lemonade');
-		await page.getByRole('button', { name: 'Import recipe' }).click();
+		await page.getByRole('button', { name: 'Read recipe' }).click();
 
 		await expect
 			.element(linkField())

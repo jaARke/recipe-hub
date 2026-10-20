@@ -537,8 +537,8 @@ function RecipeEntrySpecimen() {
 				<Specimen label="While a link is read">
 					<RecipeImportSubmit
 						pending
-						label="Import recipe"
-						pendingLabel="Importing recipe"
+						label="Read recipe"
+						pendingLabel="Reading recipe"
 						stage="Reading the page…"
 					/>
 				</Specimen>
