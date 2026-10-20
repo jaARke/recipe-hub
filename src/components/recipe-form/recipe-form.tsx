@@ -23,6 +23,7 @@ import { TextareaField } from '@/components/forms/textarea-field';
 import { useFieldUndo } from '@/components/forms/use-field-undo';
 import { useFormAction } from '@/components/forms/use-form-action';
 import { useHydrated } from '@/components/forms/use-hydrated';
+import { useTransientState } from '@/components/forms/use-transient-state';
 import { wideContentProps } from '@/components/layout/page-container';
 import { ActionBar } from '@/components/recipe-form/action-bar';
 import {
@@ -93,7 +94,10 @@ import {
 	type RecipeFormDraftStatus,
 } from '@/components/recipe-form/use-draft-saving';
 import { useRecipeFormAutosave } from '@/components/recipe-form/use-recipe-form-autosave';
-import { IngredientLineText } from '@/components/recipe/ingredient-line-text';
+import {
+	ingredientLinePlainText,
+	IngredientLineText,
+} from '@/components/recipe/ingredient-line-text';
 import {
 	RecipeImageViewer,
 	RecipeImageViewerButton,
@@ -116,8 +120,8 @@ import type { RecipeImageRole } from '@/domain/recipe/recipe-image';
 import {
 	transcriptionMarkerFixes,
 	transcriptionMarkerRuns,
-	transcriptionMarkersIn,
 } from '@/domain/recipe/transcription-markers';
+import { normalizeText } from '@/domain/text-normalization';
 import { formatDayAndTime } from '@/lib/dates';
 import { settings } from '@/lib/settings';
 
@@ -150,8 +154,8 @@ const draftStatusKinds = {
 const outdatedDescription = 'This recipe changed after you made them, so they weren’t restored.';
 
 // What saving says, by whether the form adds a recipe to the cookbook or saves changes to one: its
-// button, as it works, what fixing a failed save's problems is for, and the warning before saving
-// with anything left to check.
+// button, as it works, what fixing a failed save's problems is for, the warning before saving with
+// anything left to check, and what comes next once everything is checked.
 const savingWords = {
 	add: {
 		submitLabel: 'Add to cookbook',
@@ -159,6 +163,7 @@ const savingWords = {
 		purpose: 'before adding it to the cookbook',
 		saveAnywayLabel: 'Add anyway',
 		notesKeptUntil: 'it’s added to the cookbook',
+		whenChecked: 'Add it to the cookbook when you’re ready.',
 	},
 	edit: {
 		submitLabel: 'Save changes',
@@ -166,10 +171,19 @@ const savingWords = {
 		purpose: 'to save',
 		saveAnywayLabel: 'Save anyway',
 		notesKeptUntil: 'the recipe is saved',
+		whenChecked: 'Save the changes when you’re ready.',
 	},
 } as const satisfies Record<
 	'add' | 'edit',
-	Record<'submitLabel' | 'pendingLabel' | 'purpose' | 'saveAnywayLabel' | 'notesKeptUntil', string>
+	Record<
+		| 'submitLabel'
+		| 'pendingLabel'
+		| 'purpose'
+		| 'saveAnywayLabel'
+		| 'notesKeptUntil'
+		| 'whenChecked',
+		string
+	>
 >;
 
 const yieldKindItems = [
@@ -265,20 +279,17 @@ function markedText(text: string): React.ReactNode {
 	);
 }
 
-// How the line reads on the recipe page, where that differs from the text as typed or still holds a
-// transcription marker.
+// How the line reads on the recipe page, only where its words differ from what was typed, tidied as
+// all text is, so spacing alone shows nothing. Its label says it is how the line will look, not
+// something else to check.
 function ingredientPreview(text: string): React.ReactNode {
 	const line = parseIngredientLine(text);
-	if (
-		line.amount === undefined &&
-		line.text === text.trim() &&
-		transcriptionMarkersIn(text).length === 0
-	) {
+	if (ingredientLinePlainText(line) === normalizeText(text).trim()) {
 		return undefined;
 	}
 	return (
 		<>
-			Shows as <IngredientLineText line={line} renderText={markedText} />
+			Shows on the recipe as <IngredientLineText line={line} renderText={markedText} />
 		</>
 	);
 }
@@ -394,6 +405,12 @@ function RecipeForm({
 	// looks right; saving with any left asks first.
 	const checks = recipeFormChecks(values);
 	const checksByKey = new Map(checks.map((check) => [problemKey(check.target), check]));
+	// Set once the page shows something to check, so the notes' intro stays to say everything's
+	// checked once nothing is left. Like what an attempt said, it lasts only while its page is shown.
+	const [reviewing, setReviewing] = useTransientState<true>();
+	if (checks.length > 0 && reviewing === undefined) {
+		setReviewing(true);
+	}
 	const [warningOpen, setWarningOpen] = React.useState(false);
 	// Set by the warning's "Add anyway" or "Save anyway", so the save it starts skips the warning.
 	const savingAnyway = React.useRef(false);
@@ -496,19 +513,16 @@ function RecipeForm({
 		return { message, label, targetId };
 	}
 
-	function focusCheck(check: RecipeFormCheck) {
-		focusCentered(locationParts(check.target).noteId);
-	}
-
-	// Moves focus to the note at this place in what is left to check, to the first once past the last,
-	// or to Save once nothing is left.
+	// Moves focus and the view to the note at this place in what is left to check, to the first once
+	// past the last, or to the notes' intro once nothing is left, which then says everything's checked.
 	function focusCheckAt(left: readonly RecipeFormCheck[], index: number) {
 		const next = left[index] ?? left[0];
-		if (next === undefined) {
-			document.getElementById(ids.save)?.focus();
-		} else {
-			focusCheck(next);
-		}
+		focusCentered(next === undefined ? ids.reviewIntro : locationParts(next.target).noteId);
+	}
+
+	// Where Start checking and the warning's Show me begin, as Next does with nowhere focused.
+	function goToFirstCheck() {
+		focusCheckAt(checks, 0);
 	}
 
 	// Clears the note, then moves on to the next thing to check.
@@ -602,7 +616,6 @@ function RecipeForm({
 		document.getElementById(ids.field('title'))?.focus();
 	}
 
-	const [firstCheck] = checks;
 	const formNote = noteFor({ kind: 'form' });
 	// The scans to read beside the form from lg, which widen the page, or in the viewer below lg.
 	const originalImages = photoViewerImages(values.photos.scan, 'scan');
@@ -641,12 +654,13 @@ function RecipeForm({
 			{/* About the whole form, such as an edit conflict; the summary lists a save's problems. */}
 			<FormErrorAlert message={state.status === 'error' ? state.message : undefined} />
 			<ProblemSummary problems={problems} purpose={saving.purpose} />
-			{firstCheck !== undefined && (
+			{reviewing && (
 				<div className="flex flex-col gap-3">
 					<ReviewNotesIntro
 						id={ids.reviewIntro}
 						count={checks.length}
-						onStart={() => focusCheck(firstCheck)}
+						whenChecked={saving.whenChecked}
+						onStart={goToFirstCheck}
 					/>
 					{formNote !== undefined && <FieldNote id={ids.formNote} {...formNote} />}
 				</div>
@@ -846,7 +860,7 @@ function RecipeForm({
 								Wait for the photos to finish uploading.
 							</p>
 						)}
-						{firstCheck !== undefined && (
+						{checks.length > 0 && (
 							<ReviewNotesNext id={ids.checksLeft} count={checks.length} onNext={goToNextCheck} />
 						)}
 					</>
@@ -883,11 +897,7 @@ function RecipeForm({
 				open={warningOpen}
 				onOpenChange={setWarningOpen}
 				count={checks.length}
-				onShow={() => {
-					if (firstCheck !== undefined) {
-						focusCheck(firstCheck);
-					}
-				}}
+				onShow={goToFirstCheck}
 				saveAnywayLabel={saving.saveAnywayLabel}
 				notesKeptUntil={saving.notesKeptUntil}
 				onSaveAnyway={saveAnyway}

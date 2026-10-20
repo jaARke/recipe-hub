@@ -73,6 +73,9 @@ test('an import’s draft is reviewed, edited, and saved as a recipe', async ({
 	await expect(page.getByText(reviewNote)).toBeHidden();
 	await page.getByRole('button', { name: 'Looks right: Chapter' }).click();
 	await expect(page.getByText('Check the chapter. It was chosen for you.')).toBeHidden();
+	// The notes' intro stays to say so, and the last Looks right brings it into view.
+	await expect(page.locator(':focus')).toContainText('Everything’s checked');
+	await expect(page.locator(':focus')).toBeInViewport();
 	await page.getByRole('button', { name: 'Add to cookbook' }).click();
 
 	await expect(page).toHaveURL(recipePath(slugify(title)));

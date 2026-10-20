@@ -1,6 +1,6 @@
 'use client';
 
-import { ListChecksIcon } from 'lucide-react';
+import { CircleCheckIcon, ListChecksIcon } from 'lucide-react';
 import * as React from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -26,17 +26,32 @@ export function checkedAnnouncement(left: number): string {
 }
 
 // Heads the form while anything is left to check against the original, and starts the member on
-// the first. It takes focus as a form opens with notes to check, as an import's draft does, and isn't
-// announced as its count changes, since "Looks right" announces what is left.
+// the first; once nothing is left, it stays to say everything's checked and what comes next. It takes
+// focus as a form opens with notes to check, as an import's draft does, and as the last note looks
+// right. It isn't announced as its count changes, since "Looks right" announces what is left.
 function ReviewNotesIntro({
 	id,
 	count,
+	whenChecked,
 	onStart,
 }: {
 	id: string;
+	// What is left to check; none once everything is checked.
 	count: number;
+	// What to do once everything is checked, such as "Add it to the cookbook when you’re ready."
+	whenChecked: string;
 	onStart: () => void;
 }) {
+	if (count === 0) {
+		return (
+			<Alert id={id} tabIndex={-1} role={undefined} aria-live={undefined}>
+				<CircleCheckIcon aria-hidden="true" />
+				<AlertTitle>Everything’s checked</AlertTitle>
+				<AlertDescription>{whenChecked}</AlertDescription>
+			</Alert>
+		);
+	}
+
 	return (
 		<Alert id={id} tabIndex={-1} role={undefined} aria-live={undefined}>
 			<ListChecksIcon aria-hidden="true" />

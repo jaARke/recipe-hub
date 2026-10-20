@@ -50,6 +50,9 @@ const uploadFolders = { dish: 'dish/development/', scan: 'scan/development/' };
 // A laptop's, from lg, where the original recipe sits beside the fields.
 const laptop = { width: 1280, height: 800 };
 
+// A phone's width with less height than the form's top, so its steps start out of view.
+const shortPhone = { width: 390, height: 480 };
+
 const lemonBars: RecipeDraftContent = {
 	title: 'Lemon bars',
 	ingredientSections: [{ lines: [{ text: '1 cup flour' }, { text: '2 eggs' }] }],
@@ -73,6 +76,12 @@ const threeNotes: Problem[] = [
 	{ path: 'title', message: 'Check the title.' },
 	{ path: 'ingredientSections.0.lines.1', message: 'Check this line.' },
 	{ path: 'instructionSections.0.steps.0', message: 'Check this step.' },
+];
+
+// Notes on two steps, far enough down the form to start out of view on a short screen.
+const gravyNotes: Problem[] = [
+	{ path: 'instructionSections.0.steps.1', message: 'Check the roasting time.' },
+	{ path: 'instructionSections.1.steps.1', message: 'Check the gravy.' },
 ];
 
 // Refuses every save, so the form stays and shows what came back.
@@ -191,8 +200,45 @@ describe('RecipeForm’s review notes', () => {
 		await expect.element(announced('Checked. 1 left.')).toBeInTheDocument();
 
 		await lookRight('Title').click();
-		await expect.element(saveRecipe()).toHaveFocus();
+		await expect.element(noteWith('Everything’s checked')).toHaveFocus();
 		await expect.element(announced('Checked. Nothing left to check.')).toBeInTheDocument();
+		await expect.element(page.getByText(/need a second look/)).not.toBeInTheDocument();
+	});
+
+	it('keeps the intro once the last note looks right, saying everything’s checked, in view', async () => {
+		await page.viewport(shortPhone.width, shortPhone.height);
+		await renderForm(potRoast, gravyNotes);
+		// The element, which stays as its words change.
+		const intro = noteWith('2 things need a second look');
+
+		await lookRight('Step 2').click();
+		await expect.element(noteWith('Check the gravy.')).toHaveFocus();
+		await expect.element(intro).not.toBeInViewport();
+		await lookRight('Step 4, For the gravy').click();
+
+		await expect.element(intro).toHaveFocus();
+		await expect.element(intro).toBeInViewport();
+		await expect
+			.element(intro)
+			.toHaveTextContent('Everything’s checkedAdd it to the cookbook when you’re ready.');
+		await expect.element(announced('Checked. Nothing left to check.')).toBeInTheDocument();
+		await expect
+			.element(page.getByRole('button', { name: 'Start checking' }))
+			.not.toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Next' })).not.toBeInTheDocument();
+	});
+
+	it('says everything’s checked only while its page is shown', async () => {
+		const keptPage = await renderKeptPage(
+			recipeForm(recipeFormValues(lemonBars, threeNotes.slice(0, 1)))
+		);
+
+		await lookRight('Title').click();
+		await expect.element(page.getByText('Everything’s checked')).toBeVisible();
+		await keptPage.hide();
+		await keptPage.show();
+
+		await expect.element(page.getByText('Everything’s checked')).not.toBeInTheDocument();
 		await expect.element(page.getByText(/need a second look/)).not.toBeInTheDocument();
 	});
 
@@ -222,12 +268,16 @@ describe('RecipeForm’s review notes', () => {
 		await expect.element(noteWith('Check the title.')).toHaveFocus();
 	});
 
-	it('starts checking at the first note', async () => {
-		await renderForm(lemonBars, threeNotes);
+	it('starts checking at the first note, bringing it into view as Next does', async () => {
+		await page.viewport(shortPhone.width, shortPhone.height);
+		await renderForm(potRoast, gravyNotes);
+		const first = noteWith('Check the roasting time.');
+		await expect.element(first).not.toBeInViewport();
 
 		await page.getByRole('button', { name: 'Start checking' }).click();
 
-		await expect.element(noteWith('Check the title.')).toHaveFocus();
+		await expect.element(first).toHaveFocus();
+		await expect.element(first).toBeInViewport();
 	});
 
 	it('clears a note when its field is edited, and offers no Looks right on an empty title', async () => {
@@ -244,6 +294,9 @@ describe('RecipeForm’s review notes', () => {
 			.element(page.getByText('Add a title. The original doesn’t show one.'))
 			.not.toBeInTheDocument();
 		await expect.element(page.getByText(/need a second look/)).not.toBeInTheDocument();
+		// The intro says so, and leaves focus where the member is typing.
+		await expect.element(page.getByText('Everything’s checked')).toBeVisible();
+		await expect.element(title()).toHaveFocus();
 	});
 
 	it('asks before saving with notes open; Show me goes to the first and saves nothing', async () => {
@@ -355,14 +408,17 @@ describe('RecipeForm’s review notes', () => {
 		expect(action).not.toHaveBeenCalled();
 	});
 
-	it('marks a transcription marker left in a line, and asks before saving it', async () => {
+	it('marks a transcription marker left in a line where its preview shows, and asks before saving it', async () => {
 		const action = vi.fn(refuse);
 		await renderForm(
-			{ ...lemonBars, ingredientSections: [{ lines: [{ text: '1 cup [illegible] flour' }] }] },
+			{ ...lemonBars, ingredientSections: [{ lines: [{ text: '1/2 cup [illegible] flour' }] }] },
 			[],
 			action
 		);
 
+		await expect
+			.element(textbox('Ingredient 1'))
+			.toHaveAccessibleDescription(/^Shows on the recipe as ½ cup \[illegible\] flour/);
 		const marks = Array.from(document.querySelectorAll('mark'), (mark) => mark.textContent);
 		expect(marks).toEqual(['[illegible]']);
 		await expect.element(page.getByText('1 thing needs a second look')).toBeVisible();
@@ -499,7 +555,7 @@ describe('RecipeForm’s chapter, holidays, and diets', () => {
 		await lookRight('Chapter').click();
 
 		await expect.element(page.getByText('Check the chapter.')).not.toBeInTheDocument();
-		await expect.element(saveRecipe()).toHaveFocus();
+		await expect.element(noteWith('Everything’s checked')).toHaveFocus();
 	});
 });
 
@@ -692,6 +748,31 @@ describe('RecipeForm’s wording for adding and editing', () => {
 		await expect.element(saveRecipe()).toBeVisible();
 	});
 
+	it.each([
+		['adding', false, 'Add it to the cookbook when you’re ready.'],
+		['editing', true, 'Save the changes when you’re ready.'],
+	])('says what comes next once everything is checked when %s', async (_, isEditing, next) => {
+		const form = {
+			initial: recipeFormValues(withMarker),
+			action: refuse,
+			uploadFolders,
+			uploader: vi.fn(),
+		};
+		await render(
+			isEditing ? (
+				<RecipeForm {...form} editing={{ id: recipeId, version: 'a' }} />
+			) : (
+				<RecipeForm {...form} />
+			)
+		);
+
+		await textbox('Ingredient 1').fill('1 cup flour');
+
+		await expect
+			.element(noteWith('Everything’s checked'))
+			.toHaveTextContent(`Everything’s checked${next}`);
+	});
+
 	it('saves changes to a published recipe, and says so as it saves and after it fails', async () => {
 		const saved = heldResult(refused);
 		await render(
@@ -798,16 +879,21 @@ describe('RecipeForm’s lists', () => {
 		}
 	});
 
-	it('shows how a line without an amount reads once tidied, and nothing when it reads as typed', async () => {
-		await renderForm({
-			...lemonBars,
-			ingredientSections: [{ lines: [{ text: 'Salt to taste;' }, { text: 'Pepper to taste' }] }],
-		});
+	it.each([
+		['1 1/2 cups flour', 'Shows on the recipe as 1½ cups flour'],
+		['two eggs', 'Shows on the recipe as 2 eggs'],
+		['a pinch of salt', 'Shows on the recipe as 1 pinch of salt'],
+		['Salt to taste;', 'Shows on the recipe as Salt to taste'],
+		['• 1 cup sugar', 'Shows on the recipe as 1 cup sugar'],
+		['1 cup sugar', ''],
+		['1 cup  sugar ', ''],
+		['About ½ cup of milk, warmed', ''],
+		['1 can (14 oz) tomatoes, drained', ''],
+		['Pepper to taste', ''],
+	])('previews "%s" as "%s", only where it reads otherwise than typed', async (text, preview) => {
+		await renderForm({ ...lemonBars, ingredientSections: [{ lines: [{ text }] }] });
 
-		await expect
-			.element(textbox('Ingredient 1'))
-			.toHaveAccessibleDescription('Shows as Salt to taste');
-		await expect.element(textbox('Ingredient 2')).toHaveAccessibleDescription('');
+		await expect.element(textbox('Ingredient 1')).toHaveAccessibleDescription(preview);
 	});
 
 	it('adds a line below on Enter and removes an empty one on Backspace, announcing each', async () => {

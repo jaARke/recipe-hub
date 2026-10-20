@@ -1,7 +1,10 @@
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-react';
-import { IngredientLineText } from '@/components/recipe/ingredient-line-text';
+import {
+	ingredientLinePlainText,
+	IngredientLineText,
+} from '@/components/recipe/ingredient-line-text';
 import type { IngredientLineSpan } from '@/domain/recipe/ingredient';
 import { parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import { scaleIngredientLine } from '@/domain/recipe/ingredient-scaling';
@@ -33,6 +36,22 @@ describe('IngredientLineText', () => {
 
 		await expect.element(locator).toHaveTextContent(shown);
 		await expect.element(locator.getByText(bold)).toHaveStyle({ fontWeight: '600' });
+	});
+
+	it.each([
+		['About ¼ cupful cold water', 'About ¼ cupful cold water'],
+		['two eggs', '2 eggs'],
+		['1 cup of water', '1 cup of water'],
+		['1 onion, diced', '1 onion, diced'],
+		['6 tablespoons sugar for the tops', '6 tablespoons sugar for the tops'],
+		['1 1/2 [?] cups flour', '1½ [?] cups flour'],
+		['Salt to taste;', 'Salt to taste'],
+	])('writes "%s" in plain text as "%s", exactly as it renders', async (text, shown) => {
+		const line = parseIngredientLine(text);
+		const { locator } = await render(<IngredientLineText line={line} renderText={markText} />);
+
+		expect(ingredientLinePlainText(line)).toBe(shown);
+		expect(locator.element().textContent).toBe(shown);
 	});
 
 	it('keeps the words between the unit and the item when the scale changes the unit', async () => {
