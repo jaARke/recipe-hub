@@ -57,6 +57,8 @@ const lemonade: ExtractedRecipe = {
 	times: { prepMinutes: 10 },
 	ingredientSections: [{ lines: ['1 cup sugar', '6 lemons'] }],
 	instructionSections: [{ steps: ['Stir the sugar into the lemon juice.'] }],
+	holidays: [],
+	diets: [],
 	reviewNotes: [],
 };
 
@@ -64,6 +66,8 @@ const emptyRecipe: ExtractedRecipe = {
 	times: {},
 	ingredientSections: [],
 	instructionSections: [],
+	holidays: [],
+	diets: [],
 	reviewNotes: [],
 };
 
@@ -84,6 +88,9 @@ const card: ExtractedRecipe = {
 	times: {},
 	ingredientSections: [{ lines: ['1 c. flour', '2 eggs'] }],
 	instructionSections: [{ steps: ['Press crust into pan.'] }],
+	chapter: 'cookies-candy',
+	holidays: [],
+	diets: [],
 	reviewNotes: [{ field: 'title', note: 'Check the title. The card’s top edge is torn.' }],
 };
 const readCard: Extraction = { recipe: card, model: 'example/vision-model', costUsd: 0.012 };
@@ -296,6 +303,19 @@ describe('importFromUrl', () => {
 		expect(recipeImport).not.toHaveProperty('aiModel');
 		expect(recipeImport).not.toHaveProperty('costUsd');
 		expect(recipeImport.draft?.content.title).toBe('Fresh lemonade');
+	});
+
+	it('uses complete structured data that names no chapter, leaving the member to choose one', async () => {
+		const { pageReader, serviceFor, lastImport } = createImports({
+			structuredData: new FixedPageRecipeExtractor(structuredLemonade),
+		});
+
+		await serviceFor(memberActor()).importFromUrl(url);
+
+		const { draft } = await lastImport();
+		expect(pageReader.readPages).toEqual([]);
+		expect(draft?.content.chapter).toBeUndefined();
+		expect(draft?.problems).toEqual([{ path: 'chapter', message: 'Choose a chapter.' }]);
 	});
 
 	it.each([

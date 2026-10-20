@@ -1503,6 +1503,8 @@ describe('review notes', () => {
 				times: {},
 				ingredientSections: [{ lines: ['1 cup flour'] }],
 				instructionSections: [{ steps: ['Mix.'] }],
+				holidays: [],
+				diets: [],
 				reviewNotes: [{ field: 'step', section: 0, line: 0, note: 'Check this step.' }],
 			},
 			[]

@@ -21,6 +21,15 @@ const copyRules = [
 	'- If the source holds no recipe, use null for every value and empty lists.',
 ].join('\n');
 
+// Every recipe goes in a chapter, so the model chooses one where the copy rules would leave a value
+// out. Holidays and diets hold to the source, since a wrong gluten-free claim can hurt someone.
+const filingRules = [
+	'Filing:',
+	'- Always choose the chapter the recipe goes in, by the kind of dish, even where the source names none. Choose This & That only for a recipe no other chapter fits, such as a sauce or a pickle.',
+	'- Give a holiday only where the source names the recipe for it, such as "Christmas cookies" or "for Easter dinner".',
+	'- Give a diet only where the source states the recipe is vegetarian, vegan, gluten-free, or dairy-free. Never work a diet out from the ingredients.',
+].join('\n');
+
 const reviewNoteRules = [
 	'Review notes:',
 	'- Add one for anything the member should check against the original, such as text that was hard to read, a value you are unsure of, or something you left out.',
@@ -44,6 +53,7 @@ export const scanInstructions = [
 		'- A signature or a "favorite recipe of" line is the source.',
 		'- If the pages seem to be out of order, keep the given order and add a review note.',
 	].join('\n'),
+	filingRules,
 	reviewNoteRules,
 	injectionRule,
 ].join('\n\n');
@@ -58,6 +68,7 @@ export const pageInstructions = [
 		"- The notes are the recipe's own notes, tips, or variations. Leave out the article around the recipe.",
 		'- The source is the person or book the page credits for the recipe, if it names one.',
 	].join('\n'),
+	filingRules,
 	reviewNoteRules,
 	injectionRule,
 ].join('\n\n');

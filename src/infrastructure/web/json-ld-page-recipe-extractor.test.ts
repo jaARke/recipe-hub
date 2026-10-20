@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { WebPage } from '@/application/ports/web-page-fetcher';
+import type { Chapter } from '@/domain/recipe/chapter';
+import type { Diet } from '@/domain/recipe/diet';
 import { importDraftFromExtractedRecipe } from '@/domain/recipe/extracted-recipe';
+import type { Holiday } from '@/domain/recipe/holiday';
 import type { RecipeContentInput } from '@/domain/recipe/recipe';
 import { sampleEclairs } from '@/domain/recipe/samples/baking-and-desserts';
 import {
@@ -63,7 +66,7 @@ function withWrappedNote(line: string): string {
 }
 
 // WP Recipe Maker inside Yoast's graph: the author by reference, the yield twice, notes in
-// parentheses, and the steps in sections.
+// parentheses, the course and keywords, and the steps in sections.
 function wpRecipeMakerPage(sample: RecipeContentInput): WebPage {
 	const personId = 'https://blog.example.com/#/schema/person/ray';
 	return pageWith([
@@ -79,6 +82,9 @@ function wpRecipeMakerPage(sample: RecipeContentInput): WebPage {
 					author: { '@id': personId },
 					description: withEntities(sample.description ?? ''),
 					recipeYield: ['8', '8 servings'],
+					recipeCategory: ['Main Course'],
+					recipeCuisine: ['American'],
+					keywords: 'pot roast, Sunday dinner',
 					prepTime: 'PT25M',
 					cookTime: 'PT200M',
 					totalTime: 'PT225M',
@@ -100,7 +106,8 @@ function wpRecipeMakerPage(sample: RecipeContentInput): WebPage {
 	]);
 }
 
-// Tasty Recipes: one Recipe on its own, entities encoded twice, and a step per HowToStep.
+// Tasty Recipes: one Recipe on its own, entities encoded twice, its diet as schema.org's address, and
+// a step per HowToStep.
 function tastyRecipesPage(sample: RecipeContentInput): WebPage {
 	return pageWith([
 		{
@@ -109,6 +116,9 @@ function tastyRecipesPage(sample: RecipeContentInput): WebPage {
 			name: sample.title.replace('É', '&amp;Eacute;'),
 			author: { '@type': 'Person', name: 'Tante H&eacute;l&egrave;ne' },
 			recipeYield: ['12', '12 &eacute;clairs'],
+			recipeCategory: 'Dessert',
+			keywords: '&eacute;clairs, choux pastry',
+			suitableForDiet: 'https://schema.org/VegetarianDiet',
 			prepTime: 'PT40M',
 			cookTime: 'PT35M',
 			recipeIngredient: lineTexts(sample),
@@ -131,6 +141,8 @@ function plainBlogPage(sample: RecipeContentInput): WebPage {
 			name: sample.title,
 			author: sample.source,
 			recipeYield: 'Makes 10 biscuits',
+			recipeCategory: 'Bread, Breakfast',
+			keywords: 'biscuits, buttermilk, vegetarian',
 			prepTime: '15 minutes',
 			cookTime: '18 mins',
 			totalTime: 'PT35M',
@@ -156,6 +168,9 @@ describe('extract', () => {
 				heading: section.heading,
 				steps: stepTexts(section),
 			})),
+			chapter: 'main-dishes',
+			holidays: [],
+			diets: [],
 			reviewNotes: [],
 		});
 	});
@@ -168,6 +183,9 @@ describe('extract', () => {
 			times: { prepMinutes: 40, cookMinutes: 35 },
 			ingredientSections: [{ lines: lineTexts(sampleEclairs) }],
 			instructionSections: [{ steps: sampleEclairs.instructionSections.flatMap(stepTexts) }],
+			chapter: 'desserts',
+			holidays: [],
+			diets: ['vegetarian'],
 			reviewNotes: [],
 		});
 	});
@@ -182,6 +200,9 @@ describe('extract', () => {
 			instructionSections: [
 				{ steps: sampleButtermilkBiscuits.instructionSections.flatMap(stepTexts) },
 			],
+			chapter: 'breads-rolls',
+			holidays: [],
+			diets: ['vegetarian'],
 			reviewNotes: [],
 		});
 	});
@@ -521,6 +542,83 @@ describe('extract', () => {
 		const result = await extracted(pageWith([recipe(fields)]));
 
 		expect(result?.source).toBe(source);
+	});
+
+	describe('filing', () => {
+		it.each<[unknown, Chapter]>([
+			['Dessert', 'desserts'],
+			[['Holiday', 'Side Dish', 'Dessert'], 'vegetables-sides'],
+			['Holiday, Dessert', 'desserts'],
+			['Hors d&#39;oeuvres', 'appetizers-beverages'],
+		])(
+			'files the recipe in the chapter its categories %j name',
+			async (recipeCategory, chapter) => {
+				await expect(extracted(pageWith([recipe({ recipeCategory })]))).resolves.toMatchObject({
+					chapter,
+				});
+			}
+		);
+
+		it.each([undefined, 'Holiday', 'Bread pudding', ['', 'Easy'], 42])(
+			'gives no chapter when the categories %j name none',
+			async (recipeCategory) => {
+				const result = await extracted(pageWith([recipe({ recipeCategory })]));
+
+				expect(result?.chapter).toBeUndefined();
+			}
+		);
+
+		it.each<[unknown, Holiday[]]>([
+			['Christmas cookies, easter, Halloween', ['easter', 'halloween', 'christmas']],
+			[['St. Patrick&#39;s Day', 'Lunar New Year'], ['st-patricks-day']],
+			['cookies, cake', []],
+		])('files the recipe under the holidays its keywords %j name', async (keywords, holidays) => {
+			await expect(extracted(pageWith([recipe({ keywords })]))).resolves.toMatchObject({
+				holidays,
+			});
+		});
+
+		it.each<[object, Diet[]]>([
+			[{ suitableForDiet: 'https://schema.org/GlutenFreeDiet' }, ['gluten-free']],
+			[
+				{ suitableForDiet: [{ '@id': 'https://schema.org/VeganDiet' }] },
+				['vegetarian', 'vegan', 'dairy-free'],
+			],
+			[
+				{ suitableForDiet: 'https://schema.org/VeganDiet, https://schema.org/GlutenFreeDiet' },
+				['vegetarian', 'vegan', 'gluten-free', 'dairy-free'],
+			],
+			[{ suitableForDiet: 'https://schema.org/LowLactoseDiet' }, []],
+			[{ keywords: 'Dairy-free, vegan option' }, ['dairy-free']],
+			[
+				{ suitableForDiet: 'GlutenFreeDiet', keywords: ['Vegetarian'] },
+				['vegetarian', 'gluten-free'],
+			],
+		])('files the recipe under the diets %j state', async (fields, diets) => {
+			await expect(extracted(pageWith([recipe(fields)]))).resolves.toMatchObject({ diets });
+		});
+
+		it('opens a page whose category is "Dessert" with Desserts chosen and a note to check it', async () => {
+			const extraction = await new JsonLdPageRecipeExtractor().extract(
+				pageWith([recipe({ recipeCategory: 'Dessert' })])
+			);
+
+			const draft = importDraftFromExtractedRecipe(extraction!.recipe, []);
+			expect(draft.content.chapter).toBe('desserts');
+			expect(draft.problems).toEqual([
+				{ path: 'chapter', message: 'Check the chapter. It was chosen for you.' },
+			]);
+		});
+
+		it('opens a page whose category names no chapter with none chosen, asking for one', async () => {
+			const extraction = await new JsonLdPageRecipeExtractor().extract(
+				pageWith([recipe({ recipeCategory: 'Holiday' })])
+			);
+
+			const draft = importDraftFromExtractedRecipe(extraction!.recipe, []);
+			expect(draft.content.chapter).toBeUndefined();
+			expect(draft.problems).toEqual([{ path: 'chapter', message: 'Choose a chapter.' }]);
+		});
 	});
 
 	describe('on a page with several recipes', () => {

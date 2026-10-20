@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	andList,
 	hasNoNul,
 	nonEmptyTextSchema,
 	plainTextSchema,
@@ -81,5 +82,13 @@ describe('hasNoNul', () => {
 	it('tells text with a NUL apart', () => {
 		expect(hasNoNul('soup')).toBe(true);
 		expect(hasNoNul('soup\0')).toBe(false);
+	});
+});
+
+describe('andList', () => {
+	it('joins items as a sentence lists them', () => {
+		expect(andList(['flour'])).toBe('flour');
+		expect(andList(['flour', 'sugar'])).toBe('flour and sugar');
+		expect(andList(['flour', 'sugar', 'eggs'])).toBe('flour, sugar, and eggs');
 	});
 });

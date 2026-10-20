@@ -26,7 +26,7 @@ const scans: ScanImage[] = [
 // A synthetic card as a model might read it, with every kind of absent value.
 const cardOutput: ScanOutput = {
 	transcription:
-		'Lemon bars\nFrom Great-aunt Edie\n1 c. flour\n1/2 c. butter [?]\n2 eggs\nPress crust into pan. Bake 20 min.',
+		'Lemon bars for Easter\nFrom Great-aunt Edie\n1 c. flour\n1/2 c. butter [?]\n2 eggs\nPress crust into pan. Bake 20 min.',
 	title: 'Lemon bars',
 	description: null,
 	notes: null,
@@ -40,6 +40,9 @@ const cardOutput: ScanOutput = {
 		{ heading: 'Filling', lines: ['2 eggs'] },
 	],
 	instructionSections: [{ heading: null, steps: ['Press crust into pan. Bake 20 min.'] }],
+	chapter: 'cookies-candy',
+	holidays: ['easter'],
+	diets: [],
 	reviewNotes: [
 		{
 			field: 'ingredient',
@@ -68,6 +71,9 @@ const noRecipeOutput: ScanOutput = {
 	totalMinutes: null,
 	ingredientSections: [],
 	instructionSections: [],
+	chapter: null,
+	holidays: [],
+	diets: [],
 	reviewNotes: [],
 };
 
@@ -207,6 +213,9 @@ describe('extract', () => {
 				{ heading: 'Filling', lines: ['2 eggs'] },
 			],
 			instructionSections: [{ steps: ['Press crust into pan. Bake 20 min.'] }],
+			chapter: 'cookies-candy',
+			holidays: ['easter'],
+			diets: [],
 			reviewNotes: [
 				{
 					field: 'ingredient',
@@ -249,7 +258,14 @@ describe('extract', () => {
 		const extraction = await new AiScanRecipeExtractor(model).extract(scans, requester);
 
 		expect(extraction).toStrictEqual({
-			recipe: { times: {}, ingredientSections: [], instructionSections: [], reviewNotes: [] },
+			recipe: {
+				times: {},
+				ingredientSections: [],
+				instructionSections: [],
+				holidays: [],
+				diets: [],
+				reviewNotes: [],
+			},
 			model: 'anthropic/claude-haiku-5.5',
 			costUsd: 0.0019,
 		});

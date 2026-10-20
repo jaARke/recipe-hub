@@ -4,6 +4,8 @@ import { normalizeText, withoutTrailingPunctuation } from '@/domain/text-normali
 // What a label or a list leaves after a title or heading, as in "For the glaze:".
 const headingSeparators = ';,:';
 
+const andListFormat = new Intl.ListFormat('en-US', { type: 'conjunction' });
+
 // Postgres text and jsonb cannot hold a NUL character, which a form or URL can still carry.
 export function hasNoNul(text: string): boolean {
 	return !text.includes('\0');
@@ -27,6 +29,11 @@ export const plainTextSchema = nonEmptyTextSchema('some text');
 // The text opening with a capital, as a label does: "cookies" is "Cookies".
 export function sentenceCase(text: string): string {
 	return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+}
+
+// Items joined as a sentence lists them: "flour, sugar, and eggs".
+export function andList(items: readonly string[]): string {
+	return andListFormat.format(items);
 }
 
 // What every limit says when it is passed, such as "Use 12 photos or fewer."

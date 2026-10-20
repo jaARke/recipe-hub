@@ -1,4 +1,5 @@
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import type { WebPage } from '@/application/ports/web-page-fetcher';
 import type { Member } from '@/domain/member/member';
 import {
 	importDraftFromExtractedRecipe,
@@ -6,6 +7,7 @@ import {
 } from '@/domain/recipe/extracted-recipe';
 import type { RecipeImport } from '@/domain/recipe/recipe-import';
 import { DrizzleRecipeImportRepository } from '@/infrastructure/db/drizzle-recipe-import-repository';
+import { JsonLdPageRecipeExtractor } from '@/infrastructure/web/json-ld-page-recipe-extractor';
 import { reportQueryErrorsWithoutParameters } from './develop-database';
 
 // A link import's draft awaiting review, stored as the import service stores one once its reader
@@ -31,4 +33,18 @@ export function seedLinkImportDraft(
 		}
 		return recipeImport;
 	});
+}
+
+// A link import of a page whose JSON-LD holds the whole recipe, read as the import service reads such a
+// page, with no model.
+export async function seedJsonLdImportDraft(
+	db: NodePgDatabase,
+	member: Member,
+	page: WebPage
+): Promise<RecipeImport> {
+	const extraction = await new JsonLdPageRecipeExtractor().extract(page);
+	if (extraction === null) {
+		throw new Error('The seeded page holds no recipe its JSON-LD reader reads');
+	}
+	return seedLinkImportDraft(db, member, { recipe: extraction.recipe, sourceUrl: page.url });
 }

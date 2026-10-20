@@ -28,6 +28,7 @@ const page: WebPage = {
 		<ul><li>1 cup sugar</li><li>6 lemons</li></ul>
 		<h2>Instructions</h2>
 		<ol><li>Stir the sugar into the lemon juice.</li></ol>
+		<p>Vegan and gluten-free, for the Fourth of July.</p>
 	</body>
 </html>`,
 };
@@ -43,6 +44,9 @@ const pageOutput: RecipeOutput = {
 	totalMinutes: null,
 	ingredientSections: [{ heading: null, lines: ['1 cup sugar', '6 lemons'] }],
 	instructionSections: [{ heading: null, steps: ['Stir the sugar into the lemon juice.'] }],
+	chapter: 'appetizers-beverages',
+	holidays: ['fourth-of-july'],
+	diets: ['vegan', 'gluten-free'],
 	reviewNotes: [],
 };
 
@@ -130,6 +134,9 @@ describe('extract', () => {
 			times: { prepMinutes: 10 },
 			ingredientSections: [{ lines: ['1 cup sugar', '6 lemons'] }],
 			instructionSections: [{ steps: ['Stir the sugar into the lemon juice.'] }],
+			chapter: 'appetizers-beverages',
+			holidays: ['fourth-of-july'],
+			diets: ['vegan', 'gluten-free'],
 			reviewNotes: [],
 		});
 	});

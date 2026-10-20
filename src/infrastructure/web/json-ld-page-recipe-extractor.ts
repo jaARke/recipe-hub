@@ -17,14 +17,18 @@ import type {
 import type { Extraction, PageRecipeExtractor } from '@/application/ports/recipe-extractors';
 import type { WebPage } from '@/application/ports/web-page-fetcher';
 import { approximationWord } from '@/domain/recipe/amount-words';
+import { chapterFromCategories } from '@/domain/recipe/chapter';
+import { dietsFromKeywords, dietsFromSchemaOrg, withImpliedDiets } from '@/domain/recipe/diet';
 import {
 	type ExtractedIngredientSection,
 	type ExtractedInstructionSection,
 	type ExtractedRecipe,
 	type ExtractedYield,
 } from '@/domain/recipe/extracted-recipe';
+import { holidaysFromKeywords } from '@/domain/recipe/holiday';
 import { maxReadLineLength, parseAmountText } from '@/domain/recipe/ingredient-parser';
 import { withoutListMarkers } from '@/domain/recipe/list-markers';
+import { andList } from '@/domain/text';
 import { htmlWhitespaceCharacters, maxHtmlDepth } from '@/infrastructure/web/html-text';
 
 type JsonObject = { readonly [key: string]: unknown };
@@ -92,8 +96,6 @@ const secondsPerMinute = 60;
 const minutesPerHour = 60;
 const minutesPerDay = 24 * minutesPerHour;
 const minutesPerWeek = 7 * minutesPerDay;
-
-const authorNames = new Intl.ListFormat('en', { type: 'conjunction' });
 
 // How deep lists nest in lists, how many elements and lines of text one recipe's lists hold in all,
 // and how many characters their text holds before it is decoded, counting a list or a string again
@@ -548,7 +550,42 @@ function names(value: unknown, graph: JsonLdGraph): string | undefined {
 				: singleLine(entry)
 		)
 		.filter((name) => name !== undefined);
-	return written.length === 0 ? undefined : authorNames.format([...new Set(written)]);
+	return written.length === 0 ? undefined : andList([...new Set(written)]);
+}
+
+// The value's entries, a text listing several with commas split into one entry each, since pages
+// write ["Dessert", "Snack"] and "Dessert, Snack" alike. Other entries, such as a node naming a diet by
+// its @id, stay whole.
+function separatedEntries(value: unknown, graph: JsonLdGraph): unknown[] {
+	return distinctEntries(value, graph).flatMap((entry) =>
+		typeof entry === 'string'
+			? textLines(entry)
+					.flatMap((line) => line.split(','))
+					.map((text) => text.trim())
+					.filter((text) => text !== '')
+			: [entry]
+	);
+}
+
+function separatedTexts(value: unknown, graph: JsonLdGraph): string[] {
+	return separatedEntries(value, graph).filter((entry) => typeof entry === 'string');
+}
+
+// Where the page files the recipe, from what its categories, keywords, and diets name. A page whose
+// categories name no chapter gives none, for the member to choose.
+function recipeFiling(
+	recipe: SchemaNode<Recipe>,
+	graph: JsonLdGraph
+): Pick<ExtractedRecipe, 'chapter' | 'holidays' | 'diets'> {
+	const keywords = separatedTexts(recipe.keywords, graph);
+	return {
+		chapter: chapterFromCategories(separatedTexts(recipe.recipeCategory, graph)) ?? undefined,
+		holidays: holidaysFromKeywords(keywords),
+		diets: withImpliedDiets([
+			...dietsFromSchemaOrg(separatedEntries(recipe.suitableForDiet, graph)),
+			...dietsFromKeywords(keywords),
+		]),
+	};
 }
 
 // Reads a recipe from the page's schema.org Recipe JSON-LD, which recipe plugins and publishers emit
@@ -581,6 +618,7 @@ export class JsonLdPageRecipeExtractor implements PageRecipeExtractor {
 				totalMinutes: minutes(recipe.totalTime),
 			},
 			...lists,
+			...recipeFiling(recipe, graph),
 			reviewNotes: [],
 		};
 		return { recipe: extracted };

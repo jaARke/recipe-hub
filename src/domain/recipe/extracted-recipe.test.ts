@@ -20,6 +20,8 @@ const emptyExtraction: ExtractedRecipe = {
 	times: {},
 	ingredientSections: [],
 	instructionSections: [],
+	holidays: [],
+	diets: [],
 	reviewNotes: [],
 };
 
@@ -28,6 +30,8 @@ const toastExtraction: ExtractedRecipe = {
 	times: {},
 	ingredientSections: [{ lines: ['1 slice bread'] }],
 	instructionSections: [{ steps: ['Toast the bread.'] }],
+	holidays: [],
+	diets: [],
 	reviewNotes: [],
 };
 
@@ -40,6 +44,11 @@ const missingProblems = {
 	steps: { path: 'instructionSections', message: 'Add the steps. The original doesn’t show any.' },
 	chapter: { path: 'chapter', message: 'Choose a chapter.' },
 } satisfies Record<string, Problem>;
+
+const chosenChapterNote: Problem = {
+	path: 'chapter',
+	message: 'Check the chapter. It was chosen for you.',
+};
 
 function cutMessage(max: number): string {
 	return `Check this against the original. It was cut to ${max} characters, the most it can hold.`;
@@ -86,19 +95,26 @@ function extractionFrom(sample: RecipeContentInput): ExtractedRecipe {
 			heading: section.heading,
 			steps: section.steps.map((step) => step.text),
 		})),
+		chapter: sample.chapter,
+		holidays: sample.holidays,
+		diets: sample.diets,
 		reviewNotes: [],
 	};
 }
 
 describe('importDraftFromExtractedRecipe', () => {
 	it.each(sampleRecipeContents.map((content) => [content.title, content]))(
-		'reads the sample "%s" back as stored, apart from its tags and its filing',
+		'reads the sample "%s" back as stored, apart from its tags, with notes on its filing alone',
 		(_title, sample) => {
 			const content = recipeContentSchema.parse(sample);
-			expect(draftFrom(extractionFrom(sample), content.images)).toEqual({
-				content: { ...content, chapter: undefined, holidays: [], diets: [], tags: [] },
-				problems: [missingProblems.chapter],
-			});
+			const draft = draftFrom(extractionFrom(sample), content.images);
+
+			expect(draft.content).toEqual({ ...content, tags: [] });
+			expect(draft.problems.map(({ path }) => path)).toEqual(
+				(['chapter', 'holidays', 'diets'] as const).filter(
+					(field) => field === 'chapter' || content[field].length > 0
+				)
+			);
 		}
 	);
 
@@ -567,6 +583,9 @@ describe('importDraftFromExtractedRecipe', () => {
 			['yield', 'yield'],
 			['times', 'times.totalMinutes'],
 			['notes', 'notes'],
+			['chapter', 'chapter'],
+			['holidays', 'holidays'],
+			['diets', 'diets'],
 		])('puts a note on %s at "%s"', (field, path) => {
 			const note = 'Check this against the original.';
 
@@ -647,6 +666,78 @@ describe('importDraftFromExtractedRecipe', () => {
 		});
 	});
 
+	describe('filing', () => {
+		it('files the recipe where the extractor did, with a note on each choice to check', () => {
+			const draft = draftWith({
+				chapter: 'cookies-candy',
+				holidays: ['christmas'],
+				diets: ['gluten-free'],
+			});
+
+			expect(draft.content).toMatchObject({
+				chapter: 'cookies-candy',
+				holidays: ['christmas'],
+				diets: ['gluten-free'],
+			});
+			expect(draft.problems).toEqual([
+				chosenChapterNote,
+				{ path: 'holidays', message: 'Check the holidays. The original mentions Christmas.' },
+				{
+					path: 'diets',
+					message: 'Check the diet. Keep gluten-free only if the original says so.',
+				},
+			]);
+		});
+
+		it('asks for a chapter, and notes no holidays or diets, where the extractor named none', () => {
+			const draft = draftWith({});
+
+			expect(draft.content.chapter).toBeUndefined();
+			expect(draft.content).toMatchObject({ holidays: [], diets: [] });
+			expect(draft.problems).toEqual([missingProblems.chapter]);
+		});
+
+		it('lists the holidays once each, in calendar order', () => {
+			const draft = draftWith({
+				chapter: 'desserts',
+				holidays: ['christmas', 'new-years-day', 'christmas', 'easter'],
+			});
+
+			expect(draft.content.holidays).toEqual(['new-years-day', 'easter', 'christmas']);
+			expect(draft.problems).toEqual([
+				chosenChapterNote,
+				{
+					path: 'holidays',
+					message:
+						'Check the holidays. The original mentions New Year’s Day, Easter, and Christmas.',
+				},
+			]);
+		});
+
+		it('adds the diets Vegan implies, and names only the diets stated in the note', () => {
+			const draft = draftWith({ chapter: 'main-dishes', diets: ['gluten-free', 'vegan'] });
+
+			expect(draft.content.diets).toEqual(['vegetarian', 'vegan', 'gluten-free', 'dairy-free']);
+			expect(draft.problems).toEqual([
+				chosenChapterNote,
+				{
+					path: 'diets',
+					message: 'Check the diet. Keep vegan and gluten-free only if the original says so.',
+				},
+			]);
+		});
+
+		it('makes a filed extraction into content ready to save', () => {
+			const draft = draftWith({ chapter: 'breads-rolls', holidays: ['easter'], diets: ['vegan'] });
+
+			expect(recipeContentSchema.parse(draft.content)).toMatchObject({
+				chapter: 'breads-rolls',
+				holidays: ['easter'],
+				diets: ['vegetarian', 'vegan', 'dairy-free'],
+			});
+		});
+	});
+
 	describe('problem order', () => {
 		it('puts what the draft could not keep before the notes on the same field', () => {
 			const draft = draftWith({
@@ -692,6 +783,24 @@ describe('importDraftFromExtractedRecipe', () => {
 				missingProblems.ingredients,
 				missingProblems.steps,
 				missingProblems.chapter,
+			]);
+		});
+
+		it('puts the extractor’s notes on the filing before the import’s own', () => {
+			const draft = draftWith({
+				chapter: 'desserts',
+				holidays: ['halloween'],
+				reviewNotes: [
+					{ field: 'chapter', note: 'The card doesn’t say what kind of dish it is.' },
+					{ field: 'holidays', note: 'The card is decorated with pumpkins.' },
+				],
+			});
+
+			expect(draft.problems).toEqual([
+				{ path: 'chapter', message: 'The card doesn’t say what kind of dish it is.' },
+				{ path: 'holidays', message: 'The card is decorated with pumpkins.' },
+				chosenChapterNote,
+				{ path: 'holidays', message: 'Check the holidays. The original mentions Halloween.' },
 			]);
 		});
 

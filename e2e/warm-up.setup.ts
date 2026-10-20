@@ -55,6 +55,8 @@ setup(
 				times: {},
 				ingredientSections: [{ lines: ['4 lemons'] }],
 				instructionSections: [{ steps: ['Squeeze the lemons.'] }],
+				holidays: [],
+				diets: [],
 				reviewNotes: [],
 			},
 		});
