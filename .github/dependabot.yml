@@ -1,0 +1,67 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: America/Denver
+    cooldown:
+      default-days: 7
+    # Each open pull request holds a preview and its Neon branch.
+    open-pull-requests-limit: 3
+    groups:
+      production:
+        dependency-type: production
+        update-types: [minor, patch]
+      development:
+        dependency-type: development
+        update-types: [minor, patch]
+      # drizzle-kit must match drizzle-orm, and the two sit on either side of the type split.
+      drizzle:
+        patterns: [drizzle-orm, drizzle-kit]
+      # Packages released together take a major together.
+      react:
+        patterns: [react, react-dom, '@types/react', '@types/react-dom']
+        update-types: [major]
+      vitest:
+        patterns: [vitest, '@vitest/*']
+        update-types: [major]
+      better-auth:
+        patterns: [better-auth, '@better-auth/*']
+        update-types: [major]
+      tailwind:
+        patterns: [tailwindcss, '@tailwindcss/*']
+        update-types: [major]
+      security:
+        applies-to: security-updates
+        patterns: ['*']
+    ignore:
+      # pnpm install fails on any Next version but the one the patch in patches/ was made for, so
+      # Next's packages move by hand while it exists (see the README).
+      - dependency-name: next
+      - dependency-name: '@next/env'
+      - dependency-name: eslint-config-next
+      # The types follow the runtime's Node major, which engines in package.json sets.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+      # The passkey test helper shares @better-auth/passkey's copy, so it stays on that major.
+      - dependency-name: '@simplewebauthn/server'
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: America/Denver
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ['*']
+      security:
+        applies-to: security-updates
+        patterns: ['*']
