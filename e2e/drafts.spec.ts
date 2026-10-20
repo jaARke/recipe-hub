@@ -54,7 +54,10 @@ async function renameDraft(page: Page, title: string) {
 	await expect(draftStatus(page, 'Draft saved')).toBeVisible();
 }
 
-// Deletes the draft through the ⋯ menu named, confirming in the dialog.
+// Deletes the draft through the ⋯ menu named, confirming in the dialog, then closes the toast that
+// says so with Escape, as from the keyboard, since it would otherwise outlast a change of page and
+// stand beside the next deletion's. Its close button is hidden from the accessibility tree until the
+// toasts expand.
 async function deleteDraftThroughMenu(page: Page, menuName: string, title: string) {
 	const menu = page.getByRole('button', { name: menuName });
 	await waitForHydration(menu);
@@ -64,7 +67,10 @@ async function deleteDraftThroughMenu(page: Page, menuName: string, title: strin
 		.getByRole('alertdialog', { name: `Delete the draft of “${title}”?` })
 		.getByRole('button', { name: 'Delete draft' })
 		.click();
-	await expect(page.getByRole('dialog', { name: 'Draft deleted' })).toBeVisible();
+	const deleted = page.getByRole('dialog', { name: 'Draft deleted' });
+	await expect(deleted).toBeVisible();
+	await deleted.press('Escape');
+	await expect(deleted).toBeHidden();
 }
 
 test('typing saves a draft, which the header counts and Finish later keeps', async ({
