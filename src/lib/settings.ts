@@ -18,7 +18,8 @@ export const settings: z.output<typeof settingsSchema> = {
 	},
 	imports: {
 		// Imports a member may start in any rolling 24 hours, so one account cannot spend the AI budget
-		// alone. Admins have no limit.
+		// alone. A link import whose page couldn't be fetched spent nothing and doesn't count. Admins have
+		// no limit.
 		maxImportsPerDay: 50,
 	},
 	drafts: {

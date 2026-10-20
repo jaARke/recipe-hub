@@ -533,6 +533,46 @@ describe('import limit', () => {
 		});
 	});
 
+	it.each([
+		['the site refuses it', new ImportPageRefusedError(403)],
+		['the page cannot be read', new ImportPageUnavailableError('not-found')],
+	])(
+		'leaves out an import that failed because %s, which spent nothing, but keeps its record',
+		async (_, error) => {
+			const { storeScans, serviceFor, startImport, lastImport } = createImports({
+				pages: new FixedWebPageFetcher(error),
+			});
+			const member = memberActor();
+			for (let count = 1; count < settings.imports.maxImportsPerDay; count += 1) {
+				await startImport(member);
+			}
+			await storeScans([scanPathname]);
+
+			await expect(serviceFor(member).importFromUrl(url)).rejects.toBe(error);
+			await expect(serviceFor(member).importFromUrl(url)).rejects.toBe(error);
+
+			expect(await lastImport()).toMatchObject({ status: 'failed', failure: error.code });
+			await expect(
+				serviceFor(member).importFromScans(uploadsOf([scanPathname]))
+			).resolves.toBeDefined();
+			await expect(serviceFor(member).importFromUrl(url)).rejects.toThrow(ImportRateLimitedError);
+		}
+	);
+
+	it('counts an import that failed after reading the page, which may have paid a model', async () => {
+		const { serviceFor, startImport } = createImports({
+			pageReader: new FixedPageRecipeExtractor(new ImportFailedError()),
+		});
+		const member = memberActor();
+		for (let count = 1; count < settings.imports.maxImportsPerDay; count += 1) {
+			await startImport(member);
+		}
+
+		await expect(serviceFor(member).importFromUrl(url)).rejects.toThrow(ImportFailedError);
+
+		await expect(serviceFor(member).importFromUrl(url)).rejects.toThrow(ImportRateLimitedError);
+	});
+
 	it('counts only imports started in the last 24 hours', async () => {
 		const { serviceFor, startImport, backdate } = createImports();
 		const member = memberActor();

@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, eq, gte, lt, sql } from 'drizzle-orm';
+import { and, eq, gte, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import { savedDraftIdSchema, type SavedDraftId } from '@/application/drafts/saved-draft';
 import type {
@@ -39,7 +39,12 @@ export class DrizzleRecipeImportRepository implements RecipeImportRepository {
 					recipeImports,
 					and(
 						eq(recipeImports.memberId, recipeImport.memberId),
-						gte(recipeImports.createdAt, limit.since)
+						gte(recipeImports.createdAt, limit.since),
+						// Only a failed import has a failure, and `not in` is never true of null.
+						or(
+							isNull(recipeImports.failure),
+							notInArray(recipeImports.failure, [...(limit.uncountedFailures ?? [])])
+						)
 					)
 				);
 				if (started >= limit.maxImports) {

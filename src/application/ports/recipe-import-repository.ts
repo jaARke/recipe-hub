@@ -13,6 +13,8 @@ export type NewRecipeImport = {
 export type RecipeImportLimit = {
 	maxImports: number;
 	since: Date;
+	// The failure codes of imports the window leaves out; none when absent.
+	uncountedFailures?: readonly string[];
 };
 
 export type ImportSuccess = {
@@ -32,8 +34,10 @@ export type ImportFailure = {
 // Every import is kept as a record of use and cost. What it read lives on the draft it made
 // (SavedDraftRepository).
 export interface RecipeImportRepository {
-	// Stores a running import. Given a limit, it counts the member's imports and stores the new one under
-	// a lock per member, so concurrent starts never exceed it, and returns null once it is reached.
+	// Stores a running import. Given a limit, it counts the member's imports but those the limit leaves
+	// out, and stores the new one under a lock per member, so concurrent starts never exceed it, and
+	// returns null once it is reached. A running import always counts, so its failing can only lower the
+	// count.
 	start(recipeImport: NewRecipeImport, limit?: RecipeImportLimit): Promise<RecipeImport | null>;
 	// Records the success and creates the import's draft for its member in one transaction, so neither
 	// is kept without the other, and returns the draft's id. Returns null, changing nothing, when no
