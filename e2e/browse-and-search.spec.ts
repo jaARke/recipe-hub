@@ -33,8 +33,8 @@ type OwnRecipes = {
 // Saved through manual entry, filed as a member files it.
 async function saveRecipeByHand(page: Page, recipe: OwnRecipe) {
 	await page.goto(recipeEntryPaths.manual);
-	// Save is disabled until the form hydrates.
-	await expect(page.getByRole('button', { name: 'Save recipe' })).toBeEnabled();
+	// Add to cookbook is disabled until the form hydrates.
+	await expect(page.getByRole('button', { name: 'Add to cookbook' })).toBeEnabled();
 	const form = page.getByRole('main');
 	await form.getByRole('textbox', { name: 'Title' }).fill(recipe.title);
 	await form.getByRole('textbox', { name: 'Ingredient 1' }).fill(recipe.ingredient);
@@ -43,7 +43,7 @@ async function saveRecipeByHand(page: Page, recipe: OwnRecipe) {
 	for (const choice of [...recipe.holidays, ...recipe.diets]) {
 		await form.getByRole('checkbox', { name: choice }).check();
 	}
-	await page.getByRole('button', { name: 'Save recipe' }).click();
+	await page.getByRole('button', { name: 'Add to cookbook' }).click();
 	await expect(page).toHaveURL(recipePath(slugify(recipe.title)));
 }
 

@@ -24,7 +24,7 @@ import {
 	scanUploadsFromForm,
 } from '@/components/recipe-import/recipe-import-forms';
 import { recipeImportPath } from '@/components/recipe-import/recipe-import-paths';
-import { recipePath } from '@/components/recipe/recipe-paths';
+import { addedRecipePath } from '@/components/recipe/recipe-paths';
 import {
 	getRecipeImageService,
 	getRecipeImportService,
@@ -34,7 +34,8 @@ import {
 
 // The new slug's tag clears a cached miss for it, such as a visit before the recipe existed.
 // Redirects to the saved recipe, so the editor sees it rendered fresh in this response; a
-// navigation afterwards could get the CDN's copy from before the save for a few seconds.
+// navigation afterwards could get the CDN's copy from before the save for a few seconds. The
+// recipe's page says once that it was added.
 export async function createRecipe(_state: FormState, formData: FormData): Promise<FormState> {
 	let recipe: RecipeRef;
 	try {
@@ -50,7 +51,7 @@ export async function createRecipe(_state: FormState, formData: FormData): Promi
 	getRecipeImageService().scheduleSweep();
 	updateTag(recipeCacheTags.list);
 	updateTag(recipeCacheTags.recipe(recipe.slug));
-	redirect(recipePath(recipe.slug));
+	redirect(addedRecipePath(recipe.slug));
 }
 
 // Saves whatever the form holds as the member's draft. The snapshot is checked here, where it

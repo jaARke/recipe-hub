@@ -40,8 +40,15 @@ function FieldProblem(props: React.ComponentProps<typeof FieldError>) {
 }
 
 // A save's problems in one list, each linking to where it shows, so a long form can be fixed from
-// the top. It takes focus after a failed save, ahead of the fields it lists (useFormAction).
-function ProblemSummary({ problems }: { problems: readonly SummarizedProblem[] }) {
+// the top. It takes focus after a failed save, ahead of the fields it lists (useFormAction). Its
+// title ends with what fixing them is for, such as "to save".
+function ProblemSummary({
+	problems,
+	purpose,
+}: {
+	problems: readonly SummarizedProblem[];
+	purpose: string;
+}) {
 	if (problems.length === 0) {
 		return null;
 	}
@@ -49,7 +56,9 @@ function ProblemSummary({ problems }: { problems: readonly SummarizedProblem[] }
 	return (
 		<Alert variant="destructive" tabIndex={-1}>
 			<TriangleAlertIcon aria-hidden="true" />
-			<AlertTitle>Fix {countThings(problems.length)} to save</AlertTitle>
+			<AlertTitle>
+				Fix {countThings(problems.length)} {purpose}
+			</AlertTitle>
 			<AlertDescription>
 				<ul role="list" className="flex list-disc flex-col gap-1 pl-4">
 					{problems.map(({ message, label, targetId }, index) => {

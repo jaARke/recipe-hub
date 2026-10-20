@@ -137,6 +137,29 @@ const discardTargets = {
 	recipe: 'the recipe as it was saved',
 } as const satisfies Record<RecipeFormSubject['kind'], string>;
 
+// What saving says, by whether the form adds a recipe to the cookbook or saves changes to one: its
+// button, as it works, what fixing a failed save's problems is for, and the warning before saving
+// with anything left to check.
+const savingWords = {
+	add: {
+		submitLabel: 'Add to cookbook',
+		pendingLabel: 'Adding to cookbook',
+		purpose: 'before adding it to the cookbook',
+		saveAnywayLabel: 'Add anyway',
+		notesKeptUntil: 'it’s added to the cookbook',
+	},
+	edit: {
+		submitLabel: 'Save changes',
+		pendingLabel: 'Saving changes',
+		purpose: 'to save',
+		saveAnywayLabel: 'Save anyway',
+		notesKeptUntil: 'the recipe is saved',
+	},
+} as const satisfies Record<
+	'add' | 'edit',
+	Record<'submitLabel' | 'pendingLabel' | 'purpose' | 'saveAnywayLabel' | 'notesKeptUntil', string>
+>;
+
 // What saving a draft last said in the action bar.
 type DraftStatus =
 	{ kind: 'saved'; savedAt: Date } | { kind: 'unchanged' } | { kind: 'failed'; message: string };
@@ -231,7 +254,6 @@ type RecipeFormProps = {
 	autosave?: { memberId: string; existing?: ExistingRecipeFormSubjects };
 	// Absent when editing a published recipe, which has no draft.
 	drafts?: RecipeFormDrafts;
-	submitLabel: string;
 };
 
 // Text with each transcription marker in it marked, so the member finds it.
@@ -285,7 +307,6 @@ function RecipeForm({
 	importId,
 	autosave,
 	drafts,
-	submitLabel,
 }: RecipeFormProps) {
 	const baseId = React.useId();
 	const [values, dispatch] = React.useReducer(editRecipeForm, initial);
@@ -320,6 +341,7 @@ function RecipeForm({
 	const [draftStatus, setDraftStatus] = useTransientState<DraftStatus>();
 	const submission = recipeFormSubmission(values);
 	const isEditing = editing !== undefined;
+	const saving = savingWords[isEditing ? 'edit' : 'add'];
 	const photosInProgress = hasPhotosInProgress(values);
 	const ids = {
 		reviewIntro: `${baseId}-review-intro`,
@@ -378,7 +400,7 @@ function RecipeForm({
 	const checks = recipeFormChecks(values);
 	const checksByKey = new Map(checks.map((check) => [problemKey(check.target), check]));
 	const [warningOpen, setWarningOpen] = React.useState(false);
-	// Set by "Save anyway", so the save it starts skips the warning.
+	// Set by the warning's "Add anyway" or "Save anyway", so the save it starts skips the warning.
 	const savingAnyway = React.useRef(false);
 	// The last place focused among the fields, not the original or the action bar, which Next goes on
 	// from.
@@ -677,7 +699,7 @@ function RecipeForm({
 			)}
 			{/* About the whole form, such as an edit conflict; the summary lists a save's problems. */}
 			<FormErrorAlert message={state.status === 'error' ? state.message : undefined} />
-			<ProblemSummary problems={problems} />
+			<ProblemSummary problems={problems} purpose={saving.purpose} />
 			{firstCheck !== undefined && (
 				<div className="flex flex-col gap-3">
 					<ReviewNotesIntro
@@ -905,7 +927,7 @@ function RecipeForm({
 					aria-describedby={photosInProgress ? ids.saveNote : undefined}
 				>
 					{pending && <Spinner data-icon="inline-start" />}
-					{pending ? 'Saving recipe' : submitLabel}
+					{pending ? saving.pendingLabel : saving.submitLabel}
 				</Button>
 				{drafts !== undefined && (
 					<Button
@@ -938,6 +960,8 @@ function RecipeForm({
 						focusCheck(firstCheck);
 					}
 				}}
+				saveAnywayLabel={saving.saveAnywayLabel}
+				notesKeptUntil={saving.notesKeptUntil}
 				onSaveAnyway={saveAnyway}
 			/>
 		</form>

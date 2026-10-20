@@ -198,7 +198,6 @@ function SampleRecipeForm({
 			uploader={sampleUpload}
 			editing={editing}
 			drafts={editing === undefined ? { ...sampleDrafts, opened: openedDraft } : undefined}
-			submitLabel={editing === undefined ? 'Save recipe' : 'Save changes'}
 		/>
 	);
 }

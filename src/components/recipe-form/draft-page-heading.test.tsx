@@ -55,7 +55,6 @@ async function renderDraftPage({
 							: { id: openedDraft.id, savedAt: openedDraft.savedAt },
 					inUrl: true,
 				}}
-				submitLabel="Save recipe"
 			/>
 		</HeldDraftProvider>
 	);

@@ -74,12 +74,13 @@ export default function PrivacyPage() {
 				<ul role="list" className={listClassName}>
 					<li>
 						A recipe, its dish photos, and its scans of the original are public once the recipe is
-						saved, so anyone can see them, signed in or not.
+						added to the cookbook, so anyone can see them, signed in or not.
 					</li>
 					<li>
-						A draft you save from the recipe form is kept until you save the recipe or delete the
-						draft. A draft you leave is kept for {dayCount(settings.drafts.draftLifetimeDays)} after
-						your last save, then deleted within a day.
+						A draft you save from the recipe form is kept until you add the recipe to the cookbook
+						or delete the draft. A draft you leave is kept for{' '}
+						{dayCount(settings.drafts.draftLifetimeDays)} after your last save, then deleted within
+						a day.
 					</li>
 					<li>
 						A photo or scan you upload isn’t listed anywhere until the recipe it’s for is saved.
@@ -107,13 +108,13 @@ export default function PrivacyPage() {
 						that id, so it can trace misuse to an account without knowing who you are.
 					</li>
 					<li>
-						An import’s draft is kept until you save it as a recipe. One you don’t save is deleted
+						An import’s draft is kept until you add it to the cookbook. One you don’t add is deleted
 						within a day of turning {dayCount(settings.imports.importDraftLifetimeDays)} old.
 					</li>
 					<li>
 						A draft you save from an import’s review keeps the address of the page the recipe was
-						read from, so the recipe you save from it can credit that page. The address is kept as
-						long as the draft: until you save the recipe or delete the draft, or for{' '}
+						read from, so the recipe you add from it can credit that page. The address is kept as
+						long as the draft: until you add the recipe to the cookbook or delete the draft, or for{' '}
 						{dayCount(settings.drafts.draftLifetimeDays)} after your last save, then deleted within
 						a day.
 					</li>

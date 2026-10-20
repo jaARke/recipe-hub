@@ -141,7 +141,6 @@ async function ImportReview({ params }: Pick<PageProps<'/contribute/imports/[id]
 					opened: opened === undefined ? undefined : { id: opened.id, savedAt: opened.savedAt },
 					inUrl: false,
 				}}
-				submitLabel="Save recipe"
 			/>
 		</>
 	);

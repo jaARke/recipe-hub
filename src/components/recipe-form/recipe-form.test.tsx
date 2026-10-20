@@ -95,7 +95,6 @@ function recipeForm(initial: RecipeFormValues, action: FormAction = refuse) {
 			action={action}
 			uploadFolders={uploadFolders}
 			uploader={vi.fn()}
-			submitLabel="Save recipe"
 		/>
 	);
 }
@@ -112,8 +111,14 @@ function title() {
 	return textbox('Title');
 }
 
+// The button that adds a new recipe to the cookbook.
 function saveRecipe() {
-	return page.getByRole('button', { name: 'Save recipe' });
+	return page.getByRole('button', { name: 'Add to cookbook' });
+}
+
+// The button that saves a published recipe's changes.
+function saveChanges() {
+	return page.getByRole('button', { name: 'Save changes' });
 }
 
 // The note holding this text, which is what takes focus.
@@ -163,7 +168,9 @@ describe('RecipeForm’s review notes', () => {
 		await expect.element(page.getByText('3 things need a second look')).toBeVisible();
 		expect(page.getByText('Check')).toHaveLength(3);
 		expect(page.getByRole('button', { name: /^Looks right/ })).toHaveLength(3);
-		await expect.element(page.getByText(/^Fix \d+ things? to save$/)).not.toBeInTheDocument();
+		await expect
+			.element(page.getByText(/^Fix \d+ things? before adding it to the cookbook$/))
+			.not.toBeInTheDocument();
 		expect(invalidFieldIds()).toEqual([]);
 		await expect.element(textbox('Ingredient 2')).toHaveAccessibleDescription(/Check this line\./);
 	});
@@ -245,6 +252,11 @@ describe('RecipeForm’s review notes', () => {
 		await saveRecipe().click();
 		const dialog = page.getByRole('alertdialog', { name: '3 things haven’t been checked' });
 		await expect.element(dialog).toBeVisible();
+		await expect
+			.element(dialog)
+			.toHaveAccessibleDescription(
+				'Each has a note in the form. The notes aren’t kept once it’s added to the cookbook.'
+			);
 
 		await dialog.getByRole('button', { name: 'Show me' }).click();
 
@@ -275,9 +287,11 @@ describe('RecipeForm’s review notes', () => {
 		await lookRight('Step 1').click();
 		await saveRecipe().click();
 		const dialog = page.getByRole('alertdialog', { name: '2 things haven’t been checked' });
-		await dialog.getByRole('button', { name: 'Save anyway' }).click();
+		await dialog.getByRole('button', { name: 'Add anyway' }).click();
 
-		await expect.element(problemSummary('Fix 1 thing to save')).toBeVisible();
+		await expect
+			.element(problemSummary('Fix 1 thing before adding it to the cookbook'))
+			.toBeVisible();
 		expect(action).toHaveBeenCalledOnce();
 		await expect.element(page.getByText('Check the title.')).toBeVisible();
 		await expect.element(page.getByText('Check this line.')).toBeVisible();
@@ -295,7 +309,9 @@ describe('RecipeForm’s review notes', () => {
 
 		await saveRecipe().click();
 
-		await expect.element(problemSummary('Fix 1 thing to save')).toHaveFocus();
+		await expect
+			.element(problemSummary('Fix 1 thing before adding it to the cookbook'))
+			.toHaveFocus();
 		await expect
 			.element(page.getByRole('link', { name: 'Title: Enter a title.' }))
 			.toBeInTheDocument();
@@ -309,7 +325,9 @@ describe('RecipeForm’s review notes', () => {
 		await expect
 			.element(page.getByRole('alertdialog', { name: '2 things haven’t been checked' }))
 			.toBeVisible();
-		await expect.element(page.getByText('Fix 1 thing to save')).not.toBeInTheDocument();
+		await expect
+			.element(page.getByText('Fix 1 thing before adding it to the cookbook'))
+			.not.toBeInTheDocument();
 		await expect.element(page.getByText('Enter a title.')).not.toBeInTheDocument();
 		await expect.element(titleField).not.toHaveAttribute('aria-invalid');
 		expect(action).not.toHaveBeenCalled();
@@ -321,7 +339,9 @@ describe('RecipeForm’s review notes', () => {
 
 		await saveRecipe().click();
 
-		await expect.element(problemSummary('Fix 3 things to save')).toBeVisible();
+		await expect
+			.element(problemSummary('Fix 3 things before adding it to the cookbook'))
+			.toBeVisible();
 		await expect
 			.element(page.getByRole('link', { name: 'Ingredients: Add at least one ingredient.' }))
 			.toBeInTheDocument();
@@ -376,7 +396,9 @@ describe('RecipeForm’s chapter, holidays, and diets', () => {
 
 		await saveRecipe().click();
 
-		await expect.element(problemSummary('Fix 1 thing to save')).toHaveFocus();
+		await expect
+			.element(problemSummary('Fix 1 thing before adding it to the cookbook'))
+			.toHaveFocus();
 		expect(action).not.toHaveBeenCalled();
 		await expect
 			.element(chapter)
@@ -634,6 +656,66 @@ describe('RecipeForm’s action bar', () => {
 		await page.getByRole('button', { name: 'Next' }).click();
 
 		await expect.element(noteWith('Check this line.')).toHaveFocus();
+	});
+});
+
+describe('RecipeForm’s wording for adding and editing', () => {
+	const refused: FormState = {
+		status: 'error',
+		fieldErrors: { 'ingredientSections.0.lines.0': 'Enter an amount.' },
+	};
+	// A line still holding a transcription marker, which saving asks about first.
+	const withMarker: RecipeDraftContent = {
+		...lemonBars,
+		ingredientSections: [{ lines: [{ text: '1 cup [illegible] flour' }] }],
+	};
+
+	it('adds a new recipe to the cookbook, and says so as it adds and after it fails', async () => {
+		const added = heldResult(refused);
+		await renderForm(withMarker, [], async () => added.promise);
+
+		await saveRecipe().click();
+		const dialog = page.getByRole('alertdialog', { name: '1 thing hasn’t been checked' });
+		await expect
+			.element(dialog)
+			.toHaveAccessibleDescription(
+				'Each has a note in the form. The notes aren’t kept once it’s added to the cookbook.'
+			);
+		await dialog.getByRole('button', { name: 'Add anyway' }).click();
+
+		await expect.element(page.getByRole('button', { name: 'Adding to cookbook' })).toBeVisible();
+		added.resolve(refused);
+		await expect
+			.element(problemSummary('Fix 1 thing before adding it to the cookbook'))
+			.toHaveFocus();
+		await expect.element(saveRecipe()).toBeVisible();
+	});
+
+	it('saves changes to a published recipe, and says so as it saves and after it fails', async () => {
+		const saved = heldResult(refused);
+		await render(
+			<RecipeForm
+				initial={recipeFormValues(withMarker)}
+				action={async () => saved.promise}
+				uploadFolders={uploadFolders}
+				uploader={vi.fn()}
+				editing={{ id: recipeId, version: 'a' }}
+			/>
+		);
+
+		await saveChanges().click();
+		const dialog = page.getByRole('alertdialog', { name: '1 thing hasn’t been checked' });
+		await expect
+			.element(dialog)
+			.toHaveAccessibleDescription(
+				'Each has a note in the form. The notes aren’t kept once the recipe is saved.'
+			);
+		await dialog.getByRole('button', { name: 'Save anyway' }).click();
+
+		await expect.element(page.getByRole('button', { name: 'Saving changes' })).toBeVisible();
+		saved.resolve(refused);
+		await expect.element(problemSummary('Fix 1 thing to save')).toHaveFocus();
+		await expect.element(saveChanges()).toBeVisible();
 	});
 });
 
@@ -958,7 +1040,9 @@ describe('RecipeForm’s lists', () => {
 
 		await saveRecipe().click();
 
-		await expect.element(problemSummary('Fix 2 things to save')).toBeVisible();
+		await expect
+			.element(problemSummary('Fix 2 things before adding it to the cookbook'))
+			.toBeVisible();
 		await expect
 			.element(
 				page.getByRole('link', {
@@ -1072,7 +1156,6 @@ function AutosavedForm({
 			importId={reviewed}
 			autosave={{ memberId: member, existing }}
 			drafts={drafts}
-			submitLabel="Save recipe"
 		/>
 	);
 }
@@ -1201,9 +1284,11 @@ describe('RecipeForm’s autosave', () => {
 		await render(<AutosavedForm action={action} />);
 		await expect.element(page.getByText(restoredNotice)).toBeVisible();
 
-		// The button reads "Saving recipe" until the last save settles.
+		// The button reads "Adding to cookbook" until the last save settles.
 		await saveRecipe().click();
-		await expect.element(problemSummary('Fix 1 thing to save')).toBeVisible();
+		await expect
+			.element(problemSummary('Fix 1 thing before adding it to the cookbook'))
+			.toBeVisible();
 		expect(stored(newRecipeKey)?.text.title).toBe('Lemon bars');
 
 		action.mockImplementation(async () => {
@@ -1789,7 +1874,9 @@ describe('RecipeForm’s drafts', () => {
 		await expect.element(page.getByText('Draft saved at 3:12 PM')).toBeVisible();
 		expect(sentDraft(save).text.title).toBe('Lemon bars');
 		expect(save.mock.calls[0]?.[1].get('draftId')).toBeNull();
-		await expect.element(page.getByText(/^Fix \d+ things? to save$/)).not.toBeInTheDocument();
+		await expect
+			.element(page.getByText(/^Fix \d+ things? before adding it to the cookbook$/))
+			.not.toBeInTheDocument();
 		expect(invalidFieldIds()).toEqual([]);
 		// A reload opens the draft from the server, so the URL names it and the browser keeps nothing.
 		expect(`${location.pathname}${location.search}`).toBe(`/contribute/drafts/${draftId}`);
@@ -1931,7 +2018,9 @@ describe('RecipeForm’s drafts', () => {
 		await saveDraft().click();
 
 		await expect.element(page.getByText('The draft wasn’t saved.')).toBeVisible();
-		await expect.element(problemSummary('Fix 1 thing to save')).toBeVisible();
+		await expect
+			.element(problemSummary('Fix 1 thing before adding it to the cookbook'))
+			.toBeVisible();
 		await expect
 			.element(
 				page
@@ -1964,7 +2053,7 @@ describe('RecipeForm’s drafts', () => {
 			/>
 		);
 
-		await expect.element(saveRecipe()).toBeVisible();
+		await expect.element(saveChanges()).toBeVisible();
 		await expect.element(page.getByRole('button', { name: /draft/i })).not.toBeInTheDocument();
 	});
 });

@@ -70,7 +70,6 @@ export async function DraftEditor({ pageHref, draft }: DraftEditorProps) {
 					opened: opened === undefined ? undefined : { id: opened.id, savedAt: opened.savedAt },
 					inUrl: true,
 				}}
-				submitLabel="Save recipe"
 			/>
 		</HeldDraftProvider>
 	);

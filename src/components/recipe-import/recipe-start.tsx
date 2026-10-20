@@ -71,7 +71,7 @@ function RecipeStart({
 			<StartSection heading={section} title="Your drafts">
 				<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={deleteDraft} />
 				<p className="text-sm text-muted-foreground">
-					Only you can see your drafts until you save them as recipes. Each is kept for{' '}
+					Only you can see your drafts until you add them to the cookbook. Each is kept for{' '}
 					{settings.drafts.draftLifetimeDays} days after you last save it, and an import you haven’t
 					saved for {settings.imports.importDraftLifetimeDays} days.
 				</p>

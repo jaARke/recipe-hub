@@ -8,7 +8,7 @@ import { testMemberName } from './support/test-members';
 
 // A member enters a recipe by hand, edits it, and deletes it, so the run leaves no recipe behind; the
 // member fixture deletes any a failed run leaves.
-test('a recipe entered by hand is saved, edited, and deleted', async ({ page, signIn }) => {
+test('a recipe entered by hand is added, edited, and deleted', async ({ page, signIn }) => {
 	// Each run's own title, so runs in parallel never share a slug.
 	const run = randomUUID().slice(0, 8);
 	const title = `End-to-end soup ${run}`;
@@ -16,8 +16,8 @@ test('a recipe entered by hand is saved, edited, and deleted', async ({ page, si
 	await signIn();
 
 	await page.goto(recipeEntryPaths.manual);
-	// Save is disabled until the form hydrates, before which Add ingredient adds nothing.
-	await expect(page.getByRole('button', { name: 'Save recipe' })).toBeEnabled();
+	// Add to cookbook is disabled until the form hydrates, before which Add ingredient adds nothing.
+	await expect(page.getByRole('button', { name: 'Add to cookbook' })).toBeEnabled();
 	const form = page.getByRole('main');
 	await form.getByRole('textbox', { name: 'Title' }).fill(title);
 	await form.getByRole('textbox', { name: 'Ingredient 1' }).fill('2 cups water');
@@ -27,9 +27,11 @@ test('a recipe entered by hand is saved, edited, and deleted', async ({ page, si
 	await form.getByRole('textbox', { name: 'Servings' }).fill('4');
 	await form.getByRole('radio', { name: 'Soups & Salads' }).check();
 	await form.getByRole('checkbox', { name: 'Vegan' }).check();
-	await page.getByRole('button', { name: 'Save recipe' }).click();
+	await page.getByRole('button', { name: 'Add to cookbook' }).click();
 
+	// Adding says so once: the address becomes the recipe's own, so a reload says nothing.
 	await expect(page).toHaveURL(recipePath(slugify(title)));
+	await expect(page.getByRole('dialog', { name: 'Added to the cookbook' })).toBeVisible();
 	const recipe = page.getByRole('article', { name: title });
 	await expect(recipe.getByRole('heading', { name: title, level: 1 })).toBeVisible();
 	await expect(recipe.getByRole('listitem')).toContainText([

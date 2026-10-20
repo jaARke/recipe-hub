@@ -6,7 +6,7 @@ import * as React from 'react';
 import { useShownThisVisit } from '@/components/layout/page-visits';
 import { keptDraftParamName } from '@/components/recipe-import/recipe-entry-paths';
 import { Alert, AlertTitle } from '@/components/ui/alert';
-import { hrefWithParams } from '@/lib/url-query';
+import { removeAddressParam } from '@/lib/url-query';
 
 type KeptDraftNoticeProps = {
 	// The draft's name in the list, and where it opens.
@@ -20,15 +20,7 @@ function KeptDraftNotice({ name, href }: KeptDraftNoticeProps) {
 	const shown = useShownThisVisit();
 
 	React.useEffect(() => {
-		const url = new URL(window.location.href);
-		if (url.searchParams.has(keptDraftParamName)) {
-			url.searchParams.delete(keptDraftParamName);
-			window.history.replaceState(
-				null,
-				'',
-				`${hrefWithParams(url.pathname, url.searchParams)}${url.hash}`
-			);
-		}
+		removeAddressParam(keptDraftParamName);
 	}, []);
 
 	if (!shown) {

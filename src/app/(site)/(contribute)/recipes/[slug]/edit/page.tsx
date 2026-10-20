@@ -131,7 +131,6 @@ async function RecipeEditor({ params }: Pick<PageProps<'/recipes/[slug]/edit'>, 
 				uploadFolders={getRecipeImageService().uploadFolders()}
 				editing={{ id: recipe.id, version: recipe.updatedAt.toISOString() }}
 				autosave={{ memberId: member.id, existing: { knownAt: now, recipeIds } }}
-				submitLabel="Save changes"
 			/>
 		</>
 	);

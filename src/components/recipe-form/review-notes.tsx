@@ -82,6 +82,10 @@ type UncheckedSaveDialogProps = {
 	count: number;
 	// Moves focus to the first thing to check, once the dialog has closed.
 	onShow: () => void;
+	// What saving anyway is called, such as "Add anyway".
+	saveAnywayLabel: string;
+	// When the notes go, which ends the description, such as "it’s added to the cookbook".
+	notesKeptUntil: string;
 	onSaveAnyway: () => void;
 };
 
@@ -92,6 +96,8 @@ function UncheckedSaveDialog({
 	onOpenChange,
 	count,
 	onShow,
+	saveAnywayLabel,
+	notesKeptUntil,
 	onSaveAnyway,
 }: UncheckedSaveDialogProps) {
 	// Set by "Show me", whose focus goes to the first note rather than back to Save. It lasts until
@@ -116,7 +122,7 @@ function UncheckedSaveDialog({
 						{countedThings(count, 'hasn’t been checked', 'haven’t been checked')}
 					</AlertDialogTitle>
 					<AlertDialogDescription>
-						Each has a note in the form. The notes aren’t kept once the recipe is saved.
+						Each has a note in the form. The notes aren’t kept once {notesKeptUntil}.
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
@@ -136,7 +142,7 @@ function UncheckedSaveDialog({
 							onSaveAnyway();
 						}}
 					>
-						Save anyway
+						{saveAnywayLabel}
 					</AlertDialogAction>
 				</AlertDialogFooter>
 			</AlertDialogContent>

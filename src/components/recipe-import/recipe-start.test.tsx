@@ -79,7 +79,7 @@ describe('RecipeStart', () => {
 		await expect
 			.element(
 				page.getByText(
-					'Only you can see your drafts until you save them as recipes. Each is kept for 90 days after you last save it, and an import you haven’t saved for 7 days.'
+					'Only you can see your drafts until you add them to the cookbook. Each is kept for 90 days after you last save it, and an import you haven’t saved for 7 days.'
 				)
 			)
 			.toBeVisible();
