@@ -660,3 +660,25 @@ describe('listDrafts', () => {
 		expect(listed.map(({ id }) => id)).toEqual(expected.slice(0, limit));
 	});
 });
+
+describe('countDrafts', () => {
+	it("counts the member's drafts until each expires, and not another member's", async () => {
+		const { serviceFor, backdateDraft } = await createDrafts();
+		const service = serviceFor(memberActor());
+		const kept = await service.saveDraft(lemonBars);
+		await service.saveDraft({ values: {}, imagePathnames: [] });
+		const expired = await service.saveDraft(lemonBars);
+		await serviceFor(memberActor()).saveDraft(theirDraft);
+		backdateDraft(kept.id, lifetime - 0.01);
+		backdateDraft(expired.id, lifetime + 0.01);
+
+		expect(await service.countDrafts()).toBe(2);
+	});
+
+	it('counts none for a signed-out visitor', async () => {
+		const { serviceFor } = await createDrafts();
+		await serviceFor(memberActor()).saveDraft(lemonBars);
+
+		expect(await serviceFor(anonymousActor()).countDrafts()).toBe(0);
+	});
+});

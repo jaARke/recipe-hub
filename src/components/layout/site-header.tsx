@@ -11,12 +11,14 @@ type SiteHeaderProps = {
 	// The signed-in member, or null. Each part that shows it waits for it behind its own boundary,
 	// so the rest of the header never waits for the session.
 	member: Promise<HeaderMember | null>;
+	// The member's draft count, and none signed out, which Add recipe waits for in the same way.
+	draftCount: Promise<number>;
 };
 
 // One row: the lockup, the section links, a search field filling the rest, then the theme menu and
 // the account control. From md to lg the search is an icon; below md the lockup, the search icon,
 // and one menu holding everything else. Below lg an open search takes the whole row.
-function SiteHeader({ member }: SiteHeaderProps) {
+function SiteHeader({ member, draftCount }: SiteHeaderProps) {
 	return (
 		<header className="sticky top-0 z-40 border-b bg-background print:hidden">
 			<PageContainer
@@ -25,13 +27,13 @@ function SiteHeader({ member }: SiteHeaderProps) {
 			>
 				<Lockup />
 				<div className="hidden md:block">
-					<Suspense fallback={<MainNavLinks member={member} />}>
-						<MainNav member={member} />
+					<Suspense fallback={<MainNavLinks member={member} draftCount={draftCount} />}>
+						<MainNav member={member} draftCount={draftCount} />
 					</Suspense>
 				</div>
 				<HeaderSearchBar formId={headerSearchFormId} />
 				<HeaderAccountGroup member={member} className="hidden md:flex" />
-				<SiteMenu member={member} className="md:hidden" />
+				<SiteMenu member={member} draftCount={draftCount} className="md:hidden" />
 			</PageContainer>
 		</header>
 	);

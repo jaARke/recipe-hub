@@ -274,6 +274,16 @@ export class SavedDraftService {
 		return entries.toSorted((a, b) => listedAt(b) - listedAt(a)).slice(0, limit);
 	}
 
+	// How many of the member's drafts have not expired, for the header to show beside Add recipe.
+	// Open to anyone: none for a signed-out visitor.
+	async countDrafts(): Promise<number> {
+		const actor = await this.actors.currentActor();
+		if (actor.kind === 'anonymous') {
+			return 0;
+		}
+		return this.drafts.count(actor.memberId, savedDraftCutoff(new Date()));
+	}
+
 	// Ids arrive from forms and URLs, so a malformed id names no draft.
 	private async findDraft(id: string | undefined): Promise<SavedDraft | null> {
 		const parsed = savedDraftIdSchema.safeParse(id);

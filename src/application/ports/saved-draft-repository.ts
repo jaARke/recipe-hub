@@ -64,6 +64,8 @@ export interface SavedDraftRepository {
 	findByImportId(importId: RecipeImportId): Promise<SavedDraft | null>;
 	// The member's drafts saved since the given time, newest first, at most limit of them.
 	list(memberId: MemberId, since: Date, limit: number): Promise<SavedDraftSummary[]>;
+	// How many drafts the member saved since the given time.
+	count(memberId: MemberId, since: Date): Promise<number>;
 	// The given image pathnames that a draft saved since the given time names, ignoring the excluded
 	// member's drafts.
 	findImagesInUse(

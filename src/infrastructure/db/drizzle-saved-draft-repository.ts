@@ -118,6 +118,13 @@ export class DrizzleSavedDraftRepository implements SavedDraftRepository {
 		return rows.map(toSavedDraftSummary);
 	}
 
+	async count(memberId: MemberId, since: Date): Promise<number> {
+		return this.db.$count(
+			recipeDrafts,
+			and(eq(recipeDrafts.memberId, memberId), gte(recipeDrafts.updatedAt, since))
+		);
+	}
+
 	async findImagesInUse(
 		pathnames: readonly string[],
 		since: Date,

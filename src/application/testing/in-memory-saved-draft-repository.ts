@@ -105,6 +105,12 @@ export class InMemorySavedDraftRepository implements SavedDraftRepository {
 			}));
 	}
 
+	async count(memberId: MemberId, since: Date): Promise<number> {
+		return [...this.drafts.values()].filter(
+			(draft) => draft.memberId === memberId && draft.updatedAt >= since
+		).length;
+	}
+
 	async findImagesInUse(
 		pathnames: readonly string[],
 		since: Date,

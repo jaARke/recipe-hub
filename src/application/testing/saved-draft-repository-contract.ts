@@ -263,6 +263,22 @@ export function describeSavedDraftRepositoryContract(
 		});
 	});
 
+	describe('count', () => {
+		it("counts the member's drafts saved since the time", async () => {
+			const { drafts, memberId, otherMemberId } = fixture();
+			const older = await create({ title: undefined });
+			await create({ importId: await startImport(), provenance: fromLink });
+			const expired = await create();
+			await create({ memberId: otherMemberId });
+			await fixture().backdate(older.id, new Date(Date.now() - 2 * hourMs));
+			await fixture().backdate(expired.id, new Date(Date.now() - 4 * hourMs));
+
+			expect(await drafts.count(memberId, new Date(Date.now() - 3 * hourMs))).toBe(2);
+			expect(await drafts.count(memberId, new Date(Date.now() - hourMs))).toBe(1);
+			expect(await drafts.count(otherMemberId, new Date(Date.now() - hourMs))).toBe(1);
+		});
+	});
+
 	describe('findImagesInUse', () => {
 		it('finds the pathnames a draft saved since the time names', async () => {
 			const { drafts } = fixture();
