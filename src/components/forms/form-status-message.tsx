@@ -1,7 +1,9 @@
 import { CircleCheckIcon } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 
-// A confirmation, such as "Saved.", carries a check; progress, such as an import's stage, does not.
-type FormStatusKind = 'confirmation' | 'progress';
+// A confirmation, such as "Saved.", carries a check; work underway with no pending button to show it,
+// such as a draft saving, a spinner; progress, such as an import's stage beside its button, neither.
+type FormStatusKind = 'confirmation' | 'pending' | 'progress';
 
 type FormStatusMessageProps = {
 	kind: FormStatusKind;
@@ -23,9 +25,10 @@ function FormStatusMessage({ kind, message }: FormStatusMessageProps) {
 			{kind === 'confirmation' && (
 				<CircleCheckIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
 			)}
+			{kind === 'pending' && <Spinner className="mt-0.5 shrink-0" />}
 			{message}
 		</p>
 	);
 }
 
-export { FormStatusMessage };
+export { FormStatusMessage, type FormStatusKind };

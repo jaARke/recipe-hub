@@ -1811,9 +1811,12 @@ describe('RecipeForm’s drafts', () => {
 		await title().fill('Lemon bars');
 
 		await expect.element(status('Saving draft')).toBeInTheDocument();
+		// A spinner while saving, a check once saved, as the action bar has no pending button to show it.
+		expect(status('Saving draft').element().querySelector('[data-slot="spinner"]')).not.toBeNull();
 		await expect.element(status('Draft saved'), afterSaving).toBeInTheDocument();
 		expect(save).toHaveBeenCalledOnce();
 		expect(sentDraft(save).text.title).toBe('Lemon bars');
+		expect(status('Draft saved').element().querySelector('[data-slot="spinner"]')).toBeNull();
 		expect(named(save)).toEqual({ id: null, version: null });
 		expect(router.refresh).toHaveBeenCalledOnce();
 		await expect.poll(() => location.pathname).toBe(`/contribute/drafts/${draftId}`);

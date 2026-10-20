@@ -10,7 +10,7 @@ import { focusCentered } from '@/components/forms/focus-centered';
 import { focusFellToPage } from '@/components/forms/focus-fell-to-page';
 import { FormErrorAlert } from '@/components/forms/form-error-alert';
 import type { FormAction, FormState } from '@/components/forms/form-state';
-import { FormStatusMessage } from '@/components/forms/form-status-message';
+import { FormStatusMessage, type FormStatusKind } from '@/components/forms/form-status-message';
 import { LiveAnnouncer, useLiveAnnouncement } from '@/components/forms/live-announcement';
 import { optionalLabel } from '@/components/forms/optional-label';
 import {
@@ -134,6 +134,17 @@ const draftStatusMessages = {
 	refused: 'The draft wasn’t saved.',
 	leaveFailed: 'We couldn’t reach the site. Check your connection and try again.',
 } as const satisfies Record<RecipeFormDraftStatus['kind'], string>;
+
+// How the action bar marks each: a spinner while saving, a check once saved.
+const draftStatusKinds = {
+	empty: 'progress',
+	saving: 'pending',
+	saved: 'confirmation',
+	deleted: 'progress',
+	unreachable: 'progress',
+	refused: 'progress',
+	leaveFailed: 'progress',
+} as const satisfies Record<RecipeFormDraftStatus['kind'], FormStatusKind>;
 
 // Why changes kept in this browser were for an earlier version of the recipe.
 const outdatedDescription = 'This recipe changed after you made them, so they weren’t restored.';
@@ -826,7 +837,7 @@ function RecipeForm({
 					<>
 						{drafting.status !== undefined && (
 							<FormStatusMessage
-								kind={drafting.status.kind === 'saved' ? 'confirmation' : 'progress'}
+								kind={draftStatusKinds[drafting.status.kind]}
 								message={draftStatusMessage(drafting.status)}
 							/>
 						)}

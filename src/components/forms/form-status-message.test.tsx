@@ -18,6 +18,15 @@ describe('FormStatusMessage', () => {
 		expect(page.getByRole('status').element().querySelector('svg')).toBeNull();
 	});
 
+	it('shows work underway with a spinner that is not read out', async () => {
+		await render(<FormStatusMessage kind="pending" message="Saving draft" />);
+
+		await expect.element(page.getByRole('status')).toHaveTextContent('Saving draft');
+		const spinner = page.getByRole('status').element().querySelector('[data-slot="spinner"]');
+		expect(spinner).not.toBeNull();
+		expect(spinner?.getAttribute('aria-hidden')).toBe('true');
+	});
+
 	it('keeps an empty live region, with no check, until there is a message', async () => {
 		await render(<FormStatusMessage kind="confirmation" message={undefined} />);
 
