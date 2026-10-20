@@ -10,7 +10,7 @@ import type { RecipeSearchState } from '@/components/search/search-params';
 import { memberIdSchema } from '@/domain/member/member';
 
 const adaId = memberIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-2a7c1e4b5d6e');
-const barbId = memberIdSchema.parse('7b6f8e64-2d0a-4b9e-9a51-0f6d2c3a8e11');
+const graceId = memberIdSchema.parse('7b6f8e64-2d0a-4b9e-9a51-0f6d2c3a8e11');
 
 const allRecipes: RecipeSearchState = { holidays: [], diets: [], sort: 'newest', page: 1 };
 
@@ -24,7 +24,7 @@ const facets: RecipeSearchFacets = {
 		{ label: 'Joy of Cooking', count: 0 },
 	],
 	contributors: [
-		{ memberId: barbId, displayName: 'Barb', count: 30 },
+		{ memberId: graceId, displayName: 'Grace', count: 30 },
 		{ memberId: adaId, displayName: 'Ada', count: 0 },
 	],
 };
@@ -171,7 +171,7 @@ describe('recipeFilterGroups', () => {
 		]);
 		expect(shown(filterGroup('Added by', allRecipes))).toEqual([
 			'Any member',
-			'Barb (30)',
+			'Grace (30)',
 			'Ada (0) disabled',
 		]);
 		for (const legend of ['Total time', 'Recipe from', 'Added by']) {
@@ -203,11 +203,11 @@ describe('recipeFilterGroups', () => {
 		]);
 		expect(filterGroup('Added by', state)?.options.map((option) => option.value)).toEqual([
 			'',
-			barbId,
+			graceId,
 			adaId,
 		]);
 		expect(filterGroup('Added by', state)?.chosen).toBe(adaId);
-		expect(shown(filterGroup('Added by', state))).toEqual(['Any member', 'Barb (30)', 'Ada (0)']);
+		expect(shown(filterGroup('Added by', state))).toEqual(['Any member', 'Grace (30)', 'Ada (0)']);
 	});
 
 	it('keeps the facets’ order of sources and members', () => {
@@ -225,7 +225,7 @@ describe('recipeFilterGroups', () => {
 		expect(shown(filterGroup('Added by', allRecipes, reordered))).toEqual([
 			'Any member',
 			'Ada (0) disabled',
-			'Barb (30)',
+			'Grace (30)',
 		]);
 	});
 
@@ -300,7 +300,7 @@ describe('appliedRecipeFilters', () => {
 			holidays: ['thanksgiving', 'christmas'],
 			diets: ['vegetarian'],
 			source: 'Aunt June',
-			contributorId: barbId,
+			contributorId: graceId,
 			maxTotalMinutes: 60,
 			sort: 'title',
 			page: 2,
@@ -310,31 +310,31 @@ describe('appliedRecipeFilters', () => {
 			{
 				key: 'holiday-thanksgiving',
 				label: 'Thanksgiving',
-				href: `/?chapter=desserts&holiday=christmas&diet=vegetarian&time=60&source=Aunt+June&contributor=${barbId}`,
+				href: `/?chapter=desserts&holiday=christmas&diet=vegetarian&time=60&source=Aunt+June&contributor=${graceId}`,
 			},
 			{
 				key: 'holiday-christmas',
 				label: 'Christmas',
-				href: `/?chapter=desserts&holiday=thanksgiving&diet=vegetarian&time=60&source=Aunt+June&contributor=${barbId}`,
+				href: `/?chapter=desserts&holiday=thanksgiving&diet=vegetarian&time=60&source=Aunt+June&contributor=${graceId}`,
 			},
 			{
 				key: 'diet-vegetarian',
 				label: 'Vegetarian',
-				href: `/?chapter=desserts&holiday=thanksgiving&holiday=christmas&time=60&source=Aunt+June&contributor=${barbId}`,
+				href: `/?chapter=desserts&holiday=thanksgiving&holiday=christmas&time=60&source=Aunt+June&contributor=${graceId}`,
 			},
 			{
 				key: 'time',
 				label: '1 hour or less',
-				href: `/?chapter=desserts&holiday=thanksgiving&holiday=christmas&diet=vegetarian&source=Aunt+June&contributor=${barbId}`,
+				href: `/?chapter=desserts&holiday=thanksgiving&holiday=christmas&diet=vegetarian&source=Aunt+June&contributor=${graceId}`,
 			},
 			{
 				key: 'source',
 				label: 'From Aunt June',
-				href: `/?chapter=desserts&holiday=thanksgiving&holiday=christmas&diet=vegetarian&time=60&contributor=${barbId}`,
+				href: `/?chapter=desserts&holiday=thanksgiving&holiday=christmas&diet=vegetarian&time=60&contributor=${graceId}`,
 			},
 			{
 				key: 'contributor',
-				label: 'Added by Barb',
+				label: 'Added by Grace',
 				href: '/?chapter=desserts&holiday=thanksgiving&holiday=christmas&diet=vegetarian&time=60&source=Aunt+June',
 			},
 		]);
@@ -365,7 +365,7 @@ describe('withRecipeFilterCounts', () => {
 			diets: { ...noRecipeSearchFacets.diets, vegetarian: 2 },
 			totalTimes: { 15: 0, 30: 1, 60: 2, 120: 2 },
 			sources: [{ label: 'Cook 7', count: 2 }],
-			contributors: [{ memberId: barbId, displayName: 'Barb', count: 2 }],
+			contributors: [{ memberId: graceId, displayName: 'Grace', count: 2 }],
 		};
 
 		const counted = withRecipeFilterCounts(filters, fetched);
@@ -405,7 +405,7 @@ describe('withRecipeFilterCounts', () => {
 		]);
 		expect(shown(groupIn(counted, 'Added by'))).toEqual([
 			'Any member',
-			'Barb (2)',
+			'Grace (2)',
 			'Ada (0) disabled',
 		]);
 	});
@@ -456,7 +456,7 @@ describe('withRecipeFilterCounts', () => {
 		]);
 		expect(shown(groupIn(counted, 'Added by'))).toEqual([
 			'Any member',
-			'Barb (0) disabled',
+			'Grace (0) disabled',
 			'Ada (1)',
 		]);
 	});
