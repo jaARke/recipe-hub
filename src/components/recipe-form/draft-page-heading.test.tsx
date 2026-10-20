@@ -6,7 +6,12 @@ import { DraftPageHeading } from '@/components/recipe-form/draft-page-heading';
 import { HeldDraftProvider, type HeldDraft } from '@/components/recipe-form/held-draft';
 import { RecipeForm } from '@/components/recipe-form/recipe-form';
 import type { SavedDraftResult } from '@/components/recipe-form/recipe-form-fields';
-import { recipeFormValues } from '@/components/recipe-form/recipe-form-values';
+import {
+	editRecipeForm,
+	recipeFormValues,
+	type RecipeFormEdit,
+	type RecipeFormValues,
+} from '@/components/recipe-form/recipe-form-values';
 import { HeldDraftMenu } from '@/components/recipe-form/subject-menus';
 import type { RecipeFormDrafts } from '@/components/recipe-form/use-draft-saving';
 
@@ -31,11 +36,15 @@ async function renderDraftPage({
 	openedDraft,
 	deleteDraft = vi.fn<FormAction>(),
 	saved = { status: 'success', draftId: openedDraft?.id ?? newId, savedAt },
+	initial = recipeFormValues(
+		openedDraft === undefined ? undefined : { title: openedDraft.title ?? '' }
+	),
 }: {
 	openedDraft?: HeldDraft;
 	deleteDraft?: FormAction;
 	// What every save answers.
 	saved?: FormState<SavedDraftResult>;
+	initial?: RecipeFormValues;
 } = {}) {
 	const save = vi.fn<FormAction<SavedDraftResult>>(async () => saved);
 	const leave = vi.fn<RecipeFormDrafts['leave']>(async () => {});
@@ -43,9 +52,7 @@ async function renderDraftPage({
 		<HeldDraftProvider opened={openedDraft}>
 			<DraftPageHeading menu={<HeldDraftMenu action={deleteDraft} />} />
 			<RecipeForm
-				initial={recipeFormValues(
-					openedDraft === undefined ? undefined : { title: openedDraft.title ?? '' }
-				)}
+				initial={initial}
 				action={vi.fn()}
 				uploadFolders={{ dish: 'dish/development/', scan: 'scan/development/' }}
 				uploader={vi.fn()}
@@ -140,6 +147,35 @@ describe('DraftPageHeading', () => {
 				page
 					.getByRole('status')
 					.filter({ hasText: 'Your changes here aren’t saved, so this page stays open.' })
+			)
+			.toBeInTheDocument();
+		expect(leave).not.toHaveBeenCalled();
+	});
+
+	it('stays by its back link while photos are still uploading, saying so', async () => {
+		const values = recipeFormValues({ title: 'Lemon bars' });
+		const photoId = values.nextId;
+		const uploading = [
+			{ type: 'addPhotos', role: 'dish', fileNames: ['bars.jpg'] },
+			{
+				type: 'startPhotoUpload',
+				photoId,
+				pathname: 'dish/development/bars.jpg',
+				size: { width: 2400, height: 1800 },
+				file: new File([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], 'bars.jpg', {
+					type: 'image/jpeg',
+				}),
+			},
+		] as const satisfies RecipeFormEdit[];
+		const { leave } = await renderDraftPage({ initial: uploading.reduce(editRecipeForm, values) });
+
+		await backLink().click();
+
+		await expect
+			.element(
+				page
+					.getByRole('status')
+					.filter({ hasText: 'Photos are still uploading, so this page stays open.' })
 			)
 			.toBeInTheDocument();
 		expect(leave).not.toHaveBeenCalled();

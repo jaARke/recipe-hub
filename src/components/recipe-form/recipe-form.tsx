@@ -137,6 +137,7 @@ const draftStatusMessages = {
 	unreachable: 'We couldn’t save the draft. Check your connection; your next change tries again.',
 	refused: 'The draft wasn’t saved.',
 	unsaved: 'Your changes here aren’t saved, so this page stays open.',
+	photosUploading: 'Photos are still uploading, so this page stays open.',
 	leaveFailed: 'We couldn’t reach the site. Check your connection and try again.',
 	deletedLeaveFailed:
 		'The draft was deleted, but we couldn’t reach the site to leave this page. Check your connection and try again.',
@@ -151,6 +152,7 @@ const draftStatusKinds = {
 	unreachable: 'progress',
 	refused: 'progress',
 	unsaved: 'progress',
+	photosUploading: 'progress',
 	leaveFailed: 'progress',
 	deletedLeaveFailed: 'progress',
 } as const satisfies Record<RecipeFormDraftStatus['kind'], FormStatusKind>;
@@ -884,7 +886,8 @@ function RecipeForm({
 					{pending ? saving.pendingLabel : saving.submitLabel}
 				</Button>
 				{drafts !== undefined && (
-					// The draft keeps only stored photos, so leaving waits for the rest, as adding does.
+					// Leaving would stop the photos uploading, so it waits for them, as adding does; the back
+					// link, which leaves the same way, is refused then too.
 					<Button
 						type="button"
 						variant="outline"

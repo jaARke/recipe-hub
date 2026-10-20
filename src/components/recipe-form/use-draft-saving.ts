@@ -32,6 +32,7 @@ import {
 	type RecipeFormSnapshot,
 } from '@/components/recipe-form/recipe-form-snapshot';
 import {
+	hasPhotosInProgress,
 	recipeFormSubmission,
 	recipeFormValues,
 	type ProblemTargets,
@@ -61,9 +62,13 @@ export type RecipeFormDrafts = {
 type LeaveFailure = { kind: 'leaveFailed' } | { kind: 'deletedLeaveFailed' };
 
 // What the form says of its draft: where saving stands; that the page stays because what it shows
-// isn't saved, and why; or that leaving for the start page failed.
+// isn't saved, and why, or because photos are still uploading; or that leaving for the start page
+// failed.
 export type RecipeFormDraftStatus =
-	DraftSaveStatus | { kind: 'unsaved'; because: DraftSaveStatus } | LeaveFailure;
+	| DraftSaveStatus
+	| { kind: 'unsaved'; because: DraftSaveStatus }
+	| { kind: 'photosUploading' }
+	| LeaveFailure;
 
 // What a draft keeps of the form, with where a refused save's problems show.
 type DraftContent = {
@@ -159,9 +164,10 @@ type DraftSavingOptions = {
 // keeps the page in step with the draft it holds: the heading and its menu, the address, and on the
 // new recipe's page the header's count. A change goes as the page hides or the tab does, so leaving
 // by any way loses nothing that can be saved. Finish later, the back link, adding, and deleting wait
-// for saving: leaving sends what is waiting and goes only once the server holds what the form shows,
-// and adding and deleting stop saving first. The address never changes while a navigation is on its
-// way, since Next drops a Server Action's navigation that a change of address overtakes.
+// for saving: leaving sends what is waiting and goes only once the server holds what the form shows
+// and no photo is uploading, and adding and deleting stop saving first. The address never changes
+// while a navigation is on its way, since Next drops a Server Action's navigation that a change of
+// address overtakes.
 export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavingOptions) {
 	const router = useRouter();
 	const holdDraft = useHoldDraft();
@@ -189,6 +195,9 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 	>();
 	// Where saving stood as Finish later stayed, which the status explains until saving moves on.
 	const [stayedAt, setStayedAt] = useTransientState<DraftSaveState<DraftContent>>();
+	// Leaving would stop the uploads, and a draft keeps only stored photos.
+	const photosUploading = hasPhotosInProgress(values);
+	const [stayedForPhotos, setStayedForPhotos] = useTransientState<boolean>();
 
 	const content = React.useMemo(() => draftContent(values), [values]);
 	React.useEffect(() => {
@@ -301,9 +310,13 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 		if (coordinator === undefined) {
 			return;
 		}
-		holdAddress();
 		setLeaveFailure(undefined);
 		setStayedAt(undefined);
+		setStayedForPhotos(photosUploading);
+		if (photosUploading) {
+			return;
+		}
+		holdAddress();
 		startFinishing(async () => {
 			const settled = await coordinator.settle();
 			if (!settled.current) {
@@ -320,12 +333,14 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 	}, [
 		coordinator,
 		page,
+		photosUploading,
 		holdAddress,
 		releaseAddress,
 		nameInAddress,
 		leave,
 		setLeaveFailure,
 		setStayedAt,
+		setStayedForPhotos,
 	]);
 
 	const controls = React.useMemo<HeldDraftControls | undefined>(
@@ -389,7 +404,9 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 	}, [coordinator, releaseAddress]);
 
 	let status: RecipeFormDraftStatus | undefined = state?.status;
-	if (state !== undefined && leaveFailure?.at === state) {
+	if (state !== undefined && stayedForPhotos === true && photosUploading) {
+		status = { kind: 'photosUploading' };
+	} else if (state !== undefined && leaveFailure?.at === state) {
 		status = { kind: leaveFailure.kind };
 	} else if (state !== undefined && stayedAt === state) {
 		status = { kind: 'unsaved', because: state.status };
