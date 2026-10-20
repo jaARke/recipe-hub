@@ -104,12 +104,12 @@ function extractionFrom(sample: RecipeContentInput): ExtractedRecipe {
 
 describe('importDraftFromExtractedRecipe', () => {
 	it.each(sampleRecipeContents.map((content) => [content.title, content]))(
-		'reads the sample "%s" back as stored, apart from its tags, with notes on its filing alone',
+		'reads the sample "%s" back as stored, with notes on its filing alone',
 		(_title, sample) => {
 			const content = recipeContentSchema.parse(sample);
 			const draft = draftFrom(extractionFrom(sample), content.images);
 
-			expect(draft.content).toEqual({ ...content, tags: [] });
+			expect(draft.content).toEqual(content);
 			expect(draft.problems.map(({ path }) => path)).toEqual(
 				(['chapter', 'holidays', 'diets'] as const).filter(
 					(field) => field === 'chapter' || content[field].length > 0
@@ -135,7 +135,6 @@ describe('importDraftFromExtractedRecipe', () => {
 				instructionSections: [],
 				holidays: [],
 				diets: [],
-				tags: [],
 				images: [],
 			},
 			problems: [
@@ -837,7 +836,7 @@ describe('importDraftFromExtractedRecipe', () => {
 		});
 	});
 
-	it('keeps the scans attached and leaves tags to the member', () => {
+	it('keeps the scans attached', () => {
 		const images: RecipeImage[] = [
 			{ role: 'scan', pathname: 'scan/0199c7a4/page-1.jpg' },
 			{ role: 'scan', pathname: 'scan/0199c7a4/page-2.jpg' },
@@ -845,6 +844,5 @@ describe('importDraftFromExtractedRecipe', () => {
 		const draft = draftFrom(toastExtraction, images);
 
 		expect(draft.content.images).toEqual(images);
-		expect(draft.content.tags).toEqual([]);
 	});
 });

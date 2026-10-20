@@ -94,8 +94,6 @@ export const settings: z.output<typeof settingsSchema> = {
 		maxIngredientLineLength: 500,
 		// A long step written as one paragraph.
 		maxStepLength: 5_000,
-		// A label for browsing, such as "Weeknight", which search lists as a filter.
-		maxTagLength: 50,
 		// A description of a photo for someone who can't see it.
 		maxImageAltLength: 1_000,
 		// Ingredients across all a recipe's sections, more than any recipe needs.
@@ -104,7 +102,5 @@ export const settings: z.output<typeof settingsSchema> = {
 		maxStepsPerRecipe: 300,
 		// Sections in the ingredients, and in the steps: one for each part of a dish and then some.
 		maxSectionsPerList: 30,
-		// Enough to file a recipe under every course, occasion, and cook it belongs to.
-		maxTagsPerRecipe: 30,
 	},
 };

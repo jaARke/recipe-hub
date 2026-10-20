@@ -18,7 +18,6 @@ const minimalPayload: RecipeFormPayload = {
 	chapter: 'breakfast-brunch',
 	holidays: [],
 	diets: [],
-	tags: [],
 	images: [],
 };
 
@@ -47,7 +46,7 @@ describe('recipeContentFromForm', () => {
 		'',
 		'not json',
 		'[]',
-		JSON.stringify({ ...minimalPayload, tags: 'Soup' }),
+		JSON.stringify({ ...minimalPayload, holidays: 'christmas' }),
 		JSON.stringify({ ...minimalPayload, chapter: 'Soups & Salads' }),
 		JSON.stringify({ ...minimalPayload, diets: ['keto'] }),
 	])('refuses a payload the form never sends: %s', (json) => {

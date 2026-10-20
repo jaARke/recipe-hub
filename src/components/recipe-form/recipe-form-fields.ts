@@ -33,8 +33,6 @@ export type SavedDraftResult = {
 export type EditedRecipe = {
 	id: string;
 	version: string;
-	// Its tags that no other recipe uses, which the tags field offers to respell.
-	respellableTags: readonly string[];
 };
 
 // The recipe as the form sends it: text as typed, without blank items or blank optional text. Its
@@ -61,7 +59,6 @@ export type RecipeFormPayload = {
 	holidays: Holiday[];
 	// The diets the member chose; the recipe adds those they imply.
 	diets: Diet[];
-	tags: string[];
 	// Dish photos in order, the cover first, then scans.
 	images: { role: RecipeImageRole; pathname: string; size?: ImageSize; alt?: string }[];
 };

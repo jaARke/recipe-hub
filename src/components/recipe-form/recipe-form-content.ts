@@ -39,7 +39,6 @@ const payloadSchema = z.object({
 	chapter: z.enum(chapters).optional(),
 	holidays: z.array(z.enum(holidays)),
 	diets: z.array(z.enum(diets)),
-	tags: z.array(z.string()),
 	images: z.array(
 		z.object({
 			role: recipeImageRoleSchema,
@@ -126,7 +125,6 @@ function formContent(payload: RecipeFormPayload): FormContent {
 		chapter: payload.chapter,
 		holidays: payload.holidays,
 		diets: payload.diets,
-		tags: payload.tags,
 		images: payload.images.map(({ role, pathname, size, alt }) => ({
 			role,
 			pathname,

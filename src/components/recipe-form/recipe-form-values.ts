@@ -11,15 +11,14 @@ import { missingContentMessages, type RecipeContent } from '@/domain/recipe/reci
 import type { RecipeDraftContent } from '@/domain/recipe/recipe-draft';
 import type { ImageSize, RecipeImage, RecipeImageRole } from '@/domain/recipe/recipe-image';
 import type { RecipeYield } from '@/domain/recipe/recipe-yield';
-import { tagKey, uniqueTagLabels } from '@/domain/recipe/tag-normalization';
 import {
 	transcriptionMarkersIn,
 	type TranscriptionMarker,
 } from '@/domain/recipe/transcription-markers';
 
 // The recipe form's value and every edit to it. Pure, so the form's behavior is tested without a
-// browser. Rows, tags, and photos carry ids that stay with them as they move, and a problem or a
-// review note attaches to the row it names, so it follows that row.
+// browser. Rows and photos carry ids that stay with them as they move, and a problem or a review
+// note attaches to the row it names, so it follows that row.
 
 export type RecipeFormListName = 'ingredientSections' | 'instructionSections';
 
@@ -47,11 +46,6 @@ export type RecipeFormList = {
 	rows: readonly RecipeFormRow[];
 	// About the list as a whole, such as having no ingredients at all.
 	error?: string;
-};
-
-export type RecipeFormTag = {
-	id: number;
-	label: string;
 };
 
 export type PhotoFailure = 'unreadable' | 'upload';
@@ -86,8 +80,6 @@ export type RecipeFormText = {
 	totalMinutes: string;
 	yieldAmount: string;
 	yieldUnit: string;
-	// A tag still being typed, which saving adds like the others.
-	tagDraft: string;
 };
 
 export type RecipeFormTextField = keyof RecipeFormText;
@@ -97,11 +89,8 @@ export type RecipeFormTextField = keyof RecipeFormText;
 export const recipeFormChoiceFields = ['chapter', 'holidays', 'diets'] as const;
 export type RecipeFormChoiceField = (typeof recipeFormChoiceFields)[number];
 
-// The text fields a problem can land on, which the tag being typed is not.
-type RecipeFormTextErrorField = Exclude<RecipeFormTextField, 'tagDraft'>;
-
 // The fields a problem can land on directly.
-export type RecipeFormErrorField = RecipeFormTextErrorField | RecipeFormChoiceField;
+export type RecipeFormErrorField = RecipeFormTextField | RecipeFormChoiceField;
 
 export type RecipeYieldKind = RecipeYield['kind'];
 
@@ -117,8 +106,6 @@ export type RecipeFormValues = {
 	// The diets the member chose, in display order. The form ticks and holds those a chosen one implies,
 	// and the recipe adds them as it saves.
 	diets: readonly Diet[];
-	// The recipe's tags, which the form shows nowhere and saves as they came.
-	tags: readonly RecipeFormTag[];
 	photos: Readonly<Record<RecipeImageRole, readonly RecipeFormPhoto[]>>;
 	// A save's errors, which mark their fields invalid.
 	fieldErrors: Partial<Record<RecipeFormErrorField, string>>;
@@ -128,7 +115,7 @@ export type RecipeFormValues = {
 	// and a save's errors leave them. Keyed by where each shows, so a note follows its row; a
 	// removed row's note matches nothing again, since ids are never reused.
 	reviewNotes: ReadonlyMap<ProblemKey, RecipeFormReviewNote>;
-	// Rows, tags, and photos all take the next id, so ids are unique within the form.
+	// Rows and photos all take the next id, so ids are unique within the form.
 	nextId: number;
 };
 
@@ -228,9 +215,6 @@ export type RecipeFormEdit =
 	| { type: 'setChapter'; chapter: Chapter }
 	| { type: 'setHoliday'; holiday: Holiday; chosen: boolean }
 	| { type: 'setDiet'; diet: Diet; chosen: boolean }
-	// Adds each tag not already chosen, as tagLabelsToAdd finds them, and clears the tag field.
-	| { type: 'addTags'; labels: readonly string[] }
-	| { type: 'removeTag'; tagId: number }
 	| PhotoEdit
 	| { type: 'attachErrors'; fieldErrors: FieldErrors; targets: ProblemTargets }
 	// The member says the place looks right as it is, which resolves its note.
@@ -252,10 +236,7 @@ const photoRoles = ['dish', 'scan'] as const satisfies readonly RecipeImageRole[
 
 // Text fields in the order the form shows them, around the lists. The choices follow the text after
 // the lists.
-const fieldsBeforeLists = [
-	'title',
-	'source',
-] as const satisfies readonly RecipeFormTextErrorField[];
+const fieldsBeforeLists = ['title', 'source'] as const satisfies readonly RecipeFormTextField[];
 const fieldsAfterLists = [
 	'notes',
 	'description',
@@ -264,10 +245,9 @@ const fieldsAfterLists = [
 	'totalMinutes',
 	'yieldAmount',
 	'yieldUnit',
-] as const satisfies readonly RecipeFormTextErrorField[];
+] as const satisfies readonly RecipeFormTextField[];
 
-// Problems whose paths never change, whatever the form holds. One with the tags, which the form
-// shows nowhere, is one with the whole recipe.
+// Problems whose paths never change, whatever the form holds.
 const fixedTargets: ProblemTargets = new Map<string, ProblemTarget>([
 	['title', { kind: 'field', field: 'title' }],
 	['description', { kind: 'field', field: 'description' }],
@@ -293,7 +273,6 @@ const blankText: RecipeFormText = {
 	totalMinutes: '',
 	yieldAmount: '',
 	yieldUnit: '',
-	tagDraft: '',
 };
 
 function isBlank(text: string): boolean {
@@ -307,23 +286,6 @@ export function filledText(text: string): string | undefined {
 
 function minutesText(minutes: number | undefined): string {
 	return minutes === undefined ? '' : String(minutes);
-}
-
-// Each comma-separated tag in the text, trimmed, without blanks.
-export function tagLabelsFrom(text: string): string[] {
-	return text
-		.split(',')
-		.map((label) => label.trim())
-		.filter((label) => label !== '');
-}
-
-// The labels that add a tag: each tag once, by key, and none already chosen.
-export function tagLabelsToAdd(
-	tags: readonly RecipeFormTag[],
-	labels: readonly string[]
-): string[] {
-	const chosenKeys = new Set(tags.map((tag) => tagKey(tag.label)));
-	return uniqueTagLabels(labels).filter((label) => !chosenKeys.has(tagKey(label)));
 }
 
 // What is chosen of a vocabulary once this member is chosen or not, in the vocabulary's order.
@@ -569,7 +531,6 @@ export function recipeFormValues(
 			texts: section.steps.map((step) => step.text),
 		}))
 	);
-	const tags = (content?.tags ?? []).map((label) => ({ id: newId(), label }));
 	const photos: Record<RecipeImageRole, RecipeFormPhoto[]> = { dish: [], scan: [] };
 	(content?.images ?? []).forEach((image, index) => {
 		const id = newId();
@@ -590,7 +551,6 @@ export function recipeFormValues(
 		holidays: content?.holidays ?? [],
 		// So a recipe stored as vegan shows Vegetarian held by Vegan, as when the member ticks Vegan alone.
 		diets: withoutImpliedDiets(content?.diets ?? []),
-		tags,
 		photos,
 		fieldErrors: {},
 		reviewNotes: draftReviewNotes(problems, targets),
@@ -696,7 +656,6 @@ export function recipeFormSubmission(values: RecipeFormValues): RecipeFormSubmis
 		chapter: values.chapter,
 		holidays: [...values.holidays],
 		diets: [...values.diets],
-		tags: [...values.tags.map((tag) => tag.label), ...tagLabelsFrom(text.tagDraft)],
 		images,
 	};
 	return { payload, targets };
@@ -721,7 +680,7 @@ function hasItemText(list: RecipeFormList): boolean {
 
 function fieldPlaces(
 	values: RecipeFormValues,
-	fields: readonly RecipeFormTextErrorField[]
+	fields: readonly RecipeFormTextField[]
 ): RecipeFormPlace[] {
 	return fields.flatMap((field): RecipeFormPlace[] => {
 		// The unit shows only for a yield the recipe makes, and only then is it sent.
@@ -1097,7 +1056,7 @@ function withDissolvedSectionNotesMoved(
 function answeredNoteTargets(edit: RecipeFormEdit): (ProblemTarget | { kind: 'form' })[] {
 	switch (edit.type) {
 		case 'setText':
-			return edit.field === 'tagDraft' ? [] : [{ kind: 'field', field: edit.field }];
+			return [{ kind: 'field', field: edit.field }];
 		case 'setChapter':
 			return [{ kind: 'field', field: 'chapter' }];
 		case 'setHoliday':
@@ -1189,20 +1148,6 @@ function editedRecipeForm(values: RecipeFormValues, edit: RecipeFormEdit): Recip
 			};
 		case 'setDiet':
 			return { ...values, diets: withChoice(dietVocabulary, values.diets, edit.diet, edit.chosen) };
-		case 'addTags': {
-			const labels = tagLabelsToAdd(values.tags, edit.labels);
-			return {
-				...values,
-				text: { ...values.text, tagDraft: '' },
-				tags: [
-					...values.tags,
-					...labels.map((label, index) => ({ id: values.nextId + index, label })),
-				],
-				nextId: values.nextId + labels.length,
-			};
-		}
-		case 'removeTag':
-			return { ...values, tags: values.tags.filter((tag) => tag.id !== edit.tagId) };
 		case 'addPhotos':
 		case 'startPhotoUpload':
 		case 'setPhotoProgress':

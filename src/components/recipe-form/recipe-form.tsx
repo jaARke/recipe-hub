@@ -219,8 +219,6 @@ type RecipeFormProps = {
 	action: FormAction;
 	// Where this environment keeps new photos of each role.
 	uploadFolders: Record<RecipeImageRole, string>;
-	// Every tag label in use, most used first, which the tags field suggests.
-	tagLabels: readonly string[];
 	uploader?: PhotoUploader;
 	// Absent when adding a recipe.
 	editing?: EditedRecipe;

@@ -276,7 +276,6 @@ describe('listFavorites', () => {
 					chapter: 'soups-salads',
 					holidays: [],
 					diets: [],
-					tags: ['Soup', 'Weeknight'],
 					coverImage: {
 						role: 'dish',
 						pathname: 'dish/seed/weeknight-chicken-soup.jpg',

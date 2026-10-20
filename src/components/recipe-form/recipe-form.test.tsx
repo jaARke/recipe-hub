@@ -94,7 +94,6 @@ function recipeForm(initial: RecipeFormValues, action: FormAction = refuse) {
 			initial={initial}
 			action={action}
 			uploadFolders={uploadFolders}
-			tagLabels={[]}
 			uploader={vi.fn()}
 			submitLabel="Save recipe"
 		/>
@@ -1055,7 +1054,6 @@ function AutosavedForm({
 			initial={initial}
 			action={action}
 			uploadFolders={uploadFolders}
-			tagLabels={[]}
 			uploader={vi.fn()}
 			editing={editing}
 			importId={reviewed}
@@ -1093,7 +1091,6 @@ describe('RecipeForm’s autosave', () => {
 		totalMinutes: '',
 		yieldAmount: '',
 		yieldUnit: '',
-		tagDraft: '',
 	};
 
 	// When the stored changes were made.
@@ -1109,7 +1106,6 @@ describe('RecipeForm’s autosave', () => {
 		chapter: 'desserts',
 		holidays: [],
 		diets: [],
-		tags: [],
 		photos: {
 			dish: [
 				{ id: 2, fileName: 'kept.jpg', alt: 'Bars', pathname: 'dish/development/kept.jpg' },
@@ -1293,7 +1289,7 @@ describe('RecipeForm’s autosave', () => {
 
 	it('brings an edit back only to the version of the recipe it was made on, and says so once', async () => {
 		const recipeKey = `member:recipe-form:${memberId}:recipe:${recipeId}`;
-		const editing = (version: string) => ({ id: recipeId, version, respellableTags: [] });
+		const editing = (version: string) => ({ id: recipeId, version });
 		const first = await render(
 			<AutosavedForm
 				initial={recipeFormValues(lemonBars)}
@@ -1342,12 +1338,7 @@ describe('RecipeForm’s autosave', () => {
 			JSON.stringify({ ...JSON.parse(entryFor(recipeFormSnapshot(edited))), version: 'a' })
 		);
 
-		await render(
-			<AutosavedForm
-				initial={edited}
-				editing={{ id: recipeId, version: 'b', respellableTags: [] }}
-			/>
-		);
+		await render(<AutosavedForm initial={edited} editing={{ id: recipeId, version: 'b' }} />);
 
 		await expect.poll(() => localStorage.getItem(recipeKey)).toBeNull();
 		await expect.element(page.getByText(outdatedNotice)).not.toBeInTheDocument();
@@ -1537,12 +1528,7 @@ describe('RecipeForm’s autosave', () => {
 			`member:recipe-form:${memberId}:recipe:${recipeId}`,
 			JSON.stringify({ ...JSON.parse(entryFor(restoredOver(edited))), version: 'a' })
 		);
-		await render(
-			<AutosavedForm
-				initial={edited}
-				editing={{ id: recipeId, version: 'a', respellableTags: [] }}
-			/>
-		);
+		await render(<AutosavedForm initial={edited} editing={{ id: recipeId, version: 'a' }} />);
 		await expect
 			.element(page.getByText('Discard them to go back to the recipe as it was saved.'))
 			.toBeVisible();
@@ -1961,7 +1947,7 @@ describe('RecipeForm’s drafts', () => {
 		await render(
 			<AutosavedForm
 				initial={recipeFormValues(lemonBars)}
-				editing={{ id: recipeId, version: 'a', respellableTags: [] }}
+				editing={{ id: recipeId, version: 'a' }}
 			/>
 		);
 
@@ -2004,7 +1990,7 @@ describe('RecipeForm with its page’s menu', () => {
 				/>
 				<AutosavedForm
 					initial={recipeFormValues(lemonBars)}
-					editing={{ id: recipeId, version: 'a', respellableTags: [] }}
+					editing={{ id: recipeId, version: 'a' }}
 				/>
 			</>
 		);

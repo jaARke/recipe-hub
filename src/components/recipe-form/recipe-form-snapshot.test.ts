@@ -42,7 +42,6 @@ const blankText = {
 	totalMinutes: '',
 	yieldAmount: '',
 	yieldUnit: '',
-	tagDraft: '',
 };
 
 // A new recipe's form starts with ingredient line 0 and step 1, so a heading added takes 2 and three
@@ -55,7 +54,6 @@ function halfFilledNewRecipe(): RecipeFormValues {
 		{ type: 'setRowText', list: 'ingredientSections', rowId: 0, text: '1 cup flour' },
 		{ type: 'addRow', list: 'ingredientSections', kind: 'heading' },
 		{ type: 'setRowText', list: 'ingredientSections', rowId: 2, text: 'For the glaze' },
-		{ type: 'setText', field: 'tagDraft', text: 'Dess' },
 		{ type: 'setChapter', chapter: 'desserts' },
 		{ type: 'setDiet', diet: 'vegan', chosen: true },
 		{
@@ -112,7 +110,6 @@ const keptEdit: RecipeFormSnapshot = {
 	chapter: 'desserts',
 	holidays: ['christmas'],
 	diets: ['vegan'],
-	tags: [{ id: 8, label: 'Dessert' }],
 	photos: {
 		dish: [
 			{ id: 2, alt: 'Bars on a plate', pathname: 'dish/development/bars.jpg' },
@@ -138,7 +135,7 @@ const keptEdit: RecipeFormSnapshot = {
 describe('recipeFormSnapshot', () => {
 	it('keeps what was typed and chosen, each list as rows, without errors or files', () => {
 		expect(recipeFormSnapshot(halfFilledNewRecipe())).toEqual({
-			text: { ...blankText, title: 'Lemon bars', tagDraft: 'Dess' },
+			text: { ...blankText, title: 'Lemon bars' },
 			yieldKind: 'servings',
 			ingredientSections: {
 				rows: [
@@ -150,7 +147,6 @@ describe('recipeFormSnapshot', () => {
 			chapter: 'desserts',
 			holidays: [],
 			diets: ['vegan'],
-			tags: [],
 			photos: {
 				// Only a stored photo keeps its pathname and size.
 				dish: [
@@ -279,14 +275,12 @@ describe('showSameRecipeForm', () => {
 	it('finds a form changed by any edit the member sees', () => {
 		const changes: RecipeFormEdit[][] = [
 			[{ type: 'setText', field: 'title', text: 'Lemon squares' }],
-			[{ type: 'setText', field: 'tagDraft', text: 'Dess' }],
 			[{ type: 'setRowKind', list: 'ingredientSections', rowId: 0, kind: 'heading' }],
 			[{ type: 'setPhotoAlt', photoId: 2, alt: 'Bars on a plate' }],
 			[{ type: 'setYieldKind', kind: 'makes' }],
 			[{ type: 'setChapter', chapter: 'desserts' }],
 			[{ type: 'setHoliday', holiday: 'easter', chosen: true }],
 			[{ type: 'setDiet', diet: 'gluten-free', chosen: true }],
-			[{ type: 'addTags', labels: ['Dessert'] }],
 			[{ type: 'removePhoto', photoId: 2 }],
 			[
 				{ type: 'addRow', list: 'ingredientSections', kind: 'item' },
@@ -330,18 +324,21 @@ describe('reading a snapshot', () => {
 	});
 
 	it('reads a snapshot kept before the form offered choices as one with nothing chosen', () => {
-		// The kept edit as the form kept it then.
-		const earlier = {
-			text: keptEdit.text,
+		const unchanged = {
 			yieldKind: keptEdit.yieldKind,
 			ingredientSections: keptEdit.ingredientSections,
 			instructionSections: keptEdit.instructionSections,
-			tags: keptEdit.tags,
 			photos: keptEdit.photos,
 			reviewNotes: keptEdit.reviewNotes,
 			nextId: keptEdit.nextId,
 		};
-		const read = { ...earlier, holidays: [], diets: [] };
+		// The kept edit as the form kept it then, with tags, which reading drops.
+		const earlier = {
+			...unchanged,
+			text: { ...keptEdit.text, tagDraft: 'Dess' },
+			tags: [{ id: 8, label: 'Dessert' }],
+		};
+		const read = { ...unchanged, text: keptEdit.text, holidays: [], diets: [] };
 
 		expect(readRecipeFormSnapshot(JSON.parse(JSON.stringify(earlier)))).toEqual(read);
 		expect(recipeFormSnapshotFromForm(JSON.stringify(earlier))).toEqual(read);
@@ -379,8 +376,14 @@ describe('reading a snapshot', () => {
 		['a chapter the cookbook has no', { chapter: 'soups' }],
 		['a holiday the cookbook has no', { holidays: ['groundhog-day'] }],
 		['a diet the cookbook has no', { diets: ['keto'] }],
-		['a fractional id', { tags: [{ id: 8.5, label: 'Dessert' }] }],
-		['two things with one id', { tags: [{ id: 0, label: 'Dessert' }] }],
+		[
+			'a fractional id',
+			{ instructionSections: { rows: [{ kind: 'item', id: 1.5, text: 'Bake 20 minutes.' }] } },
+		],
+		[
+			'two things with one id',
+			{ instructionSections: { rows: [{ kind: 'item', id: 0, text: 'Bake 20 minutes.' }] } },
+		],
 		[
 			'a note on no place the form has',
 			{ reviewNotes: [['field:color', { message: 'Check.', status: 'open' }]] },
@@ -492,7 +495,6 @@ describe('restoredRecipeForm', () => {
 			holidays: ['christmas'],
 			diets: ['vegan'],
 		});
-		expect(restored.tags).toEqual([{ id: 8, label: 'Dessert' }]);
 		expect(restored.fieldErrors).toEqual({});
 		expect(restored.formError).toBeUndefined();
 	});
@@ -561,13 +563,13 @@ describe('restoredRecipeForm', () => {
 	it('goes on with ids above every restored one, even past the kept next id', () => {
 		const restored = restoredRecipeForm({ ...keptEdit, nextId: 4 }, initial);
 
-		expect(restored.nextId).toBe(9);
+		expect(restored.nextId).toBe(8);
 		const added = editRecipeForm(restored, {
 			type: 'addRow',
 			list: 'instructionSections',
 			kind: 'item',
 		});
-		expect(added.instructionSections.rows.at(-1)?.id).toBe(9);
+		expect(added.instructionSections.rows.at(-1)?.id).toBe(8);
 	});
 
 	it('keeps the kept next id where it is above every id', () => {

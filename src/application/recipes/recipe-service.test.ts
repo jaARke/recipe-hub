@@ -261,7 +261,6 @@ describe('public reads', () => {
 
 		await reader.getRecipe(ref.slug);
 		await reader.listRecipes({ limit: 10, offset: 0, sort: 'newest' });
-		await reader.listTagLabels();
 		await reader.listRecipeIds();
 
 		expect(actors.wasAsked).toBe(false);
@@ -407,18 +406,9 @@ describe('getRecipeForEditing', () => {
 				...recipeContentSchema.parse(content),
 				...ref,
 				updatedAt: expect.any(Date),
-				respellableTags: ['Soup', 'Weeknight'],
 			});
 		}
 	);
-
-	it("names the recipe's tags that no other recipe uses, which an edit can respell", async () => {
-		const { serviceFor, author, ref } = await catalogWithBiscuits();
-		const service = serviceFor(author);
-		await service.createRecipe(manualEntry({ ...sampleChickenSoup, tags: ['breakfast'] }));
-
-		expect((await service.getRecipeForEditing(ref.slug))?.respellableTags).toEqual(['Baking']);
-	});
 
 	it('finds the recipe by an old slug, with its current slug', async () => {
 		const { serviceFor, versionOf, author, ref } = await catalogWithBiscuits();
@@ -539,7 +529,6 @@ describe('listRecipes', () => {
 					chapter: 'soups-salads',
 					holidays: [],
 					diets: [],
-					tags: ['Soup', 'Weeknight'],
 					coverImage: dishPhoto,
 					createdAt: expect.any(Date),
 				},
@@ -559,21 +548,6 @@ describe('listRecipes', () => {
 		const reader = (await createCatalog()).serviceFor(anonymousActor());
 
 		await expect(reader.listRecipes(page as RecipePage)).rejects.toThrow(InvalidRecipePageError);
-	});
-});
-
-describe('listTagLabels', () => {
-	it('lists the label of every tag in use, most used first', async () => {
-		const { serviceFor, addMember } = await createCatalog();
-		const member = serviceFor(await addMember('Ada'));
-		await member.createRecipe(manualEntry(sampleButtermilkBiscuits));
-		await member.createRecipe(manualEntry({ ...sampleChickenSoup, tags: ['baking', 'Soup'] }));
-
-		expect(await serviceFor(anonymousActor()).listTagLabels()).toEqual([
-			'Baking',
-			'Breakfast',
-			'Soup',
-		]);
 	});
 });
 
@@ -715,42 +689,6 @@ describe('createRecipe', () => {
 		);
 
 		expect((await service.getRecipeForEditing(ref.slug))?.images).toEqual([dishPhoto, scan]);
-	});
-
-	it('reuses the label already in use for a tag and keeps the spelling of a new one', async () => {
-		const { serviceFor, addMember } = await createCatalog();
-		const member = serviceFor(await addMember('Ada'));
-		await member.createRecipe(manualEntry({ ...sampleChickenSoup, tags: ['Weeknight', 'Soup'] }));
-
-		const ref = await member.createRecipe(
-			manualEntry({ ...sampleTomatoSalad, tags: ['WEEKNIGHT', ' soup', 'No cook'] })
-		);
-
-		expect((await member.getRecipe(ref.slug))?.tags).toEqual(['Weeknight', 'Soup', 'No cook']);
-	});
-
-	it("takes the earliest recipe's spelling of a tag saved in two, as racing saves can leave it", async () => {
-		const { recipes, serviceFor, addMember } = await createCatalog();
-		const author = await addMember('Ada');
-		for (const [input, tags] of [
-			[sampleChickenSoup, ['Weeknight']],
-			[sampleLemonIceboxPie, ['WEEKNIGHT']],
-		] as const) {
-			const content = recipeContentSchema.parse({ ...input, tags });
-			await recipes.create({
-				content,
-				provenance: { entryMode: 'manual' },
-				contributorId: author.memberId,
-				slugBase: slugify(content.title),
-			});
-		}
-		const member = serviceFor(author);
-
-		const ref = await member.createRecipe(
-			manualEntry({ ...sampleTomatoSalad, tags: ['weeknight'] })
-		);
-
-		expect((await member.getRecipe(ref.slug))?.tags).toEqual(['Weeknight']);
 	});
 
 	it('suffixes the slug of a title already in use', async () => {
@@ -1131,33 +1069,6 @@ describe('updateRecipe', () => {
 			previousSlug: 'weeknight-chicken-soup',
 			releasedImages: { recipeId: ref.id, images: sampleChickenSoup.images },
 		});
-	});
-
-	it('respells a tag that only this recipe uses', async () => {
-		const { serviceFor, versionOf, author, ref } = await catalogWithBiscuits();
-		const service = serviceFor(author);
-
-		await service.updateRecipe(
-			ref.id,
-			{ ...sampleButtermilkBiscuits, tags: ['breakfast', 'Baking'] },
-			await versionOf(ref.id)
-		);
-
-		expect((await service.getRecipe(ref.slug))?.tags).toEqual(['breakfast', 'Baking']);
-	});
-
-	it('keeps the label of a tag that another recipe also uses', async () => {
-		const { serviceFor, versionOf, author, ref } = await catalogWithBiscuits();
-		const service = serviceFor(author);
-		await service.createRecipe(manualEntry({ ...sampleChickenSoup, tags: ['Breakfast'] }));
-
-		await service.updateRecipe(
-			ref.id,
-			{ ...sampleButtermilkBiscuits, tags: ['breakfast', 'Baking'] },
-			await versionOf(ref.id)
-		);
-
-		expect((await service.getRecipe(ref.slug))?.tags).toEqual(['Breakfast', 'Baking']);
 	});
 
 	it("keeps the images the recipe has, even another environment's, and checks new ones", async () => {

@@ -442,7 +442,6 @@ export function importDraftFromExtractedRecipe(
 		chapter: recipe.chapter,
 		holidays,
 		diets,
-		tags: [],
 		images: [...images],
 	};
 

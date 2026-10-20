@@ -61,7 +61,6 @@ function content(title: string, lines: IngredientLine[]): RecipeContent {
 		chapter: 'main-dishes',
 		holidays: [],
 		diets: [],
-		tags: ['Weeknight'],
 		images: [],
 	};
 }

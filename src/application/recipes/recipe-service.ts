@@ -46,7 +46,6 @@ import {
 	parseRecipeContent,
 	recipeIdSchema,
 	type Recipe,
-	type RecipeContent,
 	type RecipeContentInput,
 	type RecipeId,
 } from '@/domain/recipe/recipe';
@@ -57,7 +56,6 @@ import {
 	type RecipeImportId,
 } from '@/domain/recipe/recipe-import';
 import { slugify, slugSchema } from '@/domain/recipe/slug';
-import { tagKey } from '@/domain/recipe/tag-normalization';
 import { getLogger } from '@/lib/logger';
 
 const recipePageSchema = paginationSchema.extend({ sort: z.enum(recipeSorts) });
@@ -134,11 +132,6 @@ export class RecipeService {
 		return { recipes: recipes.map(toRecipeSummaryDto), total };
 	}
 
-	// Every tag label in use, most used first, which the recipe form suggests.
-	async listTagLabels(): Promise<string[]> {
-		return this.recipes.listTagLabels();
-	}
-
 	// Every recipe's id, newest first, by which the edit page lets the browser drop unsaved changes to
 	// a recipe deleted since.
 	async listRecipeIds(): Promise<RecipeId[]> {
@@ -154,7 +147,7 @@ export class RecipeService {
 		}
 
 		assertCanModifyRecipe(actor, recipe);
-		return toEditableRecipeDto(recipe, await this.respellableTags(recipe));
+		return toEditableRecipeDto(recipe);
 	}
 
 	// Null for a signed-out visitor, who sees the public recipe alone.
@@ -182,7 +175,7 @@ export class RecipeService {
 		let recipe: Recipe;
 		try {
 			recipe = await this.recipes.create({
-				content: await this.withCanonicalTags(content),
+				content,
 				...origin,
 				contributorId: actor.memberId,
 				slugBase: slugify(content.title),
@@ -233,7 +226,7 @@ export class RecipeService {
 		let updated: UpdatedRecipe | null;
 		try {
 			updated = await this.recipes.update(recipe.id, {
-				content: await this.withCanonicalTags(content, recipe.id),
+				content,
 				expectedUpdatedAt: version.data,
 				slugBase: slugBase === slugify(recipe.title) ? undefined : slugBase,
 			});
@@ -397,26 +390,5 @@ export class RecipeService {
 	): ImportUnavailableError {
 		logger.warn('Recipe save refused for an unavailable import', { importId, memberId });
 		return new ImportUnavailableError();
-	}
-
-	// A tag takes the label other recipes already use, so an update can respell a tag only it uses.
-	private async withCanonicalTags(
-		content: RecipeContent,
-		excludeRecipeId?: RecipeId
-	): Promise<RecipeContent> {
-		const labels = await this.recipes.findTagLabels(content.tags.map(tagKey), excludeRecipeId);
-		const labelsByKey = new Map(labels.map((label) => [tagKey(label), label]));
-
-		return {
-			...content,
-			tags: content.tags.map((tag) => labelsByKey.get(tagKey(tag)) ?? tag),
-		};
-	}
-
-	// The recipe's tags that no other recipe uses, which withCanonicalTags lets an update respell.
-	private async respellableTags(recipe: Recipe): Promise<string[]> {
-		const labels = await this.recipes.findTagLabels(recipe.tags.map(tagKey), recipe.id);
-		const sharedKeys = new Set(labels.map(tagKey));
-		return recipe.tags.filter((tag) => !sharedKeys.has(tagKey(tag)));
 	}
 }

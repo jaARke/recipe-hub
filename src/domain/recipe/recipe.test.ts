@@ -55,7 +55,6 @@ const pastEveryTextLimit = {
 			steps: [{ text: pastLimit(settings.recipeLimits.maxStepLength) }],
 		},
 	],
-	tags: [pastLimit(settings.recipeLimits.maxTagLength)],
 	images: [
 		{
 			role: 'dish',
@@ -141,14 +140,6 @@ describe('recipeContentSchema', () => {
 		});
 	});
 
-	it('collapses repeated tags to the first spelling', () => {
-		const content = recipeContentSchema.parse({
-			...sampleChickenSoup,
-			tags: ['Soup', ' weeknight', 'SOUP', 'Weeknight '],
-		});
-		expect(content.tags).toEqual(['Soup', 'weeknight']);
-	});
-
 	it('rejects an image attached twice', () => {
 		const size = { width: 2400, height: 1800 };
 		const images = [
@@ -178,7 +169,6 @@ describe('recipeContentSchema', () => {
 				settings.recipeLimits.maxSectionHeadingLength
 			),
 			characterLimit('instructionSections.0.steps.0.text', settings.recipeLimits.maxStepLength),
-			characterLimit('tags.0', settings.recipeLimits.maxTagLength),
 			characterLimit('images.0.alt', settings.recipeLimits.maxImageAltLength),
 		]);
 	});
@@ -235,6 +225,7 @@ describe('storedRecipeContentSchema', () => {
 		const stored = {
 			...sampleChickenSoup,
 			retiredField: 'kept by an older version',
+			tags: ['Soup', 'Weeknight'],
 			ingredientSections: [{ ...section, collapsed: true }],
 		};
 
@@ -249,10 +240,6 @@ describe('storedRecipeContentSchema', () => {
 				settings.recipeLimits.maxSectionsPerList + 1
 			),
 			instructionSections: [{ steps: copies(step, settings.recipeLimits.maxStepsPerRecipe + 1) }],
-			tags: Array.from(
-				{ length: settings.recipeLimits.maxTagsPerRecipe + 1 },
-				(_, index) => `Tag ${index}`
-			),
 		};
 
 		expect(storedRecipeContentSchema.parse(stored)).toEqual(stored);

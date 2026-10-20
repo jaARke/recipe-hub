@@ -42,7 +42,6 @@ const textSchema = z.object({
 	totalMinutes: z.string(),
 	yieldAmount: z.string(),
 	yieldUnit: z.string(),
-	tagDraft: z.string(),
 }) satisfies z.ZodType<RecipeFormText>;
 
 const listNameSchema = z.enum([
@@ -52,9 +51,9 @@ const listNameSchema = z.enum([
 
 const textFields = textSchema.keyof().options;
 
-// The fields a note can be on: the text fields but the tag being typed, and the choices.
+// The fields a note can be on: the text fields and the choices.
 const errorFields = [
-	...textSchema.keyof().exclude(['tagDraft']).options,
+	...textFields,
 	...recipeFormChoiceFields,
 ] as const satisfies readonly RecipeFormErrorField[];
 
@@ -101,7 +100,6 @@ const snapshotFields = z.object({
 	chapter: z.enum(chapters).optional(),
 	holidays: z.array(z.enum(holidays)).default([]),
 	diets: z.array(z.enum(diets)).default([]),
-	tags: z.array(z.object({ id: idSchema, label: z.string() })),
 	photos: z.object({ dish: z.array(photoSchema), scan: z.array(photoSchema) }),
 	reviewNotes: z.array(z.tuple([problemKeySchema, reviewNoteSchema])),
 	nextId: idSchema,
@@ -111,17 +109,15 @@ export type RecipeFormSnapshot = z.infer<typeof snapshotFields>;
 
 type SnapshotPhoto = z.infer<typeof photoSchema>;
 
-// Rows, tags, and photos share one run of ids.
+// Rows and photos share one run of ids.
 function formIds({
 	ingredientSections,
 	instructionSections,
-	tags,
 	photos,
 }: RecipeFormSnapshot): number[] {
 	return [
 		...ingredientSections.rows,
 		...instructionSections.rows,
-		...tags,
 		...photos.dish,
 		...photos.scan,
 	].map(({ id }) => id);
@@ -159,7 +155,6 @@ export function recipeFormSnapshot(values: RecipeFormValues): RecipeFormSnapshot
 		chapter: values.chapter,
 		holidays: [...values.holidays],
 		diets: [...values.diets],
-		tags: values.tags.map(({ id, label }) => ({ id, label })),
 		photos: { dish: values.photos.dish.map(photo), scan: values.photos.scan.map(photo) },
 		reviewNotes: [...values.reviewNotes],
 		nextId: values.nextId,
@@ -243,9 +238,9 @@ export function recipeFormSnapshotImages(snapshot: RecipeFormSnapshot): string[]
 }
 
 // What the member sees of the form, as text that two forms showing the same share: each field as
-// it reads, each list's rows that hold text in order, the choices, the tags, the photos by what they
-// show, and the notes still open on each place. Ids, the next id, blank rows, and a hidden yield unit
-// are no part of it, so a row added and removed again, or a blank one moved, changes nothing.
+// it reads, each list's rows that hold text in order, the choices, the photos by what they show, and
+// the notes still open on each place. Ids, the next id, blank rows, and a hidden yield unit are no
+// part of it, so a row added and removed again, or a blank one moved, changes nothing.
 function shownRecipeForm(snapshot: RecipeFormSnapshot): string {
 	const notes = new Map(snapshot.reviewNotes);
 	const openNote = (key: ProblemKey) => {
@@ -282,7 +277,6 @@ function shownRecipeForm(snapshot: RecipeFormSnapshot): string {
 		chapter: snapshot.chapter ?? null,
 		holidays: snapshot.holidays,
 		diets: snapshot.diets,
-		tags: snapshot.tags.map(({ label }) => label),
 		photos: {
 			dish: shownPhotos(snapshot.photos.dish, true),
 			scan: shownPhotos(snapshot.photos.scan, false),
@@ -337,7 +331,6 @@ export function restoredRecipeForm(
 		chapter: snapshot.chapter,
 		holidays: snapshot.holidays,
 		diets: snapshot.diets,
-		tags: snapshot.tags,
 		photos: { dish: snapshot.photos.dish.map(photo), scan: snapshot.photos.scan.map(photo) },
 		fieldErrors: {},
 		reviewNotes: new Map(snapshot.reviewNotes),

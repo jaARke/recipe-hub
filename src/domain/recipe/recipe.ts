@@ -18,7 +18,6 @@ import { provenanceSchema } from '@/domain/recipe/provenance';
 import { recipeImageListSchemaFor } from '@/domain/recipe/recipe-image';
 import { recipeYieldSchemaFor } from '@/domain/recipe/recipe-yield';
 import { slugSchema } from '@/domain/recipe/slug';
-import { tagListSchemaFor } from '@/domain/recipe/tag';
 import { blankTextMessage, headingTextSchema, limitMessage } from '@/domain/text';
 import { settings } from '@/lib/settings';
 
@@ -113,7 +112,6 @@ function recipeContentSchemaFor(limits: ContentLimits) {
 		chapter: chapterSchema,
 		holidays: holidayListSchema,
 		diets: dietListSchema,
-		tags: tagListSchemaFor(limits),
 		images: recipeImageListSchemaFor(limits),
 	});
 }

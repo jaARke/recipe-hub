@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, arrayOverlaps, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import { ImportUnavailableError } from '@/application/ingestion/errors';
 import type {
@@ -19,7 +19,6 @@ import {
 	type RecipeId,
 } from '@/domain/recipe/recipe';
 import { slugCandidate } from '@/domain/recipe/slug';
-import { tagKey } from '@/domain/recipe/tag-normalization';
 import { boundedTransaction } from '@/infrastructure/db/bounded-transaction';
 import {
 	recipeColumns,
@@ -30,7 +29,6 @@ import {
 } from '@/infrastructure/db/recipe-mapper';
 import { recipeOrders } from '@/infrastructure/db/recipe-order';
 import { oldRecipeSlugs, recipes } from '@/infrastructure/db/schema';
-import { recipeTags, tagKeyColumn, tagLabel, tagOrder } from '@/infrastructure/db/tag-labels';
 import { lockForTransaction } from '@/infrastructure/db/transaction-lock';
 
 // Every slug allocation takes this transaction-scoped lock, so a slug checked free stays free until
@@ -256,37 +254,6 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 	async delete(id: RecipeId): Promise<Recipe | null> {
 		const [row] = await this.db.delete(recipes).where(eq(recipes.id, id)).returning(recipeColumns);
 		return row === undefined ? null : toRecipe(row);
-	}
-
-	async findTagLabels(keys: readonly string[], excludeRecipeId?: RecipeId): Promise<string[]> {
-		const wanted = new Set(keys);
-		if (wanted.size === 0) {
-			return [];
-		}
-
-		// The tag key index narrows the recipes, and tagKey stays the one definition of a tag.
-		const rows = await this.db
-			.select({ label: tagLabel })
-			.from(recipes)
-			.crossJoin(recipeTags)
-			.where(
-				and(
-					arrayOverlaps(recipes.tagKeys, [...wanted]),
-					excludeRecipeId === undefined ? undefined : ne(recipes.id, excludeRecipeId)
-				)
-			)
-			.groupBy(tagKeyColumn);
-		return rows.map(({ label }) => label).filter((label) => wanted.has(tagKey(label)));
-	}
-
-	async listTagLabels(): Promise<string[]> {
-		const rows = await this.db
-			.select({ label: tagLabel })
-			.from(recipes)
-			.crossJoin(recipeTags)
-			.groupBy(tagKeyColumn)
-			.orderBy(...tagOrder);
-		return rows.map(({ label }) => label);
 	}
 
 	async findImagesInUse(

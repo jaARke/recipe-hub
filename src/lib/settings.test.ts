@@ -63,12 +63,6 @@ describe('settingsSchema', () => {
 		expect(refusedPaths({ ...settings, display })).toEqual(['display.recipesPerPage']);
 	});
 
-	it('refuses a tag long enough that its search key could outgrow its index', () => {
-		const recipeLimits = { ...settings.recipeLimits, maxTagLength: 501 };
-
-		expect(refusedPaths({ ...settings, recipeLimits })).toEqual(['recipeLimits.maxTagLength']);
-	});
-
 	it('refuses an unknown time zone and a model id without its provider', () => {
 		const display = { ...settings.display, timeZone: 'Eastern' };
 		const ai = { ...settings.ai, pageModelId: 'claude-sonnet-5.5' };

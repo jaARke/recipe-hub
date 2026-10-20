@@ -31,7 +31,6 @@ function results(titles: readonly string[]): RecipeSearchPage {
 				chapter: 'desserts',
 				holidays: [],
 				diets: [],
-				tags: ['Dessert'],
 				createdAt: new Date('2026-10-01T12:00:00.000Z'),
 			},
 			title: [{ text: title, highlighted: false }],

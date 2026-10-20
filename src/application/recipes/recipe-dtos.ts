@@ -34,7 +34,6 @@ export type RecipeSummaryDto = {
 	chapter: Chapter;
 	holidays: Holiday[];
 	diets: Diet[];
-	tags: string[];
 	coverImage?: RecipeImage;
 	createdAt: Date;
 };
@@ -51,8 +50,6 @@ export type EditableRecipeDto = RecipeContent & {
 	slug: string;
 	// Changes with every save, so a form can tell its copy is out of date.
 	updatedAt: Date;
-	// The recipe's tags that no other recipe uses, which the edit can respell.
-	respellableTags: string[];
 };
 
 // What a signed-in member sees beside the public recipe: whether they may edit it.
@@ -125,7 +122,6 @@ export function toPublicRecipeDto(recipe: Recipe, contributor: Member): PublicRe
 		chapter: recipe.chapter,
 		holidays: recipe.holidays,
 		diets: recipe.diets,
-		tags: recipe.tags,
 		images: dishImages(recipe.images),
 		scans: scanImages(recipe.images),
 		sourceUrl: publicSourceUrl(recipe),
@@ -134,7 +130,7 @@ export function toPublicRecipeDto(recipe: Recipe, contributor: Member): PublicRe
 	};
 }
 
-export function toEditableRecipeDto(recipe: Recipe, respellableTags: string[]): EditableRecipeDto {
+export function toEditableRecipeDto(recipe: Recipe): EditableRecipeDto {
 	return {
 		id: recipe.id,
 		slug: recipe.slug,
@@ -149,10 +145,8 @@ export function toEditableRecipeDto(recipe: Recipe, respellableTags: string[]): 
 		chapter: recipe.chapter,
 		holidays: recipe.holidays,
 		diets: recipe.diets,
-		tags: recipe.tags,
 		images: recipe.images,
 		updatedAt: recipe.updatedAt,
-		respellableTags,
 	};
 }
 
@@ -171,7 +165,6 @@ export function toRecipeSummaryDto(recipe: Recipe): RecipeSummaryDto {
 		chapter: recipe.chapter,
 		holidays: recipe.holidays,
 		diets: recipe.diets,
-		tags: recipe.tags,
 		coverImage: coverImage(recipe.images),
 		createdAt: recipe.createdAt,
 	};

@@ -6,7 +6,6 @@ import { totalMinutes, type RecipeTimes } from '@/domain/recipe/duration';
 import { recipeContentSchema, type RecipeContentInput } from '@/domain/recipe/recipe';
 import { sampleChickenSoup, sampleRecipeContents } from '@/domain/recipe/samples/sample-recipes';
 import { slugify } from '@/domain/recipe/slug';
-import { tagKey } from '@/domain/recipe/tag-normalization';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
 import { recipes, recipeSearchConfiguration } from '@/infrastructure/db/schema';
@@ -42,7 +41,7 @@ async function store(input: RecipeContentInput) {
 		slugBase: slugify(content.title),
 	});
 	const [row] = await db
-		.select({ id: recipes.id, totalMinutes: recipes.totalMinutes, tagKeys: recipes.tagKeys })
+		.select({ id: recipes.id, totalMinutes: recipes.totalMinutes })
 		.from(recipes)
 		.where(eq(recipes.id, created.id));
 	return { content, row };
@@ -69,23 +68,6 @@ describe('total_minutes', () => {
 		const { content, row } = await store(input);
 
 		expect(row?.totalMinutes).toBe(totalMinutes(content.times) ?? null);
-	});
-});
-
-describe('tag_keys', () => {
-	it.each([
-		'İSTANBUL',
-		'ΟΔΟΣ',
-		'Crème brûlée',
-		'Cre\u0301me',
-		'Straße',
-		'ẞ',
-		'\u212A',
-		'  Make   AHEAD ',
-	])('agrees with tagKey for %j', async (label) => {
-		const { content, row } = await store({ ...sampleChickenSoup, tags: [label] });
-
-		expect(row?.tagKeys).toEqual(content.tags.map(tagKey));
 	});
 });
 

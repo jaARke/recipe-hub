@@ -55,7 +55,6 @@ export const sampleCremeBrulee: RecipeContentInput = {
 	chapter: 'desserts',
 	holidays: [],
 	diets: ['vegetarian', 'gluten-free'],
-	tags: ['Dessert', 'Français', 'Make ahead'],
 	images: [],
 };
 
@@ -121,7 +120,6 @@ export const sampleEclairs: RecipeContentInput = {
 	chapter: 'desserts',
 	holidays: [],
 	diets: ['vegetarian'],
-	tags: ['Dessert', 'Baking', 'Holiday'],
 	images: [],
 };
 
@@ -178,7 +176,6 @@ export const sampleJalapenoCornbread: RecipeContentInput = {
 	chapter: 'breads-rolls',
 	holidays: [],
 	diets: [],
-	tags: ['Baking', 'Side'],
 	images: [],
 };
 
@@ -248,7 +245,6 @@ export const sampleLemonBars: RecipeContentInput = {
 	chapter: 'cookies-candy',
 	holidays: [],
 	diets: ['vegetarian'],
-	tags: ['Dessert', 'Baking'],
 	images: [],
 };
 
@@ -306,7 +302,6 @@ export const sampleOatmealRaisinCookies: RecipeContentInput = {
 	chapter: 'cookies-candy',
 	holidays: [],
 	diets: ['vegetarian'],
-	tags: ['Baking', 'Dessert', 'Freezer friendly'],
 	images: [],
 };
 
@@ -368,7 +363,6 @@ export const sampleBrownButterChocolateChipCookies: RecipeContentInput = {
 	chapter: 'cookies-candy',
 	holidays: [],
 	diets: ['vegetarian'],
-	tags: ['Baking', 'Dessert'],
 	images: [],
 };
 
@@ -441,7 +435,6 @@ export const samplePeachCobbler: RecipeContentInput = {
 	chapter: 'desserts',
 	holidays: [],
 	diets: ['vegetarian'],
-	tags: ['Dessert', 'Baking', 'Summer'],
 	images: [],
 };
 
@@ -506,7 +499,6 @@ export const sampleOvernightCinnamonRolls: RecipeContentInput = {
 	chapter: 'breakfast-brunch',
 	holidays: ['christmas'],
 	diets: ['vegetarian'],
-	tags: ['Breakfast', 'Baking', 'Holiday'],
 	images: [],
 };
 
@@ -560,7 +552,6 @@ export const sampleZucchiniBread: RecipeContentInput = {
 	chapter: 'breads-rolls',
 	holidays: [],
 	diets: ['vegetarian'],
-	tags: ['Baking', 'Breakfast'],
 	images: [],
 };
 
@@ -598,6 +589,5 @@ export const sampleVanillaRicePudding: RecipeContentInput = {
 	chapter: 'desserts',
 	holidays: [],
 	diets: ['vegetarian', 'gluten-free'],
-	tags: ['Dessert'],
 	images: [],
 };

@@ -25,7 +25,6 @@ import {
 	sampleTomatoSalad,
 } from '@/domain/recipe/samples/sample-recipes';
 import { slugify } from '@/domain/recipe/slug';
-import { tagKey } from '@/domain/recipe/tag-normalization';
 
 export type RecipeRepositoryFixture = {
 	repository: RecipeRepository;
@@ -334,13 +333,12 @@ export function describeRecipeRepositoryContract(fixture: () => RecipeRepository
 	});
 
 	describe('update', () => {
-		it('replaces the content, tags, chapter, holidays and diets, and keeps the slug, provenance, and creation time', async () => {
+		it('replaces the content, chapter, holidays and diets, and keeps the slug, provenance, and creation time', async () => {
 			const provenance: Provenance = { entryMode: 'photo', aiModel: 'example/model' };
 			const created = await create(sampleButtermilkBiscuits, { provenance });
 			// The new content has no description, so a merged document would show the old one.
 			const content = recipeContentSchema.parse({
 				...sampleChickenSoup,
-				tags: ['Soup', 'Make ahead'],
 				holidays: ['new-years-day'],
 				diets: ['dairy-free'],
 			});
@@ -497,88 +495,6 @@ export function describeRecipeRepositoryContract(fixture: () => RecipeRepository
 
 			expect(await repository.findBySlug('buttermilk-biscuits')).toBeNull();
 			expect((await create(sampleButtermilkBiscuits)).slug).toBe('buttermilk-biscuits');
-		});
-	});
-
-	describe('findTagLabels', () => {
-		it('finds labels in use whose key matches, across case and spacing', async () => {
-			await create(sampleChickenSoup);
-			await create(sampleLemonIceboxPie);
-			const keys = [' make  AHEAD', 'SOUP', 'Breakfast'].map(tagKey);
-
-			const labels = await fixture().repository.findTagLabels(keys);
-
-			expect(labels.toSorted()).toEqual(['Make ahead', 'Soup']);
-		});
-
-		it('ignores the excluded recipe, so its own spellings can change', async () => {
-			const pie = await create(sampleLemonIceboxPie);
-			await create({ ...sampleChickenSoup, tags: ['make  AHEAD'] });
-			const keys = ['Dessert', 'Make ahead'].map(tagKey);
-
-			const labels = await fixture().repository.findTagLabels(keys, pie.id);
-
-			expect(labels).toEqual(['make AHEAD']);
-		});
-
-		it("gives one label for each tag, the earliest recipe's spelling", async () => {
-			const soup = await create({ ...sampleChickenSoup, tags: ['Make ahead'] });
-			await create({ ...sampleTomatoSalad, tags: ['make AHEAD'] });
-			await create({ ...sampleButtermilkBiscuits, tags: ['MAKE AHEAD'] });
-			const { repository } = fixture();
-
-			expect(await repository.findTagLabels([tagKey('Make ahead')])).toEqual(['Make ahead']);
-			expect(await repository.findTagLabels([tagKey('Make ahead')], soup.id)).toEqual([
-				'make AHEAD',
-			]);
-		});
-	});
-
-	describe('listTagLabels', () => {
-		it('lists every tag once, most used first, and tags used as often by key', async () => {
-			await create({ ...sampleChickenSoup, tags: ['Soup', 'Weeknight'] });
-			await create({ ...sampleTomatoSalad, tags: ['salad', 'Weeknight', 'Make ahead'] });
-			await create({ ...sampleButtermilkBiscuits, tags: ['Baking', 'weeknight'] });
-
-			expect(await fixture().repository.listTagLabels()).toEqual([
-				'Weeknight',
-				'Baking',
-				'Make ahead',
-				'salad',
-				'Soup',
-			]);
-		});
-
-		it("labels a tag with the earliest recipe's spelling, and the next one's once it drops the tag", async () => {
-			const soup = await create({ ...sampleChickenSoup, tags: ['Make ahead'] });
-			await create({ ...sampleTomatoSalad, tags: ['make AHEAD'] });
-			const { repository } = fixture();
-			expect(await repository.listTagLabels()).toEqual(['Make ahead']);
-
-			await save(soup, { content: recipeContentSchema.parse({ ...sampleChickenSoup, tags: [] }) });
-
-			expect(await repository.listTagLabels()).toEqual(['make AHEAD']);
-		});
-
-		it('keeps the earliest spelling when that recipe is edited later', async () => {
-			const soup = await create({ ...sampleChickenSoup, tags: ['Make ahead'] });
-			await create({ ...sampleTomatoSalad, tags: ['make AHEAD'] });
-
-			await save(soup, {
-				content: recipeContentSchema.parse({
-					...sampleChickenSoup,
-					tags: ['Make ahead'],
-					notes: 'Edited.',
-				}),
-			});
-
-			expect(await fixture().repository.listTagLabels()).toEqual(['Make ahead']);
-		});
-
-		it('lists nothing when no recipe has tags', async () => {
-			await create({ ...sampleChickenSoup, tags: [] });
-
-			expect(await fixture().repository.listTagLabels()).toEqual([]);
 		});
 	});
 

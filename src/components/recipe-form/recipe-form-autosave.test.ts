@@ -149,7 +149,10 @@ describe('readAutosavedRecipeForm', () => {
 		['a form of the shape it had before', JSON.stringify({ ...keptEdit, writtenAt: now })],
 		[
 			'a form that can’t be read',
-			JSON.stringify({ writtenAt: now.toISOString(), form: { ...keptEdit, tags: [{ id: 0 }] } }),
+			JSON.stringify({
+				writtenAt: now.toISOString(),
+				form: { ...keptEdit, ingredientSections: { rows: [{ id: 0 }] } },
+			}),
 		],
 	])('discards an entry holding %s', (_name, written) => {
 		expect(readAutosavedRecipeForm(written, undefined, now)).toBeUndefined();

@@ -19,7 +19,7 @@ describe('readRecipeOpenedFrom', () => {
 		const lists = [
 			[`${origin}/?page=2&sort=title`, 'Back to recipes', '/'],
 			[
-				`${origin}/search?q=chicken&tags=dinner&sort=newest&page=2`,
+				`${origin}/search?q=chicken&chapter=main-dishes&sort=newest&page=2`,
 				'Back to search results',
 				'/search',
 			],
@@ -53,7 +53,7 @@ describe('readRecipeOpenedFrom', () => {
 
 describe('recipeOpenedFrom', () => {
 	it('names the list the recipe was reached from, as it recorded it', () => {
-		const url = `${origin}/search?q=chicken&tags=dinner&sort=newest&page=2`;
+		const url = `${origin}/search?q=chicken&chapter=main-dishes&sort=newest&page=2`;
 
 		expect(recipeOpenedFrom(kept(url, 'Back to search results'), url)).toEqual({
 			url,
@@ -71,8 +71,8 @@ describe('recipeOpenedFrom', () => {
 		expect(recipeOpenedFrom(recorded, `${origin}/favorites`)).toBeUndefined();
 		expect(
 			recipeOpenedFrom(
-				kept(`${origin}/search?q=chicken&tags=dinner`, 'Back to search results'),
-				`${origin}/search?q=chicken&tags=dinner&tags=quick`
+				kept(`${origin}/search?q=chicken&chapter=main-dishes`, 'Back to search results'),
+				`${origin}/search?q=chicken&chapter=main-dishes&diet=vegetarian`
 			)
 		).toBeUndefined();
 	});

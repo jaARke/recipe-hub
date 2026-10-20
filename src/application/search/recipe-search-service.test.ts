@@ -204,7 +204,6 @@ describe('searchRecipes', () => {
 						chapter: 'soups-salads',
 						holidays: [],
 						diets: [],
-						tags: ['Soup', 'Weeknight'],
 						coverImage: soup.images[0],
 						createdAt: soup.createdAt,
 					},

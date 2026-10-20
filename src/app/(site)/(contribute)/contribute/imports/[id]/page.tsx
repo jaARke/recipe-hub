@@ -3,7 +3,6 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { permanentRedirect, redirect } from 'next/navigation';
 import { Suspense } from 'react';
-import { getCachedTagLabels } from '@/app/_lib/recipe-cache';
 import { loadFormMember } from '@/app/(site)/(contribute)/_lib/load-form-member';
 import { createRecipe, deleteDraft, saveDraft } from '@/app/(site)/(contribute)/contribute/actions';
 import { SignInRequiredError } from '@/application/authorization';
@@ -102,10 +101,9 @@ async function ImportReview({ params }: Pick<PageProps<'/contribute/imports/[id]
 	}
 
 	const { draft } = review;
-	const [member, savedDraft, tagLabels] = await Promise.all([
+	const [member, savedDraft] = await Promise.all([
 		loadFormMember(recipeImportPath(id)),
 		getSavedDraftService().getImportDraft(draft.id),
-		getCachedTagLabels(),
 	]);
 	const imported = recipeFormValues(draft.content, draft.problems);
 	// The member's saved draft takes the import's place; one the form can't read, as after a change to
@@ -136,7 +134,6 @@ async function ImportReview({ params }: Pick<PageProps<'/contribute/imports/[id]
 				initial={snapshot === undefined ? imported : restoredRecipeForm(snapshot, imported)}
 				action={createRecipe}
 				uploadFolders={getRecipeImageService().uploadFolders()}
-				tagLabels={tagLabels}
 				importId={draft.id}
 				autosave={{ memberId: member.id }}
 				drafts={{

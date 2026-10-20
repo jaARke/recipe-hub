@@ -200,12 +200,11 @@ describe('bounded writes', () => {
 	});
 });
 
-describe('findTagLabels and findImagesInUse', () => {
-	it('return nothing for nothing asked without querying', async () => {
+describe('findImagesInUse', () => {
+	it('returns nothing for nothing asked without querying', async () => {
 		await repository.create(newRecipe(sampleChickenSoup));
 		const query = vi.spyOn(db.$client, 'query');
 
-		expect(await repository.findTagLabels([])).toEqual([]);
 		expect(await repository.findImagesInUse([])).toEqual([]);
 		expect(query).not.toHaveBeenCalled();
 	});

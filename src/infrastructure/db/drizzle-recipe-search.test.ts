@@ -203,7 +203,6 @@ function toContent(fixture: Fixture): RecipeContentInput {
 		chapter: fixture.chapter,
 		holidays: fixture.holidays ?? [],
 		diets: fixture.diets ?? [],
-		tags: [],
 		images: [],
 	};
 }

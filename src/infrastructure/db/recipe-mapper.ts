@@ -11,7 +11,6 @@ export const recipeColumns = {
 	contributorId: recipes.contributorId,
 	content: recipes.content,
 	provenance: recipes.provenance,
-	tags: recipes.tags,
 	chapter: recipes.chapter,
 	holidays: recipes.holidays,
 	diets: recipes.diets,
@@ -22,19 +21,19 @@ export const recipeColumns = {
 type RecipeRow = InferModelFromColumns<typeof recipeColumns>;
 
 // The content's fields that leave the document for columns of their own.
-type ColumnFields = Pick<RecipeContent, 'tags' | 'chapter' | 'holidays' | 'diets'>;
+type ColumnFields = Pick<RecipeContent, 'chapter' | 'holidays' | 'diets'>;
 
 type ContentColumns = ColumnFields & {
 	content: Omit<RecipeContent, keyof ColumnFields>;
 };
 
 function columnFields(row: RecipeRow): ColumnFields {
-	return { tags: row.tags, chapter: row.chapter, holidays: row.holidays, diets: row.diets };
+	return { chapter: row.chapter, holidays: row.holidays, diets: row.diets };
 }
 
 export function toContentColumns(content: RecipeContent): ContentColumns {
-	const { tags, chapter, holidays, diets, ...document } = content;
-	return { content: document, tags, chapter, holidays, diets };
+	const { chapter, holidays, diets, ...document } = content;
+	return { content: document, chapter, holidays, diets };
 }
 
 export function toInsertColumns(recipe: NewRecipe, slug: string): typeof recipes.$inferInsert {

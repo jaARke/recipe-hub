@@ -45,7 +45,6 @@ async function renderDraftPage({
 				)}
 				action={vi.fn()}
 				uploadFolders={{ dish: 'dish/development/', scan: 'scan/development/' }}
-				tagLabels={[]}
 				uploader={vi.fn()}
 				autosave={{ memberId }}
 				drafts={{

@@ -5,7 +5,7 @@ import type { RecipeSummaryDto } from '@/application/recipes/recipe-dtos';
 import { RecipeCard } from '@/components/recipe/recipe-card';
 import { recipeIdSchema } from '@/domain/recipe/recipe';
 
-// Filed in Cookies & Candy for Christmas, vegetarian, and still carrying a free tag, with no photo.
+// Filed in Cookies & Candy for Christmas, vegetarian, with no photo.
 function cookies(changes: Partial<RecipeSummaryDto> = {}): RecipeSummaryDto {
 	return {
 		id: recipeIdSchema.parse('0199c7a4-2c3e-7b1a-9f00-000000000006'),
@@ -14,7 +14,6 @@ function cookies(changes: Partial<RecipeSummaryDto> = {}): RecipeSummaryDto {
 		chapter: 'cookies-candy',
 		holidays: ['christmas'],
 		diets: ['vegetarian'],
-		tags: ['Baking'],
 		createdAt: new Date('2026-10-01T12:00:00.000Z'),
 		...changes,
 	};
@@ -25,7 +24,7 @@ function renderCard(recipe: RecipeSummaryDto) {
 }
 
 describe('RecipeCard', () => {
-	it('shows the recipe’s holidays, then its diets, as badges, and no tags', async () => {
+	it('shows the recipe’s holidays, then its diets, as badges', async () => {
 		await renderCard(
 			cookies({ holidays: ['easter', 'christmas'], diets: ['vegetarian', 'vegan'] })
 		);
@@ -36,7 +35,6 @@ describe('RecipeCard', () => {
 				.elements()
 				.map((item) => item.textContent)
 		).toEqual(['Easter', 'Christmas', 'Vegetarian', 'Vegan']);
-		await expect.element(page.getByText('Baking')).not.toBeInTheDocument();
 	});
 
 	it('is one link to the recipe, so its badges are not links', async () => {

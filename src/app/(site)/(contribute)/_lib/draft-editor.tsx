@@ -1,6 +1,5 @@
 import 'server-only';
 import { connection } from 'next/server';
-import { getCachedTagLabels } from '@/app/_lib/recipe-cache';
 import { loadDrafts } from '@/app/(site)/(contribute)/_lib/load-drafts';
 import { loadFormMember } from '@/app/(site)/(contribute)/_lib/load-form-member';
 import { createRecipe, deleteDraft, saveDraft } from '@/app/(site)/(contribute)/contribute/actions';
@@ -36,7 +35,7 @@ export async function DraftEditor({ pageHref, draft }: DraftEditorProps) {
 	await connection();
 	const now = new Date();
 	const drafts = await loadDrafts(pageHref);
-	const [member, tagLabels] = await Promise.all([loadFormMember(pageHref), getCachedTagLabels()]);
+	const member = await loadFormMember(pageHref);
 	// One the form can't read, as after a change to what it keeps, leaves the form empty.
 	const snapshot = draft === undefined ? undefined : readRecipeFormSnapshot(draft.values);
 	const opened = snapshot === undefined ? undefined : draft;
@@ -62,7 +61,6 @@ export async function DraftEditor({ pageHref, draft }: DraftEditorProps) {
 				}
 				action={createRecipe}
 				uploadFolders={getRecipeImageService().uploadFolders()}
-				tagLabels={tagLabels}
 				autosave={{
 					memberId: member.id,
 					existing: { knownAt: now, importIds: reviewableImportIds(drafts) },

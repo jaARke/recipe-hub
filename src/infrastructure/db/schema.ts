@@ -55,13 +55,14 @@ export const recipes = pgTable(
 			.notNull()
 			.references(() => users.id),
 		// The JSON columns are untyped because the mapper validates every read. Content excludes the
-		// tags, chapter, holidays and diets, which have columns of their own.
+		// chapter, holidays and diets, which have columns of their own.
 		content: jsonb('content').notNull(),
 		provenance: jsonb('provenance').notNull(),
 		// The import the recipe was saved from. Unique, so an import saves one recipe.
 		importId: uuid('import_id')
 			.unique()
 			.references(() => recipeImports.id),
+		// Unread, as is tag_keys, and kept while the previous deployment may still read them.
 		tags: text('tags').array().notNull().default([]),
 		// Inserts that name no chapter, as the previous deployment's do, land in This & That.
 		chapter: text('chapter', { enum: chapters }).notNull().default('this-and-that'),

@@ -41,8 +41,8 @@ export function limitMessage(max: number, units: string): string {
 	return `Use ${max} ${units} or fewer.`;
 }
 
-// Text of at most max characters, measured once trimmed. Text other than plain text, such as a tag
-// or a field a form asks for by name, passes its own schema.
+// Text of at most max characters, measured once trimmed. Text other than plain text, such as a
+// yield's unit or a field a form asks for by name, passes its own schema.
 export function boundedTextSchema(max: number, text: z.ZodString = plainTextSchema): z.ZodString {
 	return text.max(max, limitMessage(max, 'characters'));
 }

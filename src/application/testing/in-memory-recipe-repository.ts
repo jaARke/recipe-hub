@@ -13,7 +13,6 @@ import type { MemberId } from '@/domain/member/member';
 import { recipeIdSchema, type Recipe, type RecipeId } from '@/domain/recipe/recipe';
 import type { RecipeImportId } from '@/domain/recipe/recipe-import';
 import { slugCandidate } from '@/domain/recipe/slug';
-import { tagKey } from '@/domain/recipe/tag-normalization';
 
 // Mirrors the database's title sort key: lowercased, with accents stripped.
 function titleSortKey(recipe: Recipe): string {
@@ -23,13 +22,6 @@ function titleSortKey(recipe: Recipe): string {
 function compareText(a: string, b: string): number {
 	return a < b ? -1 : a > b ? 1 : 0;
 }
-
-// A tag in use, with the earliest recipe's spelling as its label.
-type TagUse = {
-	key: string;
-	label: string;
-	recipeCount: number;
-};
 
 export class InMemoryRecipeRepository implements RecipeRepository {
 	private readonly recipes = new Map<RecipeId, Recipe>();
@@ -149,19 +141,6 @@ export class InMemoryRecipeRepository implements RecipeRepository {
 		return existing;
 	}
 
-	async findTagLabels(keys: readonly string[], excludeRecipeId?: RecipeId): Promise<string[]> {
-		const wanted = new Set(keys);
-		return this.tagUses(excludeRecipeId)
-			.filter(({ key }) => wanted.has(key))
-			.map(({ label }) => label);
-	}
-
-	async listTagLabels(): Promise<string[]> {
-		return this.tagUses()
-			.sort((a, b) => b.recipeCount - a.recipeCount || compareText(a.key, b.key))
-			.map(({ label }) => label);
-	}
-
 	async findImagesInUse(
 		pathnames: readonly string[],
 		excludeContributorId?: MemberId
@@ -191,30 +170,6 @@ export class InMemoryRecipeRepository implements RecipeRepository {
 					(a, b) => compareText(titleSortKey(a), titleSortKey(b)) || compareText(a.id, b.id)
 				);
 		}
-	}
-
-	// Earliest first, so the first spelling of a tag labels it. The stable sort keeps recipes created in
-	// the same millisecond in the order they were created, as the database's time-ordered ids do.
-	private tagUses(excludeRecipeId?: RecipeId): TagUse[] {
-		const uses = new Map<string, TagUse>();
-		const earliestFirst = [...this.recipes.values()].sort(
-			(a, b) => a.createdAt.getTime() - b.createdAt.getTime()
-		);
-		for (const recipe of earliestFirst) {
-			if (recipe.id === excludeRecipeId) {
-				continue;
-			}
-			for (const label of recipe.tags) {
-				const key = tagKey(label);
-				const use = uses.get(key);
-				uses.set(key, {
-					key,
-					label: use?.label ?? label,
-					recipeCount: (use?.recipeCount ?? 0) + 1,
-				});
-			}
-		}
-		return [...uses.values()];
 	}
 
 	// A recipe's own slugs, current or old, are free for it.

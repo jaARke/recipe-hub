@@ -82,14 +82,10 @@ export const settingsSchema = z
 			maxSectionHeadingLength: z.int().positive(),
 			maxIngredientLineLength: z.int().positive(),
 			maxStepLength: z.int().positive(),
-			// A tag's search key past about 2,700 bytes fails the insert on recipes_tag_keys_idx, and a
-			// character takes up to four bytes.
-			maxTagLength: z.int().positive().max(500),
 			maxImageAltLength: z.int().positive(),
 			maxIngredientLinesPerRecipe: z.int().positive(),
 			maxStepsPerRecipe: z.int().positive(),
 			maxSectionsPerList: z.int().positive(),
-			maxTagsPerRecipe: z.int().positive(),
 		}),
 	})
 	.refine(({ photos }) => photos.maxScansPerImport <= photos.maxScansPerRecipe, {

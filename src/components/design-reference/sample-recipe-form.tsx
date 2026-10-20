@@ -171,13 +171,11 @@ const sampleDrafts: RecipeFormDrafts = {
 
 function SampleRecipeForm({
 	initial,
-	tagLabels,
 	editing,
 	openedDraft,
 	standInScans = false,
 }: {
 	initial: RecipeFormValues;
-	tagLabels: readonly string[];
 	editing?: EditedRecipe;
 	// The saved draft the form opens, when adding a recipe.
 	openedDraft?: OpenedDraft;
@@ -197,7 +195,6 @@ function SampleRecipeForm({
 			initial={values}
 			action={saveSampleRecipe}
 			uploadFolders={sampleUploadFolders}
-			tagLabels={tagLabels}
 			uploader={sampleUpload}
 			editing={editing}
 			drafts={editing === undefined ? { ...sampleDrafts, opened: openedDraft } : undefined}
@@ -246,12 +243,10 @@ function sampleMenu(subject: SampleEditingSubject): React.ReactNode {
 function SampleEditingPage({
 	subject,
 	initial,
-	tagLabels,
 	standInScans,
 }: {
 	subject: SampleEditingSubject;
 	initial: RecipeFormValues;
-	tagLabels: readonly string[];
 	standInScans?: boolean;
 }) {
 	const draft = subject.page === 'add' ? subject.draft : undefined;
@@ -268,7 +263,6 @@ function SampleEditingPage({
 			)}
 			<SampleRecipeForm
 				initial={initial}
-				tagLabels={tagLabels}
 				editing={subject.page === 'edit' ? subject.recipe : undefined}
 				openedDraft={draft}
 				standInScans={standInScans}
