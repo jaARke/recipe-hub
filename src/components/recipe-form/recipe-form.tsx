@@ -127,34 +127,28 @@ import { settings } from '@/lib/settings';
 
 const failureMessage = 'We couldn’t save the recipe. Check your connection and try again.';
 
-// What the action bar says of the draft, by where saving stands. A refusal says its own message where
-// it has one, and a page that stays unsaved goes on to say why.
+// What the action bar says of the draft, by where saving stands; it says nothing while there is
+// nothing to save. A refusal says its own message where it has one, and a page that stays unsaved
+// goes on to say why.
 const draftStatusMessages = {
-	empty: 'Saves as a draft once you fill something in',
 	saving: 'Saving draft',
 	saved: 'Draft saved',
-	deleted: 'Form is empty, so the draft was deleted',
 	unreachable: 'We couldn’t save the draft. Check your connection; your next change tries again.',
 	refused: 'The draft wasn’t saved.',
 	unsaved: 'Your changes here aren’t saved, so this page stays open.',
 	photosUploading: 'Photos are still uploading, so this page stays open.',
 	leaveFailed: 'We couldn’t reach the site. Check your connection and try again.',
-	deletedLeaveFailed:
-		'The draft was deleted, but we couldn’t reach the site to leave this page. Check your connection and try again.',
 } as const satisfies Record<RecipeFormDraftStatus['kind'], string>;
 
 // How the action bar marks each: a spinner while saving, a check once saved.
 const draftStatusKinds = {
-	empty: 'progress',
 	saving: 'pending',
 	saved: 'confirmation',
-	deleted: 'progress',
 	unreachable: 'progress',
 	refused: 'progress',
 	unsaved: 'progress',
 	photosUploading: 'progress',
 	leaveFailed: 'progress',
-	deletedLeaveFailed: 'progress',
 } as const satisfies Record<RecipeFormDraftStatus['kind'], FormStatusKind>;
 
 // Why changes kept in this browser were for an earlier version of the recipe.
@@ -856,10 +850,17 @@ function RecipeForm({
 			<ActionBar
 				status={
 					<>
-						{drafting.status !== undefined && (
+						{/* Stays while it says nothing, so what it says next is announced. */}
+						{drafts !== undefined && (
 							<FormStatusMessage
-								kind={draftStatusKinds[drafting.status.kind]}
-								message={draftStatusMessage(drafting.status)}
+								kind={
+									drafting.status === undefined
+										? 'progress'
+										: draftStatusKinds[drafting.status.kind]
+								}
+								message={
+									drafting.status === undefined ? undefined : draftStatusMessage(drafting.status)
+								}
 							/>
 						)}
 						{photosInProgress && (
@@ -930,7 +931,9 @@ function draftStatusMessage(status: RecipeFormDraftStatus): string {
 		case 'refused':
 			return status.message ?? draftStatusMessages.refused;
 		case 'unsaved':
-			return `${draftStatusMessages.unsaved} ${draftStatusMessage(status.because)}`;
+			return status.because === undefined
+				? draftStatusMessages.unsaved
+				: `${draftStatusMessages.unsaved} ${draftStatusMessage(status.because)}`;
 		default:
 			return draftStatusMessages[status.kind];
 	}

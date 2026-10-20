@@ -44,14 +44,10 @@ export type DraftRequests<Content> = {
 	delete: (held: DraftVersion) => Promise<DraftDeleteOutcome>;
 };
 
-// What the form says of its draft.
+// What the form says of its draft, where it has anything to say.
 export type DraftSaveStatus =
-	// Holds nothing, and no draft was kept.
-	| { kind: 'empty' }
 	| { kind: 'saving' }
 	| { kind: 'saved' }
-	// Emptied, so the draft it held was deleted.
-	| { kind: 'deleted' }
 	// The last request failed to reach the site or outlasted its bound.
 	| { kind: 'unreachable' }
 	| { kind: 'refused'; message: string | undefined };
@@ -63,7 +59,8 @@ export type DraftSaveState<Content> = {
 	// Whether the form shows anything the server may not hold yet: a change not saved, or a request
 	// still on its way.
 	unsaved: boolean;
-	status: DraftSaveStatus;
+	// Nothing while no draft is held and nothing is saving or failed, as for an empty form.
+	status: DraftSaveStatus | undefined;
 };
 
 // Where saving stands once it has done what it can.
@@ -137,8 +134,6 @@ export function createDraftSaveCoordinator<Content>({
 	let failure: DraftSaveStatus | undefined;
 	let halted = false;
 	let stopped = false;
-	// Whether emptying the form deleted the draft it held, and nothing was saved since.
-	let deleted = false;
 	let state: DraftSaveState<Content> = {
 		held,
 		saved,
@@ -150,7 +145,7 @@ export function createDraftSaveCoordinator<Content>({
 		return inFlight !== undefined || !same(latest, saved);
 	}
 
-	function currentStatus(): DraftSaveStatus {
+	function currentStatus(): DraftSaveStatus | undefined {
 		if (halted && failure !== undefined) {
 			return failure;
 		}
@@ -163,15 +158,13 @@ export function createDraftSaveCoordinator<Content>({
 		if (failure !== undefined) {
 			return failure;
 		}
-		if (held !== undefined) {
-			return { kind: 'saved' };
-		}
-		return deleted ? { kind: 'deleted' } : { kind: 'empty' };
+		return held === undefined ? undefined : { kind: 'saved' };
 	}
 
-	function sameStatus(a: DraftSaveStatus, b: DraftSaveStatus): boolean {
-		const message = (status: DraftSaveStatus) => ('message' in status ? status.message : undefined);
-		return a.kind === b.kind && message(a) === message(b);
+	function sameStatus(a: DraftSaveStatus | undefined, b: DraftSaveStatus | undefined): boolean {
+		const message = (status: DraftSaveStatus | undefined) =>
+			status !== undefined && 'message' in status ? status.message : undefined;
+		return a?.kind === b?.kind && message(a) === message(b);
 	}
 
 	// Saving does nothing more until the request in flight settles, or ever once halted.
@@ -283,13 +276,11 @@ export function createDraftSaveCoordinator<Content>({
 				held = outcome.draft;
 				saved = sent.content;
 				failure = undefined;
-				deleted = false;
 				break;
 			case 'deleted':
 				held = undefined;
 				saved = empty;
 				failure = undefined;
-				deleted = true;
 				break;
 			case 'refused':
 				failure = { kind: 'refused', message: outcome.message };
@@ -381,7 +372,6 @@ export function createDraftSaveCoordinator<Content>({
 			failure = undefined;
 			halted = false;
 			stopped = false;
-			deleted = false;
 			publish();
 		},
 	};

@@ -1856,6 +1856,12 @@ describe('RecipeForm’s drafts', () => {
 		return page.getByRole('button', { name: 'Finish later' });
 	}
 
+	// The text of the action bar's status, which stays mounted as it says nothing, so what it says
+	// next is announced; undefined where it isn't.
+	function draftStatusText(): string | null | undefined {
+		return document.querySelector('[data-action-bar] [role="status"]')?.textContent;
+	}
+
 	function status(text: string) {
 		return page.getByRole('status').filter({ hasText: text });
 	}
@@ -1878,16 +1884,18 @@ describe('RecipeForm’s drafts', () => {
 		window.history.replaceState(null, '', '/');
 	});
 
-	it('says a new recipe saves once it holds something, and saves nothing for one left empty', async () => {
+	it('says nothing of saving while a new form holds nothing, and saves nothing for one left empty', async () => {
 		const save = saving();
 		await render(<DraftForm drafts={draftsWith(save)} />);
 
-		await expect.element(status('Saves as a draft once you fill something in')).toBeInTheDocument();
+		await expect.poll(draftStatusText).toBe('');
 		await title().fill('L');
 		await title().clear();
 		await new Promise((resolve) => setTimeout(resolve, 1_500));
 
 		expect(save).not.toHaveBeenCalled();
+		expect(draftStatusText()).toBe('');
+		expect(document.body.textContent).not.toContain('Saves as a draft');
 	});
 
 	it('saves a moment after a change, says so, counts the draft in the header, and then names it in the address', async () => {
@@ -1974,7 +1982,7 @@ describe('RecipeForm’s drafts', () => {
 		expect(router.refresh).not.toHaveBeenCalled();
 	});
 
-	it('deletes the draft at the version it holds once the form is emptied, and says so', async () => {
+	it('deletes the draft at the version it holds once the form is emptied, and then says nothing', async () => {
 		const drafts = draftsWith(saving(), {
 			opened: { id: draftId, savedAt },
 			page: 'draft',
@@ -1984,10 +1992,9 @@ describe('RecipeForm’s drafts', () => {
 
 		await title().clear();
 
-		await expect
-			.element(status('Form is empty, so the draft was deleted'), afterSaving)
-			.toBeInTheDocument();
-		expect(drafts.delete).toHaveBeenCalledOnce();
+		await expect.poll(() => drafts.delete, afterSaving).toHaveBeenCalledOnce();
+		await expect.poll(draftStatusText).toBe('');
+		expect(document.body.textContent).not.toContain('the draft was deleted');
 		expect(named(vi.mocked(drafts.delete))).toEqual({
 			id: draftId,
 			version: savedAt.toISOString(),
@@ -2514,8 +2521,7 @@ describe('RecipeForm with its page’s menu', () => {
 		await expect
 			.element(
 				page.getByRole('status').filter({
-					hasText:
-						'The draft was deleted, but we couldn’t reach the site to leave this page. Check your connection and try again.',
+					hasText: 'We couldn’t reach the site. Check your connection and try again.',
 				})
 			)
 			.toBeInTheDocument();

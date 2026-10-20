@@ -97,14 +97,14 @@ afterEach(() => {
 });
 
 describe('createDraftSaveCoordinator', () => {
-	it('starts empty, or saved for a draft it opens', () => {
+	it('starts with nothing to say, or saved for a draft it opens', () => {
 		const server = stalledServer();
 
 		expect(coordinatorFor(server).getSnapshot()).toEqual({
 			held: undefined,
 			saved: '',
 			unsaved: false,
-			status: { kind: 'empty' },
+			status: undefined,
 		});
 		expect(
 			coordinatorFor(server, { draft: firstSave, content: 'Lemon bars' }).getSnapshot()
@@ -215,7 +215,7 @@ describe('createDraftSaveCoordinator', () => {
 			held: undefined,
 			saved: '',
 			unsaved: false,
-			status: { kind: 'deleted' },
+			status: undefined,
 		});
 
 		coordinator.change('Lemon squares');
@@ -240,7 +240,7 @@ describe('createDraftSaveCoordinator', () => {
 		await vi.advanceTimersByTimeAsync(debounceMs);
 
 		expect(server.sent()).toEqual([]);
-		expect(coordinator.getSnapshot().status).toEqual({ kind: 'empty' });
+		expect(coordinator.getSnapshot().status).toBeUndefined();
 	});
 
 	it('says a delete another page’s save refused, and stops saving for good', async () => {

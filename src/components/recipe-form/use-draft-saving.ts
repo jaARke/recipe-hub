@@ -58,17 +58,14 @@ export type RecipeFormDrafts = {
 	page?: 'new' | 'draft';
 };
 
-// Leaving for the start page failed: as Finish later left, or once the page's menu deleted the draft.
-type LeaveFailure = { kind: 'leaveFailed' } | { kind: 'deletedLeaveFailed' };
-
-// What the form says of its draft: where saving stands; that the page stays because what it shows
-// isn't saved, and why, or because photos are still uploading; or that leaving for the start page
-// failed.
+// What the form says of its draft, where it has anything to say: where saving stands; that the page
+// stays because what it shows isn't saved, and why, or because photos are still uploading; or that
+// leaving for the start page failed, as Finish later left or once the page's menu deleted the draft.
 export type RecipeFormDraftStatus =
 	| DraftSaveStatus
-	| { kind: 'unsaved'; because: DraftSaveStatus }
+	| { kind: 'unsaved'; because: DraftSaveStatus | undefined }
 	| { kind: 'photosUploading' }
-	| LeaveFailure;
+	| { kind: 'leaveFailed' };
 
 // What a draft keeps of the form, with where a refused save's problems show.
 type DraftContent = {
@@ -189,10 +186,8 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 		coordinator?.getSnapshot ?? noDraftState
 	);
 	const [finishing, startFinishing] = React.useTransition();
-	// Why leaving failed, and where saving stood then, which the status says until saving moves on.
-	const [leaveFailure, setLeaveFailure] = useTransientState<
-		LeaveFailure & { at: DraftSaveState<DraftContent> }
-	>();
+	// Where saving stood as leaving failed, which the status says until saving moves on.
+	const [leaveFailedAt, setLeaveFailedAt] = useTransientState<DraftSaveState<DraftContent>>();
 	// Where saving stood as Finish later stayed, which the status explains until saving moves on.
 	const [stayedAt, setStayedAt] = useTransientState<DraftSaveState<DraftContent>>();
 	// Leaving would stop the uploads, and a draft keeps only stored photos.
@@ -283,11 +278,7 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 	useOnKeptPageHide(releaseAddress);
 
 	const leave = React.useCallback(
-		async (
-			keptDraftId: string | undefined,
-			history: 'push' | 'replace',
-			failure: LeaveFailure = { kind: 'leaveFailed' }
-		) => {
+		async (keptDraftId: string | undefined, history: 'push' | 'replace') => {
 			if (actions === undefined || coordinator === undefined) {
 				return;
 			}
@@ -296,11 +287,11 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 			} catch (error) {
 				if (!isNextNavigation(error)) {
 					releaseAddress();
-					setLeaveFailure({ ...failure, at: coordinator.getSnapshot() });
+					setLeaveFailedAt(coordinator.getSnapshot());
 				}
 			}
 		},
-		[actions, coordinator, releaseAddress, setLeaveFailure]
+		[actions, coordinator, releaseAddress, setLeaveFailedAt]
 	);
 
 	// Stays wherever the server doesn't hold what the form shows, as after a failed save, a save
@@ -310,7 +301,7 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 		if (coordinator === undefined) {
 			return;
 		}
-		setLeaveFailure(undefined);
+		setLeaveFailedAt(undefined);
 		setStayedAt(undefined);
 		setStayedForPhotos(photosUploading);
 		if (photosUploading) {
@@ -338,7 +329,7 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 		releaseAddress,
 		nameInAddress,
 		leave,
-		setLeaveFailure,
+		setLeaveFailedAt,
 		setStayedAt,
 		setStayedForPhotos,
 	]);
@@ -374,7 +365,7 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 							if (page !== undefined) {
 								nameInAddress(undefined);
 							}
-							void leave(undefined, 'replace', { kind: 'deletedLeaveFailed' });
+							void leave(undefined, 'replace');
 							return { status: 'success' };
 						},
 					},
@@ -406,8 +397,8 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 	let status: RecipeFormDraftStatus | undefined = state?.status;
 	if (state !== undefined && stayedForPhotos === true && photosUploading) {
 		status = { kind: 'photosUploading' };
-	} else if (state !== undefined && leaveFailure?.at === state) {
-		status = { kind: leaveFailure.kind };
+	} else if (state !== undefined && leaveFailedAt === state) {
+		status = { kind: 'leaveFailed' };
 	} else if (state !== undefined && stayedAt === state) {
 		status = { kind: 'unsaved', because: state.status };
 	}
