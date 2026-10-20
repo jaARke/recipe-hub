@@ -4,6 +4,7 @@ import {
 	chapterLabels,
 	chapterRecipeCategories,
 	chapters,
+	chapterSchema,
 	type Chapter,
 } from '@/domain/recipe/chapter';
 
@@ -88,5 +89,19 @@ describe('chapterFromCategories', () => {
 	it('names none when no category names one', () => {
 		expect(chapterFromCategories(['Holiday', 'Easy', ''])).toBe(null);
 		expect(chapterFromCategories([])).toBe(null);
+	});
+});
+
+describe('chapterSchema', () => {
+	it('takes a chapter', () => {
+		expect(chapterSchema.parse('desserts')).toBe('desserts');
+	});
+
+	it('asks for a chapter when none or an unknown one is given', () => {
+		for (const value of [undefined, '', 'Desserts', 'dinner']) {
+			const result = chapterSchema.safeParse(value);
+			expect(result.success).toBe(false);
+			expect(result.error?.issues[0]?.message).toBe('Choose a chapter.');
+		}
 	});
 });

@@ -334,13 +334,15 @@ export function describeRecipeRepositoryContract(fixture: () => RecipeRepository
 	});
 
 	describe('update', () => {
-		it('replaces the content and tags, and keeps the slug, provenance, and creation time', async () => {
+		it('replaces the content, tags, chapter, holidays and diets, and keeps the slug, provenance, and creation time', async () => {
 			const provenance: Provenance = { entryMode: 'photo', aiModel: 'example/model' };
 			const created = await create(sampleButtermilkBiscuits, { provenance });
 			// The new content has no description, so a merged document would show the old one.
 			const content = recipeContentSchema.parse({
 				...sampleChickenSoup,
 				tags: ['Soup', 'Make ahead'],
+				holidays: ['new-years-day'],
+				diets: ['dairy-free'],
 			});
 			const { repository, contributorId } = fixture();
 

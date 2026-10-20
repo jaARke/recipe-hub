@@ -24,6 +24,8 @@ test('a recipe entered by hand is saved, edited, and deleted', async ({ page, si
 	await form.getByRole('textbox', { name: 'Ingredient 2' }).fill('1 teaspoon salt');
 	await form.getByRole('textbox', { name: 'Step 1' }).fill('Bring the water to a boil.');
 	await form.getByRole('textbox', { name: 'Servings' }).fill('4');
+	await form.getByRole('radio', { name: 'Soups & Salads' }).check();
+	await form.getByRole('checkbox', { name: 'Vegan' }).check();
 	await page.getByRole('button', { name: 'Save recipe' }).click();
 
 	await expect(page).toHaveURL(recipePath(slugify(title)));
@@ -40,6 +42,11 @@ test('a recipe entered by hand is saved, edited, and deleted', async ({ page, si
 	await recipe.getByRole('link', { name: 'Edit recipe' }).click();
 	await expect(page).toHaveURL(recipeEditPath(slugify(title)));
 	await expect(page.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+	// The recipe keeps its chapter and diets, with what Vegan implies.
+	await expect(page.getByRole('radio', { name: 'Soups & Salads' })).toBeChecked();
+	for (const diet of ['Vegan', 'Vegetarian', 'Dairy-free']) {
+		await expect(page.getByRole('checkbox', { name: diet })).toBeChecked();
+	}
 	await page.getByRole('textbox', { name: 'Title' }).fill(editedTitle);
 	await page.getByRole('button', { name: 'Add step' }).click();
 	await page.getByRole('textbox', { name: 'Step 2' }).fill('Stir in the salt.');

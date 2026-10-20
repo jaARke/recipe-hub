@@ -85,6 +85,34 @@
       "when": 1792107611305,
       "tag": "0011_add-recipe-draft-provenance",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792454045446,
+      "tag": "0012_add-recipe-chapter-holidays-and-diets",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792454049113,
+      "tag": "0013_search-recipe-filing",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792454056047,
+      "tag": "0014_recreate-recipe-search-vector-index",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1792454056338,
+      "tag": "0015_file-recipes-by-their-tags",
+      "breakpoints": true
     }
   ]
 }

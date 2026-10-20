@@ -26,6 +26,11 @@ import { useHydrated } from '@/components/forms/use-hydrated';
 import { useTransientState } from '@/components/forms/use-transient-state';
 import { wideContentProps } from '@/components/layout/page-container';
 import { ActionBar } from '@/components/recipe-form/action-bar';
+import {
+	classificationFieldIds,
+	classificationFieldLabels,
+	ClassificationFields,
+} from '@/components/recipe-form/classification-fields';
 import { FieldRow, RowTextField } from '@/components/recipe-form/field-row';
 import { useHoldDraft } from '@/components/recipe-form/held-draft';
 import {
@@ -66,6 +71,7 @@ import {
 	recipeFormSubmission,
 	type ProblemTarget,
 	type RecipeFormCheck,
+	type RecipeFormChoiceField,
 	type RecipeFormErrorField,
 	type RecipeFormListName,
 	type RecipeFormLocation,
@@ -88,7 +94,6 @@ import {
 	SectionedListField,
 	sectionedListFieldIds,
 } from '@/components/recipe-form/sectioned-list-field';
-import { TagsField, tagsFieldIds, tagsFieldLabel } from '@/components/recipe-form/tags-field';
 import { useRecipeFormAutosave } from '@/components/recipe-form/use-recipe-form-autosave';
 import { savedDraftPath } from '@/components/recipe-import/recipe-entry-paths';
 import { IngredientLineText } from '@/components/recipe/ingredient-line-text';
@@ -141,7 +146,7 @@ const yieldKindItems = [
 ] as const satisfies readonly { value: RecipeYieldKind; label: string }[];
 
 // The fields whose text the form holds as typed, each with its own problems.
-type TextFieldName = Exclude<RecipeFormErrorField, 'tags'>;
+type TextFieldName = Exclude<RecipeFormErrorField, RecipeFormChoiceField>;
 
 type TimeFieldName = Extract<TextFieldName, `${string}Minutes`>;
 
@@ -276,7 +281,6 @@ function RecipeForm({
 	initial,
 	action,
 	uploadFolders,
-	tagLabels,
 	uploader = uploadPhoto,
 	editing,
 	importId,
@@ -327,7 +331,7 @@ function RecipeForm({
 		yieldKind: `${baseId}-yieldKind`,
 		field: (field: TextFieldName) => `${baseId}-${field}`,
 		list: (list: RecipeFormListName) => `${baseId}-${list}`,
-		tags: `${baseId}-tags`,
+		classification: `${baseId}-classification`,
 		photos: (role: RecipeImageRole) => `${baseId}-photos-${role}`,
 	};
 	const textUndo = useFieldUndo(
@@ -398,6 +402,30 @@ function RecipeForm({
 		return field === 'yieldAmount' ? yieldAmountLabels[values.yieldKind] : textFieldLabels[field];
 	}
 
+	// A group of choices links to its error, as a list does, since no one choice stands for it.
+	function fieldParts(
+		field: RecipeFormErrorField
+	): Pick<SummarizedProblem, 'label' | 'targetId'> & { noteId: string } {
+		switch (field) {
+			case 'chapter':
+			case 'holidays':
+			case 'diets': {
+				const choiceIds = classificationFieldIds(ids.classification, field);
+				return {
+					label: classificationFieldLabels[field],
+					targetId: choiceIds.error,
+					noteId: choiceIds.note,
+				};
+			}
+			default:
+				return {
+					label: fieldLabel(field),
+					targetId: ids.field(field),
+					noteId: textFieldIds(ids.field(field)).note,
+				};
+		}
+	}
+
 	// What the summary names a place by, the field or error its link focuses, and its note's id.
 	function locationParts(
 		target: RecipeFormLocation
@@ -406,17 +434,7 @@ function RecipeForm({
 			case 'form':
 				return { noteId: ids.formNote };
 			case 'field':
-				return target.field === 'tags'
-					? {
-							label: tagsFieldLabel,
-							targetId: tagsFieldIds(ids.tags).input,
-							noteId: tagsFieldIds(ids.tags).note,
-						}
-					: {
-							label: fieldLabel(target.field),
-							targetId: ids.field(target.field),
-							noteId: textFieldIds(ids.field(target.field)).note,
-						};
+				return fieldParts(target.field);
 			case 'list':
 				return {
 					label: listFieldLabels[target.list].legend,
@@ -800,14 +818,13 @@ function RecipeForm({
 							{yieldUnit !== undefined && <RowTextField {...yieldUnit} autoComplete="off" />}
 						</FieldRow>
 					</FieldSet>
-					<TagsField
-						idPrefix={ids.tags}
-						tags={values.tags}
-						draft={values.text.tagDraft}
-						tagLabels={tagLabels}
-						respellableTags={editing?.respellableTags ?? []}
-						error={values.fieldErrors.tags}
-						note={noteFor({ kind: 'field', field: 'tags' })}
+					<ClassificationFields
+						idPrefix={ids.classification}
+						chapter={values.chapter}
+						holidays={values.holidays}
+						diets={values.diets}
+						errors={values.fieldErrors}
+						noteFor={noteFor}
 						dispatch={dispatch}
 					/>
 					<PhotoField

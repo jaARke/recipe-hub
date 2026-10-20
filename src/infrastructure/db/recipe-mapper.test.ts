@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { parseRecipeContent } from '@/domain/recipe/recipe';
-import { sampleChickenSoup } from '@/domain/recipe/samples/sample-recipes';
-import { toRecipe } from '@/infrastructure/db/recipe-mapper';
+import {
+	sampleChickenSoup,
+	sampleMolassesSpiceCookies,
+} from '@/domain/recipe/samples/sample-recipes';
+import { toContentColumns, toRecipe } from '@/infrastructure/db/recipe-mapper';
 import { settings } from '@/lib/settings';
 
 const longTitle = 'a'.repeat(settings.recipeLimits.maxTitleLength + 1);
@@ -24,9 +27,32 @@ const row = {
 	content: { ...sampleChickenSoup, title: longTitle, images: dishPhotos },
 	provenance: { entryMode: 'manual' },
 	tags: ['Soup', longTag],
+	chapter: 'soups-salads' as const,
+	holidays: [],
+	diets: [],
 	createdAt: new Date('2026-10-10T12:00:00Z'),
 	updatedAt: new Date('2026-10-10T12:00:00Z'),
 };
+
+describe('toContentColumns', () => {
+	it('keeps the tags, chapter, holidays and diets out of the document, and toRecipe reads them back', () => {
+		const content = parseRecipeContent(sampleMolassesSpiceCookies);
+
+		const { content: document, ...columns } = toContentColumns(content);
+
+		expect(columns).toEqual({
+			tags: ['Baking', 'Holiday', 'Freezer friendly'],
+			chapter: 'cookies-candy',
+			holidays: ['christmas'],
+			diets: ['vegetarian'],
+		});
+		expect(document).not.toHaveProperty('tags');
+		expect(document).not.toHaveProperty('chapter');
+		expect(document).not.toHaveProperty('holidays');
+		expect(document).not.toHaveProperty('diets');
+		expect(toRecipe({ ...row, content: document, ...columns })).toMatchObject(content);
+	});
+});
 
 describe('toRecipe', () => {
 	it('reads a recipe stored past lowered limits, whose next save names each field', () => {

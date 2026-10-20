@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	holidayLabels,
+	holidayListSchema,
 	holidays,
 	holidaysFromKeywords,
 	type Holiday,
@@ -68,5 +69,18 @@ describe('holidaysFromKeywords', () => {
 	it('finds none in keywords that name no holiday', () => {
 		expect(holidaysFromKeywords(['weeknight', 'chicken', ''])).toEqual([]);
 		expect(holidaysFromKeywords([])).toEqual([]);
+	});
+});
+
+describe('holidayListSchema', () => {
+	it('keeps each holiday once, in calendar order', () => {
+		expect(holidayListSchema.parse(['christmas', 'easter', 'christmas'])).toEqual([
+			'easter',
+			'christmas',
+		]);
+	});
+
+	it('refuses a holiday outside the vocabulary', () => {
+		expect(holidayListSchema.safeParse(['hanukkah']).success).toBe(false);
 	});
 });

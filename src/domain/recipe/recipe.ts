@@ -1,9 +1,12 @@
 import { z } from 'zod';
 import { memberIdSchema } from '@/domain/member/member';
 import { problemsFromZodError } from '@/domain/problem';
+import { chapterSchema, noChapterMessage } from '@/domain/recipe/chapter';
 import { storedContent, writtenContent, type ContentLimits } from '@/domain/recipe/content-limits';
+import { dietListSchema } from '@/domain/recipe/diet';
 import { recipeTimesSchema } from '@/domain/recipe/duration';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
+import { holidayListSchema } from '@/domain/recipe/holiday';
 import {
 	ingredientSectionSchemaFor,
 	noIngredientsMessage,
@@ -34,6 +37,7 @@ export const missingContentMessages = {
 	title: blankTextMessage(titleAsked),
 	ingredientSections: noIngredientsMessage,
 	instructionSections: noStepsMessage,
+	chapter: noChapterMessage,
 } as const;
 
 // A list's sections and what limits them: at least one section, the most sections a list holds, and
@@ -105,6 +109,10 @@ function recipeContentSchemaFor(limits: ContentLimits) {
 			maxItems: settings.recipeLimits.maxStepsPerRecipe,
 			itemUnits: 'steps',
 		}),
+		// Where the recipe sits in the family cookbook, which every recipe has, and what it suits.
+		chapter: chapterSchema,
+		holidays: holidayListSchema,
+		diets: dietListSchema,
 		tags: tagListSchemaFor(limits),
 		images: recipeImageListSchemaFor(limits),
 	});

@@ -59,6 +59,9 @@ const lemonBars = parseRecipeContent({
 	instructionSections: [
 		{ steps: [{ text: 'Press the crust into the pan.' }, { text: 'Bake 20 minutes.' }] },
 	],
+	chapter: 'desserts',
+	holidays: ['easter', 'fourth-of-july'],
+	diets: ['vegetarian'],
 	tags: ['Dessert', 'Baking'],
 	images: [
 		{ role: 'scan', pathname: 'scan/production/card.jpg', size: cardSize },
@@ -94,12 +97,15 @@ describe('recipeFormValues', () => {
 			yieldKind: 'servings',
 			ingredientSections: { rows: [{ kind: 'item', id: 0, text: '' }] },
 			instructionSections: { rows: [{ kind: 'item', id: 1, text: '' }] },
+			holidays: [],
+			diets: [],
 			tags: [],
 			photos: { dish: [], scan: [] },
 			fieldErrors: {},
 			reviewNotes: new Map(),
 			nextId: 2,
 		});
+		expect(recipeFormValues().chapter).toBeUndefined();
 	});
 
 	it('fills every field from a recipe, each heading a row over its lines', () => {
@@ -130,6 +136,11 @@ describe('recipeFormValues', () => {
 				{ kind: 'item', id: 6, text: 'Bake 20 minutes.' },
 			],
 		});
+		expect(values).toMatchObject({
+			chapter: 'desserts',
+			holidays: ['easter', 'fourth-of-july'],
+			diets: ['vegetarian'],
+		});
 		expect(values.tags).toEqual([
 			{ id: 7, label: 'Dessert' },
 			{ id: 8, label: 'Baking' },
@@ -156,6 +167,21 @@ describe('recipeFormValues', () => {
 			],
 		});
 		expect(values.nextId).toBe(12);
+	});
+
+	it('holds the diets a recipe’s chosen ones imply rather than choosing them, and saves them all again', () => {
+		const vegan = recipeFormValues(
+			parseRecipeContent({ ...lemonBars, diets: ['gluten-free', 'vegan'] })
+		);
+		const sent = JSON.stringify(recipeFormSubmission(vegan).payload);
+
+		expect(vegan.diets).toEqual(['vegan', 'gluten-free']);
+		expect(parseRecipeContent(recipeContentFromForm(sent)).diets).toEqual([
+			'vegetarian',
+			'vegan',
+			'gluten-free',
+			'dairy-free',
+		]);
 	});
 
 	it('loads two sections without headings as one run of lines', () => {
@@ -355,6 +381,37 @@ describe('editRecipeForm', () => {
 
 		expect(values.text.title).toBe('Lemon bars');
 		expect(values.yieldKind).toBe('makes');
+	});
+
+	it('chooses one chapter, and holidays and diets in their vocabularies’ order', () => {
+		const values = edited(
+			recipeFormValues(),
+			{ type: 'setChapter', chapter: 'soups-salads' },
+			{ type: 'setChapter', chapter: 'desserts' },
+			{ type: 'setHoliday', holiday: 'christmas', chosen: true },
+			{ type: 'setHoliday', holiday: 'easter', chosen: true },
+			{ type: 'setHoliday', holiday: 'halloween', chosen: true },
+			{ type: 'setHoliday', holiday: 'easter', chosen: false },
+			{ type: 'setDiet', diet: 'dairy-free', chosen: true },
+			{ type: 'setDiet', diet: 'vegetarian', chosen: true }
+		);
+
+		expect(values.chapter).toBe('desserts');
+		expect(values.holidays).toEqual(['halloween', 'christmas']);
+		expect(values.diets).toEqual(['vegetarian', 'dairy-free']);
+	});
+
+	it('keeps the diets the member chose before Vegan once Vegan goes', () => {
+		const vegetarian = edited(recipeFormValues(), {
+			type: 'setDiet',
+			diet: 'vegetarian',
+			chosen: true,
+		});
+		const vegan = edited(vegetarian, { type: 'setDiet', diet: 'vegan', chosen: true });
+		const notVegan = edited(vegan, { type: 'setDiet', diet: 'vegan', chosen: false });
+
+		expect(vegan.diets).toEqual(['vegetarian', 'vegan']);
+		expect(notVegan.diets).toEqual(['vegetarian']);
 	});
 
 	it('adds a blank line with the next id at the end, or below a row', () => {
@@ -772,7 +829,9 @@ describe('recipeFormProblems', () => {
 			type: 'attachErrors',
 			fieldErrors: {
 				'images.1': 'Check this page.',
-				tags: 'Check the tags.',
+				diets: 'Check the diets.',
+				'holidays.0': 'Check the holidays.',
+				chapter: 'Choose a chapter.',
 				'instructionSections.0.steps.1': 'Check this step.',
 				'ingredientSections.1': 'Check this section.',
 				'ingredientSections.1.lines.0.amount': 'Check the amount.',
@@ -812,7 +871,9 @@ describe('recipeFormProblems', () => {
 			{ message: 'Check the notes.', target: { kind: 'field', field: 'notes' } },
 			{ message: 'Check the description.', target: { kind: 'field', field: 'description' } },
 			{ message: 'Check the yield.', target: { kind: 'field', field: 'yieldAmount' } },
-			{ message: 'Check the tags.', target: { kind: 'field', field: 'tags' } },
+			{ message: 'Choose a chapter.', target: { kind: 'field', field: 'chapter' } },
+			{ message: 'Check the holidays.', target: { kind: 'field', field: 'holidays' } },
+			{ message: 'Check the diets.', target: { kind: 'field', field: 'diets' } },
 			{
 				message: 'Check this page.',
 				target: { kind: 'photo', role: 'scan', index: 1, id: 7 },
@@ -845,10 +906,11 @@ describe('recipeFormRequiredErrors', () => {
 			title: 'Enter a title.',
 			'ingredientSections.0.lines': 'Add at least one ingredient.',
 			instructionSections: 'Add at least one step.',
+			chapter: 'Choose a chapter.',
 		});
 	});
 
-	it('finds nothing in a recipe with a title, an ingredient, and a step', () => {
+	it('finds nothing in a recipe with a title, an ingredient, a step, and a chapter', () => {
 		expect(recipeFormRequiredErrors(lemonBarsForm())).toEqual({});
 	});
 
@@ -902,6 +964,14 @@ describe('recipeFormRequiredErrors', () => {
 				target: { kind: 'section', list: 'ingredientSections', index: 2, id: 3 },
 			},
 		]);
+	});
+
+	it('asks for a chapter, as the server does', () => {
+		const noChapter = { ...lemonBarsForm(), chapter: undefined };
+		const atChapter = { chapter: 'Choose a chapter.' };
+
+		expect(recipeFormRequiredErrors(noChapter)).toEqual(atChapter);
+		expect(serverFieldErrors(noChapter)).toEqual(atChapter);
 	});
 
 	it('puts an empty list’s message at the list, as the server does', () => {
@@ -1353,34 +1423,46 @@ describe('review notes', () => {
 		]);
 	});
 
-	it('flags a marker in a chosen tag or the tag being typed, whether or not its note is open', () => {
-		// Ids: the blank ingredient (0) and step (1), then the tag (2).
-		const values = recipeFormValues({ title: 'Biscuits', tags: ['Sweet [?]'] }, [
-			{ path: 'tags', message: 'Check the tags against the card.' },
+	it('resolves a note on a choice once it changes, and offers Looks right only once a chapter is chosen', () => {
+		const filed = recipeFormValues({ title: 'Biscuits', chapter: 'breads-rolls' }, [
+			{ path: 'chapter', message: 'Check the chapter.' },
+			{ path: 'holidays', message: 'Check the holidays.' },
+			{ path: 'diets', message: 'Check the diets.' },
 		]);
-		const tagsCheck = (markers: string[], note?: string) => ({
-			target: { kind: 'field', field: 'tags' },
-			...(note === undefined ? {} : { note }),
-			markers,
-			confirmable: false,
-		});
-
-		expect(recipeFormChecks(values)).toEqual([
-			tagsCheck(['unsure'], 'Check the tags against the card.'),
+		const unfiled = recipeFormValues({ title: 'Biscuits' }, [
+			{ path: 'chapter', message: 'Choose a chapter. The original doesn’t say.' },
 		]);
-		// Typing another tag answers the note, but the marker stays to check.
-		const typing = edited(values, { type: 'setText', field: 'tagDraft', text: 'Baking' });
-		expect(typing.reviewNotes.get('field:tags')?.status).toBe('resolved');
-		expect(recipeFormChecks(typing)).toEqual([tagsCheck(['unsure'])]);
 
-		const replaced = edited(
-			typing,
-			{ type: 'removeTag', tagId: 2 },
-			{ type: 'setText', field: 'tagDraft', text: 'Baking, [illegible] cakes' }
+		expect(recipeFormChecks(filed)).toEqual([
+			{
+				target: { kind: 'field', field: 'chapter' },
+				note: 'Check the chapter.',
+				markers: [],
+				confirmable: true,
+			},
+			{
+				target: { kind: 'field', field: 'holidays' },
+				note: 'Check the holidays.',
+				markers: [],
+				confirmable: true,
+			},
+			{
+				target: { kind: 'field', field: 'diets' },
+				note: 'Check the diets.',
+				markers: [],
+				confirmable: true,
+			},
+		]);
+		expect(recipeFormChecks(unfiled).map(({ confirmable }) => confirmable)).toEqual([false]);
+
+		const changed = edited(
+			filed,
+			{ type: 'setChapter', chapter: 'desserts' },
+			{ type: 'setHoliday', holiday: 'christmas', chosen: true }
 		);
-		expect(recipeFormChecks(replaced)).toEqual([tagsCheck(['illegible'])]);
+		expect(recipeFormChecks(changed).map(({ note }) => note)).toEqual(['Check the diets.']);
 		expect(
-			recipeFormChecks(edited(replaced, { type: 'setText', field: 'tagDraft', text: 'Baking' }))
+			recipeFormChecks(edited(changed, { type: 'setDiet', diet: 'vegan', chosen: true }))
 		).toEqual([]);
 	});
 
@@ -1439,6 +1521,12 @@ describe('review notes', () => {
 				markers: [],
 				confirmable: true,
 			},
+			{
+				target: { kind: 'field', field: 'chapter' },
+				note: 'Choose a chapter.',
+				markers: [],
+				confirmable: false,
+			},
 		]);
 	});
 });
@@ -1487,6 +1575,9 @@ describe('recipeFormSubmission', () => {
 					steps: ['Press the crust into the pan.', 'Bake 20 minutes.', 'Cool completely.'],
 				},
 			],
+			chapter: 'desserts',
+			holidays: ['easter', 'fourth-of-july'],
+			diets: ['vegetarian'],
 			tags: ['Dessert', 'Baking', 'Summer', 'Citrus'],
 			images: [
 				{
@@ -1556,7 +1647,8 @@ describe('recipeFormSubmission', () => {
 					{ kind: 'item', text: '2 eggs' },
 				],
 			},
-			{ type: 'setRowText', list: 'instructionSections', rowId: 1, text: 'Bake.' }
+			{ type: 'setRowText', list: 'instructionSections', rowId: 1, text: 'Bake.' },
+			{ type: 'setChapter', chapter: 'desserts' }
 		);
 		const { payload } = recipeFormSubmission(rows);
 		const saved = parseRecipeContent({
@@ -1755,12 +1847,13 @@ describe('attaching errors', () => {
 		expect(failed.instructionSections.error).toBe('Check these steps.');
 	});
 
-	it('puts problems with fields, tags, and photos on them', () => {
+	it('puts problems with fields, choices, and photos on them', () => {
 		const values = failedSave(lemonBarsForm(), {
 			'times.prepMinutes': 'Enter whole minutes.',
 			'yield.amount': 'We couldn’t read this amount. Use a number, or two numbers for a range.',
 			'yield.unit': 'Enter some text.',
-			'tags.1': 'Enter a tag.',
+			chapter: 'Choose a chapter.',
+			'diets.1': 'Choose a diet.',
 			'images.2.pathname': 'This photo didn’t upload. Remove it and add it again.',
 		});
 
@@ -1768,7 +1861,8 @@ describe('attaching errors', () => {
 			prepMinutes: 'Enter whole minutes.',
 			yieldAmount: 'We couldn’t read this amount. Use a number, or two numbers for a range.',
 			yieldUnit: 'Enter some text.',
-			tags: 'Enter a tag.',
+			chapter: 'Choose a chapter.',
+			diets: 'Choose a diet.',
 		});
 		expect(values.photos.scan[0]?.error).toBe(
 			'This photo didn’t upload. Remove it and add it again.'
@@ -1782,6 +1876,13 @@ describe('attaching errors', () => {
 		});
 
 		expect(values.formError).toBe('We couldn’t read the recipe. Reload the page and try again.');
+	});
+
+	it('shows a problem with the tags, which the form shows nowhere, as one with the whole recipe', () => {
+		const values = failedSave(lemonBarsForm(), { 'tags.1': 'Enter a tag.' });
+
+		expect(values.formError).toBe('Enter a tag.');
+		expect(values.fieldErrors).toEqual({});
 	});
 
 	it('clears earlier errors', () => {

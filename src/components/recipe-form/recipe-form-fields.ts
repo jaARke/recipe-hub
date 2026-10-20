@@ -1,3 +1,6 @@
+import type { Chapter } from '@/domain/recipe/chapter';
+import type { Diet } from '@/domain/recipe/diet';
+import type { Holiday } from '@/domain/recipe/holiday';
 import type { ImageSize, RecipeImageRole } from '@/domain/recipe/recipe-image';
 import type { RecipeYield } from '@/domain/recipe/recipe-yield';
 
@@ -54,6 +57,11 @@ export type RecipeFormPayload = {
 	};
 	ingredientSections: { heading?: string; lines: string[] }[];
 	instructionSections: { heading?: string; steps: string[] }[];
+	// Absent until the member chooses one.
+	chapter?: Chapter;
+	holidays: Holiday[];
+	// The diets the member chose; the recipe adds those they imply.
+	diets: Diet[];
 	tags: string[];
 	// Dish photos in order, the cover first, then scans.
 	images: { role: RecipeImageRole; pathname: string; size?: ImageSize; alt?: string }[];

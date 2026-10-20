@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+	recipeFormChoiceFields,
 	storedPhoto,
 	type PhotoUpload,
 	type ProblemKey,
@@ -14,7 +15,10 @@ import {
 	type RecipeYieldKind,
 } from '@/components/recipe-form/recipe-form-values';
 import type { Problem } from '@/domain/problem';
+import { chapters } from '@/domain/recipe/chapter';
+import { diets } from '@/domain/recipe/diet';
 import { InvalidRecipeError } from '@/domain/recipe/errors';
+import { holidays } from '@/domain/recipe/holiday';
 import {
 	imageSizeSchema,
 	storedImageSizeSchema,
@@ -48,10 +52,10 @@ const listNameSchema = z.enum([
 
 const textFields = textSchema.keyof().options;
 
-// The fields a note can be on, which the text fields and the tags are.
+// The fields a note can be on: the text fields but the tag being typed, and the choices.
 const errorFields = [
 	...textSchema.keyof().exclude(['tagDraft']).options,
-	'tags',
+	...recipeFormChoiceFields,
 ] as const satisfies readonly RecipeFormErrorField[];
 
 // The keys problemKey gives, so a note comes back on the place it was on.
@@ -93,6 +97,10 @@ const snapshotFields = z.object({
 	yieldKind: z.enum(['servings', 'makes']) satisfies z.ZodType<RecipeYieldKind>,
 	ingredientSections: listSchema,
 	instructionSections: listSchema,
+	// Absent from a snapshot kept before the form offered them, which reads as nothing chosen.
+	chapter: z.enum(chapters).optional(),
+	holidays: z.array(z.enum(holidays)).default([]),
+	diets: z.array(z.enum(diets)).default([]),
 	tags: z.array(z.object({ id: idSchema, label: z.string() })),
 	photos: z.object({ dish: z.array(photoSchema), scan: z.array(photoSchema) }),
 	reviewNotes: z.array(z.tuple([problemKeySchema, reviewNoteSchema])),
@@ -148,6 +156,9 @@ export function recipeFormSnapshot(values: RecipeFormValues): RecipeFormSnapshot
 		yieldKind: values.yieldKind,
 		ingredientSections: list(values.ingredientSections),
 		instructionSections: list(values.instructionSections),
+		chapter: values.chapter,
+		holidays: [...values.holidays],
+		diets: [...values.diets],
 		tags: values.tags.map(({ id, label }) => ({ id, label })),
 		photos: { dish: values.photos.dish.map(photo), scan: values.photos.scan.map(photo) },
 		reviewNotes: [...values.reviewNotes],
@@ -232,9 +243,9 @@ export function recipeFormSnapshotImages(snapshot: RecipeFormSnapshot): string[]
 }
 
 // What the member sees of the form, as text that two forms showing the same share: each field as
-// it reads, each list's rows that hold text in order, the tags, the photos by what they show, and
-// the notes still open on each place. Ids, the next id, blank rows, and a hidden yield unit are no
-// part of it, so a row added and removed again, or a blank one moved, changes nothing.
+// it reads, each list's rows that hold text in order, the choices, the tags, the photos by what they
+// show, and the notes still open on each place. Ids, the next id, blank rows, and a hidden yield unit
+// are no part of it, so a row added and removed again, or a blank one moved, changes nothing.
 function shownRecipeForm(snapshot: RecipeFormSnapshot): string {
 	const notes = new Map(snapshot.reviewNotes);
 	const openNote = (key: ProblemKey) => {
@@ -268,6 +279,9 @@ function shownRecipeForm(snapshot: RecipeFormSnapshot): string {
 		fieldNotes: errorFields.map((field) => openNote(`field:${field}`)),
 		ingredientSections: shownList('ingredientSections'),
 		instructionSections: shownList('instructionSections'),
+		chapter: snapshot.chapter ?? null,
+		holidays: snapshot.holidays,
+		diets: snapshot.diets,
 		tags: snapshot.tags.map(({ label }) => label),
 		photos: {
 			dish: shownPhotos(snapshot.photos.dish, true),
@@ -320,6 +334,9 @@ export function restoredRecipeForm(
 		yieldKind: snapshot.yieldKind,
 		ingredientSections: { rows: snapshot.ingredientSections.rows },
 		instructionSections: { rows: snapshot.instructionSections.rows },
+		chapter: snapshot.chapter,
+		holidays: snapshot.holidays,
+		diets: snapshot.diets,
 		tags: snapshot.tags,
 		photos: { dish: snapshot.photos.dish.map(photo), scan: snapshot.photos.scan.map(photo) },
 		fieldErrors: {},

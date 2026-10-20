@@ -58,6 +58,9 @@ function content(title: string, lines: IngredientLine[]): RecipeContent {
 		times: {},
 		ingredientSections: [{ lines }],
 		instructionSections: [{ steps: [{ text: 'Stir-fry everything over high heat.' }] }],
+		chapter: 'main-dishes',
+		holidays: [],
+		diets: [],
 		tags: ['Weeknight'],
 		images: [],
 	};

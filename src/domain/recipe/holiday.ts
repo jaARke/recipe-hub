@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { slugKey } from '@/domain/recipe/slug';
 
 // In calendar order.
@@ -11,6 +12,13 @@ export const holidays = [
 	'christmas',
 ] as const;
 export type Holiday = (typeof holidays)[number];
+
+// The holidays given, once each, in calendar order.
+export function inHolidayOrder(given: readonly Holiday[]): Holiday[] {
+	return holidays.filter((holiday) => given.includes(holiday));
+}
+
+export const holidayListSchema = z.array(z.enum(holidays)).overwrite(inHolidayOrder);
 
 export const holidayLabels = {
 	'new-years-day': 'New Year’s Day',

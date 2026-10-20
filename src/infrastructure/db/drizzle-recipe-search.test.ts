@@ -178,6 +178,9 @@ function toContent(fixture: Fixture): RecipeContentInput {
 		instructionSections: [
 			{ steps: (fixture.steps ?? ['Mix everything together.']).map((text) => ({ text })) },
 		],
+		chapter: 'this-and-that',
+		holidays: [],
+		diets: [],
 		tags: fixture.tags ?? [],
 		images: [],
 	};

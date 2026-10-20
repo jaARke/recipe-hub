@@ -49,6 +49,9 @@ export const sampleTomatoBasilBruschetta: RecipeContentInput = {
 			],
 		},
 	],
+	chapter: 'appetizers-beverages',
+	holidays: [],
+	diets: ['vegetarian'],
 	tags: ['Appetizer', 'Vegetarian', 'Summer'],
 	images: [],
 };
@@ -92,6 +95,9 @@ export const sampleAppleCabbageSlaw: RecipeContentInput = {
 			],
 		},
 	],
+	chapter: 'vegetables-sides',
+	holidays: [],
+	diets: ['vegetarian', 'gluten-free', 'dairy-free'],
 	tags: ['Salad', 'Vegetarian'],
 	images: [],
 };
@@ -124,6 +130,9 @@ export const sampleQuickPickledOnions: RecipeContentInput = {
 			],
 		},
 	],
+	chapter: 'this-and-that',
+	holidays: [],
+	diets: ['vegetarian', 'vegan', 'dairy-free'],
 	tags: [],
 	images: [],
 };

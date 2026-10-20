@@ -12,21 +12,29 @@ export const recipeColumns = {
 	content: recipes.content,
 	provenance: recipes.provenance,
 	tags: recipes.tags,
+	chapter: recipes.chapter,
+	holidays: recipes.holidays,
+	diets: recipes.diets,
 	createdAt: recipes.createdAt,
 	updatedAt: recipes.updatedAt,
 };
 
 type RecipeRow = InferModelFromColumns<typeof recipeColumns>;
 
-// Tags leave the content document for their own column.
-type ContentColumns = {
-	content: Omit<RecipeContent, 'tags'>;
-	tags: string[];
+// The content's fields that leave the document for columns of their own.
+type ColumnFields = Pick<RecipeContent, 'tags' | 'chapter' | 'holidays' | 'diets'>;
+
+type ContentColumns = ColumnFields & {
+	content: Omit<RecipeContent, keyof ColumnFields>;
 };
 
+function columnFields(row: RecipeRow): ColumnFields {
+	return { tags: row.tags, chapter: row.chapter, holidays: row.holidays, diets: row.diets };
+}
+
 export function toContentColumns(content: RecipeContent): ContentColumns {
-	const { tags, ...document } = content;
-	return { content: document, tags };
+	const { tags, chapter, holidays, diets, ...document } = content;
+	return { content: document, tags, chapter, holidays, diets };
 }
 
 export function toInsertColumns(recipe: NewRecipe, slug: string): typeof recipes.$inferInsert {
@@ -43,7 +51,7 @@ export function toInsertColumns(recipe: NewRecipe, slug: string): typeof recipes
 export function toRecipe(row: RecipeRow): Recipe {
 	return recipeSchema.parse({
 		...(row.content as object),
-		tags: row.tags,
+		...columnFields(row),
 		provenance: row.provenance,
 		id: row.id,
 		slug: row.slug,
@@ -57,6 +65,6 @@ export function toRecipe(row: RecipeRow): Recipe {
 // only text, so the saved content has the content's shape.
 export function toStoredRecipe(row: RecipeRow): StoredRecipe {
 	const recipe = toRecipe(row);
-	const document = row.content as Omit<RecipeContent, 'tags'>;
-	return { recipe, storedContent: { ...document, tags: row.tags } };
+	const document = row.content as ContentColumns['content'];
+	return { recipe, storedContent: { ...document, ...columnFields(row) } };
 }

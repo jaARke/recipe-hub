@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 import type { Problem } from '@/domain/problem';
 import { approximationWord } from '@/domain/recipe/amount-words';
+import { noChapterMessage } from '@/domain/recipe/chapter';
 import { durationMinutesSchema, type RecipeTimes } from '@/domain/recipe/duration';
 import { normalizeIngredientLine, parseIngredientLine } from '@/domain/recipe/ingredient-parser';
 import { withoutListMarkers } from '@/domain/recipe/list-markers';
@@ -145,6 +146,8 @@ const missingStepsProblem: Problem = {
 	path: 'instructionSections',
 	message: 'Add the steps. The original doesn’t show any.',
 };
+
+const missingChapterProblem: Problem = { path: 'chapter', message: noChapterMessage };
 
 // The second half of a character written as two UTF-16 code units, such as an emoji.
 const lowSurrogate = /[\uDC00-\uDFFF]/;
@@ -388,6 +391,8 @@ export function importDraftFromExtractedRecipe(
 				),
 			})),
 		})),
+		holidays: [],
+		diets: [],
 		tags: [],
 		images: [...images],
 	};
@@ -415,6 +420,7 @@ export function importDraftFromExtractedRecipe(
 			...(content.title === undefined ? [missingTitleProblem] : []),
 			...(ingredientList.sections.length === 0 ? [missingIngredientsProblem] : []),
 			...(instructionList.sections.length === 0 ? [missingStepsProblem] : []),
+			missingChapterProblem,
 			...enclosingNotes,
 		]),
 	};

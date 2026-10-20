@@ -1,7 +1,10 @@
 import 'server-only';
 import { toPublicMemberDto, type PublicMemberDto } from '@/application/members/member-dtos';
 import type { Member } from '@/domain/member/member';
+import type { Chapter } from '@/domain/recipe/chapter';
+import type { Diet } from '@/domain/recipe/diet';
 import { totalMinutes } from '@/domain/recipe/duration';
+import type { Holiday } from '@/domain/recipe/holiday';
 import { sourceUrlSchema } from '@/domain/recipe/provenance';
 import type { Recipe, RecipeContent, RecipeId } from '@/domain/recipe/recipe';
 import { coverImage, dishImages, scanImages, type RecipeImage } from '@/domain/recipe/recipe-image';
@@ -28,6 +31,9 @@ export type RecipeSummaryDto = {
 	source?: string;
 	totalMinutes?: number;
 	yield?: RecipeYield;
+	chapter: Chapter;
+	holidays: Holiday[];
+	diets: Diet[];
 	tags: string[];
 	coverImage?: RecipeImage;
 	createdAt: Date;
@@ -116,6 +122,9 @@ export function toPublicRecipeDto(recipe: Recipe, contributor: Member): PublicRe
 		times: recipe.times,
 		ingredientSections: recipe.ingredientSections,
 		instructionSections: recipe.instructionSections,
+		chapter: recipe.chapter,
+		holidays: recipe.holidays,
+		diets: recipe.diets,
 		tags: recipe.tags,
 		images: dishImages(recipe.images),
 		scans: scanImages(recipe.images),
@@ -137,6 +146,9 @@ export function toEditableRecipeDto(recipe: Recipe, respellableTags: string[]): 
 		times: recipe.times,
 		ingredientSections: recipe.ingredientSections,
 		instructionSections: recipe.instructionSections,
+		chapter: recipe.chapter,
+		holidays: recipe.holidays,
+		diets: recipe.diets,
 		tags: recipe.tags,
 		images: recipe.images,
 		updatedAt: recipe.updatedAt,
@@ -156,6 +168,9 @@ export function toRecipeSummaryDto(recipe: Recipe): RecipeSummaryDto {
 		source: recipe.source,
 		totalMinutes: totalMinutes(recipe.times),
 		yield: recipe.yield,
+		chapter: recipe.chapter,
+		holidays: recipe.holidays,
+		diets: recipe.diets,
 		tags: recipe.tags,
 		coverImage: coverImage(recipe.images),
 		createdAt: recipe.createdAt,

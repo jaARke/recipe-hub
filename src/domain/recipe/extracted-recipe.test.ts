@@ -38,6 +38,7 @@ const missingProblems = {
 		message: 'Add the ingredients. The original doesn’t show any.',
 	},
 	steps: { path: 'instructionSections', message: 'Add the steps. The original doesn’t show any.' },
+	chapter: { path: 'chapter', message: 'Choose a chapter.' },
 } satisfies Record<string, Problem>;
 
 function cutMessage(max: number): string {
@@ -91,21 +92,23 @@ function extractionFrom(sample: RecipeContentInput): ExtractedRecipe {
 
 describe('importDraftFromExtractedRecipe', () => {
 	it.each(sampleRecipeContents.map((content) => [content.title, content]))(
-		'reads the sample "%s" back as stored, apart from its tags',
+		'reads the sample "%s" back as stored, apart from its tags and its filing',
 		(_title, sample) => {
 			const content = recipeContentSchema.parse(sample);
 			expect(draftFrom(extractionFrom(sample), content.images)).toEqual({
-				content: { ...content, tags: [] },
-				problems: [],
+				content: { ...content, chapter: undefined, holidays: [], diets: [], tags: [] },
+				problems: [missingProblems.chapter],
 			});
 		}
 	);
 
-	it('makes a complete extraction into content ready to save', () => {
+	it('makes a complete extraction into content ready to save once a chapter is chosen', () => {
 		const draft = draftWith({});
 
-		expect(recipeContentSchema.safeParse(draft.content).success).toBe(true);
-		expect(draft.problems).toEqual([]);
+		expect(recipeContentSchema.safeParse({ ...draft.content, chapter: 'desserts' }).success).toBe(
+			true
+		);
+		expect(draft.problems).toEqual([missingProblems.chapter]);
 	});
 
 	it('flags everything an empty extraction lacks', () => {
@@ -114,10 +117,17 @@ describe('importDraftFromExtractedRecipe', () => {
 				times: {},
 				ingredientSections: [],
 				instructionSections: [],
+				holidays: [],
+				diets: [],
 				tags: [],
 				images: [],
 			},
-			problems: [missingProblems.title, missingProblems.ingredients, missingProblems.steps],
+			problems: [
+				missingProblems.title,
+				missingProblems.ingredients,
+				missingProblems.steps,
+				missingProblems.chapter,
+			],
 		});
 	});
 
@@ -159,7 +169,10 @@ describe('importDraftFromExtractedRecipe', () => {
 		});
 
 		it('flags a title that is blank once normalized', () => {
-			expect(draftWith({ title: '\u0000 \u0007' }).problems).toEqual([missingProblems.title]);
+			expect(draftWith({ title: '\u0000 \u0007' }).problems).toEqual([
+				missingProblems.title,
+				missingProblems.chapter,
+			]);
 		});
 
 		it('drops the separators that end the title and the headings', () => {
@@ -224,6 +237,7 @@ describe('importDraftFromExtractedRecipe', () => {
 			]);
 			expect(draft.problems).toEqual([
 				{ path: 'ingredientSections.0.lines.1', message: 'Check the milk.' },
+				missingProblems.chapter,
 			]);
 		});
 
@@ -239,7 +253,7 @@ describe('importDraftFromExtractedRecipe', () => {
 			expect(draft.content.ingredientSections).toEqual([
 				{ lines: [parseIngredientLine('2 eggs')] },
 			]);
-			expect(draft.problems).toEqual([]);
+			expect(draft.problems).toEqual([missingProblems.chapter]);
 		});
 
 		it('keeps a line at the length limit whole', () => {
@@ -247,7 +261,7 @@ describe('importDraftFromExtractedRecipe', () => {
 			const draft = draftWith({ ingredientSections: [{ lines: [line] }] });
 
 			expect(draft.content.ingredientSections?.[0]?.lines[0]?.text).toBe(line);
-			expect(draft.problems).toEqual([]);
+			expect(draft.problems).toEqual([missingProblems.chapter]);
 		});
 
 		it('cuts a longer line to the limit and asks the member to check it', () => {
@@ -265,6 +279,7 @@ describe('importDraftFromExtractedRecipe', () => {
 					path: 'ingredientSections.0.lines.1',
 					message: cutMessage(settings.recipeLimits.maxIngredientLineLength),
 				},
+				missingProblems.chapter,
 			]);
 		});
 
@@ -363,8 +378,13 @@ describe('importDraftFromExtractedRecipe', () => {
 				const draft = draftWith(changes);
 
 				expect(fieldOf(draft.content)).toBe('a'.repeat(max));
-				expect(draft.problems).toEqual([{ path, message: cutMessage(max) }]);
-				expect(recipeContentSchema.safeParse(draft.content).success).toBe(true);
+				expect(draft.problems).toEqual([
+					{ path, message: cutMessage(max) },
+					missingProblems.chapter,
+				]);
+				expect(
+					recipeContentSchema.safeParse({ ...draft.content, chapter: 'desserts' }).success
+				).toBe(true);
 			}
 		);
 	});
@@ -391,7 +411,7 @@ describe('importDraftFromExtractedRecipe', () => {
 			expect(draft.content.instructionSections).toEqual([
 				{ heading: 'Bake', steps: [{ text: 'Heat the oven.' }, { text: 'Bake.' }] },
 			]);
-			expect(draft.problems).toEqual([]);
+			expect(draft.problems).toEqual([missingProblems.chapter]);
 		});
 	});
 
@@ -431,14 +451,14 @@ describe('importDraftFromExtractedRecipe', () => {
 			const draft = draftWith({ yield: extracted });
 
 			expect(draft.content.yield).toEqual(expected);
-			expect(draft.problems).toEqual([]);
+			expect(draft.problems).toEqual([missingProblems.chapter]);
 		});
 
 		it('leaves out a yield whose amount is blank', () => {
 			const draft = draftWith({ yield: { kind: 'makes', amount: ' ', unit: 'cookies' } });
 
 			expect(draft.content.yield).toBeUndefined();
-			expect(draft.problems).toEqual([]);
+			expect(draft.problems).toEqual([missingProblems.chapter]);
 		});
 
 		it.each<[string, ExtractedYield, RecipeYield, string]>([
@@ -480,6 +500,7 @@ describe('importDraftFromExtractedRecipe', () => {
 				expect(draft.content.yield).toEqual(expected);
 				expect(draft.problems).toEqual([
 					{ path: 'yield.amount', message: `The original says ${quoted}. Check the yield.` },
+					missingProblems.chapter,
 				]);
 			}
 		);
@@ -503,6 +524,7 @@ describe('importDraftFromExtractedRecipe', () => {
 						path: 'yield.amount',
 						message: `The original says ${quoted}. Use a number, or two numbers for a range.`,
 					},
+					missingProblems.chapter,
 				]);
 			}
 		);
@@ -514,7 +536,7 @@ describe('importDraftFromExtractedRecipe', () => {
 			const draft = draftWith({ times });
 
 			expect(draft.content.times).toEqual(times);
-			expect(draft.problems).toEqual([]);
+			expect(draft.problems).toEqual([missingProblems.chapter]);
 		});
 
 		it('drops minutes the recipe cannot hold and says what the original said', () => {
@@ -531,6 +553,7 @@ describe('importDraftFromExtractedRecipe', () => {
 					message: 'The original says -5 minutes. Enter zero or more minutes.',
 				},
 				{ path: 'times.totalMinutes', message: 'Enter whole minutes.' },
+				missingProblems.chapter,
 			]);
 		});
 	});
@@ -549,6 +572,7 @@ describe('importDraftFromExtractedRecipe', () => {
 
 			expect(draftWith({ reviewNotes: [{ field, note }] }).problems).toEqual([
 				{ path, message: note },
+				missingProblems.chapter,
 			]);
 		});
 
@@ -576,6 +600,7 @@ describe('importDraftFromExtractedRecipe', () => {
 				'instructionSections.1.steps.0',
 				'instructionSections.1',
 				'instructionSections',
+				'chapter',
 			]);
 		});
 
@@ -595,6 +620,7 @@ describe('importDraftFromExtractedRecipe', () => {
 			];
 
 			expect(notePaths(notes, lists)).toEqual([
+				'chapter',
 				'ingredientSections.0',
 				'ingredientSections.0',
 				'ingredientSections.0',
@@ -614,7 +640,10 @@ describe('importDraftFromExtractedRecipe', () => {
 				],
 			});
 
-			expect(draft.problems).toEqual([{ path: 'title', message: 'The title is a guess.' }]);
+			expect(draft.problems).toEqual([
+				{ path: 'title', message: 'The title is a guess.' },
+				missingProblems.chapter,
+			]);
 		});
 	});
 
@@ -640,6 +669,7 @@ describe('importDraftFromExtractedRecipe', () => {
 				'yield',
 				'times.totalMinutes',
 				'ingredientSections.0.lines.0',
+				'chapter',
 			]);
 		});
 
@@ -661,6 +691,7 @@ describe('importDraftFromExtractedRecipe', () => {
 				missingProblems.title,
 				missingProblems.ingredients,
 				missingProblems.steps,
+				missingProblems.chapter,
 			]);
 		});
 
@@ -672,6 +703,7 @@ describe('importDraftFromExtractedRecipe', () => {
 
 			expect(draft.problems).toEqual([
 				missingProblems.ingredients,
+				missingProblems.chapter,
 				{ path: 'ingredientSections', message: 'Hard to read.' },
 			]);
 		});
@@ -690,6 +722,7 @@ describe('importDraftFromExtractedRecipe', () => {
 
 			expect(draft.problems).toEqual([
 				{ path: 'notes', message: 'Check the notes.' },
+				missingProblems.chapter,
 				{ path: 'ingredientSections.0', message: note },
 			]);
 		});

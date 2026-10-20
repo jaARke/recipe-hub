@@ -122,6 +122,25 @@ describe('recipeContentSchema', () => {
 		expect(problemPaths(withLines([line]))).toEqual(['ingredientSections.0.lines.0.amount.max']);
 	});
 
+	it('asks for a chapter', () => {
+		expect(() => parseRecipeContent({ ...sampleChickenSoup, chapter: undefined })).toThrow(
+			expect.objectContaining({ problems: [{ path: 'chapter', message: 'Choose a chapter.' }] })
+		);
+	});
+
+	it('keeps holidays in calendar order and adds the diets Vegan implies', () => {
+		const content = recipeContentSchema.parse({
+			...sampleChickenSoup,
+			holidays: ['christmas', 'new-years-day'],
+			diets: ['gluten-free', 'vegan'],
+		});
+
+		expect(content).toMatchObject({
+			holidays: ['new-years-day', 'christmas'],
+			diets: ['vegetarian', 'vegan', 'gluten-free', 'dairy-free'],
+		});
+	});
+
 	it('collapses repeated tags to the first spelling', () => {
 		const content = recipeContentSchema.parse({
 			...sampleChickenSoup,

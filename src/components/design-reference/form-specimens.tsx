@@ -42,7 +42,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { chapterLabels, chapters, type Chapter } from '@/domain/recipe/chapter';
+import { chapterLabels, chapters, noChapterMessage, type Chapter } from '@/domain/recipe/chapter';
 import { dietLabels, diets } from '@/domain/recipe/diet';
 import { noStepsMessage } from '@/domain/recipe/instruction';
 
@@ -451,9 +451,10 @@ function RadioGroupSpecimen() {
 							</Field>
 						</RadioGroup>
 					</FieldSet>
-					<FieldSet>
+					<FieldSet aria-describedby="radio-invalid-error">
 						<FieldLegend variant="label">Invalid</FieldLegend>
-						<RadioGroup aria-describedby="radio-invalid-error">
+						<FieldError id="radio-invalid-error">{noChapterMessage}</FieldError>
+						<RadioGroup>
 							{invalidChapterSamples.map((chapter) => (
 								<Field key={chapter} orientation="horizontal">
 									<RadioGroupItem
@@ -467,7 +468,6 @@ function RadioGroupSpecimen() {
 								</Field>
 							))}
 						</RadioGroup>
-						<FieldError id="radio-invalid-error">Choose a chapter.</FieldError>
 					</FieldSet>
 				</FieldGroup>
 			</Specimen>

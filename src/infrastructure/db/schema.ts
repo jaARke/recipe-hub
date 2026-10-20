@@ -15,6 +15,9 @@ import {
 	uuid,
 	type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
+import { chapters } from '@/domain/recipe/chapter';
+import { diets } from '@/domain/recipe/diet';
+import { holidays } from '@/domain/recipe/holiday';
 
 // English stemming that ignores accents, shared by the search vector and every text search query.
 export const recipeSearchConfiguration = sql.raw(`'public.recipe_english'::regconfig`);
@@ -24,6 +27,21 @@ const tsvector = customType<{ data: string }>({
 		return 'tsvector';
 	},
 });
+
+// Inlined, since a check constraint's definition cannot take parameters.
+function textLiterals(values: readonly string[]): SQL {
+	return sql
+		.join(
+			values.map((value) => sql`${value}`),
+			sql`, `
+		)
+		.inlineParams();
+}
+
+// The slugs of the chapter, holidays and diets a recipe is filed under, as words for search.
+function filingWords(): SQL {
+	return sql`public.immutable_array_to_string(array[${recipes.chapter}] || ${recipes.holidays} || ${recipes.diets}, ' ')`;
+}
 
 export const recipes = pgTable(
 	'recipes',
@@ -36,7 +54,8 @@ export const recipes = pgTable(
 		contributorId: uuid('contributor_id')
 			.notNull()
 			.references(() => users.id),
-		// The JSON columns are untyped because the mapper validates every read. Content excludes tags.
+		// The JSON columns are untyped because the mapper validates every read. Content excludes the
+		// tags, chapter, holidays and diets, which have columns of their own.
 		content: jsonb('content').notNull(),
 		provenance: jsonb('provenance').notNull(),
 		// The import the recipe was saved from. Unique, so an import saves one recipe.
@@ -44,6 +63,10 @@ export const recipes = pgTable(
 			.unique()
 			.references(() => recipeImports.id),
 		tags: text('tags').array().notNull().default([]),
+		// Inserts that name no chapter, as the previous deployment's do, land in This & That.
+		chapter: text('chapter', { enum: chapters }).notNull().default('this-and-that'),
+		holidays: text('holidays', { enum: holidays }).array().notNull().default([]),
+		diets: text('diets', { enum: diets }).array().notNull().default([]),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 		// Postgres derives the columns below from the content for search, and recipe reads leave them out.
@@ -53,16 +76,16 @@ export const recipes = pgTable(
 				(): SQL =>
 					sql`setweight(to_tsvector(${recipeSearchConfiguration}, ${recipes.content} ->> 'title'), 'A')
 	|| setweight(to_tsvector(${recipeSearchConfiguration}, jsonb_path_query_array(${recipes.content}, '$.ingredientSections[*].lines[*].item')), 'B')
-	|| setweight(to_tsvector(${recipeSearchConfiguration}, public.immutable_array_to_string(${recipes.tags}, ' ')), 'B')
+	|| setweight(to_tsvector(${recipeSearchConfiguration}, ${filingWords()}), 'B')
 	|| setweight(to_tsvector(${recipeSearchConfiguration}, jsonb_path_query_array(${recipes.content}, '$.description') || jsonb_path_query_array(${recipes.content}, '$.notes') || jsonb_path_query_array(${recipes.content}, '$.source')), 'C')
 	|| setweight(to_tsvector(${recipeSearchConfiguration}, jsonb_path_query_array(${recipes.content}, '$.instructionSections[*].steps[*].text')), 'D')`
 			),
-		// The words close matches compare: the title, ingredient items, and tags.
+		// The words close matches compare: the title, ingredient items, and the filing's slugs.
 		searchWords: text('search_words')
 			.notNull()
 			.generatedAlwaysAs(
 				(): SQL =>
-					sql`lower(public.immutable_unaccent((${recipes.content} ->> 'title') || ' ' || jsonb_path_query_array(${recipes.content}, '$.ingredientSections[*].lines[*].item')::text || ' ' || public.immutable_array_to_string(${recipes.tags}, ' ')))`
+					sql`lower(public.immutable_unaccent((${recipes.content} ->> 'title') || ' ' || jsonb_path_query_array(${recipes.content}, '$.ingredientSections[*].lines[*].item')::text || ' ' || ${filingWords()}))`
 			),
 		tagKeys: text('tag_keys')
 			.array()
@@ -89,6 +112,13 @@ export const recipes = pgTable(
 		index('recipes_tag_keys_idx').using('gin', table.tagKeys),
 		// Serves the contributor filter and its facet.
 		index('recipes_contributor_id_idx').on(table.contributorId),
+		// Serve the chapter, holiday and diet filters and their facets.
+		index('recipes_chapter_idx').on(table.chapter),
+		index('recipes_holidays_idx').using('gin', table.holidays),
+		index('recipes_diets_idx').using('gin', table.diets),
+		check('recipes_chapter_check', sql`${table.chapter} in (${textLiterals(chapters)})`),
+		check('recipes_holidays_check', sql`${table.holidays} <@ array[${textLiterals(holidays)}]`),
+		check('recipes_diets_check', sql`${table.diets} <@ array[${textLiterals(diets)}]`),
 	]
 );
 

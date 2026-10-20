@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
 	dietLabels,
+	dietListSchema,
 	diets,
 	dietSchemaOrgNames,
 	dietsFromKeywords,
 	dietsFromSchemaOrg,
+	dietsImpliedBy,
 	withImpliedDiets,
+	withoutImpliedDiets,
 	type Diet,
 } from '@/domain/recipe/diet';
 
@@ -31,6 +34,17 @@ describe('dietSchemaOrgNames', () => {
 	});
 });
 
+describe('dietsImpliedBy', () => {
+	it('finds Vegetarian and Dairy-free in Vegan', () => {
+		expect(dietsImpliedBy(['vegan'])).toEqual(new Set(['vegetarian', 'dairy-free']));
+	});
+
+	it('finds nothing in diets without Vegan', () => {
+		expect(dietsImpliedBy([])).toEqual(new Set());
+		expect(dietsImpliedBy(['vegetarian', 'gluten-free', 'dairy-free'])).toEqual(new Set());
+	});
+});
+
 describe('withImpliedDiets', () => {
 	it('adds Vegetarian and Dairy-free to Vegan', () => {
 		expect(withImpliedDiets(['vegan'])).toEqual(['vegetarian', 'vegan', 'dairy-free']);
@@ -46,6 +60,24 @@ describe('withImpliedDiets', () => {
 		expect(
 			withImpliedDiets(['dairy-free', 'gluten-free', 'vegan', 'vegetarian', 'dairy-free'])
 		).toEqual(['vegetarian', 'vegan', 'gluten-free', 'dairy-free']);
+	});
+});
+
+describe('withoutImpliedDiets', () => {
+	it('keeps Vegan alone of Vegetarian, Vegan, and Dairy-free', () => {
+		expect(withoutImpliedDiets(['vegetarian', 'vegan', 'dairy-free'])).toEqual(['vegan']);
+	});
+
+	it('keeps diets without Vegan as they are', () => {
+		expect(withoutImpliedDiets(['vegetarian'])).toEqual(['vegetarian']);
+		expect(withoutImpliedDiets(['vegetarian', 'dairy-free'])).toEqual(['vegetarian', 'dairy-free']);
+	});
+
+	it('lists each diet once, in display order', () => {
+		expect(withoutImpliedDiets(['gluten-free', 'vegan', 'vegetarian', 'vegan'])).toEqual([
+			'vegan',
+			'gluten-free',
+		]);
 	});
 });
 
@@ -145,5 +177,20 @@ describe('dietsFromKeywords', () => {
 			'gluten-free',
 			'dairy-free',
 		]);
+	});
+});
+
+describe('dietListSchema', () => {
+	it('holds what Vegan implies, once each, in display order', () => {
+		expect(dietListSchema.parse(['gluten-free', 'vegan', 'vegan'])).toEqual([
+			'vegetarian',
+			'vegan',
+			'gluten-free',
+			'dairy-free',
+		]);
+	});
+
+	it('refuses a diet outside the vocabulary', () => {
+		expect(dietListSchema.safeParse(['nut-free']).success).toBe(false);
 	});
 });

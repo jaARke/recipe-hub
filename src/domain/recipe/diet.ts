@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { slugKey } from '@/domain/recipe/slug';
 
 // Only diets a source states, never ones inferred from ingredients: a wrong gluten-free claim can
@@ -55,11 +56,24 @@ const dietsByKeyword = new Map(
 	diets.flatMap((diet) => dietKeywordHints[diet].map((hint) => [slugKey(hint), diet] as const))
 );
 
+// Every diet the given ones imply.
+export function dietsImpliedBy(given: readonly Diet[]): ReadonlySet<Diet> {
+	return new Set(given.flatMap((diet) => impliedDiets[diet]));
+}
+
 // The diets given, with every one they imply, once each, in display order.
 export function withImpliedDiets(given: readonly Diet[]): Diet[] {
-	const held = new Set(given.flatMap((diet) => [diet, ...impliedDiets[diet]]));
-	return diets.filter((diet) => held.has(diet));
+	const implied = dietsImpliedBy(given);
+	return diets.filter((diet) => given.includes(diet) || implied.has(diet));
 }
+
+// The diets given, without those another of them implies, once each, in display order.
+export function withoutImpliedDiets(given: readonly Diet[]): Diet[] {
+	const implied = dietsImpliedBy(given);
+	return diets.filter((diet) => given.includes(diet) && !implied.has(diet));
+}
+
+export const dietListSchema = z.array(z.enum(diets)).overwrite(withImpliedDiets);
 
 // The term a suitableForDiet value names, as text or as a node's @id.
 function schemaOrgTerm(value: unknown): string | undefined {

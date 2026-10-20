@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { NewMember } from '@/application/ports/member-repository';
 import type { MemberId } from '@/domain/member/member';
@@ -9,7 +9,7 @@ import { slugify } from '@/domain/recipe/slug';
 import { tagKey } from '@/domain/recipe/tag-normalization';
 import { DrizzleMemberRepository } from '@/infrastructure/db/drizzle-member-repository';
 import { DrizzleRecipeRepository } from '@/infrastructure/db/drizzle-recipe-repository';
-import { recipes } from '@/infrastructure/db/schema';
+import { recipes, recipeSearchConfiguration } from '@/infrastructure/db/schema';
 import { createTestDatabase, type TestDatabase } from '@/infrastructure/db/testing/test-database';
 
 const contributor: NewMember = {
@@ -42,7 +42,7 @@ async function store(input: RecipeContentInput) {
 		slugBase: slugify(content.title),
 	});
 	const [row] = await db
-		.select({ totalMinutes: recipes.totalMinutes, tagKeys: recipes.tagKeys })
+		.select({ id: recipes.id, totalMinutes: recipes.totalMinutes, tagKeys: recipes.tagKeys })
 		.from(recipes)
 		.where(eq(recipes.id, created.id));
 	return { content, row };
@@ -86,5 +86,56 @@ describe('tag_keys', () => {
 		const { content, row } = await store({ ...sampleChickenSoup, tags: [label] });
 
 		expect(row?.tagKeys).toEqual(content.tags.map(tagKey));
+	});
+});
+
+describe('chapter, holidays and diets', () => {
+	function refusedBy(constraint: string) {
+		return expect.objectContaining({ cause: expect.objectContaining({ constraint }) });
+	}
+
+	it('refuse a slug outside the vocabulary', async () => {
+		const { row } = await store(sampleChickenSoup);
+
+		await expect(
+			db.execute(sql`update recipes set chapter = 'supper' where id = ${row?.id}`)
+		).rejects.toThrow(refusedBy('recipes_chapter_check'));
+		await expect(
+			db.execute(
+				sql`update recipes set holidays = array['christmas', 'arbor-day'] where id = ${row?.id}`
+			)
+		).rejects.toThrow(refusedBy('recipes_holidays_check'));
+		await expect(
+			db.execute(sql`update recipes set diets = array['nut-free'] where id = ${row?.id}`)
+		).rejects.toThrow(refusedBy('recipes_diets_check'));
+	});
+
+	it('give search the words of their slugs', async () => {
+		// At weight B, as are the soup's ingredient items, which use none of these words.
+		const matchesSlugWords = sql<boolean>`${recipes.searchVector} @@ to_tsquery(${recipeSearchConfiguration}, 'main:B & dishes:B & new:B & years:B & day:B & gluten:B & free:B')`;
+		async function searchColumns(input: RecipeContentInput) {
+			const { row } = await store(input);
+			const [columns] = await db
+				.select({ matchesSlugWords, searchWords: recipes.searchWords })
+				.from(recipes)
+				.where(eq(recipes.id, row!.id));
+			return columns;
+		}
+
+		expect(
+			await searchColumns({
+				...sampleChickenSoup,
+				chapter: 'main-dishes',
+				holidays: ['new-years-day'],
+				diets: ['gluten-free'],
+			})
+		).toEqual({
+			matchesSlugWords: true,
+			searchWords: expect.stringMatching(/ main-dishes new-years-day gluten-free$/),
+		});
+		expect(await searchColumns(sampleChickenSoup)).toEqual({
+			matchesSlugWords: false,
+			searchWords: expect.stringMatching(/ soups-salads$/),
+		});
 	});
 });

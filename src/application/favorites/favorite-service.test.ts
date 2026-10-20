@@ -273,6 +273,9 @@ describe('listFavorites', () => {
 					source: 'Grandpa Lou',
 					totalMinutes: 50,
 					yield: { kind: 'servings', amount: { min: 6 } },
+					chapter: 'soups-salads',
+					holidays: [],
+					diets: [],
 					tags: ['Soup', 'Weeknight'],
 					coverImage: {
 						role: 'dish',

@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { slugKey } from '@/domain/recipe/slug';
 
 // A family cookbook's dividers, in its order. Every recipe is in exactly one.
@@ -13,6 +14,10 @@ export const chapters = [
 	'this-and-that',
 ] as const;
 export type Chapter = (typeof chapters)[number];
+
+export const noChapterMessage = 'Choose a chapter.';
+
+export const chapterSchema = z.enum(chapters, noChapterMessage);
 
 export const chapterLabels = {
 	'breakfast-brunch': 'Breakfast & Brunch',

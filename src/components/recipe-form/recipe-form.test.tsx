@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation';
 import * as React from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { render } from 'vitest-browser-react';
-import { page, userEvent, type Locator } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import type { FormAction, FormState } from '@/components/forms/form-state';
 import { heldResult } from '@/components/forms/testing/held-result';
 import { hydrate, serverRender } from '@/components/forms/testing/hydrate';
@@ -53,6 +53,7 @@ const lemonBars: RecipeDraftContent = {
 	title: 'Lemon bars',
 	ingredientSections: [{ lines: [{ text: '1 cup flour' }, { text: '2 eggs' }] }],
 	instructionSections: [{ steps: [{ text: 'Mix.' }] }],
+	chapter: 'desserts',
 };
 
 // Sunday pot roast's steps, with its gravy under a heading of its own.
@@ -315,18 +316,21 @@ describe('RecipeForm’s review notes', () => {
 		expect(action).not.toHaveBeenCalled();
 	});
 
-	it('asks for the ingredients and steps a recipe needs before any request', async () => {
+	it('asks for the ingredients, steps, and chapter a recipe needs before any request', async () => {
 		const action = vi.fn(refuse);
 		await renderForm({ title: 'Lemon bars' }, [], action);
 
 		await saveRecipe().click();
 
-		await expect.element(problemSummary('Fix 2 things to save')).toBeVisible();
+		await expect.element(problemSummary('Fix 3 things to save')).toBeVisible();
 		await expect
 			.element(page.getByRole('link', { name: 'Ingredients: Add at least one ingredient.' }))
 			.toBeInTheDocument();
 		await expect
 			.element(page.getByRole('link', { name: 'Steps: Add at least one step.' }))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByRole('link', { name: 'Chapter: Choose a chapter.' }))
 			.toBeInTheDocument();
 		expect(action).not.toHaveBeenCalled();
 	});
@@ -352,6 +356,128 @@ describe('RecipeForm’s review notes', () => {
 			.element(page.getByRole('alertdialog', { name: '1 thing hasn’t been checked' }))
 			.toBeVisible();
 		expect(action).not.toHaveBeenCalled();
+	});
+});
+
+describe('RecipeForm’s chapter, holidays, and diets', () => {
+	function group(name: string) {
+		return page.getByRole('group', { name });
+	}
+
+	function sentRecipe(action: MockInstance<FormAction>): unknown {
+		const sent = action.mock.calls[0]?.[1].get('recipe');
+		return JSON.parse(typeof sent === 'string' ? sent : '{}');
+	}
+
+	it('asks for a chapter at the field and in the summary before any request', async () => {
+		const action = vi.fn(refuse);
+		await renderForm({ ...lemonBars, chapter: undefined }, [], action);
+		const chapter = group('Chapter');
+		await expect.element(chapter.getByRole('radiogroup')).toHaveAttribute('aria-required', 'true');
+
+		await saveRecipe().click();
+
+		await expect.element(problemSummary('Fix 1 thing to save')).toHaveFocus();
+		expect(action).not.toHaveBeenCalled();
+		await expect
+			.element(chapter)
+			.toHaveAccessibleDescription('Where the recipe goes in the cookbook. Choose a chapter.');
+		await expect
+			.element(chapter.getByRole('radio', { name: 'Desserts' }))
+			.toHaveAttribute('aria-invalid', 'true');
+		await page.getByRole('link', { name: 'Chapter: Choose a chapter.' }).click();
+		await expect.element(chapter.getByText('Choose a chapter.')).toHaveFocus();
+
+		await chapter.getByRole('radio', { name: 'Cookies & Candy' }).click();
+		await saveRecipe().click();
+
+		await expect.poll(() => action).toHaveBeenCalledOnce();
+		expect(sentRecipe(action)).toMatchObject({ chapter: 'cookies-candy' });
+	});
+
+	it('shows a recipe’s choices, and sends what is chosen, holidays in calendar order', async () => {
+		const action = vi.fn(refuse);
+		await renderForm({ ...lemonBars, holidays: ['halloween'], diets: ['gluten-free'] }, [], action);
+		const holidays = group('Holidays (optional)');
+		await expect.element(group('Chapter').getByRole('radio', { name: 'Desserts' })).toBeChecked();
+		await expect.element(holidays.getByRole('checkbox', { name: 'Halloween' })).toBeChecked();
+		await expect
+			.element(group('Diet (optional)').getByRole('checkbox', { name: 'Gluten-free' }))
+			.toBeChecked();
+
+		await holidays.getByRole('checkbox', { name: 'Christmas' }).click();
+		await holidays.getByRole('checkbox', { name: 'Easter' }).click();
+		await holidays.getByRole('checkbox', { name: 'Halloween' }).click();
+		await saveRecipe().click();
+
+		await expect.poll(() => action).toHaveBeenCalledOnce();
+		expect(sentRecipe(action)).toMatchObject({
+			chapter: 'desserts',
+			holidays: ['easter', 'christmas'],
+			diets: ['gluten-free'],
+		});
+	});
+
+	it('ticks and holds Vegetarian and Dairy-free while Vegan is ticked, and says why', async () => {
+		// Stored as a vegan recipe is, with every diet Vegan implies.
+		await renderForm({ ...lemonBars, diets: ['vegetarian', 'vegan', 'dairy-free'] });
+		const diet = group('Diet (optional)');
+		const box = (name: string) => diet.getByRole('checkbox', { name });
+		const held = ['Vegetarian', 'Dairy-free'];
+
+		for (const name of ['Vegan', ...held]) {
+			await expect.element(box(name)).toBeChecked();
+		}
+		for (const name of held) {
+			await expect.element(box(name)).toHaveAttribute('aria-disabled', 'true');
+		}
+		await expect
+			.element(diet)
+			.toHaveAccessibleDescription('Vegan recipes are vegetarian and dairy-free too.');
+
+		// What Vegan held goes with it, as when Vegan alone was ticked.
+		await box('Vegan').click();
+		for (const name of ['Vegan', ...held]) {
+			await expect.element(box(name)).not.toBeChecked();
+		}
+		await expect.element(diet).not.toHaveAccessibleDescription();
+
+		// What the member ticked before Vegan stays once Vegan goes.
+		await box('Vegetarian').click();
+		await box('Vegan').click();
+		await expect.element(box('Vegetarian')).toHaveAttribute('aria-disabled', 'true');
+		await box('Vegan').click();
+		await expect.element(box('Vegetarian')).toBeChecked();
+		await expect.element(box('Vegetarian')).not.toHaveAttribute('aria-disabled');
+		await expect.element(box('Dairy-free')).not.toBeChecked();
+	});
+
+	it('announces why Vegan ticks two more diets as it is ticked, and empties once it goes', async () => {
+		await renderForm(lemonBars);
+		const diet = group('Diet (optional)');
+		const status = diet.getByRole('status');
+		await expect.element(status).toBeEmptyDOMElement();
+
+		await diet.getByRole('checkbox', { name: 'Vegan' }).click();
+		await expect
+			.element(status)
+			.toHaveTextContent('Vegan recipes are vegetarian and dairy-free too.');
+
+		await userEvent.keyboard(' ');
+		await expect.element(diet.getByRole('checkbox', { name: 'Vegan' })).not.toBeChecked();
+		await expect.element(status).toBeEmptyDOMElement();
+	});
+
+	it('shows a draft’s note on the chapter, which Looks right clears', async () => {
+		await renderForm(lemonBars, [{ path: 'chapter', message: 'Check the chapter.' }]);
+
+		await expect
+			.element(group('Chapter'))
+			.toHaveAccessibleDescription('Where the recipe goes in the cookbook. Check the chapter.');
+		await lookRight('Chapter').click();
+
+		await expect.element(page.getByText('Check the chapter.')).not.toBeInTheDocument();
+		await expect.element(saveRecipe()).toHaveFocus();
 	});
 });
 
@@ -868,39 +994,30 @@ describe('RecipeForm’s undo', () => {
 		expect(textControl(row).value).toBe('1 cup flour, sifted');
 	});
 
-	it('gives a time, the tag being typed, and a photo’s description each its own undo', async () => {
+	it('gives a time and a photo’s description each its own undo', async () => {
 		await renderForm({
 			...lemonBars,
 			images: [{ role: 'dish', pathname: 'dish/development/bars.jpg' }],
 		});
-		// Found before the tag’s list opens, since it hides the rest of the form from screen readers.
-		const found = (field: Locator) => page.elementLocator(field.element());
-		const prep = found(textbox('Prep, in minutes'));
-		const tag = found(page.getByRole('combobox', { name: 'Tags' }));
-		const alt = found(textbox(/^Describe the photo/));
-		const row = found(textbox('Ingredient 1'));
-		const values = () => [prep, tag, alt].map((field) => textControl(field).value);
+		const prep = textbox('Prep, in minutes');
+		const alt = textbox(/^Describe the photo/);
+		const row = textbox('Ingredient 1');
+		const values = () => [prep, alt].map((field) => textControl(field).value);
 
 		await prep.click();
 		await userEvent.keyboard('15');
-		await tag.click();
-		await userEvent.keyboard('Dessert');
 		await alt.click();
 		await userEvent.keyboard('Bars on a plate');
 
 		await prep.click();
 		await pressUndo();
-		await expect.poll(values).toEqual(['', 'Dessert', 'Bars on a plate']);
+		await expect.poll(values).toEqual(['', 'Bars on a plate']);
 
 		await alt.click();
 		await pressUndo();
-		await expect.poll(values).toEqual(['', 'Dessert', '']);
-
-		await tag.click();
-		await pressUndo();
-		await expect.poll(values).toEqual(['', '', '']);
+		await expect.poll(values).toEqual(['', '']);
 		await pressRedo();
-		await expect.poll(values).toEqual(['', 'Dessert', '']);
+		await expect.poll(values).toEqual(['', 'Bars on a plate']);
 		expect(textControl(row).value).toBe('1 cup flour');
 	});
 });
@@ -982,13 +1099,16 @@ describe('RecipeForm’s autosave', () => {
 	// When the stored changes were made.
 	const writtenAt = new Date('2026-10-14T19:12:00.000Z');
 
-	// A new recipe that can save, as a reload left it: a title, a line, a step, and two uploads, the
-	// second of which the sweep has since removed.
+	// A new recipe that can save, as a reload left it: a title, a line, a step, a chapter, and two
+	// uploads, the second of which the sweep has since removed.
 	const storedNewRecipe: RecipeFormSnapshot = {
 		text: { ...blankText, title: 'Lemon bars' },
 		yieldKind: 'servings',
 		ingredientSections: { rows: [{ kind: 'item', id: 0, text: '1 cup flour' }] },
 		instructionSections: { rows: [{ kind: 'item', id: 1, text: 'Bake.' }] },
+		chapter: 'desserts',
+		holidays: [],
+		diets: [],
 		tags: [],
 		photos: {
 			dish: [
@@ -1528,7 +1648,6 @@ describe('RecipeForm as its page hydrates', () => {
 			[textbox('Notes'), 'Best the next day.'],
 			[textbox('Prep, in minutes'), '15'],
 			[textbox('Servings'), '16'],
-			[page.getByRole('combobox', { name: 'Tags' }), 'Dessert'],
 			[textbox(/^Describe the photo/), 'Bars on a plate'],
 		] as const;
 		const container = serverRender(form);
@@ -1553,7 +1672,7 @@ describe('RecipeForm as its page hydrates', () => {
 			times: { prepMinutes: '15' },
 			ingredientSections: [{ lines: ['1 cup sifted flour', '2 eggs'] }],
 			instructionSections: [{ steps: ['Mix well.'] }],
-			tags: ['Dessert'],
+			chapter: 'desserts',
 			images: [{ role: 'dish', alt: 'Bars on a plate' }],
 		});
 	});

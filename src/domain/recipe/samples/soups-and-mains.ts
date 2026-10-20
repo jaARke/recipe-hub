@@ -60,6 +60,9 @@ export const sampleChickenAndDumplings: RecipeContentInput = {
 			],
 		},
 	],
+	chapter: 'main-dishes',
+	holidays: [],
+	diets: [],
 	tags: ['Dinner', 'Comfort food'],
 	images: [],
 };
@@ -123,6 +126,9 @@ export const sampleLemonGarlicRoastChicken: RecipeContentInput = {
 			],
 		},
 	],
+	chapter: 'main-dishes',
+	holidays: [],
+	diets: ['gluten-free', 'dairy-free'],
 	tags: ['Dinner', 'Main'],
 	images: [],
 };
@@ -171,6 +177,9 @@ export const sampleYellowChickenCurry: RecipeContentInput = {
 			],
 		},
 	],
+	chapter: 'main-dishes',
+	holidays: [],
+	diets: ['dairy-free'],
 	tags: ['Dinner', 'Weeknight'],
 	images: [],
 };
@@ -224,6 +233,9 @@ export const sampleChickpeaTomatoStew: RecipeContentInput = {
 			],
 		},
 	],
+	chapter: 'main-dishes',
+	holidays: [],
+	diets: ['vegetarian', 'vegan', 'gluten-free', 'dairy-free'],
 	tags: ['Dinner', 'Vegetarian', 'Make ahead'],
 	images: [],
 };
@@ -272,6 +284,9 @@ export const sampleTomatoBasilSoup: RecipeContentInput = {
 			],
 		},
 	],
+	chapter: 'soups-salads',
+	holidays: [],
+	diets: ['vegetarian'],
 	tags: ['Soup', 'Vegetarian', 'Weeknight'],
 	images: [],
 };
@@ -317,6 +332,9 @@ export const sampleSplitPeaSoup: RecipeContentInput = {
 			],
 		},
 	],
+	chapter: 'soups-salads',
+	holidays: [],
+	diets: [],
 	tags: ['Soup', 'Make ahead', 'Freezer friendly'],
 	images: [],
 };
@@ -372,6 +390,9 @@ export const sampleMinestrone: RecipeContentInput = {
 			],
 		},
 	],
+	chapter: 'soups-salads',
+	holidays: [],
+	diets: [],
 	tags: ['Soup', 'Vegetarian', 'Make ahead'],
 	images: [],
 };
@@ -426,6 +447,9 @@ export const sampleSausageGravyOverBiscuits: RecipeContentInput = {
 			],
 		},
 	],
+	chapter: 'breakfast-brunch',
+	holidays: [],
+	diets: [],
 	tags: ['Breakfast'],
 	images: [],
 };
@@ -494,6 +518,9 @@ export const sampleTomatoTart: RecipeContentInput = {
 			],
 		},
 	],
+	chapter: 'vegetables-sides',
+	holidays: [],
+	diets: ['vegetarian'],
 	tags: ['Vegetarian', 'Français', 'Summer'],
 	images: [],
 };
@@ -546,6 +573,9 @@ export const sampleBlackBeanChili: RecipeContentInput = {
 			],
 		},
 	],
+	chapter: 'main-dishes',
+	holidays: [],
+	diets: ['vegetarian'],
 	tags: ['Dinner', 'Vegetarian', 'Make ahead'],
 	images: [],
 };
@@ -598,6 +628,9 @@ export const sampleRoastedCarrotGingerSoup: RecipeContentInput = {
 			],
 		},
 	],
+	chapter: 'soups-salads',
+	holidays: [],
+	diets: ['vegetarian'],
 	tags: ['Soup', 'Vegetarian'],
 	images: [],
 };

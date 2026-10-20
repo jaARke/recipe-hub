@@ -54,6 +54,9 @@ describe('recipeDraftSchema', () => {
 			title: 'Lemon icebox pie',
 			times: {},
 			ingredientSections: [{ lines: [{ text: '4 eggs' }] }],
+			chapter: 'desserts',
+			holidays: [],
+			diets: [],
 			tags: [],
 			images: [],
 		};

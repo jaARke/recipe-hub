@@ -46,8 +46,8 @@ const blankText = {
 };
 
 // A new recipe's form starts with ingredient line 0 and step 1, so a heading added takes 2 and three
-// photos take 3 to 5: one uploaded and described, one still uploading, and one that failed. A save's
-// error on the title shows too.
+// photos take 3 to 5: one uploaded and described, one still uploading, and one that failed. A chapter
+// and a diet are chosen, and a save's error on the title shows too.
 function halfFilledNewRecipe(): RecipeFormValues {
 	return edited(
 		recipeFormValues(),
@@ -56,6 +56,8 @@ function halfFilledNewRecipe(): RecipeFormValues {
 		{ type: 'addRow', list: 'ingredientSections', kind: 'heading' },
 		{ type: 'setRowText', list: 'ingredientSections', rowId: 2, text: 'For the glaze' },
 		{ type: 'setText', field: 'tagDraft', text: 'Dess' },
+		{ type: 'setChapter', chapter: 'desserts' },
+		{ type: 'setDiet', diet: 'vegan', chosen: true },
 		{
 			type: 'addPhotos',
 			role: 'dish',
@@ -107,6 +109,9 @@ const keptEdit: RecipeFormSnapshot = {
 		],
 	},
 	instructionSections: { rows: [{ kind: 'item', id: 1, text: 'Bake 20 minutes.' }] },
+	chapter: 'desserts',
+	holidays: ['christmas'],
+	diets: ['vegan'],
 	tags: [{ id: 8, label: 'Dessert' }],
 	photos: {
 		dish: [
@@ -142,6 +147,9 @@ describe('recipeFormSnapshot', () => {
 				],
 			},
 			instructionSections: { rows: [{ kind: 'item', id: 1, text: '' }] },
+			chapter: 'desserts',
+			holidays: [],
+			diets: ['vegan'],
 			tags: [],
 			photos: {
 				// Only a stored photo keeps its pathname and size.
@@ -275,6 +283,9 @@ describe('showSameRecipeForm', () => {
 			[{ type: 'setRowKind', list: 'ingredientSections', rowId: 0, kind: 'heading' }],
 			[{ type: 'setPhotoAlt', photoId: 2, alt: 'Bars on a plate' }],
 			[{ type: 'setYieldKind', kind: 'makes' }],
+			[{ type: 'setChapter', chapter: 'desserts' }],
+			[{ type: 'setHoliday', holiday: 'easter', chosen: true }],
+			[{ type: 'setDiet', diet: 'gluten-free', chosen: true }],
 			[{ type: 'addTags', labels: ['Dessert'] }],
 			[{ type: 'removePhoto', photoId: 2 }],
 			[
@@ -318,6 +329,29 @@ describe('reading a snapshot', () => {
 		expect(recipeFormSnapshotFromForm(JSON.stringify(keptEdit))).toEqual(keptEdit);
 	});
 
+	it('reads a snapshot kept before the form offered choices as one with nothing chosen', () => {
+		// The kept edit as the form kept it then.
+		const earlier = {
+			text: keptEdit.text,
+			yieldKind: keptEdit.yieldKind,
+			ingredientSections: keptEdit.ingredientSections,
+			instructionSections: keptEdit.instructionSections,
+			tags: keptEdit.tags,
+			photos: keptEdit.photos,
+			reviewNotes: keptEdit.reviewNotes,
+			nextId: keptEdit.nextId,
+		};
+		const read = { ...earlier, holidays: [], diets: [] };
+
+		expect(readRecipeFormSnapshot(JSON.parse(JSON.stringify(earlier)))).toEqual(read);
+		expect(recipeFormSnapshotFromForm(JSON.stringify(earlier))).toEqual(read);
+		expect(restoredRecipeForm(read, recipeFormValues(lemonBars))).toMatchObject({
+			chapter: undefined,
+			holidays: [],
+			diets: [],
+		});
+	});
+
 	it('reads back each stored photo’s size, and photos kept before sizes were recorded', () => {
 		const kept = recipeFormSnapshot(halfFilledNewRecipe());
 
@@ -342,6 +376,9 @@ describe('reading a snapshot', () => {
 			{ ingredientSections: { rows: [{ kind: 'section', id: 0, text: 'x' }] } },
 		],
 		['a missing text field', { text: { title: 'Lemon squares' } }],
+		['a chapter the cookbook has no', { chapter: 'soups' }],
+		['a holiday the cookbook has no', { holidays: ['groundhog-day'] }],
+		['a diet the cookbook has no', { diets: ['keto'] }],
 		['a fractional id', { tags: [{ id: 8.5, label: 'Dessert' }] }],
 		['two things with one id', { tags: [{ id: 0, label: 'Dessert' }] }],
 		[
@@ -449,6 +486,11 @@ describe('restoredRecipeForm', () => {
 		});
 		expect(restored.instructionSections).toEqual({
 			rows: [{ kind: 'item', id: 1, text: 'Bake 20 minutes.' }],
+		});
+		expect(restored).toMatchObject({
+			chapter: 'desserts',
+			holidays: ['christmas'],
+			diets: ['vegan'],
 		});
 		expect(restored.tags).toEqual([{ id: 8, label: 'Dessert' }]);
 		expect(restored.fieldErrors).toEqual({});
