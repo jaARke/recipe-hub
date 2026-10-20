@@ -1,9 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { page, userEvent } from 'vitest/browser';
 import { OriginalRecipePane } from '@/components/recipe-form/original-recipe-pane';
 import type { ShownImage } from '@/components/recipe/shown-recipe-image';
+import { preferLessMotion } from '@/components/recipe/testing/less-motion';
 import { centeredImageBox, expectImageIn } from '@/components/recipe/testing/viewer-layout';
+
+// The reader's own setting unless a test asks for less motion.
+vi.mock('@/lib/reduced-motion', { spy: true });
 
 // A landscape card and a portrait page.
 const frontSize = { width: 1600, height: 908 };
@@ -63,6 +67,7 @@ describe('OriginalRecipePane', () => {
 	});
 
 	it('zooms with its buttons and keys, pans while zoomed, and turns the page while it’s whole', async () => {
+		preferLessMotion();
 		const pane = await renderPane();
 		const frame = pane.getByRole('group', { name: 'Page 1 of 2' });
 		const whole = centeredImageBox(frame, frontSize);
@@ -88,6 +93,7 @@ describe('OriginalRecipePane', () => {
 	});
 
 	it('shows each page whole when it is turned to', async () => {
+		preferLessMotion();
 		const pane = await renderPane();
 		const front = pane.getByRole('group', { name: 'Page 1 of 2' });
 		await front.click();
