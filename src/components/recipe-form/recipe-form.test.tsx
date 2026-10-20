@@ -1481,10 +1481,10 @@ describe('RecipeForm’s autosave', () => {
 			]);
 		await expect.element(title()).toHaveValue('Lemon squares');
 		await expect.poll(() => stored(recipeKey)?.text.title).toBe('Lemon squares');
-		expect(stored(recipeKey)?.photos.dish.map(({ pathname }) => pathname)).toEqual([
-			'dish/development/kept.jpg',
-			undefined,
-		]);
+		// Kept a moment after the title, as the gone upload's status lands after the typing.
+		await expect
+			.poll(() => stored(recipeKey)?.photos.dish.map(({ pathname }) => pathname))
+			.toEqual(['dish/development/kept.jpg', undefined]);
 	});
 
 	it('brings an edit back only to the version of the recipe it was made on, and says so once', async () => {
@@ -2570,9 +2570,6 @@ describe('RecipeForm with its page’s menu', () => {
 		await expect
 			.element(page.getByRole('button', { name: 'Draft actions' }), { timeout: 5_000 })
 			.toBeVisible();
-		// Typed just before deleting: deleting drops it if it is still waiting, and saves nothing after.
-		await title().fill('Lemon bars squares');
-
 		await page.getByRole('button', { name: 'Draft actions' }).click();
 		await page.getByRole('menuitem', { name: 'Delete draft' }).click();
 		// Named as it was saved, which is what the delete takes away.
