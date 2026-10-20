@@ -20,15 +20,13 @@ type DraftListProps = {
 	drafts: readonly DraftSummaryDto[];
 	// When the page rendered, which each draft's age counts back from.
 	now: Date;
-	// The member signed in, whose unsaved changes to a deleted draft go with it.
-	memberId: string;
 	deleteDraft: FormAction;
 };
 
 // The member's drafts, as the page lists them, each a link to its page, named by its title and
 // described by how it started, when it was saved, and when it goes, with a menu holding Delete draft
 // at the row's end. Deleting one refreshes the page, which drops its row.
-function DraftList({ drafts, now, memberId, deleteDraft }: DraftListProps) {
+function DraftList({ drafts, now, deleteDraft }: DraftListProps) {
 	if (drafts.length === 0) {
 		return <p className="text-sm text-muted-foreground">No drafts.</p>;
 	}
@@ -78,7 +76,7 @@ function DraftList({ drafts, now, memberId, deleteDraft }: DraftListProps) {
 							label={`Actions for ${name}`}
 							draftId={draft.id}
 							title={draft.title}
-							memberId={memberId}
+							savedAt={draft.savedAt}
 							action={deleteDraft}
 						/>
 					</li>

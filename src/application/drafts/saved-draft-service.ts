@@ -1,6 +1,10 @@
 import 'server-only';
 import { requireMember } from '@/application/authorization';
-import { InvalidSavedDraftError, SavedDraftEditConflictError } from '@/application/drafts/errors';
+import {
+	InvalidSavedDraftError,
+	SavedDraftDeleteConflictError,
+	SavedDraftEditConflictError,
+} from '@/application/drafts/errors';
 import {
 	savedDraftCutoff,
 	savedDraftExpiry,
@@ -178,15 +182,27 @@ export class SavedDraftService {
 		return { id: saved.id, savedAt: saved.updatedAt };
 	}
 
-	// Deletes the member's draft. A draft already gone, or another member's, is left as it is.
-	async deleteDraft(id: string): Promise<void> {
+	// Deletes the member's draft at the version the page has of it, so a draft another page saved since
+	// is kept: that delete is a conflict, which the page reports. A draft already gone, or another
+	// member's, is left as it is.
+	async deleteDraft(id: string, version: string | undefined): Promise<void> {
 		const actor = requireMember(await this.actors.currentActor());
 		const draft = await this.findDraft(id);
 		if (draft?.memberId !== actor.memberId) {
 			return;
 		}
 
-		await this.drafts.delete(draft.id);
+		const parsed = editVersionSchema.safeParse(version);
+		if (!parsed.success) {
+			throw this.staleDelete(actor.memberId, draft.id);
+		}
+		try {
+			await this.drafts.delete(draft.id, parsed.data);
+		} catch (error) {
+			throw error instanceof SavedDraftEditConflictError
+				? this.staleDelete(actor.memberId, draft.id)
+				: error;
+		}
 		logger.info('Saved draft deleted', { draftId: draft.id, memberId: actor.memberId });
 	}
 
@@ -237,5 +253,11 @@ export class SavedDraftService {
 	private staleSave(memberId: MemberId, draftId: SavedDraftId): SavedDraftEditConflictError {
 		logger.warn('Draft save refused as stale', { draftId, memberId });
 		return new SavedDraftEditConflictError();
+	}
+
+	// Logged, since a page went on showing a draft another page had changed.
+	private staleDelete(memberId: MemberId, draftId: SavedDraftId): SavedDraftDeleteConflictError {
+		logger.warn('Draft delete refused as stale', { draftId, memberId });
+		return new SavedDraftDeleteConflictError();
 	}
 }

@@ -80,8 +80,10 @@ export interface SavedDraftRepository {
 		since: Date,
 		excludeMemberId?: MemberId
 	): Promise<string[]>;
-	// Returns the deleted draft, or null when no draft has this id.
-	delete(id: SavedDraftId): Promise<SavedDraft | null>;
+	// Deletes the draft at the updatedAt the caller has of it, so a draft saved since is never deleted:
+	// throws SavedDraftEditConflictError when updatedAt is no longer the expected one. Returns the
+	// deleted draft, or null when no draft has this id.
+	delete(id: SavedDraftId, expectedUpdatedAt: Date): Promise<SavedDraft | null>;
 	// Deletes every draft last changed before the given time, and returns how many it deleted.
 	deleteSavedBefore(cutoff: Date): Promise<number>;
 }

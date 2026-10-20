@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-react';
 import { page } from 'vitest/browser';
 import type { SavedDraftId } from '@/application/drafts/saved-draft';
@@ -6,14 +6,6 @@ import type { DraftSummaryDto } from '@/application/drafts/saved-draft-dtos';
 import type { FormAction } from '@/components/forms/form-state';
 import { DraftList } from '@/components/recipe-import/draft-list';
 
-const router = vi.hoisted(() => ({ replace: vi.fn() }));
-
-vi.mock('next/navigation', async (importOriginal) => ({
-	...(await importOriginal<typeof import('next/navigation')>()),
-	useRouter: () => router,
-}));
-
-const memberId = '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b';
 const savedId = '0199d2a0-1b2c-7d3e-8f40-000000000004' as SavedDraftId;
 const fromLinkId = '0199d2a0-1b2c-7d3e-8f40-000000000005' as SavedDraftId;
 const fromPhotosId = '0199d2a0-1b2c-7d3e-8f40-000000000003' as SavedDraftId;
@@ -53,20 +45,16 @@ async function deleteFromMenu(name: string) {
 	return page.getByRole('alertdialog');
 }
 
-afterEach(() => {
-	localStorage.clear();
-});
-
 describe('DraftList', () => {
 	it('says so when there are none', async () => {
-		await render(<DraftList drafts={[]} now={now} memberId={memberId} deleteDraft={vi.fn()} />);
+		await render(<DraftList drafts={[]} now={now} deleteDraft={vi.fn()} />);
 
 		await expect.element(page.getByText('No drafts.')).toBeVisible();
 		await expect.element(page.getByRole('list')).not.toBeInTheDocument();
 	});
 
 	it('lists each draft with its title, how it started, when it was saved, and when it goes, opening its page', async () => {
-		await render(<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={vi.fn()} />);
+		await render(<DraftList drafts={drafts} now={now} deleteDraft={vi.fn()} />);
 
 		// Each row's link is named by the draft's title and described by its details.
 		const links = page.getByRole('listitem').getByRole('link');
@@ -91,37 +79,27 @@ describe('DraftList', () => {
 	});
 
 	it('names its list a list, which Safari takes for a group without markers', async () => {
-		await render(<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={vi.fn()} />);
+		await render(<DraftList drafts={drafts} now={now} deleteDraft={vi.fn()} />);
 
 		await expect.element(page.getByRole('list')).toHaveAttribute('role', 'list');
 	});
 
-	it('deletes a draft from its row’s menu once asked, with the changes this browser kept for it', async () => {
+	it('deletes a draft from its row’s menu once asked, at the version the list shows', async () => {
 		const deleteDraft = vi.fn<FormAction>(async () => ({ status: 'success' }));
-		const deletedKey = `member:recipe-form:${memberId}:draft:${fromLinkId}`;
-		const keptKey = `member:recipe-form:${memberId}:draft:${savedId}`;
-		localStorage.setItem(deletedKey, '{}');
-		localStorage.setItem(keptKey, '{}');
-		await render(
-			<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={deleteDraft} />
-		);
+		await render(<DraftList drafts={drafts} now={now} deleteDraft={deleteDraft} />);
 
 		const dialog = await deleteFromMenu('Lemon bars');
 		await expect.element(dialog).toHaveAccessibleName('Delete the draft of “Lemon bars”?');
 		await dialog.getByRole('button', { name: 'Delete draft' }).click();
 
-		await expect.poll(() => localStorage.getItem(deletedKey)).toBeNull();
+		await expect.poll(() => deleteDraft).toHaveBeenCalledOnce();
 		expect(deleteDraft.mock.calls[0]?.[1].get('draftId')).toBe(fromLinkId);
-		expect(localStorage.getItem(keptKey)).toBe('{}');
-		// The list stays, and the page renders again without the draft.
-		expect(router.replace).not.toHaveBeenCalled();
+		expect(deleteDraft.mock.calls[0]?.[1].get('draftVersion')).toBe('2026-10-14T18:00:00.000Z');
 	});
 
 	it('returns focus to the row’s menu button when the member keeps the draft', async () => {
 		const deleteDraft = vi.fn<FormAction>();
-		await render(
-			<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={deleteDraft} />
-		);
+		await render(<DraftList drafts={drafts} now={now} deleteDraft={deleteDraft} />);
 
 		const dialog = await deleteFromMenu('Untitled recipe');
 		await expect.element(dialog).toHaveAccessibleName('Delete this draft?');

@@ -77,10 +77,11 @@ export default function PrivacyPage() {
 						added to the cookbook, so anyone can see them, signed in or not.
 					</li>
 					<li>
-						A draft you save from the recipe form is kept until you add the recipe to the cookbook
-						or delete the draft. A draft you leave is kept for{' '}
-						{dayCount(settings.drafts.draftLifetimeDays)} after your last save, then deleted within
-						a day.
+						A recipe you’re adding is saved as a draft as you fill in the form, and emptying the
+						form deletes its draft. A draft is kept until you add the recipe to the cookbook or
+						delete the draft; one you leave is kept for{' '}
+						{dayCount(settings.drafts.draftLifetimeDays)} after your last change, then deleted
+						within a day.
 					</li>
 					<li>
 						A photo or scan you upload isn’t listed anywhere until the recipe it’s for is saved.
@@ -149,10 +150,10 @@ export default function PrivacyPage() {
 						When you sign in, your favorites move to your account and the cookie is cleared.
 					</li>
 					<li>
-						Changes you haven’t saved to a recipe you’re adding or editing are kept in your browser,
-						so they come back if the page reloads. They’re cleared when you save the recipe, discard
-						them, or sign out, and otherwise {dayCount(settings.drafts.draftLifetimeDays)} after
-						your last change; until then anyone using this browser can see them.
+						Changes you haven’t saved to a recipe you’re editing are kept in your browser, so they
+						come back if the page reloads. They’re cleared when you save the recipe, discard them,
+						or sign out, and otherwise {dayCount(settings.drafts.draftLifetimeDays)} after your last
+						change; until then anyone using this browser can see them.
 					</li>
 					<li>
 						In the cooking view, each browser tab remembers which ingredients you’ve checked off as

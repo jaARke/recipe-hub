@@ -49,13 +49,9 @@ export class InMemorySavedDraftRepository implements SavedDraftRepository {
 		id: SavedDraftId,
 		{ expectedUpdatedAt, ...contents }: SavedDraftUpdate
 	): Promise<SavedDraft | null> {
-		const stored = this.drafts.get(id);
+		const stored = this.storedAt(id, expectedUpdatedAt);
 		if (stored === undefined) {
 			return null;
-		}
-
-		if (stored.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
-			throw new SavedDraftEditConflictError();
 		}
 
 		return this.store(
@@ -115,10 +111,14 @@ export class InMemorySavedDraftRepository implements SavedDraftRepository {
 		return [...new Set(pathnames)].filter((pathname) => named.has(pathname));
 	}
 
-	async delete(id: SavedDraftId): Promise<SavedDraft | null> {
-		const stored = this.drafts.get(id);
+	async delete(id: SavedDraftId, expectedUpdatedAt: Date): Promise<SavedDraft | null> {
+		const stored = this.storedAt(id, expectedUpdatedAt);
+		if (stored === undefined) {
+			return null;
+		}
+
 		this.drafts.delete(id);
-		return stored ?? null;
+		return stored;
 	}
 
 	async deleteSavedBefore(cutoff: Date): Promise<number> {
@@ -176,6 +176,15 @@ export class InMemorySavedDraftRepository implements SavedDraftRepository {
 		}
 
 		this.drafts.set(id, { ...stored, updatedAt });
+	}
+
+	// The draft a write at a version acts on, if there is one; one saved since is a conflict.
+	private storedAt(id: SavedDraftId, expectedUpdatedAt: Date): SavedDraft | undefined {
+		const stored = this.drafts.get(id);
+		if (stored !== undefined && stored.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+			throw new SavedDraftEditConflictError();
+		}
+		return stored;
 	}
 
 	private findWithImport(importId: RecipeImportId): SavedDraft | undefined {

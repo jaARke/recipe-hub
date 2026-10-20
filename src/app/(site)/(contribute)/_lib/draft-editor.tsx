@@ -1,6 +1,11 @@
 import 'server-only';
 import { loadFormMember } from '@/app/(site)/(contribute)/_lib/load-form-member';
-import { createRecipe, deleteDraft, saveDraft } from '@/app/(site)/(contribute)/contribute/actions';
+import {
+	createRecipe,
+	deleteOpenDraft,
+	returnToStart,
+	saveDraft,
+} from '@/app/(site)/(contribute)/contribute/actions';
 import type { SavedDraftDto } from '@/application/drafts/saved-draft-dtos';
 import { DraftPageHeading } from '@/components/recipe-form/draft-page-heading';
 import { HeldDraftProvider } from '@/components/recipe-form/held-draft';
@@ -48,10 +53,10 @@ function openedDraft(
 }
 
 // A new recipe's page and a draft's: the heading, where an import's draft came from, and the recipe
-// form, which saves its draft and holds it once saved, so the heading names it and its menu deletes
-// it.
+// form, which saves its draft as the member fills it in and holds it once saved, so the heading names
+// it and its menu deletes it.
 export async function DraftEditor({ pageHref, draft }: DraftEditorProps) {
-	const member = await loadFormMember(pageHref);
+	await loadFormMember(pageHref);
 	const opened = draft === undefined ? undefined : openedDraft(draft);
 	const held = opened === undefined ? undefined : draft;
 
@@ -59,20 +64,25 @@ export async function DraftEditor({ pageHref, draft }: DraftEditorProps) {
 		<HeldDraftProvider
 			// A draft saved elsewhere since starts the form again, as Next keeps this page's state.
 			key={held === undefined ? 'new' : `${held.id}:${held.savedAt.toISOString()}`}
-			opened={held === undefined ? undefined : { id: held.id, title: opened?.title }}
+			opened={
+				held === undefined
+					? undefined
+					: { id: held.id, title: opened?.title, savedAt: held.savedAt }
+			}
 		>
-			<DraftPageHeading menu={<HeldDraftMenu memberId={member.id} action={deleteDraft} />}>
+			<DraftPageHeading menu={<HeldDraftMenu action={deleteOpenDraft} />}>
 				<DraftProvenanceLine mode={draft?.mode} sourceUrl={draft?.sourceUrl} />
 			</DraftPageHeading>
 			<RecipeForm
 				initial={opened?.initial ?? recipeFormValues()}
 				action={createRecipe}
 				uploadFolders={getRecipeImageService().uploadFolders()}
-				autosave={{ memberId: member.id }}
 				drafts={{
 					save: saveDraft,
+					delete: deleteOpenDraft,
+					leave: returnToStart,
 					opened: held === undefined ? undefined : { id: held.id, savedAt: held.savedAt },
-					inUrl: true,
+					page: draft === undefined ? 'new' : 'draft',
 				}}
 			/>
 		</HeldDraftProvider>

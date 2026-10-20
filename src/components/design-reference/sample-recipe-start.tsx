@@ -1,7 +1,7 @@
 'use client';
 
 import type { DraftSummaryDto } from '@/application/drafts/saved-draft-dtos';
-import { deleteSample, sampleMemberId } from '@/components/design-reference/sample-recipe-form';
+import { deleteSample } from '@/components/design-reference/sample-recipe-form';
 import { RecipeStart } from '@/components/recipe-import/recipe-start';
 
 // The start page under the design reference's own headings, with these drafts listed and, if given,
@@ -23,7 +23,6 @@ function SampleRecipeStart({
 			kept={kept}
 			drafts={drafts}
 			now={now}
-			memberId={sampleMemberId}
 			deleteDraft={deleteSample}
 		/>
 	);

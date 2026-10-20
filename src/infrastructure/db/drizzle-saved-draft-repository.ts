@@ -68,15 +68,7 @@ export class DrizzleSavedDraftRepository implements SavedDraftRepository {
 		if (row !== undefined) {
 			return toSavedDraft(row);
 		}
-
-		// Nothing was updated: the draft was saved since, or there is none.
-		const [current] = await this.db
-			.select({ id: recipeDrafts.id })
-			.from(recipeDrafts)
-			.where(eq(recipeDrafts.id, id));
-		if (current !== undefined) {
-			throw new SavedDraftEditConflictError();
-		}
+		await this.refuseIfSavedSince(id);
 		return null;
 	}
 
@@ -136,12 +128,17 @@ export class DrizzleSavedDraftRepository implements SavedDraftRepository {
 		return rows.map(({ pathname }) => pathname).filter((pathname) => wanted.has(pathname));
 	}
 
-	async delete(id: SavedDraftId): Promise<SavedDraft | null> {
+	// The version is checked in the delete's own condition, as an update's is.
+	async delete(id: SavedDraftId, expectedUpdatedAt: Date): Promise<SavedDraft | null> {
 		const [row] = await this.db
 			.delete(recipeDrafts)
-			.where(eq(recipeDrafts.id, id))
+			.where(and(eq(recipeDrafts.id, id), savedAtVersion(expectedUpdatedAt)))
 			.returning(savedDraftColumns);
-		return row === undefined ? null : toSavedDraft(row);
+		if (row !== undefined) {
+			return toSavedDraft(row);
+		}
+		await this.refuseIfSavedSince(id);
+		return null;
 	}
 
 	async deleteSavedBefore(cutoff: Date): Promise<number> {
@@ -150,5 +147,17 @@ export class DrizzleSavedDraftRepository implements SavedDraftRepository {
 			.where(lt(recipeDrafts.updatedAt, cutoff))
 			.returning({ id: recipeDrafts.id });
 		return rows.length;
+	}
+
+	// A write at a version changed nothing: the draft was saved since, which is a conflict, or there is
+	// none.
+	private async refuseIfSavedSince(id: SavedDraftId): Promise<void> {
+		const [current] = await this.db
+			.select({ id: recipeDrafts.id })
+			.from(recipeDrafts)
+			.where(eq(recipeDrafts.id, id));
+		if (current !== undefined) {
+			throw new SavedDraftEditConflictError();
+		}
 	}
 }

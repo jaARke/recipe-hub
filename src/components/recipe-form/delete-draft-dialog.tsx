@@ -11,6 +11,8 @@ type DeleteDraftDialogProps = {
 	draftId: string;
 	// The recipe's title, if it has one yet.
 	title: string | undefined;
+	// The version of the draft the page shows, which the delete names.
+	savedAt: Date;
 	// Opens the dialog from a menu's Delete draft.
 	opener: ConfirmActionDialogOpener;
 	action: FormAction;
@@ -19,7 +21,14 @@ type DeleteDraftDialogProps = {
 };
 
 // Asks before deleting a draft, as DeleteRecipeDialog does a recipe.
-function DeleteDraftDialog({ draftId, title, opener, action, onDeleted }: DeleteDraftDialogProps) {
+function DeleteDraftDialog({
+	draftId,
+	title,
+	savedAt,
+	opener,
+	action,
+	onDeleted,
+}: DeleteDraftDialogProps) {
 	return (
 		<ConfirmActionDialog
 			variant="destructive"
@@ -35,6 +44,7 @@ function DeleteDraftDialog({ draftId, title, opener, action, onDeleted }: Delete
 			onSuccess={onDeleted}
 		>
 			<input type="hidden" name={recipeFormFieldNames.draftId} value={draftId} />
+			<input type="hidden" name={recipeFormFieldNames.draftVersion} value={savedAt.toISOString()} />
 		</ConfirmActionDialog>
 	);
 }

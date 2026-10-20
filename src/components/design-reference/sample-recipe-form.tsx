@@ -9,17 +9,14 @@ import standInScanPage2 from '@/components/design-reference/stand-in-scans/anise
 import { formText } from '@/components/forms/form-data';
 import type { FormAction, FormState } from '@/components/forms/form-state';
 import { DraftPageHeading } from '@/components/recipe-form/draft-page-heading';
+import type { DraftVersion } from '@/components/recipe-form/draft-save-coordinator';
 import {
 	EditingPageHeading,
 	editingPageTitles,
 } from '@/components/recipe-form/editing-page-heading';
 import { HeldDraftProvider, type HeldDraft } from '@/components/recipe-form/held-draft';
 import type { PhotoUploader } from '@/components/recipe-form/photo-upload';
-import {
-	RecipeForm,
-	type OpenedDraft,
-	type RecipeFormDrafts,
-} from '@/components/recipe-form/recipe-form';
+import { RecipeForm } from '@/components/recipe-form/recipe-form';
 import { recipeContentFromForm } from '@/components/recipe-form/recipe-form-content';
 import {
 	recipeFormFieldNames,
@@ -32,6 +29,7 @@ import {
 	type RecipeFormValues,
 } from '@/components/recipe-form/recipe-form-values';
 import { EditedRecipeMenu, HeldDraftMenu } from '@/components/recipe-form/subject-menus';
+import type { RecipeFormDrafts } from '@/components/recipe-form/use-draft-saving';
 import { DraftProvenanceLine } from '@/components/recipe-import/draft-provenance-line';
 import { parseRecipeContent } from '@/domain/recipe/recipe';
 import type { ImageSize, RecipeImageRole } from '@/domain/recipe/recipe-image';
@@ -153,7 +151,7 @@ const saveSampleDraft: FormAction<SavedDraftResult> = () =>
 		savedAt: new Date(),
 	});
 
-// Stands in for the member signed in, whose unsaved changes a menu's delete removes; deleting a
+// Stands in for the member signed in, whose unsaved changes the edit page's menu removes; deleting a
 // sample is refused, so none are.
 const sampleMemberId = 'sample-member';
 
@@ -165,10 +163,14 @@ const deleteSample: FormAction = () =>
 		fieldErrors: {},
 	});
 
-// The page's URL stays the design reference's.
+// Leaves nowhere, so the sample stays here.
+const leaveSample: RecipeFormDrafts['leave'] = () => standIn(undefined);
+
+// Emptying a sample deletes nothing, and its page's URL stays the design reference's.
 const sampleDrafts: RecipeFormDrafts = {
 	save: saveSampleDraft,
-	inUrl: false,
+	delete: () => standIn<FormState>({ status: 'success' }),
+	leave: leaveSample,
 };
 
 function SampleRecipeForm({
@@ -180,7 +182,7 @@ function SampleRecipeForm({
 	initial: RecipeFormValues;
 	editing?: EditedRecipe;
 	// The saved draft the form opens, when adding a recipe.
-	openedDraft?: OpenedDraft;
+	openedDraft?: DraftVersion;
 	// Adds the stand-in pages of an original recipe, as just uploaded.
 	standInScans?: boolean;
 }) {
@@ -198,8 +200,9 @@ function SampleRecipeForm({
 			action={saveSampleRecipe}
 			uploadFolders={sampleUploadFolders}
 			uploader={sampleUpload}
-			editing={editing}
-			drafts={editing === undefined ? { ...sampleDrafts, opened: openedDraft } : undefined}
+			{...(editing === undefined
+				? { drafts: { ...sampleDrafts, opened: openedDraft } }
+				: { editing })}
 		/>
 	);
 }
@@ -207,14 +210,14 @@ function SampleRecipeForm({
 // What a sample page edits, which its heading's menu acts on: a new recipe, from a draft if one is
 // given, with how its import read it if one did; or a recipe.
 export type SampleEditingSubject =
-	| { page: 'add'; draft?: HeldDraft & OpenedDraft; importedFrom?: RecipeImportMode }
+	| { page: 'add'; draft?: HeldDraft; importedFrom?: RecipeImportMode }
 	| { page: 'edit'; recipe: EditedRecipe; slug: string; title: string };
 
 // The heading's menu on each sample page, as the site's pages give it.
 function sampleMenu(subject: SampleEditingSubject): React.ReactNode {
 	switch (subject.page) {
 		case 'add':
-			return <HeldDraftMenu memberId={sampleMemberId} action={deleteSample} />;
+			return <HeldDraftMenu action={deleteSample} />;
 		case 'edit':
 			return (
 				<EditedRecipeMenu
@@ -262,11 +265,4 @@ function SampleEditingPage({
 	);
 }
 
-export {
-	deleteSample,
-	SampleEditingPage,
-	sampleMemberId,
-	SampleRecipeForm,
-	sampleUpload,
-	sampleUploadFolders,
-};
+export { deleteSample, SampleEditingPage, SampleRecipeForm, sampleUpload, sampleUploadFolders };

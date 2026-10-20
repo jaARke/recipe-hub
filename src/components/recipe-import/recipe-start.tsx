@@ -24,8 +24,6 @@ type RecipeStartProps = {
 	drafts: readonly DraftSummaryDto[];
 	// When the page rendered, which each draft's age counts back from.
 	now: Date;
-	// The member signed in, whose unsaved changes to a deleted draft go with it.
-	memberId: string;
 	deleteDraft: FormAction;
 };
 
@@ -51,14 +49,7 @@ function StartSection({
 
 // The add pages' start: the ways to start a new recipe, then the member's drafts and how long each is
 // kept, under a notice naming the draft just left, if any.
-function RecipeStart({
-	headingLevel = 1,
-	kept,
-	drafts,
-	now,
-	memberId,
-	deleteDraft,
-}: RecipeStartProps) {
+function RecipeStart({ headingLevel = 1, kept, drafts, now, deleteDraft }: RecipeStartProps) {
 	const { page: Heading, section } = startHeadingTags[headingLevel];
 	return (
 		<div className="flex flex-col gap-10">
@@ -70,7 +61,7 @@ function RecipeStart({
 				<RecipeStartList />
 			</StartSection>
 			<StartSection heading={section} title="Your drafts">
-				<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={deleteDraft} />
+				<DraftList drafts={drafts} now={now} deleteDraft={deleteDraft} />
 				<p className="text-sm text-muted-foreground">
 					Only you can see your drafts until you add them to the cookbook. Each is kept for{' '}
 					{settings.drafts.draftLifetimeDays} days after its last change.

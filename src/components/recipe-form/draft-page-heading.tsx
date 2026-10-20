@@ -3,7 +3,7 @@
 import type * as React from 'react';
 import { BackLink } from '@/components/layout/back-link';
 import { EditingPageHeading } from '@/components/recipe-form/editing-page-heading';
-import { useHeldDraft } from '@/components/recipe-form/held-draft';
+import { useHeldDraft, useHeldDraftControls } from '@/components/recipe-form/held-draft';
 import { draftName } from '@/components/recipe-import/listed-drafts';
 import { backToStartLabel } from '@/components/recipe-import/recipe-entry-heading';
 import { keptDraftPath } from '@/components/recipe-import/recipe-entry-paths';
@@ -21,14 +21,24 @@ type DraftPageHeadingProps = {
 
 // The heading of a new recipe's or a draft's page: the back link to the start page, which says there
 // that the draft is kept once the form holds one, then the recipe's title as last saved, as the list
-// of drafts names it.
+// of drafts names it. The back link leaves as Finish later does, once saving has done what it can; a
+// link opened elsewhere, as in a new tab, goes at once.
 function DraftPageHeading({ headingTag, menu, children }: DraftPageHeadingProps) {
 	const draft = useHeldDraft();
+	const controls = useHeldDraftControls();
 	return (
 		<div className="flex flex-col">
 			<BackLink
 				href={draft === undefined ? contributePath : keptDraftPath(draft.id)}
 				className="mb-6"
+				onClick={(event) => {
+					const form = controls();
+					if (form === undefined || isOpenedElsewhere(event)) {
+						return;
+					}
+					event.preventDefault();
+					form.finishLater();
+				}}
 			>
 				{backToStartLabel}
 			</BackLink>
@@ -38,6 +48,11 @@ function DraftPageHeading({ headingTag, menu, children }: DraftPageHeadingProps)
 			</div>
 		</div>
 	);
+}
+
+// A click Next's Link leaves to the browser, which opens the link elsewhere.
+function isOpenedElsewhere(event: React.MouseEvent<HTMLAnchorElement>): boolean {
+	return event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey;
 }
 
 // Mirrors the heading while the draft loads: the back link, which leads to the start page as it is,

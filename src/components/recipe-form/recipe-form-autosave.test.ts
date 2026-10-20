@@ -5,7 +5,6 @@ import {
 	readAutosavedRecipeForm,
 	recipeFormAutosaveKey,
 	recipeFormAutosavePrefix,
-	recipeFormAutosaveVersion,
 	recipeFormSubject,
 	unsavedUploads,
 	type RecipeFormEntrySubject,
@@ -52,55 +51,33 @@ const keptEdit: RecipeFormSnapshot = {
 };
 
 describe('recipeFormAutosaveKey', () => {
-	it('names one entry for each member and form, kept for whoever is signed in', () => {
-		expect(recipeFormAutosaveKey(memberId, { kind: 'new' })).toBe(
-			`member:recipe-form:${memberId}:new`
-		);
-		expect(recipeFormAutosaveKey(memberId, { kind: 'draft', draftId })).toBe(
-			`member:recipe-form:${memberId}:draft:${draftId}`
-		);
-		expect(recipeFormAutosaveKey(memberId, { kind: 'recipe', recipeId })).toBe(
-			`member:recipe-form:${memberId}:recipe:${recipeId}`
-		);
-		expect(recipeFormAutosaveKey(otherMemberId, { kind: 'new' })).not.toBe(
-			recipeFormAutosaveKey(memberId, { kind: 'new' })
-		);
-		for (const subject of [{ kind: 'new' } as const, { kind: 'draft', draftId } as const]) {
-			expect(recipeFormAutosaveKey(memberId, subject).startsWith(recipeFormAutosavePrefix)).toBe(
-				true
-			);
-		}
+	it('names one entry for each member and recipe, kept for whoever is signed in', () => {
+		const key = recipeFormAutosaveKey(memberId, { kind: 'recipe', recipeId });
+
+		expect(key).toBe(`member:recipe-form:${memberId}:recipe:${recipeId}`);
+		expect(key.startsWith(recipeFormAutosavePrefix)).toBe(true);
+		expect(recipeFormAutosaveKey(otherMemberId, { kind: 'recipe', recipeId })).not.toBe(key);
 	});
 
-	it('names a recipe’s or a draft’s entry without its version', () => {
-		const edit = (editVersion: string) =>
-			recipeFormSubject({ editing: { id: recipeId, version: editVersion } });
-		const saved = (savedAt: string) =>
-			recipeFormSubject({ draft: { id: draftId, savedAt: new Date(savedAt) } });
+	it('names a recipe’s entry without its version', () => {
+		const edit = (editVersion: string) => recipeFormSubject({ id: recipeId, version: editVersion });
 
 		expect(recipeFormAutosaveKey(memberId, edit('a'))).toBe(
 			recipeFormAutosaveKey(memberId, edit('b'))
 		);
-		expect(recipeFormAutosaveKey(memberId, saved(version))).toBe(
-			recipeFormAutosaveKey(memberId, saved(now.toISOString()))
-		);
 	});
 
-	it('takes the subject from what the form edits, with the version of it the form has', () => {
-		const editing = { id: recipeId, version };
-		const draft = { id: draftId, savedAt: new Date(version) };
-
-		expect(recipeFormSubject({})).toEqual({ kind: 'new' });
-		expect(recipeFormSubject({ draft })).toEqual({ kind: 'draft', draftId, version });
-		expect(recipeFormSubject({ editing })).toEqual({ kind: 'recipe', recipeId, version });
-		expect(recipeFormAutosaveVersion(recipeFormSubject({ editing }))).toBe(version);
-		expect(recipeFormAutosaveVersion(recipeFormSubject({ draft }))).toBe(version);
-		expect(recipeFormAutosaveVersion({ kind: 'new' })).toBeUndefined();
+	it('takes the subject from the recipe the form edits, with the version the form loaded', () => {
+		expect(recipeFormSubject({ id: recipeId, version })).toEqual({
+			kind: 'recipe',
+			recipeId,
+			version,
+		});
 	});
 });
 
 describe('readAutosavedRecipeForm', () => {
-	const entry = (writtenAt: Date, entryVersion?: string) =>
+	const entry = (writtenAt: Date, entryVersion: string = version) =>
 		JSON.stringify(autosavedRecipeForm(keptEdit, entryVersion, writtenAt));
 
 	it('reads back what was written, with when it was written', () => {
@@ -113,61 +90,62 @@ describe('readAutosavedRecipeForm', () => {
 	});
 
 	it('reads nothing where nothing was written', () => {
-		expect(readAutosavedRecipeForm(undefined, undefined, now)).toBeUndefined();
+		expect(readAutosavedRecipeForm(undefined, version, now)).toBeUndefined();
 	});
 
 	it('reads changes made to another version as outdated', () => {
-		const outdated = { status: 'outdated', entry: autosavedRecipeForm(keptEdit, version, now) };
-
-		expect(readAutosavedRecipeForm(entry(now, version), 'b', now)).toEqual(outdated);
-		expect(readAutosavedRecipeForm(entry(now, version), undefined, now)).toEqual(outdated);
-		expect(readAutosavedRecipeForm(entry(now), version, now)?.status).toBe('outdated');
+		expect(readAutosavedRecipeForm(entry(now, version), 'b', now)).toEqual({
+			status: 'outdated',
+			entry: autosavedRecipeForm(keptEdit, version, now),
+		});
 	});
 
 	it('reads nothing once the entry is as old as a saved draft’s lifetime', () => {
 		const expired = new Date(now.getTime() - lifetime - 1);
 		const kept = new Date(now.getTime() - lifetime + 1000);
 
-		expect(readAutosavedRecipeForm(entry(expired), undefined, now)).toBeUndefined();
-		expect(readAutosavedRecipeForm(entry(expired, version), 'b', now)).toBeUndefined();
-		expect(readAutosavedRecipeForm(entry(kept), undefined, now)?.status).toBe('current');
+		expect(readAutosavedRecipeForm(entry(expired), version, now)).toBeUndefined();
+		expect(readAutosavedRecipeForm(entry(expired), 'b', now)).toBeUndefined();
+		expect(readAutosavedRecipeForm(entry(kept), version, now)?.status).toBe('current');
 	});
 
 	it.each([
 		['text that isn’t JSON', '{"form":'],
-		['no time it was written', JSON.stringify({ form: keptEdit })],
-		['a form of the shape it had before', JSON.stringify({ ...keptEdit, writtenAt: now })],
+		['no time it was written', JSON.stringify({ version, form: keptEdit })],
+		['no version', JSON.stringify({ writtenAt: now.toISOString(), form: keptEdit })],
+		['a form of the shape it had before', JSON.stringify({ ...keptEdit, version, writtenAt: now })],
 		[
 			'a form that can’t be read',
 			JSON.stringify({
+				version,
 				writtenAt: now.toISOString(),
 				form: { ...keptEdit, ingredientSections: { rows: [{ id: 0 }] } },
 			}),
 		],
 	])('discards an entry holding %s', (_name, written) => {
-		expect(readAutosavedRecipeForm(written, undefined, now)).toBeUndefined();
+		expect(readAutosavedRecipeForm(written, version, now)).toBeUndefined();
 	});
 });
 
 describe('isStaleRecipeFormEntry', () => {
 	const written = (writtenAt: number) =>
-		JSON.stringify(autosavedRecipeForm(keptEdit, undefined, new Date(writtenAt)));
+		JSON.stringify(autosavedRecipeForm(keptEdit, version, new Date(writtenAt)));
 	const keyOf = (subject: RecipeFormEntrySubject, member = memberId) =>
 		recipeFormAutosaveKey(member, subject);
-	const newRecipe = keyOf({ kind: 'new' });
 	const recipeKey = keyOf({ kind: 'recipe', recipeId });
-	const draftKey = keyOf({ kind: 'draft', draftId });
+	// A key no form makes, as another kind of form would name.
+	const otherKindKey = `${recipeFormAutosavePrefix}${memberId}:draft:${draftId}`;
 	const pruning = { now, memberId };
 
 	it('finds stale an entry past its lifetime, or one that can’t be read, and nothing else', () => {
 		const recent = written(now.getTime() - 1000);
 
-		expect(isStaleRecipeFormEntry(newRecipe, written(now.getTime() - lifetime - 1), pruning)).toBe(
+		expect(isStaleRecipeFormEntry(recipeKey, written(now.getTime() - lifetime - 1), pruning)).toBe(
 			true
 		);
-		expect(isStaleRecipeFormEntry(newRecipe, '{"text":', pruning)).toBe(true);
-		expect(isStaleRecipeFormEntry(newRecipe, JSON.stringify(keptEdit), pruning)).toBe(true);
-		for (const key of [newRecipe, recipeKey, draftKey]) {
+		expect(isStaleRecipeFormEntry(recipeKey, '{"text":', pruning)).toBe(true);
+		expect(isStaleRecipeFormEntry(recipeKey, JSON.stringify(keptEdit), pruning)).toBe(true);
+		for (const key of [recipeKey, otherKindKey]) {
 			expect(isStaleRecipeFormEntry(key, recent, pruning)).toBe(false);
 		}
 	});
@@ -187,16 +165,15 @@ describe('isStaleRecipeFormEntry', () => {
 		expect(
 			isStaleRecipeFormEntry(keyOf({ kind: 'recipe', recipeId }, otherMemberId), before, known)
 		).toBe(false);
-		expect(isStaleRecipeFormEntry(draftKey, before, known)).toBe(false);
-		expect(isStaleRecipeFormEntry(newRecipe, before, known)).toBe(false);
+		expect(isStaleRecipeFormEntry(otherKindKey, before, known)).toBe(false);
 	});
 
-	it('keeps an entry of a kind the page doesn’t know every one of, or under a key no form names', () => {
+	it('keeps an entry under a key no form names', () => {
 		const knownAt = now;
 		const before = written(now.getTime() - 1000);
 		const recipesOnly = { now, memberId, existing: { knownAt, recipeIds: [] } };
 
-		expect(isStaleRecipeFormEntry(draftKey, before, recipesOnly)).toBe(false);
+		expect(isStaleRecipeFormEntry(otherKindKey, before, recipesOnly)).toBe(false);
 		expect(isStaleRecipeFormEntry(recipeKey, before, recipesOnly)).toBe(true);
 		expect(isStaleRecipeFormEntry(`${recipeKey}:extra`, before, recipesOnly)).toBe(false);
 		expect(

@@ -19,12 +19,12 @@ import {
 	recipeFormSnapshotImages,
 	recipeFormSnapshotTitle,
 } from '@/components/recipe-form/recipe-form-snapshot';
-import { savedDraftPath } from '@/components/recipe-import/recipe-entry-paths';
+import { keptDraftPath, savedDraftPath } from '@/components/recipe-import/recipe-entry-paths';
 import {
 	recipeImportFieldNames,
 	scanUploadsFromForm,
 } from '@/components/recipe-import/recipe-import-forms';
-import { addedRecipePath } from '@/components/recipe/recipe-paths';
+import { addedRecipePath, contributePath } from '@/components/recipe/recipe-paths';
 import {
 	getRecipeImageService,
 	getRecipeImportService,
@@ -78,21 +78,55 @@ export async function saveDraft(
 	return { status: 'success', draftId: draft.id, savedAt: draft.savedAt };
 }
 
-// Deletes the draft the form names. The page renders again, so the list of drafts drops it.
-export async function deleteDraft(_state: FormState, formData: FormData): Promise<FormState> {
+// Deletes the draft the form names, at the version the page shows, which a draft another page saved
+// since no longer has.
+async function deleteNamedDraft(formData: FormData): Promise<FormState> {
 	try {
-		await getSavedDraftService().deleteDraft(formText(formData, recipeFormFieldNames.draftId));
+		await getSavedDraftService().deleteDraft(
+			formText(formData, recipeFormFieldNames.draftId),
+			optionalFormText(formData, recipeFormFieldNames.draftVersion)
+		);
 	} catch (error) {
 		return toFormError(error);
 	}
 
 	getRecipeImageService().scheduleSweep();
-	refresh();
 	return { status: 'success' };
 }
 
+// Deletes a draft the start page lists. The page renders again, so the list and the header's count
+// drop it.
+export async function deleteDraft(_state: FormState, formData: FormData): Promise<FormState> {
+	const result = await deleteNamedDraft(formData);
+	if (result.status === 'success') {
+		refresh();
+	}
+	return result;
+}
+
+// Deletes the draft open in the recipe form, as emptying the form or its page's menu does. Nothing
+// renders again: the form is what the page shows, and the draft's page rendered anew would replace it.
+export async function deleteOpenDraft(_state: FormState, formData: FormData): Promise<FormState> {
+	return deleteNamedDraft(formData);
+}
+
+// Leads from a recipe form's page to the start page, which says there that the draft named is kept.
+// The header counts the member's drafts in the layout, which a client navigation keeps, so it renders
+// again with the page. A page whose draft was deleted takes no place in the history.
+export async function returnToStart(
+	keptDraftId: string | undefined,
+	history: 'push' | 'replace'
+): Promise<void> {
+	refresh();
+	redirect(
+		typeof keptDraftId === 'string' ? keptDraftPath(keptDraftId) : contributePath,
+		history === 'replace' ? 'replace' : 'push'
+	);
+}
+
 // Opens the draft the import made. Nothing cached changes until it is saved as a recipe, so there is
-// no tag to update. The page sets how long the action may run.
+// no tag to update, and the layout renders again with the draft's page for the header's count of
+// drafts, which a redirect alone keeps as it was. The page sets how long the action may run.
 export async function importFromUrl(_state: FormState, formData: FormData): Promise<FormState> {
 	let recipeImport: RecipeImportRef;
 	try {
@@ -104,6 +138,7 @@ export async function importFromUrl(_state: FormState, formData: FormData): Prom
 	}
 
 	getRecipeImageService().scheduleSweep();
+	refresh();
 	redirect(savedDraftPath(recipeImport.draftId));
 }
 
@@ -117,5 +152,6 @@ export async function importFromScans(_state: FormState, formData: FormData): Pr
 	}
 
 	getRecipeImageService().scheduleSweep();
+	refresh();
 	redirect(savedDraftPath(recipeImport.draftId));
 }

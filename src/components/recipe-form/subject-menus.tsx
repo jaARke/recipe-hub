@@ -8,9 +8,13 @@ import { useConfirmActionDialogOpener } from '@/components/forms/confirm-action-
 import type { FormAction } from '@/components/forms/form-state';
 import { DeleteDraftDialog } from '@/components/recipe-form/delete-draft-dialog';
 import { DeleteRecipeDialog } from '@/components/recipe-form/delete-recipe-dialog';
-import { useHeldDraft, useReleaseDraft } from '@/components/recipe-form/held-draft';
+import {
+	useHeldDraft,
+	useHeldDraftControls,
+	useReleaseDraft,
+} from '@/components/recipe-form/held-draft';
 import { removeRecipeFormChanges } from '@/components/recipe-form/use-recipe-form-autosave';
-import { contributePath, recipeListPath, recipePath } from '@/components/recipe/recipe-paths';
+import { recipeListPath, recipePath } from '@/components/recipe/recipe-paths';
 import { Button } from '@/components/ui/button';
 import {
 	DropdownMenu,
@@ -21,8 +25,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 // Menus of what can be done to a recipe or a draft as a whole, each a ⋯ button at the end of what
-// it acts on: an editing page's heading, or a row in the list of drafts. Delete confirms in a dialog
-// and, once confirmed, removes the member's unsaved changes kept in this browser with it.
+// it acts on: an editing page's heading, or a row in the list of drafts. Delete confirms in a dialog;
+// a recipe's, once confirmed, removes the member's unsaved changes kept in this browser with it.
 
 // 44 px for a finger, as the recipe page's actions are.
 const touchSizeClassNames = {
@@ -81,16 +85,15 @@ type DraftMenuProps = {
 	draftId: string;
 	// The recipe's title as saved, if it has one yet.
 	title: string | undefined;
-	memberId: string;
+	// When the draft was last saved as the page shows it, so a delete never takes away a save made
+	// since.
+	savedAt: Date;
+	// Deletes the draft; a list renders again without it, and a draft's page leaves.
 	action: FormAction;
-	// Where the page it was open on leaves for once it is deleted. A list stays, and the page renders
-	// again without it.
-	leavesFor?: string;
 };
 
 // Delete draft, for a draft open in the recipe form or listed among the member's drafts.
-function DraftMenu({ label, draftId, title, memberId, action, leavesFor }: DraftMenuProps) {
-	const router = useRouter();
+function DraftMenu({ label, draftId, title, savedAt, action }: DraftMenuProps) {
 	const releaseDraft = useReleaseDraft();
 	const triggerRef = React.useRef<HTMLButtonElement>(null);
 	const opener = useConfirmActionDialogOpener(triggerRef);
@@ -109,26 +112,22 @@ function DraftMenu({ label, draftId, title, memberId, action, leavesFor }: Draft
 			<DeleteDraftDialog
 				draftId={draftId}
 				title={title}
+				savedAt={savedAt}
 				opener={opener}
 				action={action}
-				onDeleted={() => {
-					removeRecipeFormChanges(memberId, { kind: 'draft', draftId });
-					// The page lets go of it if its form holds it, so its list of drafts stops showing it.
-					releaseDraft?.(draftId);
-					// The draft is gone, so the drafts left take its place in the history.
-					if (leavesFor !== undefined) {
-						router.replace(leavesFor);
-					}
-				}}
+				// The page lets go of it if its form holds it, so its heading stops offering it.
+				onDeleted={() => releaseDraft?.(draftId)}
 			/>
 		</>
 	);
 }
 
 // A draft's page's menu once its form holds a saved draft, opened or just saved; a new recipe has
-// none. Deleting it leaves for the start page, which lists the drafts left.
-function HeldDraftMenu({ memberId, action }: { memberId: string; action: FormAction }) {
+// none. The form deletes it once saving stops, and the page then leaves for the start page, which
+// lists the drafts left.
+function HeldDraftMenu({ action }: { action: FormAction }) {
 	const draft = useHeldDraft();
+	const controls = useHeldDraftControls();
 	if (draft === undefined) {
 		return null;
 	}
@@ -137,9 +136,8 @@ function HeldDraftMenu({ memberId, action }: { memberId: string; action: FormAct
 			label="Draft actions"
 			draftId={draft.id}
 			title={draft.title}
-			memberId={memberId}
-			action={action}
-			leavesFor={contributePath}
+			savedAt={draft.savedAt}
+			action={(state, formData) => (controls()?.deleting(action) ?? action)(state, formData)}
 		/>
 	);
 }

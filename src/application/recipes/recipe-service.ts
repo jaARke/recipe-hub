@@ -312,9 +312,10 @@ export class RecipeService {
 		}
 	}
 
-	// After the recipe commits. A failure leaves the draft for its expiry to clear, and its import is
-	// already spent, since the recipe names it. Ids arrive from forms, so a malformed one, or one that
-	// names another member's draft, deletes nothing.
+	// After the recipe commits, at the version found. A failure, as when another page saves the draft
+	// in between, leaves the draft for its expiry to clear, and its import is already spent, since the
+	// recipe names it. Ids arrive from forms, so a malformed one, or one that names another member's
+	// draft, deletes nothing.
 	private async deleteSavedDraft(
 		draftId: string,
 		memberId: MemberId,
@@ -327,7 +328,7 @@ export class RecipeService {
 		try {
 			const draft = await this.drafts.findById(parsed.data);
 			if (draft?.memberId === memberId) {
-				await this.drafts.delete(draft.id);
+				await this.drafts.delete(draft.id, draft.updatedAt);
 			}
 		} catch (err) {
 			logger.warn('Saved draft could not be deleted', { draftId: parsed.data, recipeId, err });

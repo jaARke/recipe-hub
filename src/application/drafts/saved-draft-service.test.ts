@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { SignInRequiredError } from '@/application/authorization';
-import { SavedDraftEditConflictError } from '@/application/drafts/errors';
+import {
+	SavedDraftDeleteConflictError,
+	SavedDraftEditConflictError,
+} from '@/application/drafts/errors';
 import type { SavedDraftId } from '@/application/drafts/saved-draft';
 import type { SavedDraftRef } from '@/application/drafts/saved-draft-dtos';
 import { SavedDraftService, type SaveDraftInput } from '@/application/drafts/saved-draft-service';
@@ -50,6 +53,11 @@ const soupCard: ImportDraft = {
 };
 
 const lifetime = settings.drafts.draftLifetimeDays;
+
+// The version a page showing the draft has of it, which deleting it names.
+async function shownVersion(service: SavedDraftService, id: string): Promise<string | undefined> {
+	return (await service.getDraft(id))?.savedAt.toISOString();
+}
 
 // What a form that opened or saved the draft sends to save over it: its id and its version.
 function over({ id, savedAt }: SavedDraftRef): Pick<SaveDraftInput, 'draftId' | 'draftVersion'> {
@@ -128,7 +136,10 @@ describe('an anonymous visitor', () => {
 		['getDraft', (service: SavedDraftService) => service.getDraft(missingId)],
 		['getImportDraft', (service: SavedDraftService) => service.getImportDraft(missingId)],
 		['saveDraft', (service: SavedDraftService) => service.saveDraft(lemonBars)],
-		['deleteDraft', (service: SavedDraftService) => service.deleteDraft(missingId)],
+		[
+			'deleteDraft',
+			(service: SavedDraftService) => service.deleteDraft(missingId, new Date().toISOString()),
+		],
 		['listDrafts', (service: SavedDraftService) => service.listDrafts()],
 	])('is refused %s', async (_name, call) => {
 		const { serviceFor } = await createDrafts();
@@ -377,7 +388,7 @@ describe('getImportDraft', () => {
 		const theirs = await importDraft(memberActor());
 		const deleted = await importDraft(owner);
 		const expired = await importDraft(owner);
-		await service.deleteDraft(deleted.draftId);
+		await service.deleteDraft(deleted.draftId, await shownVersion(service, deleted.draftId));
 		backdateDraft(expired.draftId, lifetime + 0.01);
 
 		expect(await service.getImportDraft(theirs.importId)).toBeNull();
@@ -388,28 +399,72 @@ describe('getImportDraft', () => {
 });
 
 describe('deleteDraft', () => {
-	it("deletes the member's draft, an import's too, and keeps the import's record", async () => {
+	it("deletes the member's draft, an import's too, at the version shown, and keeps the import's record", async () => {
 		const member = memberActor();
 		const { imports, drafts, serviceFor, importDraft } = await createDrafts();
 		const service = serviceFor(member);
 		const { importId, draftId } = await importDraft(member);
+		const saved = await service.saveDraft(lemonBars);
 		const kept = await service.saveDraft(lemonBars);
 
-		await service.deleteDraft(draftId);
+		await service.deleteDraft(draftId, await shownVersion(service, draftId));
+		await service.deleteDraft(saved.id, saved.savedAt.toISOString());
 
 		expect(await drafts.findById(draftId)).toBeNull();
+		expect(await drafts.findById(saved.id)).toBeNull();
 		expect(await imports.findById(importId)).toMatchObject({ status: 'succeeded' });
 		expect(await service.listDrafts()).toEqual([expect.objectContaining({ id: kept.id })]);
+		expect(logLines(consoleInfo)).toContainEqual(
+			expect.objectContaining({ message: 'Saved draft deleted', draftId })
+		);
+	});
+
+	it('refuses to delete a draft another page saved since, which stays as that page saved it', async () => {
+		const { drafts, serviceFor } = await createDrafts();
+		const service = serviceFor(memberActor());
+		const shown = await service.saveDraft(lemonBars);
+		const elsewhere = await service.saveDraft({
+			...over(shown),
+			values: { text: { title: 'Lemon squares' } },
+			title: 'Lemon squares',
+			imagePathnames: [],
+		});
+
+		await expect(service.deleteDraft(shown.id, shown.savedAt.toISOString())).rejects.toThrow(
+			SavedDraftDeleteConflictError
+		);
+		expect(await drafts.findById(shown.id)).toMatchObject({
+			title: 'Lemon squares',
+			updatedAt: elsewhere.savedAt,
+		});
+		expect(logLines(consoleWarn)).toEqual([
+			expect.objectContaining({ message: 'Draft delete refused as stale', draftId: shown.id }),
+		]);
+	});
+
+	it.each([
+		['no version', undefined],
+		['a malformed version', 'yesterday'],
+	])('refuses to delete a draft naming %s', async (_name, version) => {
+		const { drafts, serviceFor } = await createDrafts();
+		const service = serviceFor(memberActor());
+		const shown = await service.saveDraft(lemonBars);
+
+		await expect(service.deleteDraft(shown.id, version)).rejects.toThrow(
+			SavedDraftDeleteConflictError
+		);
+		expect(await drafts.findById(shown.id)).not.toBeNull();
 	});
 
 	it("leaves another member's draft, and a missing or malformed id, as they are", async () => {
 		const { drafts, serviceFor } = await createDrafts();
 		const theirs = await serviceFor(memberActor()).saveDraft(lemonBars);
 		const service = serviceFor(memberActor());
+		const version = theirs.savedAt.toISOString();
 
-		await service.deleteDraft(theirs.id);
-		await service.deleteDraft(missingId);
-		await service.deleteDraft(malformedId);
+		await service.deleteDraft(theirs.id, version);
+		await service.deleteDraft(missingId, version);
+		await service.deleteDraft(malformedId, version);
 
 		expect(await drafts.findById(theirs.id)).not.toBeNull();
 	});

@@ -319,15 +319,39 @@ export function describeSavedDraftRepositoryContract(
 	});
 
 	describe('delete', () => {
-		it('deletes the draft and returns it, and returns null for an id no draft has', async () => {
+		it('deletes the draft at its version and returns it, and returns null for an id no draft has', async () => {
 			const { drafts } = fixture();
 			const created = await create();
 			const kept = await create();
 
-			expect(await drafts.delete(created.id)).toEqual(created);
+			expect(await drafts.delete(created.id, created.updatedAt)).toEqual(created);
 			expect(await drafts.findById(created.id)).toBeNull();
 			expect(await drafts.findById(kept.id)).toEqual(kept);
-			expect(await drafts.delete(created.id)).toBeNull();
+			expect(await drafts.delete(created.id, created.updatedAt)).toBeNull();
+			expect(await drafts.delete(missingId, new Date())).toBeNull();
+		});
+
+		it('refuses a version saved over since, and deletes nothing', async () => {
+			const { drafts } = fixture();
+			const created = await create();
+			// Saved right away, so the delete names a version less than a millisecond old.
+			const saved = await drafts.update(created.id, {
+				...lemonSquares,
+				expectedUpdatedAt: created.updatedAt,
+			});
+
+			await expect(drafts.delete(created.id, created.updatedAt)).rejects.toThrow(
+				SavedDraftEditConflictError
+			);
+			expect(await drafts.findById(created.id)).toEqual(saved);
+		});
+
+		it("deletes an import's draft at the version it was made at", async () => {
+			const { drafts } = fixture();
+			const { importId, draft } = await importDraft();
+
+			expect(await drafts.delete(draft.id, draft.updatedAt)).toEqual(draft);
+			expect(await drafts.findByImportId(importId)).toBeNull();
 		});
 
 		it('deletes every draft last saved before the time, and counts them', async () => {

@@ -16,7 +16,6 @@ vi.mock('next/navigation', async (importOriginal) => ({
 	useRouter: () => router,
 }));
 
-const memberId = '3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b';
 const savedId = '0199d2a0-1b2c-7d3e-8f40-000000000004' as SavedDraftId;
 const untitledId = '0199d2a0-1b2c-7d3e-8f40-000000000005' as SavedDraftId;
 
@@ -36,15 +35,7 @@ const untitled: DraftSummaryDto = {
 };
 
 function start({ kept }: { kept?: DraftSummaryDto } = {}) {
-	return (
-		<RecipeStart
-			kept={kept}
-			drafts={[lemonBars, untitled]}
-			now={now}
-			memberId={memberId}
-			deleteDraft={vi.fn()}
-		/>
-	);
+	return <RecipeStart kept={kept} drafts={[lemonBars, untitled]} now={now} deleteDraft={vi.fn()} />;
 }
 
 // The notice naming the draft just left.

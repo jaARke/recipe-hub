@@ -11,12 +11,21 @@ export class InvalidSavedDraftError extends InvalidInputError {
 	}
 }
 
-// Another page saved the draft after the form opened or last saved it, so saving again would undo
-// that save.
+// Another page saved the draft after the form opened or last saved it, so saving again, or deleting
+// it, would undo that save.
 export class SavedDraftEditConflictError extends AppError {
 	readonly code = 'draft.edit-conflict';
 
 	constructor() {
 		super('Saved draft was changed after it was loaded');
+	}
+}
+
+// Another page saved the draft after this one showed it, so deleting it would take that save away.
+export class SavedDraftDeleteConflictError extends AppError {
+	readonly code = 'draft.delete-conflict';
+
+	constructor() {
+		super('Saved draft was changed after it was shown');
 	}
 }

@@ -3,7 +3,6 @@ import { permanentRedirect } from 'next/navigation';
 import { connection } from 'next/server';
 import { Suspense } from 'react';
 import { loadDrafts } from '@/app/(site)/(contribute)/_lib/load-drafts';
-import { loadFormMember } from '@/app/(site)/(contribute)/_lib/load-form-member';
 import { deleteDraft } from '@/app/(site)/(contribute)/contribute/actions';
 import { requestedPageHref } from '@/components/auth/auth-paths';
 import { PageContainer } from '@/components/layout/page-container';
@@ -38,20 +37,14 @@ async function RecipeStartForMember({
 	const now = new Date();
 	// The query names the draft just left, so signing in again says so.
 	const pageHref = requestedPageHref(contributePath, params);
-	const [drafts, member] = await Promise.all([loadDrafts(pageHref), loadFormMember(pageHref)]);
+	const drafts = await loadDrafts(pageHref);
 	const keptId = parseKeptDraftParam(params[keptDraftParamName]);
 	const kept = drafts.find(({ id }) => id === keptId);
 
 	return (
 		<>
 			<RefreshOnReturn />
-			<RecipeStart
-				kept={kept}
-				drafts={drafts}
-				now={now}
-				memberId={member.id}
-				deleteDraft={deleteDraft}
-			/>
+			<RecipeStart kept={kept} drafts={drafts} now={now} deleteDraft={deleteDraft} />
 		</>
 	);
 }
