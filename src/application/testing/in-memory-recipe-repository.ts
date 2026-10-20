@@ -9,6 +9,7 @@ import type {
 	UpdatedRecipe,
 } from '@/application/ports/recipe-repository';
 import { RecipeEditConflictError } from '@/application/recipes/errors';
+import type { InMemorySavedDraftRepository } from '@/application/testing/in-memory-saved-draft-repository';
 import type { MemberId } from '@/domain/member/member';
 import { recipeIdSchema, type Recipe, type RecipeId } from '@/domain/recipe/recipe';
 import type { RecipeImportId } from '@/domain/recipe/recipe-import';
@@ -24,11 +25,17 @@ function compareText(a: string, b: string): number {
 }
 
 export class InMemoryRecipeRepository implements RecipeRepository {
+	// Where a recipe added from a draft finds it; absent for tests that add none.
+	private readonly drafts: InMemorySavedDraftRepository | undefined;
 	private readonly recipes = new Map<RecipeId, Recipe>();
 	// Each old slug and the recipe it now names.
 	private readonly oldSlugs = new Map<string, RecipeId>();
 	// Each import a recipe was saved from, and that recipe.
 	private readonly importIds = new Map<RecipeImportId, RecipeId>();
+
+	constructor(drafts?: InMemorySavedDraftRepository) {
+		this.drafts = drafts;
+	}
 
 	async findById(id: RecipeId): Promise<Recipe | null> {
 		return this.recipes.get(id) ?? null;
@@ -67,26 +74,14 @@ export class InMemoryRecipeRepository implements RecipeRepository {
 	}
 
 	async create(recipe: NewRecipe): Promise<Recipe> {
-		if (recipe.importId !== undefined && this.importIds.has(recipe.importId)) {
-			throw new ImportUnavailableError();
+		const { fromDraft } = recipe;
+		if (fromDraft === undefined) {
+			return this.store(recipe);
 		}
-
-		const now = new Date();
-		const created: Recipe = {
-			...recipe.content,
-			id: recipeIdSchema.parse(crypto.randomUUID()),
-			slug: this.freeSlug(recipe.slugBase),
-			contributorId: recipe.contributorId,
-			provenance: recipe.provenance,
-			createdAt: now,
-			updatedAt: now,
-		};
-
-		this.recipes.set(created.id, created);
-		if (recipe.importId !== undefined) {
-			this.importIds.set(recipe.importId, created.id);
+		if (this.drafts === undefined) {
+			throw new Error('This repository was made without drafts to add a recipe from');
 		}
-		return created;
+		return this.drafts.consumeWith(fromDraft, recipe.contributorId, () => this.store(recipe));
 	}
 
 	async update(id: RecipeId, update: RecipeUpdate): Promise<UpdatedRecipe | null> {
@@ -157,6 +152,30 @@ export class InMemoryRecipeRepository implements RecipeRepository {
 	findByImportId(importId: RecipeImportId): Recipe | null {
 		const recipeId = this.importIds.get(importId);
 		return recipeId === undefined ? null : (this.recipes.get(recipeId) ?? null);
+	}
+
+	// Stores a new recipe. It does not await, so an add from a draft stays one uninterrupted step.
+	private store(recipe: NewRecipe): Recipe {
+		if (recipe.importId !== undefined && this.importIds.has(recipe.importId)) {
+			throw new ImportUnavailableError();
+		}
+
+		const now = new Date();
+		const created: Recipe = {
+			...recipe.content,
+			id: recipeIdSchema.parse(crypto.randomUUID()),
+			slug: this.freeSlug(recipe.slugBase),
+			contributorId: recipe.contributorId,
+			provenance: recipe.provenance,
+			createdAt: now,
+			updatedAt: now,
+		};
+
+		this.recipes.set(created.id, created);
+		if (recipe.importId !== undefined) {
+			this.importIds.set(recipe.importId, created.id);
+		}
+		return created;
 	}
 
 	private sorted(sort: RecipeSort): Recipe[] {

@@ -11,15 +11,18 @@ const otherContributorId = memberIdSchema.parse('3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4
 
 let repository: InMemoryRecipeRepository;
 let imports: InMemoryRecipeImportRepository;
+let drafts: InMemorySavedDraftRepository;
 
 beforeEach(() => {
-	repository = new InMemoryRecipeRepository();
-	imports = new InMemoryRecipeImportRepository(repository, new InMemorySavedDraftRepository());
+	drafts = new InMemorySavedDraftRepository();
+	repository = new InMemoryRecipeRepository(drafts);
+	imports = new InMemoryRecipeImportRepository(repository, drafts);
 });
 
 describeRecipeRepositoryContract(() => ({
 	repository,
 	imports,
+	drafts,
 	contributorId,
 	otherContributorId,
 }));

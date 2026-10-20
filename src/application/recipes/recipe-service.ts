@@ -1,7 +1,7 @@
 import 'server-only';
 import { z } from 'zod';
 import { requireMember } from '@/application/authorization';
-import { SavedDraftEditConflictError } from '@/application/drafts/errors';
+import { SavedDraftEditConflictError, SavedDraftGoneError } from '@/application/drafts/errors';
 import { savedDraftIdSchema } from '@/application/drafts/saved-draft';
 import { editVersionSchema } from '@/application/edit-version';
 import { ImportUnavailableError } from '@/application/ingestion/errors';
@@ -16,7 +16,7 @@ import {
 	type RecipeRepository,
 	type UpdatedRecipe,
 } from '@/application/ports/recipe-repository';
-import type { SavedDraftRepository } from '@/application/ports/saved-draft-repository';
+import type { SavedDraft, SavedDraftRepository } from '@/application/ports/saved-draft-repository';
 import { unattachableImageProblems } from '@/application/recipes/attachable-images';
 import {
 	InvalidRecipePageError,
@@ -59,15 +59,15 @@ const logger = getLogger('recipes');
 
 export type CreateRecipeInput = {
 	content: RecipeContentInput;
-	// The draft the member saved the recipe from, which goes once the recipe is saved. The recipe takes
-	// the provenance and the import of the import that made the draft, if one did.
+	// The member's draft the recipe is added from, which goes as the recipe is saved, and the version of
+	// it the form had, its savedAt. The recipe takes the provenance and the import of the import that
+	// made the draft, if one did.
 	draftId?: string;
-	// The version of that draft the form had, its savedAt, so a draft another page saved since stays.
 	draftVersion?: string;
 };
 
-// Where a new recipe came from: manual entry, or the import that made its draft.
-type RecipeOrigin = Pick<NewRecipe, 'provenance' | 'importId'>;
+// Where a new recipe came from: manual entry, or the member's draft, with the import that made it.
+type RecipeOrigin = Pick<NewRecipe, 'provenance' | 'importId' | 'fromDraft'>;
 
 export class RecipeService {
 	private readonly recipes: RecipeRepository;
@@ -154,14 +154,17 @@ export class RecipeService {
 
 	// Writes resolve the actor first, so an anonymous caller learns nothing about which recipes exist.
 	// The browser never names the provenance: a recipe saved from an import's draft takes what the
-	// draft kept.
+	// draft kept. A recipe added from a draft consumes it with the add, so one draft makes one recipe:
+	// a draft another page added or deleted, or saved since the form had it, refuses the add before
+	// anything is used, and the member's form keeps what they typed.
 	async createRecipe(input: CreateRecipeInput): Promise<RecipeRef> {
 		const actor = requireMember(await this.actors.currentActor());
-		const origin = await this.recipeOrigin(input.draftId, actor.memberId);
+		const origin = await this.recipeOrigin(input, actor.memberId);
 		const content = parseRecipeContent(input.content);
 		await this.assertImagesAttachable(content.images, [], actor.memberId);
 
-		// The repository refuses a second recipe from the import, as a save racing this one can make.
+		// The repository checks the draft again as it adds, and refuses a second recipe from the
+		// import, as a save racing this one can make.
 		let recipe: Recipe;
 		try {
 			recipe = await this.recipes.create({
@@ -171,9 +174,7 @@ export class RecipeService {
 				slugBase: slugify(content.title),
 			});
 		} catch (error) {
-			throw error instanceof ImportUnavailableError
-				? this.unavailableImport(origin.importId, actor.memberId)
-				: error;
+			throw this.refusedAdd(error, origin, actor.memberId);
 		}
 
 		logger.info('Recipe created', {
@@ -181,10 +182,8 @@ export class RecipeService {
 			memberId: actor.memberId,
 			entryMode: recipe.provenance.entryMode,
 			...(origin.importId !== undefined && { importId: origin.importId }),
+			...(origin.fromDraft !== undefined && { draftId: origin.fromDraft.id }),
 		});
-		if (input.draftId !== undefined) {
-			await this.deleteSavedDraft(input.draftId, input.draftVersion, actor.memberId, recipe.id);
-		}
 		return toRecipeRef(recipe);
 	}
 
@@ -257,23 +256,32 @@ export class RecipeService {
 		};
 	}
 
-	// The provenance and the import the member's draft kept from the import that made it, however long
-	// ago; otherwise the recipe was entered by hand. Ids arrive from forms, so a malformed one, or one
-	// naming another member's draft, gives neither. A draft that expired while its form was open still
-	// gives its own, since the recipe was written from it.
+	// Entered by hand where the form names no draft. Otherwise the member's draft at the version the
+	// form had, with the provenance and the import it kept from the import that made it, however long
+	// ago. Ids and versions arrive from forms, so a malformed id, or one naming another member's
+	// draft, names a draft that is gone, and a missing or malformed version one saved since. A draft
+	// that expired while its form was open still gives its own, since the recipe was written from it.
 	private async recipeOrigin(
-		draftId: string | undefined,
+		{ draftId, draftVersion }: Pick<CreateRecipeInput, 'draftId' | 'draftVersion'>,
 		memberId: MemberId
 	): Promise<RecipeOrigin> {
+		if (draftId === undefined) {
+			return { provenance: { entryMode: 'manual' } };
+		}
 		const parsed = savedDraftIdSchema.safeParse(draftId);
 		const draft = parsed.success ? await this.drafts.findById(parsed.data) : null;
-		if (draft?.memberId !== memberId || draft.provenance === undefined) {
-			return { provenance: { entryMode: 'manual' } };
+		if (draft?.memberId !== memberId) {
+			throw this.goneDraft(parsed.data, memberId);
+		}
+		const version = editVersionSchema.safeParse(draftVersion);
+		if (!version.success || version.data.getTime() !== draft.updatedAt.getTime()) {
+			throw this.staleDraft(draft.id, memberId);
 		}
 
 		return {
-			provenance: draft.provenance,
+			provenance: draft.provenance ?? { entryMode: 'manual' },
 			...(draft.importId !== undefined && { importId: draft.importId }),
+			fromDraft: { id: draft.id, expectedUpdatedAt: version.data },
 		};
 	}
 
@@ -315,39 +323,34 @@ export class RecipeService {
 		}
 	}
 
-	// After the recipe commits, at the version the form had, so a draft another page saved since stays
-	// with that page's changes, as one named without a version does; the member finds it among their
-	// drafts. A failure leaves the draft for its expiry to clear, and its import is already spent, since
-	// the recipe names it. Ids arrive from forms, so a malformed one, or one that names another member's
-	// draft, deletes nothing.
-	private async deleteSavedDraft(
-		draftId: string,
-		draftVersion: string | undefined,
-		memberId: MemberId,
-		recipeId: RecipeId
-	): Promise<void> {
-		const parsed = savedDraftIdSchema.safeParse(draftId);
-		if (!parsed.success) {
-			return;
+	// What the repository refused an add for, as the member is told it, logged where it's expected.
+	private refusedAdd(error: unknown, origin: RecipeOrigin, memberId: MemberId): unknown {
+		const draftId = origin.fromDraft?.id;
+		if (error instanceof ImportUnavailableError) {
+			return this.unavailableImport(origin.importId, memberId);
 		}
-		const version = editVersionSchema.safeParse(draftVersion);
-		try {
-			const draft = await this.drafts.findById(parsed.data);
-			if (draft?.memberId !== memberId) {
-				return;
-			}
-			if (!version.success) {
-				logger.info('Saved draft kept', { draftId: draft.id, recipeId, reason: 'no version' });
-				return;
-			}
-			await this.drafts.delete(draft.id, version.data);
-		} catch (err) {
-			if (err instanceof SavedDraftEditConflictError) {
-				logger.info('Saved draft kept', { draftId: parsed.data, recipeId, reason: 'saved since' });
-				return;
-			}
-			logger.warn('Saved draft could not be deleted', { draftId: parsed.data, recipeId, err });
+		if (error instanceof SavedDraftGoneError) {
+			return this.goneDraft(draftId, memberId);
 		}
+		if (error instanceof SavedDraftEditConflictError && draftId !== undefined) {
+			return this.staleDraft(draftId, memberId);
+		}
+		return error;
+	}
+
+	// Logged, since the member's form outlived its draft, as when another page added it.
+	private goneDraft(
+		draftId: SavedDraft['id'] | undefined,
+		memberId: MemberId
+	): SavedDraftGoneError {
+		logger.warn('Recipe save refused for a missing draft', { draftId, memberId });
+		return new SavedDraftGoneError();
+	}
+
+	// Logged, since the member has to reload the draft and redo their changes.
+	private staleDraft(draftId: SavedDraft['id'], memberId: MemberId): SavedDraftEditConflictError {
+		logger.warn('Recipe save refused for a draft saved since', { draftId, memberId });
+		return new SavedDraftEditConflictError();
 	}
 
 	// Logged, since the editor has to reload and redo their changes.

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SavedDraftEditConflictError, SavedDraftGoneError } from '@/application/drafts/errors';
 import { ImportUnavailableError } from '@/application/ingestion/errors';
 import type { RecipeImportRepository } from '@/application/ports/recipe-import-repository';
 import type {
@@ -7,6 +8,7 @@ import type {
 	RecipeUpdate,
 	UpdatedRecipe,
 } from '@/application/ports/recipe-repository';
+import type { SavedDraft, SavedDraftRepository } from '@/application/ports/saved-draft-repository';
 import { RecipeEditConflictError } from '@/application/recipes/errors';
 import type { MemberId } from '@/domain/member/member';
 import type { Provenance } from '@/domain/recipe/provenance';
@@ -30,6 +32,8 @@ export type RecipeRepositoryFixture = {
 	repository: RecipeRepository;
 	// Stores the imports a recipe can be saved from.
 	imports: RecipeImportRepository;
+	// Stores the drafts a recipe can be added from.
+	drafts: SavedDraftRepository;
 	// Two members the repository accepts as contributors.
 	contributorId: MemberId;
 	otherContributorId: MemberId;
@@ -82,6 +86,74 @@ export function describeRecipeRepositoryContract(fixture: () => RecipeRepository
 		const content = recipeContentSchema.parse(input);
 		return (await save(recipe, { content, slugBase: slugify(content.title) }))?.recipe;
 	}
+
+	describe('create from a draft', () => {
+		// A draft the member saved from the recipe form, which a recipe is added from.
+		function saveDraft(memberId: MemberId = fixture().contributorId): Promise<SavedDraft> {
+			return fixture().drafts.create({ memberId, values: {}, imagePathnames: [] });
+		}
+
+		function fromDraft(draft: SavedDraft, expectedUpdatedAt: Date = draft.updatedAt) {
+			return { fromDraft: { id: draft.id, expectedUpdatedAt } };
+		}
+
+		it("adds the recipe from the contributor's draft at its version, deleting the draft with it", async () => {
+			const { repository, drafts } = fixture();
+			const draft = await saveDraft();
+
+			const created = await create(sampleChickenSoup, fromDraft(draft));
+
+			expect(await repository.findById(created.id)).toEqual(created);
+			expect(await drafts.findById(draft.id)).toBeNull();
+		});
+
+		it('refuses a draft saved since, creating nothing and keeping the draft', async () => {
+			const { repository, drafts } = fixture();
+			const draft = await saveDraft();
+			const saved = await drafts.update(draft.id, {
+				values: { text: { title: 'Lemon squares' } },
+				imagePathnames: [],
+				expectedUpdatedAt: draft.updatedAt,
+			});
+
+			await expect(create(sampleChickenSoup, fromDraft(draft))).rejects.toThrow(
+				SavedDraftEditConflictError
+			);
+			expect(await repository.count()).toBe(0);
+			expect(await drafts.findById(draft.id)).toEqual(saved);
+		});
+
+		it("refuses a draft added already, or another member's, creating nothing", async () => {
+			const { repository, drafts, otherContributorId } = fixture();
+			const added = await saveDraft();
+			await create(sampleChickenSoup, fromDraft(added));
+			const theirs = await saveDraft(otherContributorId);
+
+			await expect(create(sampleTomatoSalad, fromDraft(added))).rejects.toThrow(
+				SavedDraftGoneError
+			);
+			await expect(create(sampleTomatoSalad, fromDraft(theirs))).rejects.toThrow(
+				SavedDraftGoneError
+			);
+			expect(await repository.count()).toBe(1);
+			expect(await drafts.findById(theirs.id)).toEqual(theirs);
+			expect((await create(sampleTomatoSalad)).slug).toBe('garden-tomato-salad');
+		});
+
+		it("keeps the draft when the recipe can't be created, as from an import already used", async () => {
+			const { repository, imports, drafts, contributorId } = fixture();
+			const started = await imports.start({ memberId: contributorId, mode: 'photo' });
+			const provenance: Provenance = { entryMode: 'photo', aiModel: 'example/model' };
+			await create(sampleChickenSoup, { provenance, importId: started?.id });
+			const draft = await saveDraft();
+
+			await expect(
+				create(sampleTomatoSalad, { provenance, importId: started?.id, ...fromDraft(draft) })
+			).rejects.toThrow(ImportUnavailableError);
+			expect(await repository.count()).toBe(1);
+			expect(await drafts.findById(draft.id)).toEqual(draft);
+		});
+	});
 
 	describe('create', () => {
 		// One test for every sample, so the samples share one store.

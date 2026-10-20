@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { ForbiddenError, SignInRequiredError } from '@/application/authorization';
+import { SavedDraftEditConflictError, SavedDraftGoneError } from '@/application/drafts/errors';
 import { ImportUnavailableError } from '@/application/ingestion/errors';
 import type { Actor, MemberActor } from '@/application/ports/actor-provider';
 import type { ImportSuccess } from '@/application/ports/recipe-import-repository';
@@ -115,8 +116,8 @@ function manualEntry(content: RecipeContentInput): CreateRecipeInput {
 
 // One catalog, with a service per actor. Every photo but the unfinished one is stored.
 async function createCatalog() {
-	const recipes = new InMemoryRecipeRepository();
 	const drafts = new InMemorySavedDraftRepository();
+	const recipes = new InMemoryRecipeRepository(drafts);
 	const imports = new InMemoryRecipeImportRepository(recipes, drafts);
 	const members = new InMemoryMemberRepository(
 		new InMemoryInviteRepository(),
@@ -646,20 +647,23 @@ describe('createRecipe', () => {
 		);
 	});
 
-	it('deletes the draft the recipe was saved from, and never another member’s', async () => {
+	it('deletes the draft the recipe was added from', async () => {
 		const { drafts, serviceFor, addMember, saveDraft } = await createCatalog();
 		const author = await addMember('Ada');
-		const other = await addMember('Lou');
 		const draft = await saveDraft(author, [secondDishPhoto.pathname]);
-		const othersDraft = await saveDraft(other);
 
-		await serviceFor(author).createRecipe(
+		const ref = await serviceFor(author).createRecipe(
 			fromDraft(draft, { ...sampleTomatoSalad, images: [secondDishPhoto] })
 		);
-		await serviceFor(author).createRecipe(fromDraft(othersDraft));
 
 		expect(await drafts.findById(draft.draftId)).toBeNull();
-		expect(await drafts.findById(othersDraft.draftId)).not.toBeNull();
+		expect(logLines(consoleInfo)).toEqual([
+			expect.objectContaining({
+				message: 'Recipe created',
+				recipeId: ref.id,
+				draftId: draft.draftId,
+			}),
+		]);
 	});
 
 	it("reuses the member's own photos and scans from their recipes and drafts", async () => {
@@ -724,6 +728,7 @@ describe("createRecipe from an import's draft", () => {
 				memberId: author.memberId,
 				entryMode: 'url',
 				importId: draft.importId,
+				draftId: draft.draftId,
 			},
 		]);
 	});
@@ -778,70 +783,82 @@ describe("createRecipe from an import's draft", () => {
 		expect(await imports.findById(importId)).toMatchObject({ savedRecipeSlug: ref.slug });
 	});
 
-	it('refuses a second recipe from the import, as adding its draft on two pages at once can make', async () => {
+	it('refuses a second recipe from the draft another page added, as adding it on two pages at once can make', async () => {
 		const author = memberActor();
-		const { recipes, drafts, serviceFor, importDraft } = await createCatalog();
+		const { recipes, imports, drafts, serviceFor, importDraft } = await createCatalog();
 		const held = await importDraft(author);
-		const { importId } = held;
 		const draft = await drafts.findById(held.draftId);
-		await serviceFor(author).createRecipe(fromDraft(held));
-		// The second page read the draft before the first one deleted it.
+		const first = await serviceFor(author).createRecipe(fromDraft(held));
+		// The second page read the draft before the first one consumed it.
 		vi.spyOn(drafts, 'findById').mockResolvedValueOnce(draft);
 
 		await expect(
 			serviceFor(author).createRecipe(fromDraft(held, sampleTomatoSalad))
-		).rejects.toThrow(ImportUnavailableError);
+		).rejects.toThrow(SavedDraftGoneError);
 		expect(await recipes.count()).toBe(1);
+		expect(await imports.findById(held.importId)).toMatchObject({ savedRecipeSlug: first.slug });
 		expect(logLines(consoleWarn)).toEqual([
 			{
 				level: 'warn',
 				logger: 'recipes',
-				message: 'Recipe save refused for an unavailable import',
-				importId,
+				message: 'Recipe save refused for a missing draft',
+				draftId: held.draftId,
 				memberId: author.memberId,
 			},
 		]);
 	});
 
-	it.each(['another member', 'an admin'] as const)(
-		"takes nothing from a member's import's draft when %s adds a recipe naming it",
-		async (saver) => {
-			const { recipes, drafts, serviceFor, importDraft } = await createCatalog();
-			const draft = await importDraft(memberActor());
-			const { draftId } = draft;
-			const actor = saver === 'an admin' ? adminActor() : memberActor();
+	it('refuses a stale page adding a draft another page already added, rather than a copy without its import', async () => {
+		const author = memberActor();
+		const { recipes, serviceFor, importDraft } = await createCatalog();
+		const held = await importDraft(author);
+		await serviceFor(author).createRecipe(fromDraft(held));
 
-			const ref = await serviceFor(actor).createRecipe(fromDraft(draft));
+		await expect(
+			serviceFor(author).createRecipe(fromDraft(held, sampleTomatoSalad))
+		).rejects.toThrow(SavedDraftGoneError);
+		expect(await recipes.count()).toBe(1);
+	});
 
-			expect(await recipes.findById(ref.id)).toMatchObject({ provenance: { entryMode: 'manual' } });
-			expect(await recipes.findById(ref.id)).not.toHaveProperty('importId');
-			expect(await drafts.findById(draftId)).not.toBeNull();
-		}
-	);
-
-	it('succeeds and logs a warning when the draft cannot be deleted', async () => {
+	it('refuses a recipe from an import a recipe already used, and keeps its draft', async () => {
 		const author = memberActor();
 		const { recipes, drafts, serviceFor, importDraft } = await createCatalog();
-		const draft = await importDraft(author);
-		const { draftId } = draft;
-		vi.spyOn(drafts, 'delete').mockRejectedValueOnce(
-			new Error('The database could not be reached')
+		const held = await importDraft(author);
+		await recipes.create({
+			content: recipeContentSchema.parse(sampleTomatoSalad),
+			provenance: urlImportProvenance,
+			importId: held.importId,
+			contributorId: author.memberId,
+			slugBase: 'garden-tomato-salad',
+		});
+
+		await expect(serviceFor(author).createRecipe(fromDraft(held))).rejects.toThrow(
+			ImportUnavailableError
 		);
-
-		const ref = await serviceFor(author).createRecipe(fromDraft(draft));
-
-		expect(await recipes.findById(ref.id)).not.toBeNull();
+		expect(await recipes.count()).toBe(1);
+		expect(await drafts.findById(held.draftId)).not.toBeNull();
 		expect(logLines(consoleWarn)).toEqual([
 			expect.objectContaining({
-				level: 'warn',
-				logger: 'recipes',
-				message: 'Saved draft could not be deleted',
-				draftId,
-				recipeId: ref.id,
-				err: expect.objectContaining({ message: 'The database could not be reached' }),
+				message: 'Recipe save refused for an unavailable import',
+				importId: held.importId,
 			}),
 		]);
 	});
+
+	it.each(['another member', 'an admin'] as const)(
+		"refuses %s adding a recipe from a member's draft, which reads as gone and stays",
+		async (saver) => {
+			const { recipes, drafts, serviceFor, importDraft } = await createCatalog();
+			const draft = await importDraft(memberActor());
+			const actor = saver === 'an admin' ? adminActor() : memberActor();
+
+			await expect(serviceFor(actor).createRecipe(fromDraft(draft))).rejects.toThrow(
+				SavedDraftGoneError
+			);
+			expect(await recipes.count()).toBe(0);
+			expect(await drafts.findById(draft.draftId)).not.toBeNull();
+		}
+	);
 });
 
 describe('createRecipe from a saved draft', () => {
@@ -849,18 +866,20 @@ describe('createRecipe from a saved draft', () => {
 		{ name: "another member's draft", draftId: ({ theirs }) => theirs },
 		{ name: 'an id no draft has', draftId: () => missingId },
 		{ name: 'a malformed id', draftId: () => malformedId },
-	])('saves manual entry from $name', async ({ draftId }) => {
+	])('refuses adding from $name, as a draft gone, creating nothing', async ({ draftId }) => {
 		const author = memberActor();
 		const other = memberActor();
 		const { recipes, serviceFor, importDraft } = await createCatalog();
-		const theirs = (await importDraft(other)).draftId;
+		const theirs = await importDraft(other);
 
-		const ref = await serviceFor(author).createRecipe({
-			content: sampleChickenSoup,
-			draftId: draftId({ theirs }),
-		});
-
-		expect((await recipes.findById(ref.id))?.provenance).toEqual({ entryMode: 'manual' });
+		await expect(
+			serviceFor(author).createRecipe({
+				content: sampleChickenSoup,
+				draftId: draftId({ theirs: theirs.draftId }),
+				draftVersion: theirs.draftVersion,
+			})
+		).rejects.toThrow(SavedDraftGoneError);
+		expect(await recipes.count()).toBe(0);
 	});
 
 	it('saves manual entry from a draft typed in', async () => {
@@ -872,10 +891,10 @@ describe('createRecipe from a saved draft', () => {
 		expect((await recipes.findById(ref.id))?.provenance).toEqual({ entryMode: 'manual' });
 	});
 
-	it('adds the recipe and keeps a draft another page saved since the form had it, with that save', async () => {
+	it('refuses a stale page adding a draft another page saved since, using nothing, so the newer draft can still be added', async () => {
 		const author = memberActor();
-		const { recipes, drafts, serviceFor, saveDraft } = await createCatalog();
-		const stale = await saveDraft(author);
+		const { recipes, imports, drafts, serviceFor, importDraft } = await createCatalog();
+		const stale = await importDraft(author);
 		const elsewhere = await drafts.update(stale.draftId, {
 			values: { text: { title: 'Lemon squares' } },
 			title: 'Lemon squares',
@@ -883,40 +902,59 @@ describe('createRecipe from a saved draft', () => {
 			expectedUpdatedAt: new Date(stale.draftVersion),
 		});
 
-		const ref = await serviceFor(author).createRecipe(fromDraft(stale));
-
-		expect(await recipes.findById(ref.id)).not.toBeNull();
+		await expect(serviceFor(author).createRecipe(fromDraft(stale))).rejects.toThrow(
+			SavedDraftEditConflictError
+		);
+		expect(await recipes.count()).toBe(0);
 		expect(await drafts.findById(stale.draftId)).toEqual(elsewhere);
-		expect(logLines(consoleInfo)).toContainEqual({
-			level: 'info',
-			logger: 'recipes',
-			message: 'Saved draft kept',
-			draftId: stale.draftId,
-			recipeId: ref.id,
-			reason: 'saved since',
+		expect(await imports.findById(stale.importId)).not.toHaveProperty('savedRecipeSlug');
+		expect(logLines(consoleWarn)).toEqual([
+			{
+				level: 'warn',
+				logger: 'recipes',
+				message: 'Recipe save refused for a draft saved since',
+				draftId: stale.draftId,
+				memberId: author.memberId,
+			},
+		]);
+
+		const ref = await serviceFor(author).createRecipe(fromDraft(heldDraft(elsewhere!)));
+		expect((await recipes.findById(ref.id))?.provenance).toEqual(urlImportProvenance);
+	});
+
+	it('refuses an add the repository finds stale as it adds, using nothing', async () => {
+		const author = memberActor();
+		const { recipes, drafts, serviceFor, saveDraft } = await createCatalog();
+		const held = await saveDraft(author);
+		// Another page saves between the service's check and the add.
+		const draft = await drafts.findById(held.draftId);
+		vi.spyOn(drafts, 'findById').mockResolvedValueOnce(draft);
+		await drafts.update(held.draftId, {
+			values: {},
+			imagePathnames: [],
+			expectedUpdatedAt: new Date(held.draftVersion),
 		});
-		expect(logLines(consoleWarn)).toEqual([]);
+
+		await expect(serviceFor(author).createRecipe(fromDraft(held))).rejects.toThrow(
+			SavedDraftEditConflictError
+		);
+		expect(await recipes.count()).toBe(0);
+		expect(await drafts.findById(held.draftId)).not.toBeNull();
 	});
 
 	it.each([
 		['no version', undefined],
 		['a malformed version', 'yesterday'],
-	])('adds the recipe and keeps a draft named with %s', async (_name, draftVersion) => {
+	])('refuses adding from a draft named with %s, as saved since', async (_name, draftVersion) => {
 		const author = memberActor();
 		const { recipes, drafts, serviceFor, saveDraft } = await createCatalog();
 		const { draftId } = await saveDraft(author);
 
-		const ref = await serviceFor(author).createRecipe({
-			content: sampleChickenSoup,
-			draftId,
-			draftVersion,
-		});
-
-		expect(await recipes.findById(ref.id)).not.toBeNull();
+		await expect(
+			serviceFor(author).createRecipe({ content: sampleChickenSoup, draftId, draftVersion })
+		).rejects.toThrow(SavedDraftEditConflictError);
+		expect(await recipes.count()).toBe(0);
 		expect(await drafts.findById(draftId)).not.toBeNull();
-		expect(logLines(consoleInfo)).toContainEqual(
-			expect.objectContaining({ message: 'Saved draft kept', draftId, reason: 'no version' })
-		);
 	});
 });
 

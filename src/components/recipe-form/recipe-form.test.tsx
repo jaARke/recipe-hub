@@ -2089,10 +2089,13 @@ describe('RecipeForm’s drafts', () => {
 		expect(save).toHaveBeenCalledOnce();
 	});
 
-	it('adds the recipe naming the version a stale page holds, so a draft saved since elsewhere stays', async () => {
+	it('names the version a stale page holds as it adds, and shows the refusal, keeping what was typed', async () => {
 		const save = saving({ status: 'error', message: conflict, fieldErrors: {} });
-		const added = heldResult<FormState>({ status: 'idle' });
-		const action = vi.fn<FormAction>(() => added.promise);
+		const action = vi.fn<FormAction>(async () => ({
+			status: 'error',
+			message: conflict,
+			fieldErrors: {},
+		}));
 		await render(
 			<DraftForm
 				initial={recipeFormValues(lemonBars)}
@@ -2107,6 +2110,31 @@ describe('RecipeForm’s drafts', () => {
 
 		await expect.poll(() => action).toHaveBeenCalledOnce();
 		expect(named(action)).toEqual({ id: draftId, version: savedAt.toISOString() });
+		await expect.element(page.getByRole('alert').filter({ hasText: conflict })).toHaveFocus();
+		await expect.element(title()).toHaveValue('Lemon squares');
+	});
+
+	it('shows that a draft another page added or deleted can’t be added here, keeping what was typed', async () => {
+		const gone =
+			'This draft was added to the cookbook or deleted somewhere else, so it can’t be saved or added here. Copy anything you want to keep.';
+		const action = vi.fn<FormAction>(async () => ({
+			status: 'error',
+			message: gone,
+			fieldErrors: {},
+		}));
+		await render(
+			<DraftForm
+				initial={recipeFormValues(lemonBars)}
+				action={action}
+				drafts={draftsWith(saving(), { opened: { id: draftId, savedAt }, page: 'draft' })}
+			/>
+		);
+		await title().fill('Lemon squares');
+
+		await saveRecipe().click();
+
+		await expect.element(page.getByRole('alert').filter({ hasText: gone })).toHaveFocus();
+		await expect.element(title()).toHaveValue('Lemon squares');
 	});
 
 	it('adds a recipe with no draft where none was saved yet, and saves none', async () => {

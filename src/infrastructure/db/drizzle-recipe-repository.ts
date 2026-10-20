@@ -1,6 +1,7 @@
 import 'server-only';
 import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
+import { SavedDraftEditConflictError, SavedDraftGoneError } from '@/application/drafts/errors';
 import { ImportUnavailableError } from '@/application/ingestion/errors';
 import type {
 	NewRecipe,
@@ -29,7 +30,7 @@ import {
 	toStoredRecipe,
 } from '@/infrastructure/db/recipe-mapper';
 import { recipeOrders } from '@/infrastructure/db/recipe-order';
-import { oldRecipeSlugs, recipes } from '@/infrastructure/db/schema';
+import { oldRecipeSlugs, recipeDrafts, recipes } from '@/infrastructure/db/schema';
 import { lockForTransaction } from '@/infrastructure/db/transaction-lock';
 
 // Every slug allocation takes this transaction-scoped lock, so a slug checked free stays free until
@@ -59,6 +60,27 @@ function contentChanges(content: RecipeContent) {
 		...toContentColumns(content),
 		updatedAt: sql`greatest(now(), ${recipes.updatedAt} + interval '1 millisecond')`,
 	};
+}
+
+// Locks the draft a recipe is added from, so no save lands between the check and the delete, and
+// refuses one that is gone, another member's, or saved since. The driver reads a Date at milliseconds,
+// as the version was given.
+async function lockDraftToAddFrom(
+	tx: PgDatabase<PgQueryResultHKT>,
+	{ id, expectedUpdatedAt }: NonNullable<NewRecipe['fromDraft']>,
+	contributorId: MemberId
+): Promise<void> {
+	const [draft] = await tx
+		.select({ memberId: recipeDrafts.memberId, updatedAt: recipeDrafts.updatedAt })
+		.from(recipeDrafts)
+		.where(eq(recipeDrafts.id, id))
+		.for('update');
+	if (draft === undefined || draft.memberId !== contributorId) {
+		throw new SavedDraftGoneError();
+	}
+	if (draft.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+		throw new SavedDraftEditConflictError();
+	}
 }
 
 // Whether a recipe other than the excluded one holds the slug, current or old.
@@ -209,6 +231,10 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 		try {
 			return await boundedTransaction(this.db, 'creating a recipe', async (tx) => {
 				await lockForTransaction(tx, slugLockKey);
+				const { fromDraft } = recipe;
+				if (fromDraft !== undefined) {
+					await lockDraftToAddFrom(tx, fromDraft, recipe.contributorId);
+				}
 				const slug = await findFreeSlug(tx, recipe.slugBase);
 				// Names only the row's columns, since the next deployment drops tags while this one serves.
 				const row = await insertProvidedColumns(
@@ -217,6 +243,9 @@ export class DrizzleRecipeRepository implements RecipeRepository {
 					toInsertColumns(recipe, slug),
 					recipeColumns
 				);
+				if (fromDraft !== undefined) {
+					await tx.delete(recipeDrafts).where(eq(recipeDrafts.id, fromDraft.id));
+				}
 				return toRecipe(row);
 			});
 		} catch (error) {

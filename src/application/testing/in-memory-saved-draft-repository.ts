@@ -1,4 +1,4 @@
-import { SavedDraftEditConflictError } from '@/application/drafts/errors';
+import { SavedDraftEditConflictError, SavedDraftGoneError } from '@/application/drafts/errors';
 import { savedDraftIdSchema, type SavedDraftId } from '@/application/drafts/saved-draft';
 import type {
 	NewImportedDraft,
@@ -156,6 +156,26 @@ export class InMemorySavedDraftRepository implements SavedDraftRepository {
 			createdAt,
 			updatedAt: createdAt,
 		});
+	}
+
+	// Stands in for the transaction that adds a recipe from the member's draft at the version given: the
+	// add runs only while the draft is the member's at that version, and the draft goes with it. It does
+	// not await, so the add stays one uninterrupted step.
+	consumeWith<T>(
+		{ id, expectedUpdatedAt }: { id: SavedDraftId; expectedUpdatedAt: Date },
+		memberId: MemberId,
+		add: () => T
+	): T {
+		const stored = this.drafts.get(id);
+		if (stored?.memberId !== memberId) {
+			throw new SavedDraftGoneError();
+		}
+		if (stored.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+			throw new SavedDraftEditConflictError();
+		}
+		const added = add();
+		this.drafts.delete(id);
+		return added;
 	}
 
 	// Stands in for the delete a member's removal makes in its transaction. It does not await, so the
