@@ -9,12 +9,16 @@ import {
 } from '@/components/recipe/recipe-image-viewer';
 import * as viewerBody from '@/components/recipe/recipe-image-viewer-body';
 import type { ShownImage } from '@/components/recipe/shown-recipe-image';
+import { preferLessMotion } from '@/components/recipe/testing/less-motion';
 import {
 	centeredImageBox,
 	expectImageIn,
 	frameSize,
 } from '@/components/recipe/testing/viewer-layout';
 import { settings } from '@/lib/settings';
+
+// The reader's own setting unless a test asks for less motion.
+vi.mock('@/lib/reduced-motion', { spy: true });
 
 // Portrait, as a phone's frame is: each photo fills the frame's width, and zoomed in it overflows the
 // frame both ways.
@@ -192,6 +196,7 @@ describe('RecipeImageViewer', () => {
 	});
 
 	it('zooms with + and −, about the frame’s middle, and fits with 0', async () => {
+		preferLessMotion();
 		await openViewer();
 		const frame = photoFrame('Photo 1 of 3');
 		const whole = centeredImageBox(frame, photoSize);
@@ -215,6 +220,7 @@ describe('RecipeImageViewer', () => {
 	});
 
 	it('pans a zoomed image with the arrows, as far as its edges, and moves between images while it’s whole', async () => {
+		preferLessMotion();
 		await openViewer();
 		const frame = photoFrame('Photo 1 of 3');
 		const inside = frameSize(frame);
@@ -241,6 +247,7 @@ describe('RecipeImageViewer', () => {
 	});
 
 	it('zooms to 250% at the point double clicked, and back', async () => {
+		preferLessMotion();
 		await openViewer();
 		const frame = photoFrame('Photo 1 of 3');
 		const whole = centeredImageBox(frame, photoSize);
