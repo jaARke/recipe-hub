@@ -118,6 +118,19 @@ function UncheckedSaveDialog({
 	// Set by "Show me", whose focus goes to the first note rather than back to Save. It lasts until
 	// the dialog next opens, since the dialog decides where focus returns after it has closed.
 	const showing = React.useRef(false);
+	const popup = React.useRef<HTMLDivElement>(null);
+
+	// Back to Save as the dialog closes, unless "Show me" sends focus to a note, or the save it started
+	// has already moved focus outside it, as a failed save does to the problem summary.
+	function returnFocus(): boolean {
+		if (showing.current) {
+			return false;
+		}
+		const active = document.activeElement;
+		return (
+			active === null || active === document.body || (popup.current?.contains(active) ?? false)
+		);
+	}
 
 	return (
 		<AlertDialog
@@ -131,7 +144,7 @@ function UncheckedSaveDialog({
 				}
 			}}
 		>
-			<AlertDialogContent finalFocus={() => !showing.current}>
+			<AlertDialogContent ref={popup} finalFocus={returnFocus}>
 				<AlertDialogHeader>
 					<AlertDialogTitle>
 						{countedThings(count, 'hasn’t been checked', 'haven’t been checked')}

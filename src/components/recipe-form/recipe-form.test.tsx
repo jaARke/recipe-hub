@@ -750,6 +750,19 @@ describe('RecipeForm’s wording for adding and editing', () => {
 		await expect.element(saveRecipe()).toBeVisible();
 	});
 
+	it('keeps focus on the summary when adding anyway fails before the dialog has closed', async () => {
+		await renderForm(withMarker, [], async () => refused);
+
+		await saveRecipe().click();
+		const dialog = page.getByRole('alertdialog', { name: '1 thing hasn’t been checked' });
+		await dialog.getByRole('button', { name: 'Add anyway' }).click();
+
+		const summary = problemSummary('Fix 1 thing before adding it to the cookbook');
+		await expect.element(summary).toHaveFocus();
+		await expect.element(dialog).not.toBeInTheDocument();
+		await expect.element(summary).toHaveFocus();
+	});
+
 	it.each([
 		['adding', false, 'Add it to the cookbook when you’re ready.'],
 		['editing', true, 'Save the changes when you’re ready.'],
@@ -2557,7 +2570,7 @@ describe('RecipeForm with its page’s menu', () => {
 		await expect
 			.element(page.getByRole('button', { name: 'Draft actions' }), { timeout: 5_000 })
 			.toBeVisible();
-		// Typed just before deleting, which deleting drops rather than saves.
+		// Typed just before deleting: deleting drops it if it is still waiting, and saves nothing after.
 		await title().fill('Lemon bars squares');
 
 		await page.getByRole('button', { name: 'Draft actions' }).click();
@@ -2569,8 +2582,9 @@ describe('RecipeForm with its page’s menu', () => {
 		await expect.poll(() => leave).toHaveBeenCalledWith(undefined, 'replace');
 		expect(remove.mock.calls[0]?.[1].get('draftId')).toBe(draftId);
 		expect(remove.mock.calls[0]?.[1].get('draftVersion')).toBe('2026-10-15T19:12:00.000Z');
+		const savesWhenDeleted = save.mock.calls.length;
 		await new Promise((resolve) => setTimeout(resolve, 1_500));
-		expect(save).toHaveBeenCalledOnce();
+		expect(save).toHaveBeenCalledTimes(savesWhenDeleted);
 	});
 
 	it('holds no draft once its menu deletes it, so a leave that fails leaves a form that saves anew', async () => {
