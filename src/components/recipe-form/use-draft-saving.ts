@@ -192,6 +192,11 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 	const [stayedAt, setStayedAt] = useTransientState<DraftSaveState<DraftContent>>();
 	// Leaving would stop the uploads, and a draft keeps only stored photos.
 	const photosUploading = hasPhotosInProgress(values);
+	// As the form now is, for leaving, which can wait on saving while photos are chosen.
+	const photosUploadingNow = React.useRef(photosUploading);
+	React.useLayoutEffect(() => {
+		photosUploadingNow.current = photosUploading;
+	}, [photosUploading]);
 	const [stayedForPhotos, setStayedForPhotos] = useTransientState<boolean>();
 
 	const content = React.useMemo(() => draftContent(values), [values]);
@@ -304,8 +309,11 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 		}
 		setLeaveFailedAt(undefined);
 		setStayedAt(undefined);
-		setStayedForPhotos(photosUploading);
-		if (photosUploading) {
+		const staysForPhotos = () => {
+			setStayedForPhotos(photosUploadingNow.current);
+			return photosUploadingNow.current;
+		};
+		if (staysForPhotos()) {
 			return;
 		}
 		holdAddress();
@@ -314,6 +322,11 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 			if (!settled.current) {
 				releaseAddress();
 				setStayedAt(coordinator.getSnapshot());
+				return;
+			}
+			// Photos chosen while saving settled would stop uploading as the page leaves.
+			if (staysForPhotos()) {
+				releaseAddress();
 				return;
 			}
 			// So Back returns to the draft: nothing is on its way to be overtaken until leave sends.
@@ -325,7 +338,6 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 	}, [
 		coordinator,
 		page,
-		photosUploading,
 		holdAddress,
 		releaseAddress,
 		nameInAddress,

@@ -2251,6 +2251,30 @@ describe('RecipeForm’s drafts', () => {
 		await expect.poll(() => drafts.leave).toHaveBeenCalledWith(draftId, 'push');
 	});
 
+	it('stays as it finishes later where photos began uploading while it saved, saying so', async () => {
+		const first = heldResult<FormState<SavedDraftResult>>({
+			status: 'success',
+			draftId,
+			savedAt,
+		});
+		const save = vi.fn<FormAction<SavedDraftResult>>(() => first.promise);
+		const drafts = draftsWith(save);
+		const { uploader, signals } = heldUploads();
+		await render(<DraftForm drafts={drafts} uploader={uploader} />);
+		await title().fill('Lemon bars');
+		await finishLater().click();
+		await expect.poll(() => save).toHaveBeenCalledOnce();
+
+		await chooseDishPhoto();
+		first.resolve({ status: 'success', draftId, savedAt });
+
+		await expect
+			.element(status('Photos are still uploading, so this page stays open.'))
+			.toBeInTheDocument();
+		expect(drafts.leave).not.toHaveBeenCalled();
+		expect(signals.map((signal) => signal.aborted)).toEqual([false]);
+	});
+
 	it('finishes later with nothing to name where the form holds nothing', async () => {
 		const drafts = draftsWith(saving());
 		await render(<DraftForm drafts={drafts} />);
