@@ -22,7 +22,10 @@ export type HeldDraftControls = {
 
 type HeldDraftContextValue = {
 	draft: HeldDraft | undefined;
-	hold: (draft: HeldDraft | undefined) => void;
+	hold: (draft: HeldDraft | undefined, unsaved: boolean) => void;
+	// A version saved elsewhere that the page didn't start its form again from, since the form showed
+	// changes of its own.
+	overtaken: number | undefined;
 	release: (id: string) => void;
 	share: (controls: HeldDraftControls | undefined) => void;
 	controls: () => HeldDraftControls | undefined;
@@ -35,9 +38,10 @@ const HeldDraftContext = React.createContext<HeldDraftContextValue | null>(null)
 // form last saved, until it is deleted. The form's controls go through it too, for the back link and
 // the menu. Keyed by the draft's id, so another draft starts it afresh.
 // The page renders again with the draft as the server now holds it, as a refresh does. A version newer
-// than any the page opened or its form saved was saved elsewhere, so the form starts again from it;
-// one the form made changes nothing, so what is being typed stays. Each save moves a draft's version
-// forward, so newer is a plain comparison.
+// than any the page opened or its form saved was saved elsewhere: the form starts again from it where
+// it shows nothing unsaved, and otherwise keeps what was typed and learns it was overtaken, so its
+// save meets the conflict. One the form made changes nothing, so what is being typed stays. Each save
+// moves a draft's version forward, so newer is a plain comparison.
 function HeldDraftProvider({
 	opened,
 	children,
@@ -48,6 +52,9 @@ function HeldDraftProvider({
 	const [draft, setDraft] = React.useState(opened);
 	// The newest version the page has shown or its form saved.
 	const [newest, setNewest] = React.useState(opened?.savedAt.getTime());
+	// Whether the form shows changes the server may not hold yet.
+	const [unsaved, setUnsaved] = React.useState(false);
+	const [overtaken, setOvertaken] = React.useState<number>();
 	// Counts the form's starts, so a version saved elsewhere starts the page's form again.
 	const [run, setRun] = React.useState(0);
 	const [rendered, setRendered] = React.useState(opened);
@@ -55,13 +62,18 @@ function HeldDraftProvider({
 		setRendered(opened);
 		const version = opened?.savedAt.getTime();
 		if (version !== undefined && (newest === undefined || version > newest)) {
-			setNewest(version);
-			setDraft(opened);
-			setRun((count) => count + 1);
+			if (unsaved) {
+				setOvertaken(version);
+			} else {
+				setNewest(version);
+				setDraft(opened);
+				setRun((count) => count + 1);
+			}
 		}
 	}
-	const hold = React.useCallback((held: HeldDraft | undefined) => {
+	const hold = React.useCallback((held: HeldDraft | undefined, changed: boolean) => {
 		setDraft(held);
+		setUnsaved(changed);
 		if (held !== undefined) {
 			setNewest((version) => Math.max(version ?? 0, held.savedAt.getTime()));
 		}
@@ -76,11 +88,12 @@ function HeldDraftProvider({
 		() => ({
 			draft,
 			hold,
+			overtaken,
 			release: (id: string) => setDraft((held) => (held?.id === id ? undefined : held)),
 			share,
 			controls,
 		}),
-		[draft, hold, share, controls]
+		[draft, hold, overtaken, share, controls]
 	);
 	return (
 		<HeldDraftContext.Provider value={value}>
@@ -94,10 +107,15 @@ function useHeldDraft(): HeldDraft | undefined {
 	return React.useContext(HeldDraftContext)?.draft;
 }
 
-// Tells the page which saved draft its form now holds, if any; a page that shares none has nothing to
-// tell.
-function useHoldDraft(): ((draft: HeldDraft | undefined) => void) | undefined {
+// Tells the page which saved draft its form now holds, if any, and whether the form shows changes the
+// server may not hold yet; a page that shares none has nothing to tell.
+function useHoldDraft(): ((draft: HeldDraft | undefined, unsaved: boolean) => void) | undefined {
 	return React.useContext(HeldDraftContext)?.hold;
+}
+
+// The version saved elsewhere since that the page kept its form's own changes over, if any.
+function useOvertakenVersion(): number | undefined {
+	return React.useContext(HeldDraftContext)?.overtaken;
 }
 
 // Tells the page a saved draft was deleted, so it lets go of it if its form holds it.
@@ -132,6 +150,7 @@ export {
 	useHeldDraft,
 	useHeldDraftControls,
 	useHoldDraft,
+	useOvertakenVersion,
 	useProvideHeldDraftControls,
 	useReleaseDraft,
 };

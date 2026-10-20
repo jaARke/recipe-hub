@@ -2316,10 +2316,12 @@ describe('RecipeForm’s drafts', () => {
 			expect(title().element().hasAttribute('data-kept')).toBe(true);
 		});
 
-		it('starts the form again from a version saved elsewhere since', async () => {
+		it('starts the form again from a version saved elsewhere, where it holds nothing unsaved', async () => {
 			const save = saving({ status: 'success', draftId, savedAt: laterSavedAt });
 			const screen = await render(<DraftPage version={savedAt} title="Lemon bars" save={save} />);
-			await typeOnAfterASave(save);
+			await title().fill('Lemon squares');
+			await expect.element(status('Draft saved'), afterSaving).toBeInTheDocument();
+			title().element().setAttribute('data-kept', '');
 			const elsewhere = new Date(laterSavedAt.getTime() + 60_000);
 
 			await screen.rerender(<DraftPage version={elsewhere} title="Lemon tart" save={save} />);
@@ -2328,12 +2330,43 @@ describe('RecipeForm’s drafts', () => {
 			expect(title().element().hasAttribute('data-kept')).toBe(false);
 			await expect.element(status('Draft saved')).toBeInTheDocument();
 			await title().fill('Lemon tart with glaze');
-			// The form that went saves what waited, at its own version, which the server refuses.
-			const sentTitles = () =>
-				save.mock.calls.map((_call, index) => sentDraft(save, index).text.title);
-			await expect.poll(sentTitles, afterSaving).toContain('Lemon tart with glaze');
-			const restarted = sentTitles().indexOf('Lemon tart with glaze');
-			expect(named(save, restarted)).toEqual({ id: draftId, version: elsewhere.toISOString() });
+			await expect.poll(() => save, afterSaving).toHaveBeenCalledTimes(2);
+			expect(named(save, 1)).toEqual({ id: draftId, version: elsewhere.toISOString() });
+		});
+
+		it('keeps what was typed over a version saved elsewhere, and its save shows the conflict', async () => {
+			const save = saving({ status: 'success', draftId, savedAt: laterSavedAt });
+			const screen = await render(<DraftPage version={savedAt} title="Lemon bars" save={save} />);
+			await typeOnAfterASave(save);
+			save.mockResolvedValue({ status: 'error', message: conflict, fieldErrors: {} });
+			const elsewhere = new Date(laterSavedAt.getTime() + 60_000);
+
+			await screen.rerender(<DraftPage version={elsewhere} title="Lemon tart" save={save} />);
+
+			await expect.element(announced(conflict), afterSaving).toBeInTheDocument();
+			await expect.element(title()).toHaveValue('Lemon squares with glaze');
+			expect(title().element().hasAttribute('data-kept')).toBe(true);
+			await expect.element(title()).toHaveFocus();
+			expect(named(save, 1)).toEqual({ id: draftId, version: laterSavedAt.toISOString() });
+			expect(sentDraft(save, 1).text.title).toBe('Lemon squares with glaze');
+		});
+
+		it('tries a failed save again once a version saved elsewhere arrives, which shows the conflict', async () => {
+			const save = saving({ status: 'success', draftId, savedAt: laterSavedAt });
+			const screen = await render(<DraftPage version={savedAt} title="Lemon bars" save={save} />);
+			await title().fill('Lemon squares');
+			await expect.element(status('Draft saved'), afterSaving).toBeInTheDocument();
+			save.mockRejectedValue(new TypeError('Failed to fetch'));
+			await title().fill('Lemon squares with glaze');
+			await expect.element(status('We couldn’t save the draft.'), afterSaving).toBeInTheDocument();
+			save.mockResolvedValue({ status: 'error', message: conflict, fieldErrors: {} });
+			const elsewhere = new Date(laterSavedAt.getTime() + 60_000);
+
+			await screen.rerender(<DraftPage version={elsewhere} title="Lemon tart" save={save} />);
+
+			await expect.element(announced(conflict)).toBeInTheDocument();
+			expect(save).toHaveBeenCalledTimes(3);
+			await expect.element(title()).toHaveValue('Lemon squares with glaze');
 		});
 	});
 });

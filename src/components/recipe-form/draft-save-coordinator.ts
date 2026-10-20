@@ -60,6 +60,9 @@ export type DraftSaveState<Content> = {
 	held: DraftVersion | undefined;
 	// What the server holds of the draft held, or the empty content without one.
 	saved: Content;
+	// Whether the form shows anything the server may not hold yet: a change not saved, or a request
+	// still on its way.
+	unsaved: boolean;
 	status: DraftSaveStatus;
 };
 
@@ -133,7 +136,16 @@ export function createDraftSaveCoordinator<Content>({
 	let stopped = false;
 	// Whether emptying the form deleted the draft it held, and nothing was saved since.
 	let deleted = false;
-	let state: DraftSaveState<Content> = { held, saved, status: currentStatus() };
+	let state: DraftSaveState<Content> = {
+		held,
+		saved,
+		unsaved: hasUnsaved(),
+		status: currentStatus(),
+	};
+
+	function hasUnsaved(): boolean {
+		return inFlight !== undefined || !same(latest, saved);
+	}
 
 	function currentStatus(): DraftSaveStatus {
 		if (halted && failure !== undefined) {
@@ -170,8 +182,14 @@ export function createDraftSaveCoordinator<Content>({
 	// Shares the state once something in it changed, then lets go of the waits it ends.
 	function publish() {
 		const status = currentStatus();
-		if (state.held !== held || state.saved !== saved || !sameStatus(state.status, status)) {
-			state = { held, saved, status };
+		const unsaved = hasUnsaved();
+		if (
+			state.held !== held ||
+			state.saved !== saved ||
+			state.unsaved !== unsaved ||
+			!sameStatus(state.status, status)
+		) {
+			state = { held, saved, unsaved, status };
 			for (const listener of listeners) {
 				listener();
 			}
@@ -304,7 +322,11 @@ export function createDraftSaveCoordinator<Content>({
 		change(content) {
 			const changed = !same(content, latest);
 			latest = content;
-			if (!changed || halted || stopped) {
+			if (!changed) {
+				return;
+			}
+			if (halted || stopped) {
+				publish();
 				return;
 			}
 			clearDebounce();

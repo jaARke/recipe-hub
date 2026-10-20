@@ -103,11 +103,12 @@ describe('createDraftSaveCoordinator', () => {
 		expect(coordinatorFor(server).getSnapshot()).toEqual({
 			held: undefined,
 			saved: '',
+			unsaved: false,
 			status: { kind: 'empty' },
 		});
 		expect(
 			coordinatorFor(server, { draft: firstSave, content: 'Lemon bars' }).getSnapshot()
-		).toEqual({ held: firstSave, saved: 'Lemon bars', status: { kind: 'saved' } });
+		).toEqual({ held: firstSave, saved: 'Lemon bars', unsaved: false, status: { kind: 'saved' } });
 	});
 
 	it('saves a debounce after the last change, once, and then holds the draft', async () => {
@@ -129,6 +130,7 @@ describe('createDraftSaveCoordinator', () => {
 		expect(coordinator.getSnapshot()).toEqual({
 			held: firstSave,
 			saved: 'Le',
+			unsaved: false,
 			status: { kind: 'saved' },
 		});
 	});
@@ -173,6 +175,7 @@ describe('createDraftSaveCoordinator', () => {
 		expect(coordinator.getSnapshot()).toEqual({
 			held: secondSave,
 			saved: 'Lemon bars',
+			unsaved: false,
 			status: { kind: 'saved' },
 		});
 	});
@@ -211,6 +214,7 @@ describe('createDraftSaveCoordinator', () => {
 		expect(coordinator.getSnapshot()).toEqual({
 			held: undefined,
 			saved: '',
+			unsaved: false,
 			status: { kind: 'deleted' },
 		});
 
@@ -222,6 +226,7 @@ describe('createDraftSaveCoordinator', () => {
 		expect(coordinator.getSnapshot()).toEqual({
 			held: otherDraft,
 			saved: 'Lemon squares',
+			unsaved: false,
 			status: { kind: 'saved' },
 		});
 	});
@@ -253,6 +258,7 @@ describe('createDraftSaveCoordinator', () => {
 		expect(coordinator.getSnapshot()).toEqual({
 			held: firstSave,
 			saved: 'Lemon bars',
+			unsaved: true,
 			status: { kind: 'refused', message: 'Saved somewhere else' },
 		});
 		await expect(coordinator.settle()).resolves.toEqual({
@@ -416,6 +422,24 @@ describe('createDraftSaveCoordinator', () => {
 		coordinator.resume();
 
 		expect(server.sent()).toEqual([{ kind: 'save', content: 'Lemon squares', held: 'draft-1' }]);
+	});
+
+	it('says what the form shows is unsaved from a change until the save that holds it lands', async () => {
+		const server = stalledServer();
+		const coordinator = coordinatorFor(server, { draft: firstSave, content: 'Lemon bars' });
+
+		coordinator.change('Lemon squares');
+		expect(coordinator.getSnapshot().unsaved).toBe(true);
+		await vi.advanceTimersByTimeAsync(debounceMs);
+		expect(coordinator.getSnapshot().unsaved).toBe(true);
+		server.saved(0, secondSave);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(coordinator.getSnapshot().unsaved).toBe(false);
+
+		// Changed back before a save, it holds nothing unsaved.
+		coordinator.change('Lemon tart');
+		coordinator.change('Lemon squares');
+		expect(coordinator.getSnapshot().unsaved).toBe(false);
 	});
 
 	it('tells its listeners only when what it shares changes', async () => {

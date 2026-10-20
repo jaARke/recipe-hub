@@ -17,6 +17,7 @@ import {
 } from '@/components/recipe-form/draft-save-coordinator';
 import {
 	useHoldDraft,
+	useOvertakenVersion,
 	useProvideHeldDraftControls,
 	type HeldDraftControls,
 } from '@/components/recipe-form/held-draft';
@@ -204,11 +205,21 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 
 	const held = state?.held;
 	const heldTitle = state === undefined ? undefined : recipeFormSnapshotTitle(state.saved.snapshot);
+	const unsaved = state?.unsaved === true;
 	React.useEffect(() => {
 		if (coordinator !== undefined) {
-			holdDraft?.(held === undefined ? undefined : { ...held, title: heldTitle });
+			holdDraft?.(held === undefined ? undefined : { ...held, title: heldTitle }, unsaved);
 		}
-	}, [coordinator, holdDraft, held, heldTitle]);
+	}, [coordinator, holdDraft, held, heldTitle, unsaved]);
+
+	// The page kept what was typed over a version saved elsewhere, so sending it meets the conflict and
+	// says so, as any save would.
+	const overtaken = useOvertakenVersion();
+	React.useEffect(() => {
+		if (overtaken !== undefined) {
+			coordinator?.flush();
+		}
+	}, [coordinator, overtaken]);
 
 	// The address follows the held draft, except while a navigation is on its way. The new recipe's
 	// page renders again for the header's count only at its own address, so a draft's first save
