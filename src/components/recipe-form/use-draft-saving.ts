@@ -85,6 +85,8 @@ function refusal(result: Exclude<FormState, { status: 'success' }>): DraftRefusa
 	};
 }
 
+// Names the draft at the version the form holds, as saving over it, deleting it, and adding the
+// recipe from it do.
 function versionFields(formData: FormData, { id, savedAt }: DraftVersion) {
 	formData.set(recipeFormFieldNames.draftId, id);
 	formData.set(recipeFormFieldNames.draftVersion, savedAt.toISOString());
@@ -323,14 +325,21 @@ export function useDraftSaving({ drafts, initial, values, dispatch }: DraftSavin
 	);
 	useProvideHeldDraftControls(controls);
 
-	// Holds saving while the recipe is added, and returns the draft adding deletes.
-	const holdForAdding = React.useCallback(async (): Promise<DraftVersion | undefined> => {
-		if (coordinator === undefined) {
-			return undefined;
-		}
-		holdAddress();
-		return coordinator.stop();
-	}, [coordinator, holdAddress]);
+	// Holds saving while the recipe is added, and names the draft it holds, at the version it holds,
+	// which adding deletes.
+	const holdForAdding = React.useCallback(
+		async (formData: FormData) => {
+			if (coordinator === undefined) {
+				return;
+			}
+			holdAddress();
+			const draft = await coordinator.stop();
+			if (draft !== undefined) {
+				versionFields(formData, draft);
+			}
+		},
+		[coordinator, holdAddress]
+	);
 
 	const resumeAfterAdding = React.useCallback(() => {
 		coordinator?.resume();

@@ -1,6 +1,7 @@
 import 'server-only';
 import { z } from 'zod';
 import { requireMember } from '@/application/authorization';
+import { SavedDraftEditConflictError } from '@/application/drafts/errors';
 import { savedDraftIdSchema } from '@/application/drafts/saved-draft';
 import { editVersionSchema } from '@/application/edit-version';
 import { ImportUnavailableError } from '@/application/ingestion/errors';
@@ -61,6 +62,8 @@ export type CreateRecipeInput = {
 	// The draft the member saved the recipe from, which goes once the recipe is saved. The recipe takes
 	// the provenance and the import of the import that made the draft, if one did.
 	draftId?: string;
+	// The version of that draft the form had, its savedAt, so a draft another page saved since stays.
+	draftVersion?: string;
 };
 
 // Where a new recipe came from: manual entry, or the import that made its draft.
@@ -180,7 +183,7 @@ export class RecipeService {
 			...(origin.importId !== undefined && { importId: origin.importId }),
 		});
 		if (input.draftId !== undefined) {
-			await this.deleteSavedDraft(input.draftId, actor.memberId, recipe.id);
+			await this.deleteSavedDraft(input.draftId, input.draftVersion, actor.memberId, recipe.id);
 		}
 		return toRecipeRef(recipe);
 	}
@@ -312,12 +315,14 @@ export class RecipeService {
 		}
 	}
 
-	// After the recipe commits, at the version found. A failure, as when another page saves the draft
-	// in between, leaves the draft for its expiry to clear, and its import is already spent, since the
-	// recipe names it. Ids arrive from forms, so a malformed one, or one that names another member's
+	// After the recipe commits, at the version the form had, so a draft another page saved since stays
+	// with that page's changes, as one named without a version does; the member finds it among their
+	// drafts. A failure leaves the draft for its expiry to clear, and its import is already spent, since
+	// the recipe names it. Ids arrive from forms, so a malformed one, or one that names another member's
 	// draft, deletes nothing.
 	private async deleteSavedDraft(
 		draftId: string,
+		draftVersion: string | undefined,
 		memberId: MemberId,
 		recipeId: RecipeId
 	): Promise<void> {
@@ -325,12 +330,22 @@ export class RecipeService {
 		if (!parsed.success) {
 			return;
 		}
+		const version = editVersionSchema.safeParse(draftVersion);
 		try {
 			const draft = await this.drafts.findById(parsed.data);
-			if (draft?.memberId === memberId) {
-				await this.drafts.delete(draft.id, draft.updatedAt);
+			if (draft?.memberId !== memberId) {
+				return;
 			}
+			if (!version.success) {
+				logger.info('Saved draft kept', { draftId: draft.id, recipeId, reason: 'no version' });
+				return;
+			}
+			await this.drafts.delete(draft.id, version.data);
 		} catch (err) {
+			if (err instanceof SavedDraftEditConflictError) {
+				logger.info('Saved draft kept', { draftId: parsed.data, recipeId, reason: 'saved since' });
+				return;
+			}
 			logger.warn('Saved draft could not be deleted', { draftId: parsed.data, recipeId, err });
 		}
 	}

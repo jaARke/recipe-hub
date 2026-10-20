@@ -15,8 +15,8 @@ export const recipeFormFieldNames = {
 	// The saved draft the form holds, which saving the recipe deletes, and whose provenance and import
 	// the recipe takes.
 	draftId: 'draftId',
-	// The version of that draft the form has, its savedAt, so saving a draft over a newer one is
-	// refused.
+	// The version of that draft the form has, its savedAt, so saving over a newer one is refused, and
+	// deleting one, as saving the recipe does, keeps it.
 	draftVersion: 'draftVersion',
 } as const;
 

@@ -342,16 +342,13 @@ function RecipeForm({
 	);
 
 	// A save's problems name places in what it sent, so they land through that submission's targets.
-	// Adding a recipe names the draft it is added from, which it deletes, once saving the draft has
-	// stopped, and saving goes on if adding fails. A save that succeeds leads to the recipe through
-	// Next's redirect, the one error unstable_rethrow passes on here. Next keeps the page it leaves, so
-	// its unsaved changes are let go first.
+	// Adding a recipe names the draft it is added from, which it deletes unless another page saved it
+	// since, once saving the draft has stopped, and saving goes on if adding fails. A save that
+	// succeeds leads to the recipe through Next's redirect, the one error unstable_rethrow passes on
+	// here. Next keeps the page it leaves, so its unsaved changes are let go first.
 	const saveRecipe: FormAction = async (previous, formData) => {
 		const { targets } = submission;
-		const draft = await drafting.holdForAdding();
-		if (draft !== undefined) {
-			formData.set(recipeFormFieldNames.draftId, draft.id);
-		}
+		await drafting.holdForAdding(formData);
 		let result: FormState;
 		try {
 			result = await action(previous, formData);

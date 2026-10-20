@@ -4,6 +4,7 @@ import { ImportUnavailableError } from '@/application/ingestion/errors';
 import type { Actor, MemberActor } from '@/application/ports/actor-provider';
 import type { ImportSuccess } from '@/application/ports/recipe-import-repository';
 import type { RecipePage } from '@/application/ports/recipe-repository';
+import type { SavedDraft } from '@/application/ports/saved-draft-repository';
 import {
 	InvalidRecipePageError,
 	RecipeEditConflictError,
@@ -153,19 +154,20 @@ async function createCatalog() {
 				role: 'member',
 			})
 		);
-	// An import the member started, with the draft it made.
+	// An import the member started, with the draft it made as the draft's page's form holds it.
 	const importDraft = async (actor: MemberActor, mode: RecipeImportMode = 'url') => {
 		const started = await imports.start({ memberId: actor.memberId, mode });
 		const draftId =
 			started === null ? null : await imports.recordSuccess(started.id, importResults[mode]);
-		if (started === null || draftId === null) {
+		const draft = draftId === null ? null : await drafts.findById(draftId);
+		if (started === null || draft === null) {
 			throw new Error('The import made no draft');
 		}
-		return { importId: started.id, draftId };
+		return { importId: started.id, ...heldDraft(draft) };
 	};
-	// A draft the member saved from the recipe form, naming the images.
+	// A draft the member saved from the recipe form, naming the images, as its form holds it.
 	const saveDraft = async (actor: MemberActor, imagePathnames: string[] = []) =>
-		(await drafts.create({ memberId: actor.memberId, values: {}, imagePathnames })).id;
+		heldDraft(await drafts.create({ memberId: actor.memberId, values: {}, imagePathnames }));
 	return {
 		recipes,
 		imports,
@@ -180,9 +182,17 @@ async function createCatalog() {
 	};
 }
 
+// A draft as the recipe form holds it, by its id and the version it last saved or opened.
+function heldDraft({ id, updatedAt }: SavedDraft) {
+	return { draftId: id, draftVersion: updatedAt.toISOString() };
+}
+
 // Adds the sample soup from the draft, as its page's form does.
-function fromDraft(draftId: string, content: RecipeContentInput = sampleChickenSoup) {
-	return { content, draftId };
+function fromDraft(
+	{ draftId, draftVersion }: { draftId: string; draftVersion: string },
+	content: RecipeContentInput = sampleChickenSoup
+) {
+	return { content, draftId, draftVersion };
 }
 
 async function catalogWithBiscuits() {
@@ -245,7 +255,7 @@ describe('getRecipe', () => {
 		const { serviceFor, addMember, importDraft } = await createCatalog();
 		const author = await addMember('Ada');
 		const ref = await serviceFor(author).createRecipe(
-			fromDraft((await importDraft(author)).draftId, {
+			fromDraft(await importDraft(author), {
 				...sampleChickenSoup,
 				images: [scan, dishPhoto],
 			})
@@ -277,7 +287,7 @@ describe('getRecipe', () => {
 			const ref = await serviceFor(author).createRecipe(
 				mode === 'manual'
 					? manualEntry(content)
-					: fromDraft((await importDraft(author, mode)).draftId, content)
+					: fromDraft(await importDraft(author, mode), content)
 			);
 
 			expect(await serviceFor(anonymousActor()).getRecipe(ref.slug)).toMatchObject({
@@ -308,7 +318,7 @@ describe('getRecipe', () => {
 		const { serviceFor, addMember, importDraft } = await createCatalog();
 		const author = await addMember('Ada');
 		const ref = await serviceFor(author).createRecipe(
-			fromDraft((await importDraft(author)).draftId, {
+			fromDraft(await importDraft(author), {
 				...sampleChickenSoup,
 				source: 'https://example.com/grandma',
 			})
@@ -640,17 +650,16 @@ describe('createRecipe', () => {
 		const { drafts, serviceFor, addMember, saveDraft } = await createCatalog();
 		const author = await addMember('Ada');
 		const other = await addMember('Lou');
-		const draftId = await saveDraft(author, [secondDishPhoto.pathname]);
-		const othersDraftId = await saveDraft(other);
+		const draft = await saveDraft(author, [secondDishPhoto.pathname]);
+		const othersDraft = await saveDraft(other);
 
-		await serviceFor(author).createRecipe({
-			content: { ...sampleTomatoSalad, images: [secondDishPhoto] },
-			draftId,
-		});
-		await serviceFor(author).createRecipe({ content: sampleChickenSoup, draftId: othersDraftId });
+		await serviceFor(author).createRecipe(
+			fromDraft(draft, { ...sampleTomatoSalad, images: [secondDishPhoto] })
+		);
+		await serviceFor(author).createRecipe(fromDraft(othersDraft));
 
-		expect(await drafts.findById(draftId)).toBeNull();
-		expect(await drafts.findById(othersDraftId)).not.toBeNull();
+		expect(await drafts.findById(draft.draftId)).toBeNull();
+		expect(await drafts.findById(othersDraft.draftId)).not.toBeNull();
 	});
 
 	it("reuses the member's own photos and scans from their recipes and drafts", async () => {
@@ -700,12 +709,12 @@ describe("createRecipe from an import's draft", () => {
 	it("takes a URL import's provenance and its import from the draft, and logs the import", async () => {
 		const author = memberActor();
 		const { recipes, imports, serviceFor, importDraft } = await createCatalog();
-		const { importId, draftId } = await importDraft(author);
+		const draft = await importDraft(author);
 
-		const ref = await serviceFor(author).createRecipe(fromDraft(draftId));
+		const ref = await serviceFor(author).createRecipe(fromDraft(draft));
 
 		expect((await recipes.findById(ref.id))?.provenance).toEqual(urlImportProvenance);
-		expect(await imports.findById(importId)).toMatchObject({ savedRecipeSlug: ref.slug });
+		expect(await imports.findById(draft.importId)).toMatchObject({ savedRecipeSlug: ref.slug });
 		expect(logLines(consoleInfo)).toEqual([
 			{
 				level: 'info',
@@ -714,7 +723,7 @@ describe("createRecipe from an import's draft", () => {
 				recipeId: ref.id,
 				memberId: author.memberId,
 				entryMode: 'url',
-				importId,
+				importId: draft.importId,
 			},
 		]);
 	});
@@ -724,7 +733,7 @@ describe("createRecipe from an import's draft", () => {
 		const { recipes, serviceFor, importDraft } = await createCatalog();
 
 		const ref = await serviceFor(author).createRecipe(
-			fromDraft((await importDraft(author, 'photo')).draftId)
+			fromDraft(await importDraft(author, 'photo'))
 		);
 
 		expect((await recipes.findById(ref.id))?.provenance).toEqual({
@@ -736,9 +745,10 @@ describe("createRecipe from an import's draft", () => {
 	it('deletes the draft and keeps the import as a record that names the recipe', async () => {
 		const author = memberActor();
 		const { imports, drafts, serviceFor, importDraft } = await createCatalog();
-		const { importId, draftId } = await importDraft(author);
+		const draft = await importDraft(author);
+		const { importId, draftId } = draft;
 
-		const ref = await serviceFor(author).createRecipe(fromDraft(draftId));
+		const ref = await serviceFor(author).createRecipe(fromDraft(draft));
 
 		expect(await drafts.findById(draftId)).toBeNull();
 		expect(await imports.findById(importId)).toMatchObject({
@@ -756,9 +766,13 @@ describe("createRecipe from an import's draft", () => {
 		const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 		imports.backdate(importId, monthAgo);
 		drafts.backdate(draftId, monthAgo);
-		await drafts.update(draftId, { values: {}, imagePathnames: [], expectedUpdatedAt: monthAgo });
+		const saved = await drafts.update(draftId, {
+			values: {},
+			imagePathnames: [],
+			expectedUpdatedAt: monthAgo,
+		});
 
-		const ref = await serviceFor(author).createRecipe(fromDraft(draftId));
+		const ref = await serviceFor(author).createRecipe(fromDraft(heldDraft(saved!)));
 
 		expect((await recipes.findById(ref.id))?.provenance).toEqual(urlImportProvenance);
 		expect(await imports.findById(importId)).toMatchObject({ savedRecipeSlug: ref.slug });
@@ -767,14 +781,15 @@ describe("createRecipe from an import's draft", () => {
 	it('refuses a second recipe from the import, as adding its draft on two pages at once can make', async () => {
 		const author = memberActor();
 		const { recipes, drafts, serviceFor, importDraft } = await createCatalog();
-		const { importId, draftId } = await importDraft(author);
-		const draft = await drafts.findById(draftId);
-		await serviceFor(author).createRecipe(fromDraft(draftId));
+		const held = await importDraft(author);
+		const { importId } = held;
+		const draft = await drafts.findById(held.draftId);
+		await serviceFor(author).createRecipe(fromDraft(held));
 		// The second page read the draft before the first one deleted it.
 		vi.spyOn(drafts, 'findById').mockResolvedValueOnce(draft);
 
 		await expect(
-			serviceFor(author).createRecipe(fromDraft(draftId, sampleTomatoSalad))
+			serviceFor(author).createRecipe(fromDraft(held, sampleTomatoSalad))
 		).rejects.toThrow(ImportUnavailableError);
 		expect(await recipes.count()).toBe(1);
 		expect(logLines(consoleWarn)).toEqual([
@@ -792,10 +807,11 @@ describe("createRecipe from an import's draft", () => {
 		"takes nothing from a member's import's draft when %s adds a recipe naming it",
 		async (saver) => {
 			const { recipes, drafts, serviceFor, importDraft } = await createCatalog();
-			const { draftId } = await importDraft(memberActor());
+			const draft = await importDraft(memberActor());
+			const { draftId } = draft;
 			const actor = saver === 'an admin' ? adminActor() : memberActor();
 
-			const ref = await serviceFor(actor).createRecipe(fromDraft(draftId));
+			const ref = await serviceFor(actor).createRecipe(fromDraft(draft));
 
 			expect(await recipes.findById(ref.id)).toMatchObject({ provenance: { entryMode: 'manual' } });
 			expect(await recipes.findById(ref.id)).not.toHaveProperty('importId');
@@ -806,12 +822,13 @@ describe("createRecipe from an import's draft", () => {
 	it('succeeds and logs a warning when the draft cannot be deleted', async () => {
 		const author = memberActor();
 		const { recipes, drafts, serviceFor, importDraft } = await createCatalog();
-		const { draftId } = await importDraft(author);
+		const draft = await importDraft(author);
+		const { draftId } = draft;
 		vi.spyOn(drafts, 'delete').mockRejectedValueOnce(
 			new Error('The database could not be reached')
 		);
 
-		const ref = await serviceFor(author).createRecipe(fromDraft(draftId));
+		const ref = await serviceFor(author).createRecipe(fromDraft(draft));
 
 		expect(await recipes.findById(ref.id)).not.toBeNull();
 		expect(logLines(consoleWarn)).toEqual([
@@ -853,6 +870,53 @@ describe('createRecipe from a saved draft', () => {
 		const ref = await serviceFor(author).createRecipe(fromDraft(await saveDraft(author)));
 
 		expect((await recipes.findById(ref.id))?.provenance).toEqual({ entryMode: 'manual' });
+	});
+
+	it('adds the recipe and keeps a draft another page saved since the form had it, with that save', async () => {
+		const author = memberActor();
+		const { recipes, drafts, serviceFor, saveDraft } = await createCatalog();
+		const stale = await saveDraft(author);
+		const elsewhere = await drafts.update(stale.draftId, {
+			values: { text: { title: 'Lemon squares' } },
+			title: 'Lemon squares',
+			imagePathnames: [],
+			expectedUpdatedAt: new Date(stale.draftVersion),
+		});
+
+		const ref = await serviceFor(author).createRecipe(fromDraft(stale));
+
+		expect(await recipes.findById(ref.id)).not.toBeNull();
+		expect(await drafts.findById(stale.draftId)).toEqual(elsewhere);
+		expect(logLines(consoleInfo)).toContainEqual({
+			level: 'info',
+			logger: 'recipes',
+			message: 'Saved draft kept',
+			draftId: stale.draftId,
+			recipeId: ref.id,
+			reason: 'saved since',
+		});
+		expect(logLines(consoleWarn)).toEqual([]);
+	});
+
+	it.each([
+		['no version', undefined],
+		['a malformed version', 'yesterday'],
+	])('adds the recipe and keeps a draft named with %s', async (_name, draftVersion) => {
+		const author = memberActor();
+		const { recipes, drafts, serviceFor, saveDraft } = await createCatalog();
+		const { draftId } = await saveDraft(author);
+
+		const ref = await serviceFor(author).createRecipe({
+			content: sampleChickenSoup,
+			draftId,
+			draftVersion,
+		});
+
+		expect(await recipes.findById(ref.id)).not.toBeNull();
+		expect(await drafts.findById(draftId)).not.toBeNull();
+		expect(logLines(consoleInfo)).toContainEqual(
+			expect.objectContaining({ message: 'Saved draft kept', draftId, reason: 'no version' })
+		);
 	});
 });
 

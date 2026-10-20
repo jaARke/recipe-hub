@@ -42,6 +42,7 @@ export async function createRecipe(_state: FormState, formData: FormData): Promi
 		recipe = await getRecipeService().createRecipe({
 			content: recipeContentFromForm(formText(formData, recipeFormFieldNames.recipe)),
 			draftId: optionalFormText(formData, recipeFormFieldNames.draftId),
+			draftVersion: optionalFormText(formData, recipeFormFieldNames.draftVersion),
 		});
 	} catch (error) {
 		return toFormError(error);

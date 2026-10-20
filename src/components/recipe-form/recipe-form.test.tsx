@@ -1996,8 +1996,28 @@ describe('RecipeForm’s drafts', () => {
 		first.resolve({ status: 'success', draftId, savedAt });
 
 		await expect.poll(() => action).toHaveBeenCalledOnce();
-		expect(action.mock.calls[0]?.[1].get('draftId')).toBe(draftId);
+		expect(named(action)).toEqual({ id: draftId, version: savedAt.toISOString() });
 		expect(save).toHaveBeenCalledOnce();
+	});
+
+	it('adds the recipe naming the version a stale page holds, so a draft saved since elsewhere stays', async () => {
+		const save = saving({ status: 'error', message: conflict, fieldErrors: {} });
+		const added = heldResult<FormState>({ status: 'idle' });
+		const action = vi.fn<FormAction>(() => added.promise);
+		await render(
+			<DraftForm
+				initial={recipeFormValues(lemonBars)}
+				action={action}
+				drafts={draftsWith(save, { opened: { id: draftId, savedAt }, page: 'draft' })}
+			/>
+		);
+		await title().fill('Lemon squares');
+		await expect.element(announced(conflict), afterSaving).toBeInTheDocument();
+
+		await saveRecipe().click();
+
+		await expect.poll(() => action).toHaveBeenCalledOnce();
+		expect(named(action)).toEqual({ id: draftId, version: savedAt.toISOString() });
 	});
 
 	it('adds a recipe with no draft where none was saved yet, and saves none', async () => {
