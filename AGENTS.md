@@ -1,4 +1,4 @@
-# Barb’s Table
+# recipe-hub
 
 <!-- BEGIN:nextjs-agent-rules -->
 
@@ -36,6 +36,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Restart a running `pnpm dev` after a dependency change, since the end-to-end suites reuse it.
 - Tests and checks by hand run against the dev server on Neon's `develop` branch or a preview, never against production's content.
 
-## Issues
+## Issues and pull requests
 
 GitHub Issues hold planned features. A defect is fixed in the change that finds it, and is filed as an issue only when the owner agrees to defer it.
+
+An issue follows its form in `.github/ISSUE_TEMPLATE/`: its kind is the issue type (Feature, Bug, or Task), and its labels name the area it touches and, for work that goes first, `priority: high`. A pull request's description follows the template's Summary, Changes, and Testing, written for a reader who has never seen the project.
