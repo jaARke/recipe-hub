@@ -11,8 +11,7 @@ import { DeleteRecipeDialog } from '@/components/recipe-form/delete-recipe-dialo
 import { useHeldDraft, useReleaseDraft } from '@/components/recipe-form/held-draft';
 import type { RecipeFormEntrySubject } from '@/components/recipe-form/recipe-form-autosave';
 import { removeRecipeFormChanges } from '@/components/recipe-form/use-recipe-form-autosave';
-import { draftsTabPath } from '@/components/recipe-import/recipe-entry-paths';
-import { recipeListPath, recipePath } from '@/components/recipe/recipe-paths';
+import { contributePath, recipeListPath, recipePath } from '@/components/recipe/recipe-paths';
 import { Button } from '@/components/ui/button';
 import {
 	DropdownMenu,
@@ -92,7 +91,7 @@ type DraftMenuProps = {
 	leavesFor?: string;
 };
 
-// Delete draft, for a draft open in the recipe form or listed in Drafts.
+// Delete draft, for a draft open in the recipe form or listed among the member's drafts.
 function DraftMenu({
 	label,
 	draft,
@@ -137,7 +136,8 @@ function DraftMenu({
 	);
 }
 
-// The add page's menu once its form holds a saved draft, opened or just saved; a new recipe has none.
+// A draft's page's menu once its form holds a saved draft, opened or just saved; a new recipe has
+// none. Deleting it leaves for the start page, which lists the drafts left.
 function HeldDraftMenu({ memberId, action }: { memberId: string; action: FormAction }) {
 	const draft = useHeldDraft();
 	if (draft === undefined) {
@@ -151,7 +151,7 @@ function HeldDraftMenu({ memberId, action }: { memberId: string; action: FormAct
 			formSubject={{ kind: 'draft', draftId: draft.id }}
 			memberId={memberId}
 			action={action}
-			leavesFor={draftsTabPath}
+			leavesFor={contributePath}
 		/>
 	);
 }

@@ -6,9 +6,6 @@ import * as React from 'react';
 export type HeldDraft = {
 	id: string;
 	title: string | undefined;
-	// When the form last saved it on this page, and when it then goes, which the page's list of drafts,
-	// rendered before, can't show; absent while the draft is as the page opened it.
-	saved?: { savedAt: Date; expiresAt: Date };
 };
 
 type HeldDraftContextValue = {
@@ -19,10 +16,9 @@ type HeldDraftContextValue = {
 
 const HeldDraftContext = React.createContext<HeldDraftContextValue | null>(null);
 
-// Shares the saved draft the page's recipe form holds with the rest of the page, such as the menu
-// beside its heading that deletes it and the list of drafts that shows it: the draft the page opened,
-// then the one the form last saved, until it is deleted. Keyed with the form, so another draft starts
-// it afresh.
+// Shares the saved draft the page's recipe form holds with the rest of the page, such as the heading
+// that names it and the menu beside it that deletes it: the draft the page opened, then the one the
+// form last saved, until it is deleted. Keyed with the form, so another draft starts it afresh.
 function HeldDraftProvider({
 	opened,
 	children,

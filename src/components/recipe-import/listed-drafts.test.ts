@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { SavedDraftId } from '@/application/drafts/saved-draft';
 import type { DraftSummaryDto } from '@/application/drafts/saved-draft-dtos';
-import { draftFormSubject, reviewableImportIds } from '@/components/recipe-import/listed-drafts';
+import {
+	draftFormSubject,
+	draftName,
+	listedDraftPath,
+	reviewableImportIds,
+} from '@/components/recipe-import/listed-drafts';
 import type { RecipeImportId } from '@/domain/recipe/recipe-import';
 import { settings } from '@/lib/settings';
 
@@ -31,8 +36,23 @@ const imported: DraftSummaryDto = {
 	expiresAt,
 };
 
+describe('draftName', () => {
+	it('names a draft by its title, or as untitled until it has one', () => {
+		expect(draftName('Lemon bars')).toBe('Lemon bars');
+		expect(draftName(undefined)).toBe('Untitled recipe');
+	});
+});
+
+describe('listedDraftPath', () => {
+	it('opens a draft on its own page, or in the review of the import it continues', () => {
+		expect(listedDraftPath(saved)).toBe(`/contribute/drafts/${savedId}`);
+		expect(listedDraftPath(continuing)).toBe(`/contribute/imports/${continuedImportId}`);
+		expect(listedDraftPath(imported)).toBe(`/contribute/imports/${importId}`);
+	});
+});
+
 describe('draftFormSubject', () => {
-	it('names the form a draft opens in: its import’s review, or the add page’s form', () => {
+	it('names the form a draft opens in: its import’s review, or the draft’s own page', () => {
 		expect(draftFormSubject(saved)).toEqual({ kind: 'draft', draftId: savedId });
 		expect(draftFormSubject(continuing)).toEqual({ kind: 'import', importId: continuedImportId });
 		expect(draftFormSubject(imported)).toEqual({ kind: 'import', importId });

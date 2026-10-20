@@ -618,11 +618,7 @@ function RecipeForm({
 			if (result.status === 'success') {
 				const saved = { id: result.draftId, savedAt: result.savedAt };
 				setSavedDraft(saved);
-				holdDraft?.({
-					id: saved.id,
-					title: recipeFormSnapshotTitle(snapshot),
-					saved: { savedAt: result.savedAt, expiresAt: result.expiresAt },
-				});
+				holdDraft?.({ id: saved.id, title: recipeFormSnapshotTitle(snapshot) });
 				setBaseline(restoredRecipeForm(snapshot, initial));
 				setDraftStatus({ kind: 'saved', savedAt: saved.savedAt });
 				if (drafts.inUrl && saved.id !== savedDraft?.id) {

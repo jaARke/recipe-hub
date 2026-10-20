@@ -76,16 +76,11 @@ export async function saveDraft(
 	}
 
 	getRecipeImageService().scheduleSweep();
-	return {
-		status: 'success',
-		draftId: draft.id,
-		savedAt: draft.savedAt,
-		expiresAt: draft.expiresAt,
-	};
+	return { status: 'success', draftId: draft.id, savedAt: draft.savedAt };
 }
 
 // Deletes a saved draft, or an import's draft awaiting review, whichever the form names. The page
-// renders again, so the Drafts tab drops it.
+// renders again, so the list of drafts drops it.
 export async function deleteDraft(_state: FormState, formData: FormData): Promise<FormState> {
 	const draftId = optionalFormText(formData, recipeFormFieldNames.draftId);
 	try {

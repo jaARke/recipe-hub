@@ -1,11 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
-import {
-	contributePath,
-	recipeListPath,
-	recipePath,
-	recipeSearchPath,
-} from '@/components/recipe/recipe-paths';
+import { recipeEntryPaths } from '@/components/recipe-import/recipe-entry-paths';
+import { recipeListPath, recipePath, recipeSearchPath } from '@/components/recipe/recipe-paths';
 import { slugify } from '@/domain/recipe/slug';
 import { expect, test as base } from './support/fixtures';
 import { expectHeaderSection } from './support/header-section';
@@ -36,10 +32,10 @@ type OwnRecipes = {
 
 // Saved through manual entry, filed as a member files it.
 async function saveRecipeByHand(page: Page, recipe: OwnRecipe) {
-	await page.goto(contributePath);
+	await page.goto(recipeEntryPaths.manual);
 	// Save is disabled until the form hydrates.
 	await expect(page.getByRole('button', { name: 'Save recipe' })).toBeEnabled();
-	const form = page.getByRole('tabpanel', { name: 'Manual' });
+	const form = page.getByRole('main');
 	await form.getByRole('textbox', { name: 'Title' }).fill(recipe.title);
 	await form.getByRole('textbox', { name: 'Ingredient 1' }).fill(recipe.ingredient);
 	await form.getByRole('textbox', { name: 'Step 1' }).fill(recipe.step);

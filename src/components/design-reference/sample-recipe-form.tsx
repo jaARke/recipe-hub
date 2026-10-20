@@ -8,7 +8,11 @@ import standInScanPage1 from '@/components/design-reference/stand-in-scans/anise
 import standInScanPage2 from '@/components/design-reference/stand-in-scans/anise-cakes-page-2.jpg';
 import { formText } from '@/components/forms/form-data';
 import type { FormAction, FormState } from '@/components/forms/form-state';
-import { EditingPageHeading } from '@/components/recipe-form/editing-page-heading';
+import { DraftPageHeading } from '@/components/recipe-form/draft-page-heading';
+import {
+	EditingPageHeading,
+	editingPageTitles,
+} from '@/components/recipe-form/editing-page-heading';
 import { HeldDraftProvider, type HeldDraft } from '@/components/recipe-form/held-draft';
 import type { PhotoUploader } from '@/components/recipe-form/photo-upload';
 import {
@@ -30,8 +34,6 @@ import {
 import { DraftMenu, EditedRecipeMenu, HeldDraftMenu } from '@/components/recipe-form/subject-menus';
 import { parseRecipeContent } from '@/domain/recipe/recipe';
 import type { ImageSize, RecipeImageRole } from '@/domain/recipe/recipe-image';
-import { daysInMilliseconds } from '@/lib/dates';
-import { settings } from '@/lib/settings';
 
 // Photo pathnames name a folder the recipe accepts, though nothing is stored there.
 const sampleUploadFolders: Record<RecipeImageRole, string> = {
@@ -142,15 +144,12 @@ const saveSampleRecipe: FormAction = (_state, formData) =>
 	);
 
 // Says a draft was saved, under the one id the samples share, and keeps nothing.
-const saveSampleDraft: FormAction<SavedDraftResult> = () => {
-	const savedAt = new Date();
-	return standIn<FormState<SavedDraftResult>>({
+const saveSampleDraft: FormAction<SavedDraftResult> = () =>
+	standIn<FormState<SavedDraftResult>>({
 		status: 'success',
 		draftId: 'sample-draft',
-		savedAt,
-		expiresAt: new Date(savedAt.getTime() + daysInMilliseconds(settings.drafts.draftLifetimeDays)),
+		savedAt: new Date(),
 	});
-};
 
 // Stands in for the member signed in, whose unsaved changes a menu's delete removes; deleting a
 // sample is refused, so none are.
@@ -242,7 +241,8 @@ function sampleMenu(subject: SampleEditingSubject): React.ReactNode {
 }
 
 // An editing page as the site composes it: its heading, under the design reference's own, with the
-// page's menu, over the sample form.
+// page's menu, over the sample form. Adding a recipe is headed by the draft's title, as a draft's
+// page is.
 function SampleEditingPage({
 	subject,
 	initial,
@@ -257,7 +257,15 @@ function SampleEditingPage({
 	const draft = subject.page === 'add' ? subject.draft : undefined;
 	return (
 		<HeldDraftProvider opened={draft}>
-			<EditingPageHeading page={subject.page} headingTag="h4" menu={sampleMenu(subject)} />
+			{subject.page === 'add' ? (
+				<DraftPageHeading headingTag="h4" menu={sampleMenu(subject)} />
+			) : (
+				<EditingPageHeading
+					title={editingPageTitles[subject.page]}
+					headingTag="h4"
+					menu={sampleMenu(subject)}
+				/>
+			)}
 			<SampleRecipeForm
 				initial={initial}
 				tagLabels={tagLabels}

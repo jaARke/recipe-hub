@@ -249,7 +249,7 @@ export const sampleDrafts: readonly DraftSummaryDto[] = [
 		id: savedDraftIdSchema.parse('0199d2a0-1b2c-7d3e-8f40-000000000004'),
 		title: 'Grandma’s pound cake',
 		savedAt: new Date('2026-10-12T16:30:00.000Z'),
-		expiresAt: new Date('2026-11-11T16:30:00.000Z'),
+		expiresAt: new Date('2027-01-10T16:30:00.000Z'),
 	},
 	{
 		kind: 'import',
@@ -274,6 +274,6 @@ export const sampleDrafts: readonly DraftSummaryDto[] = [
 		mode: 'url',
 		title: 'Buttermilk biscuits',
 		savedAt: new Date('2026-10-02T09:15:00.000Z'),
-		expiresAt: new Date('2026-11-01T09:15:00.000Z'),
+		expiresAt: new Date('2026-12-31T09:15:00.000Z'),
 	},
 ];

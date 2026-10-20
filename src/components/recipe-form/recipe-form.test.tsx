@@ -1740,12 +1740,9 @@ describe('RecipeForm as its page hydrates', () => {
 
 describe('RecipeForm’s drafts', () => {
 	const savedAt = new Date('2026-10-15T19:12:00.000Z');
-	const expiresAt = new Date('2026-11-14T19:12:00.000Z');
 
 	// Saves every draft as the one id, at the one moment.
-	function saving(
-		result: FormState<SavedDraftResult> = { status: 'success', draftId, savedAt, expiresAt }
-	) {
+	function saving(result: FormState<SavedDraftResult> = { status: 'success', draftId, savedAt }) {
 		return vi.fn<FormAction<SavedDraftResult>>(async () => result);
 	}
 
@@ -1796,7 +1793,7 @@ describe('RecipeForm’s drafts', () => {
 		await expect.element(page.getByText(/^Fix \d+ things? to save$/)).not.toBeInTheDocument();
 		expect(invalidFieldIds()).toEqual([]);
 		// A reload opens the draft from the server, so the URL names it and the browser keeps nothing.
-		expect(`${location.pathname}${location.search}`).toBe(`/contribute?draft=${draftId}`);
+		expect(`${location.pathname}${location.search}`).toBe(`/contribute/drafts/${draftId}`);
 		expect(localStorage.getItem(newRecipeKey)).toBeNull();
 		expect(localStorage.getItem(draftKey)).toBeNull();
 	});
@@ -1822,12 +1819,7 @@ describe('RecipeForm’s drafts', () => {
 	});
 
 	it('keeps what is typed while a draft saves under the version that save made', async () => {
-		const saved = heldResult<FormState<SavedDraftResult>>({
-			status: 'success',
-			draftId,
-			savedAt,
-			expiresAt,
-		});
+		const saved = heldResult<FormState<SavedDraftResult>>({ status: 'success', draftId, savedAt });
 		const save = vi.fn<FormAction<SavedDraftResult>>(() => saved.promise);
 		const openedAt = new Date('2026-10-15T12:00:00.000Z');
 		await render(
@@ -1841,7 +1833,7 @@ describe('RecipeForm’s drafts', () => {
 		await expect.poll(() => save).toHaveBeenCalledOnce();
 		await title().fill('Lemon bars squares with glaze');
 
-		saved.resolve({ status: 'success', draftId, savedAt, expiresAt });
+		saved.resolve({ status: 'success', draftId, savedAt });
 
 		await expect.element(page.getByText(`Draft saved at ${formatTime(savedAt)}`)).toBeVisible();
 		// A reload opens the draft as that save left it, and brings these changes back over it.
@@ -2027,13 +2019,12 @@ describe('RecipeForm with its page’s menu', () => {
 		expect(localStorage.getItem(newRecipeKey)).toBe(newRecipeEntry);
 	});
 
-	it('offers Delete draft once the form saves a draft, and leaves for the drafts left', async () => {
+	it('offers Delete draft once the form saves a draft, and leaves for the start page', async () => {
 		const remove = vi.fn(succeed);
 		const save = vi.fn<FormAction<SavedDraftResult>>(async () => ({
 			status: 'success',
 			draftId,
 			savedAt: new Date(),
-			expiresAt: new Date(),
 		}));
 		await render(
 			<HeldDraftProvider opened={undefined}>
@@ -2056,7 +2047,7 @@ describe('RecipeForm with its page’s menu', () => {
 		const dialog = page.getByRole('alertdialog', { name: 'Delete the draft of “Lemon bars”?' });
 		await dialog.getByRole('button', { name: 'Delete draft' }).click();
 
-		await expect.poll(() => router.replace).toHaveBeenCalledWith('/contribute?tab=drafts');
+		await expect.poll(() => router.replace).toHaveBeenCalledWith('/contribute');
 		expect(remove.mock.calls[0]?.[1].get('draftId')).toBe(draftId);
 		expect(localStorage.getItem(draftKey)).toBeNull();
 	});

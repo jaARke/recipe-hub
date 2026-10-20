@@ -7,6 +7,7 @@ import { TextField } from '@/components/forms/text-field';
 import { useFormAction } from '@/components/forms/use-form-action';
 import { recipeImportFieldNames } from '@/components/recipe-import/recipe-import-forms';
 import { RecipeImportSubmit } from '@/components/recipe-import/recipe-import-submit';
+import { Skeleton } from '@/components/ui/skeleton';
 import { urlImportBlankMessages } from '@/domain/recipe/recipe-import';
 
 const failureMessage = 'We couldn’t import the recipe. Check your connection and try again.';
@@ -48,4 +49,19 @@ function UrlImportForm({ action }: UrlImportFormProps) {
 	);
 }
 
-export { UrlImportForm };
+// Mirrors the form while the page checks who is signed in: the field, its description, and the button.
+function UrlImportFormSkeleton() {
+	return (
+		<div role="status" aria-live="polite" className="flex flex-col gap-4">
+			<span className="sr-only">Loading the import</span>
+			<div className="flex flex-col gap-3">
+				<Skeleton className="h-5 w-24" />
+				<Skeleton className="h-9 w-full" />
+				<Skeleton className="h-5 w-full" />
+			</div>
+			<Skeleton className="h-9 w-36" />
+		</div>
+	);
+}
+
+export { UrlImportForm, UrlImportFormSkeleton };

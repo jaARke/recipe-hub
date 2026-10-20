@@ -91,7 +91,7 @@ async function RecipeEditor({ params }: Pick<PageProps<'/recipes/[slug]/edit'>, 
 	if (recipe === null) {
 		return (
 			<>
-				<EditingPageHeading page="edit" />
+				<EditingPageHeading title={editingPageTitles.edit} />
 				<EditNotAllowedEmptyState slug={slug} />
 			</>
 		);
@@ -115,7 +115,7 @@ async function RecipeEditor({ params }: Pick<PageProps<'/recipes/[slug]/edit'>, 
 	return (
 		<>
 			<EditingPageHeading
-				page="edit"
+				title={editingPageTitles.edit}
 				menu={
 					<EditedRecipeMenu
 						recipe={{ id: recipe.id, slug: recipe.slug, title: recipe.title }}
@@ -149,7 +149,7 @@ export default function EditRecipePage({ params }: PageProps<'/recipes/[slug]/ed
 			<Suspense
 				fallback={
 					<>
-						<EditingPageHeading page="edit" />
+						<EditingPageHeading title={editingPageTitles.edit} />
 						<RecipeFormSkeleton besideOriginal />
 					</>
 				}

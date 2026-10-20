@@ -28,10 +28,11 @@ async function SignInWithReturn({ searchParams }: SignInSearchParams) {
 	);
 }
 
-// The header's Add recipe sends a signed-out visitor here, so the page says why.
+// Add a Recipe's pages, the header's Add recipe among them, send a signed-out visitor here, so the
+// page says why.
 async function SignInReason({ searchParams }: SignInSearchParams) {
 	const next = await readReturnPath({ searchParams });
-	return next === contributePath ? (
+	return next === contributePath || next.startsWith(`${contributePath}/`) ? (
 		<p className="text-lg text-muted-foreground">Sign in to add a recipe.</p>
 	) : null;
 }

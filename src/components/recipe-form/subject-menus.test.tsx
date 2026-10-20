@@ -116,7 +116,7 @@ describe('EditedRecipeMenu', () => {
 });
 
 describe('DraftMenu', () => {
-	it('deletes an import’s draft by its import, with the review’s unsaved changes, and leaves for the drafts left', async () => {
+	it('deletes an import’s draft by its import, with the review’s unsaved changes, and leaves for the start page', async () => {
 		const action = vi.fn(succeed);
 		localStorage.setItem(importKey, '{}');
 		await render(
@@ -127,7 +127,7 @@ describe('DraftMenu', () => {
 				formSubject={{ kind: 'import', importId }}
 				memberId={memberId}
 				action={action}
-				leavesFor="/contribute?tab=drafts"
+				leavesFor="/contribute"
 			/>
 		);
 
@@ -146,7 +146,7 @@ describe('DraftMenu', () => {
 		);
 		await dialog.getByRole('button', { name: 'Delete draft' }).click();
 
-		await expect.poll(() => router.replace).toHaveBeenCalledWith('/contribute?tab=drafts');
+		await expect.poll(() => router.replace).toHaveBeenCalledWith('/contribute');
 		expect(action.mock.calls[0]?.[1].get('importId')).toBe(importId);
 		expect(action.mock.calls[0]?.[1].get('draftId')).toBeNull();
 		expect(localStorage.getItem(importKey)).toBeNull();
@@ -198,7 +198,7 @@ describe('DraftMenu', () => {
 });
 
 describe('HeldDraftMenu', () => {
-	it('deletes the saved draft the page opened, with its unsaved changes, and leaves for the drafts left', async () => {
+	it('deletes the saved draft the page opened, with its unsaved changes, and leaves for the start page', async () => {
 		const action = vi.fn(succeed);
 		localStorage.setItem(draftKey, '{}');
 		await render(
@@ -214,7 +214,7 @@ describe('HeldDraftMenu', () => {
 		);
 		await dialog.getByRole('button', { name: 'Delete draft' }).click();
 
-		await expect.poll(() => router.replace).toHaveBeenCalledWith('/contribute?tab=drafts');
+		await expect.poll(() => router.replace).toHaveBeenCalledWith('/contribute');
 		expect(action.mock.calls[0]?.[1].get('draftId')).toBe(draftId);
 		expect(localStorage.getItem(draftKey)).toBeNull();
 	});

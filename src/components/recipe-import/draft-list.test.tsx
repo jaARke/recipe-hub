@@ -22,14 +22,14 @@ const importId = '0199d2a0-1b2c-7d3e-8f40-000000000003' as RecipeImportId;
 
 const now = new Date('2026-10-15T18:00:00.000Z');
 
-// A draft saved this morning with no title, one continuing an import from a link, and an import
+// A draft typed in this afternoon with no title, one continuing an import from a link, and an import
 // from a link.
 const drafts: DraftSummaryDto[] = [
 	{
 		kind: 'saved',
 		id: savedId,
 		savedAt: new Date('2026-10-15T15:00:00.000Z'),
-		expiresAt: new Date('2026-11-14T15:00:00.000Z'),
+		expiresAt: new Date('2027-01-13T15:00:00.000Z'),
 	},
 	{
 		kind: 'saved',
@@ -38,7 +38,7 @@ const drafts: DraftSummaryDto[] = [
 		mode: 'url',
 		title: 'Lemon bars',
 		savedAt: new Date('2026-10-14T18:00:00.000Z'),
-		expiresAt: new Date('2026-11-13T18:00:00.000Z'),
+		expiresAt: new Date('2027-01-12T18:00:00.000Z'),
 	},
 	{
 		kind: 'import',
@@ -65,20 +65,14 @@ afterEach(() => {
 });
 
 describe('DraftList', () => {
-	it('says how long drafts stay when there are none', async () => {
+	it('says so when there are none', async () => {
 		await render(<DraftList drafts={[]} now={now} memberId={memberId} deleteDraft={vi.fn()} />);
 
-		await expect.element(page.getByText('No drafts')).toBeVisible();
-		await expect
-			.element(
-				page.getByText(
-					'A draft you save stays here for 90 days after your last save, and an import you haven’t saved for 7 days.'
-				)
-			)
-			.toBeVisible();
+		await expect.element(page.getByText('No drafts.')).toBeVisible();
+		await expect.element(page.getByRole('list')).not.toBeInTheDocument();
 	});
 
-	it('lists each draft with its title, when it was saved, and when it goes, opening where it continues', async () => {
+	it('lists each draft with its title, how it started, when it was saved, and when it goes, opening where it continues', async () => {
 		await render(<DraftList drafts={drafts} now={now} memberId={memberId} deleteDraft={vi.fn()} />);
 
 		// Each row's link is named by the draft's title and described by its details.
@@ -87,17 +81,17 @@ describe('DraftList', () => {
 		await expect.element(links.nth(0)).toHaveAccessibleName('Untitled recipe');
 		await expect
 			.element(links.nth(0))
-			.toHaveAccessibleDescription('Saved draft Saved 3 hours ago Kept until November 14, 2026');
+			.toHaveAccessibleDescription('Typed in Saved 3 hours ago Kept until January 13, 2027');
 		await expect.element(links.nth(1)).toHaveAccessibleName('Lemon bars');
 		await expect
 			.element(links.nth(1))
-			.toHaveAccessibleDescription('From a link Saved yesterday Kept until November 13, 2026');
+			.toHaveAccessibleDescription('From a link Saved yesterday Kept until January 12, 2027');
 		await expect.element(links.nth(2)).toHaveAccessibleName('Sheet-pan gnocchi');
 		await expect
 			.element(links.nth(2))
 			.toHaveAccessibleDescription('From a link Imported 2 days ago Kept until October 20, 2026');
 		expect(links.elements().map((link) => link.getAttribute('href'))).toEqual([
-			`/contribute?draft=${savedId}`,
+			`/contribute/drafts/${savedId}`,
 			`/contribute/imports/${continuedImportId}`,
 			`/contribute/imports/${importId}`,
 		]);
@@ -119,7 +113,7 @@ describe('DraftList', () => {
 						mode: 'photo',
 						title: 'Anise cakes',
 						savedAt: new Date('2026-10-15T15:00:00.000Z'),
-						expiresAt: new Date('2026-11-14T15:00:00.000Z'),
+						expiresAt: new Date('2027-01-13T15:00:00.000Z'),
 					},
 				]}
 				now={now}
@@ -131,8 +125,8 @@ describe('DraftList', () => {
 		const link = page.getByRole('link', { name: 'Anise cakes' });
 		await expect
 			.element(link)
-			.toHaveAccessibleDescription('From photos Saved 3 hours ago Kept until November 14, 2026');
-		await expect.element(link).toHaveAttribute('href', `/contribute?draft=${savedId}`);
+			.toHaveAccessibleDescription('From photos Saved 3 hours ago Kept until January 13, 2027');
+		await expect.element(link).toHaveAttribute('href', `/contribute/drafts/${savedId}`);
 	});
 
 	it('deletes a draft from its row’s menu once asked, with the changes this browser kept for it', async () => {

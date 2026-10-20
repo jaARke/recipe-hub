@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { contributePath, recipeEditPath, recipePath } from '@/components/recipe/recipe-paths';
+import { recipeEntryPaths } from '@/components/recipe-import/recipe-entry-paths';
+import { recipeEditPath, recipePath } from '@/components/recipe/recipe-paths';
 import { slugify } from '@/domain/recipe/slug';
 import { expect, test } from './support/fixtures';
 import { deleteRecipeInEditor } from './support/recipe-editor';
@@ -14,10 +15,10 @@ test('a recipe entered by hand is saved, edited, and deleted', async ({ page, si
 	const editedTitle = `End-to-end stew ${run}`;
 	await signIn();
 
-	await page.goto(contributePath);
+	await page.goto(recipeEntryPaths.manual);
 	// Save is disabled until the form hydrates, before which Add ingredient adds nothing.
 	await expect(page.getByRole('button', { name: 'Save recipe' })).toBeEnabled();
-	const form = page.getByRole('tabpanel', { name: 'Manual' });
+	const form = page.getByRole('main');
 	await form.getByRole('textbox', { name: 'Title' }).fill(title);
 	await form.getByRole('textbox', { name: 'Ingredient 1' }).fill('2 cups water');
 	await form.getByRole('button', { name: 'Add ingredient' }).click();

@@ -6,6 +6,7 @@ import {
 	requestAccessPath,
 	signInPath,
 } from '@/components/auth/auth-paths';
+import { recipeEntryPaths } from '@/components/recipe-import/recipe-entry-paths';
 import { recipeImportPath } from '@/components/recipe-import/recipe-import-paths';
 import {
 	contributePath,
@@ -63,6 +64,9 @@ setup(
 		await signIn();
 		for (const path of [
 			contributePath,
+			recipeEntryPaths.manual,
+			recipeEntryPaths.url,
+			recipeEntryPaths.photo,
 			recipeImportPath(recipeImport.id),
 			recipeEditPath(sampleRecipe.slug),
 			accountPath,

@@ -15,17 +15,22 @@ import {
 	sampleRecipeSummaries,
 	sampleSearchPage,
 } from '@/components/design-reference/sample-recipe-dtos';
-import { SampleRecipeEntryTabs } from '@/components/design-reference/sample-recipe-entry-tabs';
 import {
 	SampleEditingPage,
 	type SampleEditingSubject,
 } from '@/components/design-reference/sample-recipe-form';
+import {
+	SampleScanImportForm,
+	SampleUrlImportForm,
+} from '@/components/design-reference/sample-recipe-import';
+import { SampleRecipeStart } from '@/components/design-reference/sample-recipe-start';
 import { PageContainer } from '@/components/layout/page-container';
 import type { EditedRecipe } from '@/components/recipe-form/recipe-form-fields';
 import {
 	recipeFormValues,
 	type RecipeFormValues,
 } from '@/components/recipe-form/recipe-form-values';
+import { RecipeImportHeading } from '@/components/recipe-import/recipe-entry-heading';
 import { RecipeImportSubmit } from '@/components/recipe-import/recipe-import-submit';
 import { RecipeActions } from '@/components/recipe/recipe-actions';
 import { RecipeDetail, RecipeDetailSkeleton } from '@/components/recipe/recipe-detail';
@@ -198,9 +203,18 @@ const recipeFormSamples: readonly {
 	},
 ];
 
-// The entry tabs with the member's drafts, and with none, whose tab then shows no count.
-const entryDraftSamples: readonly { label: string; drafts: readonly DraftSummaryDto[] }[] = [
-	{ label: 'With drafts', drafts: sampleDrafts },
+// The start page as a draft's back link leaves for it, naming the draft, with the member's drafts,
+// and with none.
+const startSamples: readonly {
+	label: string;
+	drafts: readonly DraftSummaryDto[];
+	kept?: DraftSummaryDto;
+}[] = [
+	{
+		label: 'After leaving a draft',
+		drafts: sampleDrafts,
+		kept: sampleDrafts.find(({ kind }) => kind === 'saved'),
+	},
 	{ label: 'With no drafts', drafts: [] },
 ];
 
@@ -304,14 +318,14 @@ const subsections = [
 		id: 'recipe-form',
 		title: 'Recipe form',
 		description:
-			'For adding and editing a recipe, and for reviewing an import. An import’s notes sit under what they’re about, and an intro counts them and starts on the first; on the review page it takes focus. Editing a field clears its note, and so does Looks right, which moves on to the next note and says how many are left; an empty title or list must be filled instead. A scan’s [illegible] or [?] left in the text is noted too, and marked in the line’s preview, until it’s edited away. Saving with anything left to check asks first, with Show me and Save anyway; notes survive a failed save, whose errors a summary at the top lists and links to. Ingredients and steps are each one list of growing fields, with headings as rows among the lines: Enter adds a line below, Backspace in an empty one removes it, and a pasted list splits into lines and headings, each announced. A row’s menu moves it up or down, across headings, changes it between a line and a heading, or removes it, and a removed heading’s lines join the ones above; each ingredient shows how it will read. Tags show as chips and suggest the labels in use, still taking new ones, and editing can respell a tag no other recipe uses (here, Slow cooked on the pot roast). Chosen photos are resized and upload at once, and pages of the original recipe move up and down. From lg, a form with pages of the original holds them to the right of its fields, in view as the form scrolls, a page at a time, zooming as the viewer’s images do, with the zoom’s buttons and Full size above it and a strip of the pages below, so Save sits under the fields; below lg, View original opens the viewer. Adding a recipe and reviewing an import offer Save as draft beside Save (Save draft on phones), which saves whatever is there and says when in the action bar. The page’s heading holds a menu of what can be done to what it edits, each Delete confirmed in a dialog: View recipe and Delete recipe when editing, and Delete draft on an import’s review or once the form holds a saved draft, opened or just saved; a new recipe has none. Here uploads are simulated, the review is of an anise cakes card from the National Archives, whose two pages show as uploads, saving checks the recipe as the site does but saves nothing, a draft is saved nowhere, and nothing is deleted.',
+			'For adding and editing a recipe, and for reviewing an import. An import’s notes sit under what they’re about, and an intro counts them and starts on the first; on the review page it takes focus. Editing a field clears its note, and so does Looks right, which moves on to the next note and says how many are left; an empty title or list must be filled instead. A scan’s [illegible] or [?] left in the text is noted too, and marked in the line’s preview, until it’s edited away. Saving with anything left to check asks first, with Show me and Save anyway; notes survive a failed save, whose errors a summary at the top lists and links to. Ingredients and steps are each one list of growing fields, with headings as rows among the lines: Enter adds a line below, Backspace in an empty one removes it, and a pasted list splits into lines and headings, each announced. A row’s menu moves it up or down, across headings, changes it between a line and a heading, or removes it, and a removed heading’s lines join the ones above; each ingredient shows how it will read. Tags show as chips and suggest the labels in use, still taking new ones, and editing can respell a tag no other recipe uses (here, Slow cooked on the pot roast). Chosen photos are resized and upload at once, and pages of the original recipe move up and down. From lg, a form with pages of the original holds them to the right of its fields, in view as the form scrolls, a page at a time, zooming as the viewer’s images do, with the zoom’s buttons and Full size above it and a strip of the pages below, so Save sits under the fields; below lg, View original opens the viewer. Adding a recipe and reviewing an import offer Save as draft beside Save (Save draft on phones), which saves whatever is there and says when in the action bar. Adding a recipe is headed by the draft’s title as saved, Untitled recipe until it has one, under the back link to the start page, which says there that the draft is kept once the form holds one. The page’s heading holds a menu of what can be done to what it edits, each Delete confirmed in a dialog: View recipe and Delete recipe when editing, and Delete draft on an import’s review or once the form holds a saved draft, opened or just saved; a new recipe has none. Here uploads are simulated, the review is of an anise cakes card from the National Archives, whose two pages show as uploads, saving checks the recipe as the site does but saves nothing, a draft is saved nowhere, and nothing is deleted.',
 		Content: RecipeFormSpecimen,
 	},
 	{
 		id: 'recipe-entry',
 		title: 'Adding a recipe',
 		description:
-			'Three ways in, one tab each, and a fourth for the member’s drafts, counted in its label: the drafts they saved and the imports they haven’t, newest first, each a link to where it continues with when it was saved and when it goes, and a menu holding Delete draft; hidden tabs keep what was entered. A link or photos of the pages, which upload as they’re chosen, are read into a draft that opens in the recipe form for review. Reading takes up to a minute or two, so the form shows what it’s reading and for how long, announcing the stage once and not each second. Here each import waits four seconds and then shows its error, since nothing is imported.',
+			'The start page offers the three ways to start a recipe, each a row with its icon, title, line, and chevron that opens its page, then the member’s drafts, newest first: those they saved and the imports they haven’t, each a link to where it continues, described by how it started, when it was saved, and when it goes, with a ⋯ menu holding Delete draft, which asks first. A draft’s back link leaves for it with a notice naming the draft, which back and forward don’t bring back, and back or forward read the drafts again, so each shows as it now is. A link and photos each have a page of their own under the back link to the start page; the photos upload as they’re chosen, and either is read into a draft that opens in the recipe form for review. Reading takes up to a minute or two, so the form shows what it’s reading and for how long, announcing the stage once and not each second. Here each import waits four seconds and then shows its error, since nothing is imported, and deleting a draft is refused.',
 		Content: RecipeEntrySpecimen,
 	},
 ] as const;
@@ -508,17 +522,23 @@ function RecipeFormSpecimen() {
 function RecipeEntrySpecimen() {
 	return (
 		<>
-			{entryDraftSamples.map(({ label, drafts }) => (
+			{startSamples.map(({ label, drafts, kept }) => (
 				<Specimen key={label} label={label} className="px-0 py-10 sm:py-14">
-					<PageContainer width="readingOrWide">
-						<SampleRecipeEntryTabs
-							drafts={drafts}
-							now={sampleImportsNow}
-							tagLabels={sampleTagLabels}
-						/>
+					<PageContainer width="reading">
+						<SampleRecipeStart drafts={drafts} kept={kept} now={sampleImportsNow} />
 					</PageContainer>
 				</Specimen>
 			))}
+			<div className="grid gap-6 lg:grid-cols-2">
+				<Specimen label="From a link" className="flex flex-col gap-8">
+					<RecipeImportHeading mode="url" headingTag="h4" />
+					<SampleUrlImportForm />
+				</Specimen>
+				<Specimen label="From photos" className="flex flex-col gap-8">
+					<RecipeImportHeading mode="photo" headingTag="h4" />
+					<SampleScanImportForm />
+				</Specimen>
+			</div>
 			<div className="grid gap-6 md:grid-cols-2">
 				<Specimen label="While a link is read">
 					<RecipeImportSubmit

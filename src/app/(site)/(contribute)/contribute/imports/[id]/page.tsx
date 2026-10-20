@@ -23,7 +23,6 @@ import {
 import { recipeFormValues } from '@/components/recipe-form/recipe-form-values';
 import { DraftMenu } from '@/components/recipe-form/subject-menus';
 import { DraftProvenanceLine } from '@/components/recipe-import/draft-provenance-line';
-import { draftsTabPath } from '@/components/recipe-import/recipe-entry-paths';
 import { recipeImportPath } from '@/components/recipe-import/recipe-import-paths';
 import { contributePath, recipePath } from '@/components/recipe/recipe-paths';
 import { buttonVariants } from '@/components/ui/button';
@@ -90,7 +89,7 @@ async function ImportReview({ params }: Pick<PageProps<'/contribute/imports/[id]
 	if (review === null) {
 		return (
 			<>
-				<EditingPageHeading page="review" />
+				<EditingPageHeading title={editingPageTitles.review} />
 				<ImportUnavailableEmptyState />
 			</>
 		);
@@ -116,7 +115,7 @@ async function ImportReview({ params }: Pick<PageProps<'/contribute/imports/[id]
 	return (
 		<>
 			<EditingPageHeading
-				page="review"
+				title={editingPageTitles.review}
 				menu={
 					// Deletes the import's draft, with the member's draft that continues it.
 					<DraftMenu
@@ -126,7 +125,7 @@ async function ImportReview({ params }: Pick<PageProps<'/contribute/imports/[id]
 						formSubject={{ kind: 'import', importId: draft.id }}
 						memberId={member.id}
 						action={deleteDraft}
-						leavesFor={draftsTabPath}
+						leavesFor={contributePath}
 					/>
 				}
 			/>
@@ -156,7 +155,7 @@ async function ImportReview({ params }: Pick<PageProps<'/contribute/imports/[id]
 function ImportReviewSkeleton() {
 	return (
 		<>
-			<EditingPageHeading page="review" />
+			<EditingPageHeading title={editingPageTitles.review} />
 			<Skeleton className="h-5 w-48" />
 			<RecipeFormSkeleton besideOriginal />
 		</>
