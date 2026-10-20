@@ -5,6 +5,8 @@ import { recipeImportPath } from '@/components/recipe-import/recipe-import-paths
 import { contributePath, recipePath } from '@/components/recipe/recipe-paths';
 import { slugify } from '@/domain/recipe/slug';
 import { expect, test } from './support/fixtures';
+import { waitForHydration } from './support/hydration';
+import { listedDraft, yourDrafts } from './support/recipe-drafts';
 import { deleteRecipeInEditor } from './support/recipe-editor';
 import { seedJsonLdImportDraft, seedLinkImportDraft } from './support/test-imports';
 import { testMemberName } from './support/test-members';
@@ -25,10 +27,11 @@ function recipePage(slug: string, filing: object): WebPage {
 	};
 }
 
-// A member reviews a link import's draft, edits it, and saves it as a recipe, then deletes the
-// recipe. The draft is seeded as the import service stores one after reading the page, so the run
-// spends no AI credit; saving deletes the draft, and the member fixture deletes the import's record.
-test('an import’s draft is reviewed, edited, and saved as a recipe', async ({
+// A member opens a link import's draft from their drafts, reviews and edits it, and adds it to the
+// cookbook, then deletes the recipe. The draft is seeded as the import service stores one after
+// reading the page, so the run spends no AI credit; adding deletes the draft, and the member
+// fixture deletes the import's record.
+test('an import’s draft is reviewed, edited, and added to the cookbook', async ({
 	page,
 	develop,
 	member,
@@ -56,6 +59,14 @@ test('an import’s draft is reviewed, edited, and saved as a recipe', async ({
 
 	// The import's earlier address leads to its draft.
 	await page.goto(recipeImportPath(importId));
+	await expect(page).toHaveURL(savedDraftPath(draftId));
+
+	// The start page lists it among the member's drafts, by how it started, and opens it.
+	await page.goto(contributePath);
+	const listed = listedDraft(page, 'Lemonade');
+	await expect(listed).toHaveAccessibleDescription(/^From a link Saved /);
+	await waitForHydration(listed);
+	await listed.click();
 	await expect(page).toHaveURL(savedDraftPath(draftId));
 	await expect(page.getByRole('heading', { name: 'Lemonade', level: 1 })).toBeVisible();
 	await expect(page.getByText('Imported from')).toContainText('example.com');
@@ -92,15 +103,16 @@ test('an import’s draft is reviewed, edited, and saved as a recipe', async ({
 	]);
 	await expect(recipe.getByRole('definition').filter({ hasText: testMemberName })).toBeVisible();
 
-	// Saving deleted the draft, so the import's address leads to the start page.
+	// Adding deleted the draft, so the import's address leads to the start page, which lists none.
 	await page.goto(recipeImportPath(importId));
 	await expect(page).toHaveURL(contributePath);
+	await expect(yourDrafts(page)).toContainText('No drafts.');
 
 	await deleteRecipeInEditor(page, title);
 });
 
-// Each draft is seeded from a page's JSON-LD by the reader the import service uses, so its filing comes
-// from the page's category, keywords, and diets, as a real import's does.
+// Each draft is seeded from a page's JSON-LD by the reader the import service uses, so its filing
+// comes from the page's category, keywords, and diets, as a real import's does.
 test('a page’s JSON-LD files its import for review, or leaves the chapter to the member', async ({
 	page,
 	develop,

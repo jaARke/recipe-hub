@@ -1,25 +1,33 @@
 import { randomUUID } from 'node:crypto';
-import { recipeEntryPaths } from '@/components/recipe-import/recipe-entry-paths';
-import { recipeEditPath, recipePath } from '@/components/recipe/recipe-paths';
+import { contributePath, recipeEditPath, recipePath } from '@/components/recipe/recipe-paths';
 import { slugify } from '@/domain/recipe/slug';
 import { expect, test } from './support/fixtures';
+import { draftStatus, openTypeItIn, savedDraftAddress, yourDrafts } from './support/recipe-drafts';
 import { deleteRecipeInEditor } from './support/recipe-editor';
 import { testMemberName } from './support/test-members';
 
-// A member enters a recipe by hand, edits it, and deletes it, so the run leaves no recipe behind; the
-// member fixture deletes any a failed run leaves.
-test('a recipe entered by hand is added, edited, and deleted', async ({ page, signIn }) => {
+// A member types a recipe in from the start page, which keeps it as a draft until it is added, then
+// edits and deletes it, so the run leaves no recipe or draft behind; the member fixture deletes any
+// a failed run leaves.
+test('a recipe typed in is kept as a draft, added, edited, and deleted', async ({
+	page,
+	signIn,
+}) => {
 	// Each run's own title, so runs in parallel never share a slug.
 	const run = randomUUID().slice(0, 8);
 	const title = `End-to-end soup ${run}`;
 	const editedTitle = `End-to-end stew ${run}`;
 	await signIn();
 
-	await page.goto(recipeEntryPaths.manual);
-	// Add to cookbook is disabled until the form hydrates, before which Add ingredient adds nothing.
-	await expect(page.getByRole('button', { name: 'Add to cookbook' })).toBeEnabled();
+	await page.goto(contributePath);
+	await openTypeItIn(page);
 	const form = page.getByRole('main');
 	await form.getByRole('textbox', { name: 'Title' }).fill(title);
+	// The form saves itself as a draft, whose title then heads the page and whose address it takes.
+	await expect(draftStatus(page, 'Saving draft')).toBeVisible();
+	await expect(draftStatus(page, 'Draft saved')).toBeVisible();
+	await expect(page).toHaveURL(savedDraftAddress);
+	await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible();
 	await form.getByRole('textbox', { name: 'Ingredient 1' }).fill('2 cups water');
 	await form.getByRole('button', { name: 'Add ingredient' }).click();
 	await form.getByRole('textbox', { name: 'Ingredient 2' }).fill('1 teaspoon salt');
@@ -70,4 +78,8 @@ test('a recipe entered by hand is added, edited, and deleted', async ({ page, si
 
 	await page.goto(recipePath(slugify(editedTitle)));
 	await expect(page.getByRole('heading', { name: 'Page Not Found' })).toBeVisible();
+
+	// Adding the recipe deleted its draft.
+	await page.goto(contributePath);
+	await expect(yourDrafts(page)).toContainText('No drafts.');
 });
