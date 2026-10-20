@@ -42,3 +42,20 @@ describe('RadioGroupItem', () => {
 		expect(styleOf('radio', 'Cookies & Candy').opacity).toBe('0.5');
 	});
 });
+
+describe('a disabled choice outside a field', () => {
+	it('dims, as the switch does, since Base UI renders a span', async () => {
+		await render(
+			<>
+				<Checkbox aria-label="Favorite" disabled />
+				<RadioGroup aria-label="Chapter">
+					<RadioGroupItem value="desserts" aria-label="Desserts" disabled />
+				</RadioGroup>
+			</>
+		);
+
+		expect(styleOf('checkbox', 'Favorite').opacity).toBe('0.5');
+		expect(styleOf('radio', 'Desserts').opacity).toBe('0.5');
+		expect(styleOf('checkbox', 'Favorite').cursor).toBe('not-allowed');
+	});
+});
