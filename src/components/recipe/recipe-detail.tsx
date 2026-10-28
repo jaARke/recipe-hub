@@ -190,7 +190,7 @@ function pageCount(count: number): string {
 }
 
 // The pages of the recipe as first written, before its ingredients, in a filmstrip as the dish photos
-// are; the viewer links each page at full size.
+// are.
 function RecipeScans({
 	scans,
 	headingLevel,

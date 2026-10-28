@@ -379,13 +379,15 @@ describe('RecipeDetail’s original recipe', () => {
 			.toHaveAttribute('href', `/api/images/${cardBack.pathname}`);
 	});
 
-	it('gives a dish photo’s viewer no Full size', async () => {
+	it('opens a dish photo in the viewer, which links to it at full size', async () => {
 		await render(<RecipeDetail recipe={soupWith([dishPhoto])} headingLevel={1} />);
 
 		await page.getByRole('button', { name: 'View photo' }).click();
 
-		const viewer = page.getByRole('dialog');
-		await expect.element(viewer.getByRole('region', { name: 'Photos' })).toBeInTheDocument();
-		await expect.element(viewer.getByRole('link', { name: /^Full size/ })).not.toBeInTheDocument();
+		await expect
+			.element(
+				page.getByRole('dialog').getByRole('link', { name: 'Full size, opens in a new tab' })
+			)
+			.toHaveAttribute('href', `/api/images/${dishPhoto.pathname}`);
 	});
 });

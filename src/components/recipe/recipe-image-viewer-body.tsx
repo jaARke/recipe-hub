@@ -36,12 +36,6 @@ const viewerFrameSize: ZoomFrameSize = { width: '100vw', height: '100dvh - 12rem
 // leaves the image most of the screen.
 const captionHeightClassName = 'max-h-[25dvh]';
 
-// A scan is a page to read, so the viewer links to the page at full size, past the optimizer.
-const viewerLinksFullSize = {
-	dish: false,
-	scan: true,
-} as const satisfies Record<RecipeImageRole, boolean>;
-
 // The arrows move between images while the image shown is whole, and pan it while it's zoomed.
 const imageMoveKeys: Partial<Record<string, 'previous' | 'next'>> = {
 	ArrowLeft: 'previous',
@@ -57,10 +51,9 @@ export type RecipeImageViewerBodyProps = {
 	initialFocusRef: React.Ref<HTMLButtonElement>;
 };
 
-// The title bar with where you are, the zoom, a page's Full size, and Close; the image; and the
-// caption over a strip of every image. A chunk of its own, which RecipeImageViewer loads as a reader
-// reaches for it: imported anywhere else, it brings the zoom and the carousel into that page's first
-// JavaScript.
+// The title bar with where you are, the zoom, Full size, and Close; the image; and the caption over a
+// strip of every image. A chunk of its own, which RecipeImageViewer loads as a reader reaches for it:
+// imported anywhere else, it brings the zoom and the carousel into that page's first JavaScript.
 function RecipeImageViewerBody({
 	role,
 	images,
@@ -152,7 +145,7 @@ function RecipeImageViewerBody({
 				closeRef={several ? undefined : initialFocusRef}
 			>
 				<RecipeImageZoomControls zoom={zoom} className="hidden sm:flex" />
-				{shownImage !== undefined && viewerLinksFullSize[role] && (
+				{shownImage !== undefined && (
 					// 44 px for a finger, like the buttons beside it.
 					<FullSizeImageLink image={shownImage} className="mx-1 pointer-coarse:h-11" />
 				)}
