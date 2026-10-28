@@ -21,7 +21,7 @@ A live deployment runs at [barbtable.com](https://barbtable.com).
 
 ## Development
 
-You'll need Node 24, [pnpm](https://pnpm.io/installation), and the [Vercel CLI](https://vercel.com/docs/cli). Development runs on the Vercel project's services (its development database and image store, email, and the AI Gateway), so the setup needs a Vercel login with access to the project.
+You'll need Node 24, the [pnpm](https://pnpm.io/installation) version that `packageManager` in `package.json` names, and the [Vercel CLI](https://vercel.com/docs/cli). Development runs on the Vercel project's services (its development database and image store, email, and the AI Gateway), so the setup needs a Vercel login with access to the project.
 
 1. Install the dependencies, and the browsers that `pnpm test:unit` and `pnpm test:e2e` run in:
 
