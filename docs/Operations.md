@@ -2,7 +2,7 @@
 
 ## Builds
 
-Before running `next build`, every Vercel build migrates its database over a direct connection, makes the owner an admin, and seeds. Outside production, each of these steps refuses production's database ([Infrastructure](Infrastructure.md#neon)).
+Before running `next build`, every Vercel build migrates its database over a direct connection, makes the owner an admin, and seeds. Outside production, each of these steps refuses production's database ([Infrastructure](Infrastructure.md#neon)). Builds run the pnpm version that `packageManager` in `package.json` names through Corepack, which `ENABLE_EXPERIMENTAL_COREPACK` turns on for Production and Preview. Without it, Vercel uses its own copy of pnpm 12.
 
 - **Migrations** apply before the new code goes live, while the previous deployment is still serving. As such, every migration has to be backward compatible: add things first, and remove them in a later deployment. The ORM's inserts name every column the schema declares, so the deployment before a removal has to stop naming that column in its inserts, not just its reads.
 - **The owner** is the account at `ADMIN_EMAIL`, which every build makes an admin, creating it if needed. No one can remove the owner or take its admin role, and only the owner can remove another admin's role or account. Changing `ADMIN_EMAIL` moves ownership to the new address's account once the next deployment goes live (until then, the previous deployment still treats the old address as the owner). The previous owner stays an admin until the new owner removes that role.
