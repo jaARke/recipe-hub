@@ -3,6 +3,3 @@ allowBuilds:
   unrs-resolver: false
 patchedDependencies:
   next@16.4.2: patches/next@16.4.2.patch
-# Enforcing the pin adds a lockfile document that GitHub's dependency graph reads in place of the
-# packages. CI, Vercel (through Corepack), and Dependabot install the pinned version themselves.
-pmOnFail: ignore
