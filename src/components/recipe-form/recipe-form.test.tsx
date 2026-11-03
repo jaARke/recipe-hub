@@ -216,7 +216,7 @@ describe('RecipeForm’s review notes', () => {
 		await lookRight('Step 2').click();
 		await expect.element(noteWith('Check the gravy.')).toHaveFocus();
 		await expect.element(intro).not.toBeInViewport();
-		await lookRight('Step 4, For the gravy').click();
+		await lookRight('Step 2, For the gravy').click();
 
 		await expect.element(intro).toHaveFocus();
 		await expect.element(intro).toBeInViewport();
@@ -1030,28 +1030,28 @@ describe('RecipeForm’s lists', () => {
 		});
 	});
 
-	it('counts the steps straight through their headings, as the recipe page does, and names each by its number', async () => {
+	it('counts the steps from 1 again after each heading, as the recipe page does, and names each by its number', async () => {
 		await renderForm(potRoast, [
 			{ path: 'instructionSections.1.steps.1', message: 'Check this step.' },
 		]);
 
-		expect(shownStepNumbers()).toEqual(['1.', '2.', '3.', '4.']);
+		expect(shownStepNumbers()).toEqual(['1.', '2.', '1.', '2.']);
 		expect(rowTexts('Steps')).toEqual([
 			'Step 1: Brown the roast.',
 			'Step 2: Roast until tender.',
 			'Step heading 1: For the gravy',
-			'Step 3, For the gravy: Whisk in the flour.',
-			'Step 4, For the gravy: Simmer until thick.',
+			'Step 1, For the gravy: Whisk in the flour.',
+			'Step 2, For the gravy: Simmer until thick.',
 		]);
-		await expect.element(lookRight('Step 4, For the gravy')).toBeVisible();
+		await expect.element(lookRight('Step 2, For the gravy')).toBeVisible();
 
-		await textbox('Step 4, For the gravy').click();
+		await textbox('Step 2, For the gravy').click();
 		await userEvent.keyboard('{Enter}');
 
-		await expect.element(announced('Added Step 5, For the gravy.')).toBeInTheDocument();
-		expect(shownStepNumbers()).toEqual(['1.', '2.', '3.', '4.', '5.']);
+		await expect.element(announced('Added Step 3, For the gravy.')).toBeInTheDocument();
+		expect(shownStepNumbers()).toEqual(['1.', '2.', '1.', '2.', '3.']);
 		await userEvent.keyboard('Strain.');
-		expect(shownStepNumbers()).toEqual(['1.', '2.', '3.', '4.', '5.']);
+		expect(shownStepNumbers()).toEqual(['1.', '2.', '1.', '2.', '3.']);
 	});
 
 	it('numbers a blank step too, so one in the middle shows a number the saved recipe will not use', async () => {
@@ -1092,8 +1092,8 @@ describe('RecipeForm’s lists', () => {
 		await saveRecipe().click();
 
 		await expect
-			.element(page.getByRole('link', { name: 'Step 3, For the gravy: Say what to whisk in.' }))
-			.toHaveAttribute('href', `#${textbox('Step 3, For the gravy').element().id}`);
+			.element(page.getByRole('link', { name: 'Step 1, For the gravy: Say what to whisk in.' }))
+			.toHaveAttribute('href', `#${textbox('Step 1, For the gravy').element().id}`);
 	});
 
 	it('shows a save’s problem with a heading that has nothing under it at the heading', async () => {

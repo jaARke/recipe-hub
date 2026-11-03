@@ -31,10 +31,10 @@ const listItemClassName = 'pl-2';
 // A marker's characters are monospaced at text-sm, 0.875rem, and JetBrains Mono's are 0.6em wide.
 const listMarkerCharacterWidth = '0.525rem';
 
-// Indents every list of ingredients and steps as far as the recipe's last step number needs, with its
-// ". ", so "10." sits inside the column as "9." does.
-function listIndentStyle(lastNumber: number): React.CSSProperties {
-	const characters = String(lastNumber).length + 2;
+// Indents every list of ingredients and steps as far as the recipe's largest step number needs, with
+// its ". ", so "10." sits inside the column as "9." does.
+function listIndentStyle(largestNumber: number): React.CSSProperties {
+	const characters = String(largestNumber).length + 2;
 	return { paddingLeft: `calc(${characters} * ${listMarkerCharacterWidth})` };
 }
 
@@ -164,9 +164,9 @@ function InstructionSectionList({
 }
 
 // The recipe's ingredients and steps, each list under its heading and each section under its own,
-// as the recipe is written, with the steps counted straight through the sections. Given a scale, as
-// the cooking view's printout is, the ingredients show at it and a note says the steps keep the
-// recipe's own amounts.
+// as the recipe is written, with the steps counted from 1 under each heading. Given a scale, as the
+// cooking view's printout is, the ingredients show at it and a note says the steps keep the recipe's
+// own amounts.
 function RecipeIngredientsAndSteps({
 	ingredientSections,
 	instructionSections,
@@ -181,7 +181,9 @@ function RecipeIngredientsAndSteps({
 	const { section: Section, subsection } = recipeHeadingTags[headingLevel];
 	const factor = scale?.factor ?? 1;
 	const numberedSections = numberInstructionSteps(instructionSections);
-	const indentStyle = listIndentStyle(numberedSections.at(-1)?.steps.at(-1)?.number ?? 0);
+	const indentStyle = listIndentStyle(
+		Math.max(0, ...numberedSections.map((section) => section.steps.at(-1)?.number ?? 0))
+	);
 
 	return (
 		<>

@@ -6,18 +6,13 @@ export type NumberedInstructionSection = Omit<InstructionSection, 'steps'> & {
 	steps: NumberedInstructionStep[];
 };
 
-// A recipe's steps count from 1 straight through its sections, so a section's first step follows on
-// from the last section's, on the recipe page, its printout, the cooking view, and the recipe form
-// alike.
+// A recipe's steps count from 1 again under each heading, so "For the gravy" starts at step 1, on
+// the recipe page, its printout, and the cooking view alike.
 export function numberInstructionSteps(
 	sections: readonly InstructionSection[]
 ): NumberedInstructionSection[] {
-	let number = 0;
 	return sections.map((section) => ({
 		...section,
-		steps: section.steps.map((step) => {
-			number += 1;
-			return { ...step, number };
-		}),
+		steps: section.steps.map((step, index) => ({ ...step, number: index + 1 })),
 	}));
 }

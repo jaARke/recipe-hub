@@ -75,8 +75,8 @@ function ScreenHeading({ heading, children }: { heading: HeadingRef; children: R
 	);
 }
 
-// A step's number large in the heading face over a highlighter's swash, then how many steps there
-// are; Gather shows 0, the step before the recipe's first.
+// A step's number large in the heading face over a highlighter's swash, then how many steps it is
+// counted among; Gather shows 0 of the recipe's steps, the step before its first.
 function StepNumeral({
 	number,
 	stepCount,
@@ -154,16 +154,14 @@ function GatherScreen({
 	);
 }
 
-// The step's number large in the heading face over a highlighter's swash; with its section, it is
-// the screen's heading, read as "For the gravy, step 9 of 10".
+// The step's number large in the heading face over a highlighter's swash, counted among its
+// section's steps; with its section, it is the screen's heading, read as "For the gravy, step 1 of 3".
 function StepScreen({
 	step,
-	stepCount,
 	scale,
 	heading,
 }: {
 	step: CookingStepScreen;
-	stepCount: number;
 	scale: RecipeScale;
 	heading: HeadingRef;
 }) {
@@ -172,7 +170,7 @@ function StepScreen({
 			<h1
 				ref={heading}
 				tabIndex={-1}
-				aria-label={cookingStepHeading(step, stepCount)}
+				aria-label={cookingStepHeading(step)}
 				className="flex flex-col gap-3 outline-none"
 			>
 				{step.sectionHeading !== undefined && (
@@ -180,7 +178,7 @@ function StepScreen({
 				)}
 				<StepNumeral
 					number={step.number}
-					stepCount={stepCount}
+					stepCount={step.sectionStepCount}
 					small={step.text.length > longStepLength}
 				/>
 			</h1>
@@ -428,7 +426,7 @@ function CookingSession({ recipe }: { recipe: CookingRecipe }) {
 									/>
 								)}
 								{screen.kind === 'step' && (
-									<StepScreen step={screen} stepCount={stepCount} scale={scale} heading={heading} />
+									<StepScreen step={screen} scale={scale} heading={heading} />
 								)}
 								{screen.kind === 'finish' && (
 									<FinishScreen title={recipe.title} heading={heading} />

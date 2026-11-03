@@ -82,7 +82,7 @@ describe('RecipeIngredientsAndSteps', () => {
 		await expect.element(page.getByText(/^Amounts in the steps/)).not.toBeInTheDocument();
 	});
 
-	it('counts the steps straight through the sections, each section’s list starting where the last left off', async () => {
+	it('counts each section’s steps from 1, in a list of its own under its heading', async () => {
 		await render(
 			<RecipeIngredientsAndSteps
 				ingredientSections={ingredientSections}
@@ -91,14 +91,19 @@ describe('RecipeIngredientsAndSteps', () => {
 			/>
 		);
 
-		const listOf = (step: string) => page.getByRole('list').filter({ has: page.getByText(step) });
-		await expect.element(listOf('Mix the flour and salt.')).toHaveAttribute('start', '1');
-		await expect.element(listOf('Whisk the sugar with lemon juice.')).toHaveAttribute('start', '3');
+		const listOf = (step: string) =>
+			page
+				.getByRole('list')
+				.filter({ has: page.getByText(step) })
+				.element();
+		expect(listOf('Mix the flour and salt.')).not.toBe(listOf('Whisk the sugar with lemon juice.'));
+		expect(listOf('Mix the flour and salt.')).toHaveProperty('start', 1);
+		expect(listOf('Whisk the sugar with lemon juice.')).toHaveProperty('start', 1);
 	});
 
-	it('indents every section’s steps alike, wide enough for the recipe’s last number', async () => {
+	it('indents every section’s steps alike, wide enough for the recipe’s largest number', async () => {
 		const tenSteps: InstructionSection[] = [
-			{ steps: Array.from({ length: 8 }, (_, index) => ({ text: `Step ${index + 1}.` })) },
+			{ steps: Array.from({ length: 10 }, (_, index) => ({ text: `Step ${index + 1}.` })) },
 			{ heading: 'For the glaze', steps: [{ text: 'Whisk.' }, { text: 'Pour.' }] },
 		];
 		const { rerender } = await render(
@@ -109,7 +114,7 @@ describe('RecipeIngredientsAndSteps', () => {
 			/>
 		);
 
-		// "3. " is three of the marker's characters, each 0.525rem or 8.4 px; "10. " is four.
+		// "2. " is three of the marker's characters, each 0.525rem or 8.4 px; "10. " is four.
 		expect(stepIndents()).toEqual([expect.closeTo(25.2, 1), expect.closeTo(25.2, 1)]);
 		await rerender(
 			<RecipeIngredientsAndSteps

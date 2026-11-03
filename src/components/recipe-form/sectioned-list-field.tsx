@@ -31,7 +31,6 @@ import {
 	listRowNames,
 	rowsFromPastedText,
 	sectionLabel,
-	type ListNaming,
 } from '@/components/recipe-form/sectioned-list';
 import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field';
@@ -51,7 +50,7 @@ type SectionedListFieldProps = {
 	noun: string;
 	itemPlaceholder: string;
 	headingPlaceholder: string;
-	// Steps are numbered straight through their headings, as on the recipe page.
+	// Steps are numbered, restarting after each heading as on the recipe page.
 	numbered?: boolean;
 	// Shown under a line's field and read with it, such as how an ingredient reads on the recipe
 	// page; nothing shows where it returns undefined.
@@ -111,8 +110,7 @@ function SectionedListField({
 }: SectionedListFieldProps) {
 	const [announcement, announce] = useLiveAnnouncement();
 	const { rows } = list;
-	const naming: ListNaming = { noun, numbered };
-	const names = listRowNames(rows, naming);
+	const names = listRowNames(rows, noun);
 	const ids = sectionedListFieldIds(idPrefix);
 	const rowUndo = useFieldUndo(
 		rows.map((row) => ({
@@ -141,7 +139,7 @@ function SectionedListField({
 				kind,
 				afterRowId: afterIndex === undefined ? undefined : rows[afterIndex]?.id,
 			},
-			describeRowAdded(added, index, naming)
+			describeRowAdded(added, index, noun)
 		);
 		focusField(ids.row(nextId), 'end');
 	}
@@ -155,10 +153,7 @@ function SectionedListField({
 		}
 		const above = rows[index - 1];
 		const below = rows[index + 1];
-		commit(
-			{ type: 'removeRow', list: name, rowId: row.id },
-			describeRowRemoval(rows, index, naming)
-		);
+		commit({ type: 'removeRow', list: name, rowId: row.id }, describeRowRemoval(rows, index, noun));
 		if (above !== undefined) {
 			focusField(ids.row(above.id), 'end');
 		} else if (below !== undefined) {
@@ -172,7 +167,7 @@ function SectionedListField({
 	function moveRow(row: RecipeFormRow, index: number, toIndex: number) {
 		commit(
 			{ type: 'moveRow', list: name, rowId: row.id, toIndex },
-			describeRowMove(rows, index, toIndex, naming)
+			describeRowMove(rows, index, toIndex, noun)
 		);
 		document.getElementById(ids.rowActions(row.id))?.scrollIntoView({ block: 'nearest' });
 	}
@@ -185,7 +180,7 @@ function SectionedListField({
 				rowId: row.id,
 				kind: row.kind === 'heading' ? 'item' : 'heading',
 			},
-			describeKindChange(rows, index, naming)
+			describeKindChange(rows, index, noun)
 		);
 	}
 

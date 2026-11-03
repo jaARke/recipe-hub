@@ -6,21 +6,13 @@ import { sentenceCase } from '@/domain/text';
 // flat list of rows: lines, and headings over the lines after them. Photo fields announce their
 // moves the same way.
 
-// What the form calls a list's rows by: its noun, lowercase and singular, such as "step", and
-// whether its lines show their numbers, as the steps do.
-export type ListNaming = { noun: string; numbered: boolean };
-
 // What the form calls a row, and where it sits.
 export type ListRowNames = {
 	// Unique in the form, as "Ingredient 2", "Step 3, For the glaze", or "Step heading 2".
 	label: string;
-	// A line's number: in a numbered list, the one it shows, counted straight through the headings as
-	// on the recipe page, blank lines included; otherwise its place among the lines since the heading
-	// above it. A heading's number among the list's headings.
+	// A line's number among the lines since the heading above it, blank lines included, as a numbered
+	// list shows it; a heading's number among the list's headings.
 	number: number;
-	// A line's place among the lines since the heading above it, as a move announces it; a heading's
-	// number among the list's headings.
-	position: number;
 	// The heading over a line, or a heading's own: its text, or its number where it has none. A line
 	// before any heading has none.
 	headingName?: string;
@@ -36,35 +28,23 @@ function counted(count: number, noun: string): string {
 
 // A line under a heading names the heading too, so its label says which part of the recipe it is
 // in, and stays unique where the numbers restart after each heading: "Step 3, For the glaze".
-export function listRowNames(
-	rows: readonly RecipeFormRowText[],
-	{ noun, numbered }: ListNaming
-): ListRowNames[] {
+export function listRowNames(rows: readonly RecipeFormRowText[], noun: string): ListRowNames[] {
 	let headings = 0;
 	let lines = 0;
-	let linesSinceHeading = 0;
 	let headingName: string | undefined;
 	return rows.map((row) => {
 		if (row.kind === 'heading') {
 			headings += 1;
-			linesSinceHeading = 0;
+			lines = 0;
 			const text = row.text.trim();
 			headingName = text === '' ? `heading ${headings}` : text;
-			return {
-				label: `${sentenceCase(noun)} heading ${headings}`,
-				number: headings,
-				position: headings,
-				headingName,
-			};
+			return { label: `${sentenceCase(noun)} heading ${headings}`, number: headings, headingName };
 		}
-		linesSinceHeading += 1;
 		lines += 1;
-		const number = numbered ? lines : linesSinceHeading;
-		const label = `${sentenceCase(noun)} ${number}`;
+		const label = `${sentenceCase(noun)} ${lines}`;
 		return {
 			label: headingName === undefined ? label : `${label}, ${headingName}`,
-			number,
-			position: linesSinceHeading,
+			number: lines,
 			headingName,
 		};
 	});
@@ -85,7 +65,7 @@ function groupLineCount(
 	while (rows[last + 1]?.kind === 'item') {
 		last += 1;
 	}
-	return rows[last]?.kind === 'item' ? (names[last]?.position ?? 0) : 0;
+	return rows[last]?.kind === 'item' ? (names[last]?.number ?? 0) : 0;
 }
 
 // The item's own words when it has any, so consecutive moves never repeat an announcement.
@@ -116,16 +96,15 @@ export function describeRowMove(
 	rows: readonly RecipeFormRowText[],
 	fromIndex: number,
 	toIndex: number,
-	naming: ListNaming
+	noun: string
 ): string {
 	const row = rows[fromIndex];
 	const neighbor = rows[toIndex];
 	if (row === undefined || neighbor === undefined) {
 		return '';
 	}
-	const { noun } = naming;
 	const moved = rows.toSpliced(fromIndex, 1).toSpliced(toIndex, 0, row);
-	const names = listRowNames(moved, naming);
+	const names = listRowNames(moved, noun);
 	const count = groupLineCount(moved, names, toIndex);
 	if (row.kind === 'heading') {
 		const under = count === 0 ? `no ${noun}s` : counted(count, noun);
@@ -134,9 +113,9 @@ export function describeRowMove(
 	}
 
 	const name = itemName(row.text, noun);
-	const position = names[toIndex]?.position ?? 0;
+	const position = names[toIndex]?.number ?? 0;
 	if (neighbor.kind === 'item') {
-		const from = listRowNames(rows, naming)[fromIndex]?.position ?? 0;
+		const from = listRowNames(rows, noun)[fromIndex]?.number ?? 0;
 		return describePositionMove(name, from - 1, position - 1, count);
 	}
 	// Moving up past the first heading leaves the line above it, under no heading.
@@ -150,9 +129,9 @@ export function describeRowMove(
 export function describeRowAdded(
 	rows: readonly RecipeFormRowText[],
 	index: number,
-	naming: ListNaming
+	noun: string
 ): string {
-	const label = listRowNames(rows, naming)[index]?.label;
+	const label = listRowNames(rows, noun)[index]?.label;
 	return label === undefined ? '' : `Added ${label}.`;
 }
 
@@ -160,14 +139,13 @@ export function describeRowAdded(
 export function describeRowRemoval(
 	rows: readonly RecipeFormRowText[],
 	index: number,
-	naming: ListNaming
+	noun: string
 ): string {
-	const names = listRowNames(rows, naming);
+	const names = listRowNames(rows, noun);
 	const label = names[index]?.label;
 	if (label === undefined) {
 		return '';
 	}
-	const { noun } = naming;
 	const count = rows[index]?.kind === 'heading' ? groupLineCount(rows, names, index) : 0;
 	if (count === 0) {
 		return `Removed ${label}.`;
@@ -180,15 +158,15 @@ export function describeRowRemoval(
 export function describeKindChange(
 	rows: readonly RecipeFormRowText[],
 	index: number,
-	naming: ListNaming
+	noun: string
 ): string {
 	const row = rows[index];
 	if (row === undefined) {
 		return '';
 	}
 	const kind = row.kind === 'heading' ? 'item' : 'heading';
-	const label = listRowNames(rows.with(index, { kind, text: row.text }), naming)[index]?.label;
-	return `Changed ${itemName(row.text, row.kind === 'heading' ? 'heading' : naming.noun)} to ${label}.`;
+	const label = listRowNames(rows.with(index, { kind, text: row.text }), noun)[index]?.label;
+	return `Changed ${itemName(row.text, row.kind === 'heading' ? 'heading' : noun)} to ${label}.`;
 }
 
 // Said as a pasted list arrives, counting what it held: "Pasted 6 ingredients and 2 headings."

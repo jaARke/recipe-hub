@@ -157,14 +157,14 @@ describe('CookingView', () => {
 
 		await button('Start cooking').click();
 
-		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 3');
+		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 2');
 		await expect.element(screenHeading()).toHaveFocus();
 		expect(location.search).toBe('?step=1');
 		await expect.element(shown().getByText('Heat the oven to 300°F.')).toBeVisible();
 
 		await button('Next step').click();
 
-		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 2 of 3');
+		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 2 of 2');
 		// The step shows its line breaks.
 		expect(
 			shown()
@@ -174,7 +174,7 @@ describe('CookingView', () => {
 
 		await button('Next step').click();
 
-		await expect.element(screenHeading()).toHaveAccessibleName('For the gravy, step 3 of 3');
+		await expect.element(screenHeading()).toHaveAccessibleName('For the gravy, step 1 of 1');
 
 		await button('Finish').click();
 
@@ -189,7 +189,7 @@ describe('CookingView', () => {
 		await expect.element(button('Ingredients')).not.toBeInTheDocument();
 		await expect.element(button('Steps')).not.toBeInTheDocument();
 		await button('Back').click();
-		await expect.element(screenHeading()).toHaveAccessibleName('For the gravy, step 3 of 3');
+		await expect.element(screenHeading()).toHaveAccessibleName('For the gravy, step 1 of 1');
 	});
 
 	it('goes back a screen with Back, and to Gather from the first step', async () => {
@@ -197,7 +197,7 @@ describe('CookingView', () => {
 		await render(<CookingView recipe={potRoast} />);
 
 		await button('Back').click();
-		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 3');
+		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 2');
 
 		await button('Back').click();
 		await expect
@@ -241,14 +241,14 @@ describe('CookingView', () => {
 			.element(column.getByRole('checkbox', { name: '6 pounds beef chuck roast' }))
 			.toBeVisible();
 		await expect.element(button('Ingredients')).not.toBeInTheDocument();
-		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 3');
+		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 2');
 	});
 
 	it('notes nothing on a step that gives no amount, such as one that gives only a temperature', async () => {
 		visit('?servings=12&step=1');
 		await render(<CookingView recipe={potRoast} />);
 
-		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 3');
+		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 2');
 		await expect.element(shown().getByText(/^Amounts in the steps/)).not.toBeInTheDocument();
 	});
 
@@ -256,7 +256,7 @@ describe('CookingView', () => {
 		await render(<CookingView recipe={potRoast} />);
 
 		await userEvent.keyboard('{ArrowRight}');
-		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 3');
+		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 2');
 		await expect.element(screenHeading()).toHaveFocus();
 		expect(location.search).toBe('?step=1');
 
@@ -295,11 +295,14 @@ describe('CookingView', () => {
 			.element(dialog.getByRole('button', { name: /Gather your ingredients/ }))
 			.toHaveAttribute('aria-current', 'step');
 
-		await dialog.getByRole('button', { name: /Whisk in 1 tablespoon flour/ }).click();
+		const gravyStep = dialog.getByRole('button', { name: /Whisk in 1 tablespoon flour/ });
+		// Numbered from 1 under its heading, as the recipe page numbers it.
+		expect(gravyStep.element()).toHaveProperty('textContent', '1Whisk in 1 tablespoon flour.');
+		await gravyStep.click();
 
 		await expect.element(page.getByRole('dialog')).not.toBeInTheDocument();
 		await expect.element(screenHeading()).toHaveFocus();
-		await expect.element(screenHeading()).toHaveAccessibleName('For the gravy, step 3 of 3');
+		await expect.element(screenHeading()).toHaveAccessibleName('For the gravy, step 1 of 1');
 		expect(location.search).toBe('?step=3');
 	});
 
@@ -355,7 +358,9 @@ describe('CookingView', () => {
 		visit('?step=2');
 		await render(<CookingView recipe={potRoast} />);
 
-		await expect.element(page.getByText('Picked up at step 2, where you left off.')).toBeVisible();
+		await expect
+			.element(page.getByText('Picked up at For the roast, step 2, where you left off.'))
+			.toBeVisible();
 		expect(document.activeElement).toBe(document.body);
 
 		await button('Next step').click();
@@ -410,11 +415,11 @@ describe('CookingView', () => {
 					.getByRole('main', { includeHidden: true })
 					.getByRole('heading', { level: 1, includeHidden: true })
 			)
-			.toHaveAttribute('aria-label', 'For the roast, step 1 of 3');
+			.toHaveAttribute('aria-label', 'For the roast, step 1 of 2');
 		await traverse(1);
 		await keptPage.show();
 
-		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 3');
+		await expect.element(screenHeading()).toHaveAccessibleName('For the roast, step 1 of 2');
 		expect(ingredients.isConnected).toBe(true);
 	});
 
