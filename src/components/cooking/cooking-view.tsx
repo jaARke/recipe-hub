@@ -154,8 +154,8 @@ function GatherScreen({
 	);
 }
 
-// The step's number large in the heading face over a highlighter's swash, counted among its
-// section's steps; with its section, it is the screen's heading, read as "For the gravy, step 1 of 3".
+// The step's number large in the heading face over a highlighter's swash, counted among the steps
+// under its heading; with its section, it is the screen's heading, read as "For the gravy, step 1 of 3".
 function StepScreen({
 	step,
 	scale,
@@ -178,7 +178,7 @@ function StepScreen({
 				)}
 				<StepNumeral
 					number={step.number}
-					stepCount={step.sectionStepCount}
+					stepCount={step.lastNumber}
 					small={step.text.length > longStepLength}
 				/>
 			</h1>

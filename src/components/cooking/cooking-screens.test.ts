@@ -29,25 +29,25 @@ describe('cookingScreens', () => {
 			{
 				kind: 'step',
 				number: 1,
+				lastNumber: 2,
 				sectionIndex: 0,
 				sectionHeading: undefined,
-				sectionStepCount: 2,
 				text: 'Sear the roast.',
 			},
 			{
 				kind: 'step',
 				number: 2,
+				lastNumber: 2,
 				sectionIndex: 0,
 				sectionHeading: undefined,
-				sectionStepCount: 2,
 				text: 'Braise it for 3 hours.',
 			},
 			{
 				kind: 'step',
 				number: 1,
+				lastNumber: 1,
 				sectionIndex: 1,
 				sectionHeading: 'For the gravy',
-				sectionStepCount: 1,
 				text: 'Whisk in the flour.',
 			},
 			{ kind: 'finish' },
@@ -101,16 +101,16 @@ describe('cookingNextLabel', () => {
 describe('cookingResumedText', () => {
 	it.each<[CookingScreen | undefined, string | undefined]>([
 		[
-			{ kind: 'step', number: 4, sectionIndex: 0, sectionStepCount: 5, text: 'Stir.' },
+			{ kind: 'step', number: 4, lastNumber: 5, sectionIndex: 0, text: 'Stir.' },
 			'Picked up at step 4, where you left off.',
 		],
 		[
 			{
 				kind: 'step',
 				number: 1,
+				lastNumber: 3,
 				sectionIndex: 1,
 				sectionHeading: 'For the gravy',
-				sectionStepCount: 3,
 				text: 'Whisk in the flour.',
 			},
 			'Picked up at For the gravy, step 1, where you left off.',

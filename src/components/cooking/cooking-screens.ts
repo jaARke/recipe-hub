@@ -20,12 +20,12 @@ export type CookingRecipe = Pick<
 
 export type CookingStepScreen = {
 	kind: 'step';
-	// Counted from 1 in its section, as the recipe page numbers it.
+	// Counted from 1 after each heading, as the recipe page numbers it.
 	number: number;
+	// The last number in its count, which the screen counts it among.
+	lastNumber: number;
 	sectionIndex: number;
 	sectionHeading?: string;
-	// How many steps its section has, which the screen counts it among.
-	sectionStepCount: number;
 	text: string;
 };
 
@@ -59,9 +59,9 @@ export function cookingScreens(
 		section.steps.map((step): CookingStepScreen => ({
 			kind: 'step',
 			number: step.number,
+			lastNumber: step.lastNumber,
 			sectionIndex,
 			sectionHeading: section.heading,
-			sectionStepCount: section.steps.length,
 			text: step.text,
 		}))
 	);
@@ -95,7 +95,7 @@ export function cookingGatherHeading(stepCount: number): string {
 // A step screen's heading as a screen reader reads it, its section first as the screen shows it:
 // "For the gravy, step 1 of 3".
 export function cookingStepHeading(step: CookingStepScreen): string {
-	const position = `${step.number} of ${step.sectionStepCount}`;
+	const position = `${step.number} of ${step.lastNumber}`;
 	return step.sectionHeading === undefined
 		? `Step ${position}`
 		: `${step.sectionHeading}, step ${position}`;

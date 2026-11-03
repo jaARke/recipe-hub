@@ -69,6 +69,25 @@ describe('listRowNames', () => {
 		]);
 	});
 
+	it('names a heading that repeats an earlier one by its number too, so every label stays unique', () => {
+		const repeated = [
+			heading('For the sauce'),
+			line('Simmer.'),
+			heading('To serve'),
+			line('Slice.'),
+			heading(' For the sauce '),
+			line('Pour.'),
+		];
+		expect(listRowNames(repeated, 'step').map(({ label }) => label)).toEqual([
+			'Step heading 1',
+			'Step 1, For the sauce',
+			'Step heading 2',
+			'Step 1, To serve',
+			'Step heading 3',
+			'Step 1, For the sauce, heading 3',
+		]);
+	});
+
 	it('names nothing for a list without headings', () => {
 		expect(listRowNames([line('Mix.'), line('Bake.')], 'step')).toEqual([
 			{ label: 'Step 1', number: 1 },

@@ -13,8 +13,8 @@ export type ListRowNames = {
 	// A line's number among the lines since the heading above it, blank lines included, as a numbered
 	// list shows it; a heading's number among the list's headings.
 	number: number;
-	// The heading over a line, or a heading's own: its text, or its number where it has none. A line
-	// before any heading has none.
+	// The heading over a line, or a heading's own: its text, or its number where it has none or an
+	// earlier heading has the same. A line before any heading has none.
 	headingName?: string;
 };
 
@@ -29,6 +29,7 @@ function counted(count: number, noun: string): string {
 // A line under a heading names the heading too, so its label says which part of the recipe it is
 // in, and stays unique where the numbers restart after each heading: "Step 3, For the glaze".
 export function listRowNames(rows: readonly RecipeFormRowText[], noun: string): ListRowNames[] {
+	const headingTexts = new Set<string>();
 	let headings = 0;
 	let lines = 0;
 	let headingName: string | undefined;
@@ -37,7 +38,14 @@ export function listRowNames(rows: readonly RecipeFormRowText[], noun: string): 
 			headings += 1;
 			lines = 0;
 			const text = row.text.trim();
-			headingName = text === '' ? `heading ${headings}` : text;
+			// A second "For the sauce" names its number too, so "Step 1, For the sauce" stays one row's.
+			headingName =
+				text === ''
+					? `heading ${headings}`
+					: headingTexts.has(text)
+						? `${text}, heading ${headings}`
+						: text;
+			headingTexts.add(text);
 			return { label: `${sentenceCase(noun)} heading ${headings}`, number: headings, headingName };
 		}
 		lines += 1;
