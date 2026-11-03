@@ -23,12 +23,13 @@ const sectioned: InstructionSection[] = [
 const oneStep: InstructionSection[] = [{ steps: [{ text: 'Toss everything together.' }] }];
 
 describe('cookingScreens', () => {
-	it('opens on Gather, numbers the steps across sections, and ends on the finish', () => {
+	it('opens on Gather, numbers each section’s steps from 1, and ends on the finish', () => {
 		expect(cookingScreens(sectioned)).toEqual([
 			{ kind: 'gather' },
 			{
 				kind: 'step',
 				number: 1,
+				lastNumber: 2,
 				sectionIndex: 0,
 				sectionHeading: undefined,
 				text: 'Sear the roast.',
@@ -36,13 +37,15 @@ describe('cookingScreens', () => {
 			{
 				kind: 'step',
 				number: 2,
+				lastNumber: 2,
 				sectionIndex: 0,
 				sectionHeading: undefined,
 				text: 'Braise it for 3 hours.',
 			},
 			{
 				kind: 'step',
-				number: 3,
+				number: 1,
+				lastNumber: 1,
 				sectionIndex: 1,
 				sectionHeading: 'For the gravy',
 				text: 'Whisk in the flour.',
@@ -74,13 +77,11 @@ describe('startsCookingGroup', () => {
 });
 
 describe('cookingStepHeading', () => {
-	it('reads a step with its section first, as the screen shows it', () => {
+	it('reads a step with its section first, counted among its section’s steps', () => {
 		const [, first, , gravy] = cookingScreens(sectioned);
 
-		expect(first?.kind === 'step' && cookingStepHeading(first, 3)).toBe('Step 1 of 3');
-		expect(gravy?.kind === 'step' && cookingStepHeading(gravy, 3)).toBe(
-			'For the gravy, step 3 of 3'
-		);
+		expect(first?.kind === 'step' && cookingStepHeading(first)).toBe('Step 1 of 2');
+		expect(gravy?.kind === 'step' && cookingStepHeading(gravy)).toBe('For the gravy, step 1 of 1');
 	});
 });
 
@@ -100,8 +101,19 @@ describe('cookingNextLabel', () => {
 describe('cookingResumedText', () => {
 	it.each<[CookingScreen | undefined, string | undefined]>([
 		[
-			{ kind: 'step', number: 4, sectionIndex: 0, text: 'Stir.' },
+			{ kind: 'step', number: 4, lastNumber: 5, sectionIndex: 0, text: 'Stir.' },
 			'Picked up at step 4, where you left off.',
+		],
+		[
+			{
+				kind: 'step',
+				number: 1,
+				lastNumber: 3,
+				sectionIndex: 1,
+				sectionHeading: 'For the gravy',
+				text: 'Whisk in the flour.',
+			},
+			'Picked up at For the gravy, step 1, where you left off.',
 		],
 		[{ kind: 'finish' }, 'Picked up at the end, where you left off.'],
 		[{ kind: 'gather' }, undefined],

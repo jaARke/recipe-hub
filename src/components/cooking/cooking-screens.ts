@@ -6,8 +6,9 @@ import { scaleStepperFor, type RecipeYield } from '@/domain/recipe/recipe-yield'
 import type { RouteSearchParams } from '@/lib/url-query';
 
 // The cooking view's screens: Gather your ingredients, one per step across every section, and the
-// finish. A screen's index is its step's number, which the URL's step parameter holds, so ?step=4
-// is step 4. Pure, so the rules are tested without a browser.
+// finish. The URL's step parameter holds a screen's index, which counts on through the sections, so
+// ?step=4 is the recipe's fourth step whatever its number under its heading. Pure, so the rules are
+// tested without a browser.
 
 // What the cooking view shows of a recipe, at the version its page shows: when it was last edited.
 export type CookingRecipe = Pick<
@@ -19,8 +20,10 @@ export type CookingRecipe = Pick<
 
 export type CookingStepScreen = {
 	kind: 'step';
-	// Counted from 1 across every section.
+	// Counted from 1 after each heading, as the recipe page numbers it.
 	number: number;
+	// The last number in its count, which the screen counts it among.
+	lastNumber: number;
 	sectionIndex: number;
 	sectionHeading?: string;
 	text: string;
@@ -30,7 +33,7 @@ export type CookingScreen = { kind: 'gather' } | CookingStepScreen | { kind: 'fi
 
 export const cookingStepParamName = 'step';
 
-// A screen past the first, written as a step is numbered: "4", never "04" or "0".
+// A screen past the first, as a whole number: "4", never "04" or "0".
 const stepParamSchema = z
 	.string()
 	.regex(/^[1-9]\d*$/u)
@@ -56,6 +59,7 @@ export function cookingScreens(
 		section.steps.map((step): CookingStepScreen => ({
 			kind: 'step',
 			number: step.number,
+			lastNumber: step.lastNumber,
 			sectionIndex,
 			sectionHeading: section.heading,
 			text: step.text,
@@ -88,9 +92,10 @@ export function cookingGatherHeading(stepCount: number): string {
 	return `${gatherTitle}, step 0 of ${stepCount}`;
 }
 
-// A step screen's heading as a screen reader reads it, its section first as the screen shows it.
-export function cookingStepHeading(step: CookingStepScreen, stepCount: number): string {
-	const position = `${step.number} of ${stepCount}`;
+// A step screen's heading as a screen reader reads it, its section first as the screen shows it:
+// "For the gravy, step 1 of 3".
+export function cookingStepHeading(step: CookingStepScreen): string {
+	const position = `${step.number} of ${step.lastNumber}`;
 	return step.sectionHeading === undefined
 		? `Step ${position}`
 		: `${step.sectionHeading}, step ${position}`;
@@ -116,7 +121,9 @@ export function cookingNextLabel(
 export function cookingResumedText(screen: CookingScreen | undefined): string | undefined {
 	switch (screen?.kind) {
 		case 'step':
-			return `Picked up at step ${screen.number}, where you left off.`;
+			return screen.sectionHeading === undefined
+				? `Picked up at step ${screen.number}, where you left off.`
+				: `Picked up at ${screen.sectionHeading}, step ${screen.number}, where you left off.`;
 		case 'finish':
 			return 'Picked up at the end, where you left off.';
 		default:

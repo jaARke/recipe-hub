@@ -79,11 +79,7 @@ import {
 	ReviewNotesNext,
 	UncheckedSaveDialog,
 } from '@/components/recipe-form/review-notes';
-import {
-	listRowNames,
-	sectionLabel,
-	type ListNaming,
-} from '@/components/recipe-form/sectioned-list';
+import { listRowNames, sectionLabel } from '@/components/recipe-form/sectioned-list';
 import {
 	SectionedListField,
 	sectionedListFieldIds,
@@ -232,9 +228,9 @@ const textFieldNames: readonly TextFieldName[] = [
 
 // Each list's legend and what its rows are called, which its field and the problem summary share.
 const listFieldLabels = {
-	ingredientSections: { legend: 'Ingredients', noun: 'ingredient', numbered: false },
-	instructionSections: { legend: 'Steps', noun: 'step', numbered: true },
-} as const satisfies Record<RecipeFormListName, { legend: string } & ListNaming>;
+	ingredientSections: { legend: 'Ingredients', noun: 'ingredient' },
+	instructionSections: { legend: 'Steps', noun: 'step' },
+} as const satisfies Record<RecipeFormListName, { legend: string; noun: string }>;
 
 const photoFieldLegends = {
 	dish: 'Photos',
@@ -478,9 +474,9 @@ function RecipeForm({
 				};
 			case 'row':
 			case 'section': {
-				const { legend, ...naming } = listFieldLabels[target.list];
+				const { legend, noun } = listFieldLabels[target.list];
 				const listIds = sectionedListFieldIds(ids.list(target.list));
-				const names = listRowNames(values[target.list].rows, naming)[target.index];
+				const names = listRowNames(values[target.list].rows, noun)[target.index];
 				// A section shows at its heading's row, which its link focuses.
 				return target.kind === 'row'
 					? {
@@ -729,6 +725,7 @@ function RecipeForm({
 						description="One step per field, or paste them all at once. Add a heading for a separate part, such as a glaze."
 						itemPlaceholder="Heat the oven to 450°F."
 						headingPlaceholder="For the glaze"
+						numbered
 						noteFor={noteFor}
 					/>
 					<TextareaField
